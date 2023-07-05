@@ -1,0 +1,138 @@
+#ifndef _KP_PGTABLE_H_
+#define _KP_PGTABLE_H_
+
+#include <ktypes.h>
+
+/*
+ * Level 3 descriptor (PTE).
+ */
+#define PTE_VALID (_AT(pteval_t, 1) << 0)
+#define PTE_TYPE_MASK (_AT(pteval_t, 3) << 0)
+#define PTE_TYPE_PAGE (_AT(pteval_t, 3) << 0)
+#define PTE_TABLE_BIT (_AT(pteval_t, 1) << 1)
+#define PTE_USER (_AT(pteval_t, 1) << 6) /* AP[1] */
+#define PTE_RDONLY (_AT(pteval_t, 1) << 7) /* AP[2] */
+#define PTE_SHARED (_AT(pteval_t, 3) << 8) /* SH[1:0], inner shareable */
+#define PTE_AF (_AT(pteval_t, 1) << 10) /* Access Flag */
+#define PTE_NG (_AT(pteval_t, 1) << 11) /* nG */
+#define PTE_GP (_AT(pteval_t, 1) << 50) /* BTI guarded */
+#define PTE_DBM (_AT(pteval_t, 1) << 51) /* Dirty Bit Management */
+#define PTE_CONT (_AT(pteval_t, 1) << 52) /* Contiguous range */
+#define PTE_PXN (_AT(pteval_t, 1) << 53) /* Privileged XN */
+#define PTE_UXN (_AT(pteval_t, 1) << 54) /* User XN */
+
+#define mask_ul(h, l) (((~0ul) << (l)) & (~0ul >> (63 - (h))))
+
+#define sev() asm volatile("sev" : : : "memory")
+#define wfe() asm volatile("wfe" : : : "memory")
+#define wfi() asm volatile("wfi" : : : "memory")
+
+#define isb() asm volatile("isb" : : : "memory")
+#define dmb(opt) asm volatile("dmb " #opt : : : "memory")
+#define dsb(opt) asm volatile("dsb " #opt : : : "memory")
+
+#define tlbi_0(op)       \
+    asm("tlbi " #op "\n" \
+        "dsb ish\n"      \
+        "tlbi " #op "\n")
+
+#define tlbi_1(op, arg)      \
+    asm("tlbi " #op ", %0\n" \
+        "dsb ish\n"          \
+        "tlbi " #op ", %0\n" \
+        :                    \
+        : "r"(arg))
+
+static inline void local_flush_tlb_all(void)
+{
+    dsb(nshst);
+    tlbi_0(vmalle1);
+    dsb(nsh);
+    isb();
+}
+
+static inline void flush_tlb_all(void)
+{
+    dsb(ishst);
+    tlbi_0(vmalle1is);
+    dsb(ish);
+    isb();
+}
+
+static inline uint64_t tlbi_vaddr(uint64_t addr, uint64_t asid)
+{
+    uint64_t x = addr >> 12;
+    x &= mask_ul(43, 0);
+    x |= asid << 48;
+    return x;
+}
+
+extern int64_t memstart_addr;
+extern uint64_t kimage_voffset;
+extern uint64_t page_offset;
+extern uint64_t vabits_actual;
+extern uint64_t kernel_va;
+extern uint64_t kernel_pa;
+extern int32_t page_shift;
+extern int32_t page_size;
+extern int32_t va_bits;
+// extern int32_t pa_bits;
+
+static inline uint64_t phys_to_virt(uint64_t phys)
+{
+    return kimage_voffset ? (phys - memstart_addr) | page_offset : phys - memstart_addr + page_offset;
+}
+
+static inline uint64_t virt_to_phys(uint64_t virt)
+{
+    return kimage_voffset ? (virt & ~page_offset) + memstart_addr : virt - page_offset + memstart_addr;
+}
+
+static inline uint64_t phys_to_kimg(uint64_t phys)
+{
+    return phys + kimage_voffset;
+}
+
+static inline uint64_t kimg_to_phys(uint64_t addr)
+{
+    return addr - kimage_voffset;
+}
+
+// 4.9
+// static inline void flush_tlb_kernel_range(unsigned long start, unsigned long end)
+// {
+//     unsigned long addr;
+//     if ((end - start) > 1024 * page_shift) {
+//         flush_tlb_all();
+//         return;
+//     }
+//     start >>= 12;
+//     end >>= 12;
+//     dsb(ishst);
+//     for (addr = start; addr < end; addr += 1 << (PAGE_SHIFT - 12)) tlbi_1(vaae1is, addr);
+//     dsb(ish);
+//     isb();
+// }
+
+static inline void flush_tlb_kernel_range(uint64_t start, uint64_t end)
+{
+    start = tlbi_vaddr(start, 0);
+    end = tlbi_vaddr(end, 0);
+    dsb(ishst);
+    for (uint64_t addr = start; addr < end; addr += 1 << (page_shift - 12)) tlbi_1(vaale1is, addr);
+    dsb(ish);
+    isb();
+}
+
+static inline void flush_tlb_kernel_page(uint64_t addr)
+{
+    addr = tlbi_vaddr(addr, 0);
+    dsb(ishst);
+    tlbi_1(vaale1is, addr);
+    dsb(ish);
+    isb();
+}
+
+uint64_t *get_pte(uint64_t va);
+
+#endif

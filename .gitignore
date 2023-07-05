@@ -1,0 +1,5 @@
+.vscode/*
+.history/
+.tmp/
+.priv/
+.test/*
