@@ -2,6 +2,8 @@
 
 **Patching and hooking the Linux kernel with only stripped Linux kernel image.**
 
+If you are using Android, [AndroidKernelPatch](https://github.com/bmax121/AndroidKernelPatch) would be a better choice.
+
 **English** | [简体中文](README_zh-CN.md)
 
 KernelPatch provides the fundamental capability to parse Linux kernel images without source code and symbol information, allowing for the retrieval of arbitrary symbol offsets and the injection of arbitrary code into the kernel.  

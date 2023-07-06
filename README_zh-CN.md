@@ -1,5 +1,9 @@
 # KernelPatch
 
+**Patching and hooking the Linux kernel with only stripped Linux kernel image.**
+
+如果你在使用 Android，[AndroidKernelPatch](https://github.com/bmax121/AndroidKernelPatch) 会是更好的选择。
+
 KernelPatch 提供可以在无源码无符号情况下解析Linux内核镜像，获取任意符号偏移，并向内核中注入任意代码的基础能力。  
 在此基础上，KernelPatch 还提供了系统调用 hook，内核 inline-hook 等基础功能。  
 你可以完全的掌控内核，实现你想要的功能，比如提权，隐藏，监控等等。  
