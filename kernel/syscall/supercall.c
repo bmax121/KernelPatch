@@ -56,7 +56,7 @@ static inline long call_su()
 static long call_grant_su(pid_t pid)
 {
     int ret = SUPERCALL_RES_SUCCEED;
-    ret = make_su(pid, true);
+    ret = grant_su(pid, true);
     return ret;
 }
 

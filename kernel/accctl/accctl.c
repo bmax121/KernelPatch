@@ -106,7 +106,7 @@ int commit_su()
 }
 
 // todo: cow
-int make_su(pid_t vpid, bool real)
+int grant_su(pid_t vpid, bool real)
 {
     int ret = 0;
     struct pid *pid_struct = find_get_pid(vpid);
@@ -115,13 +115,12 @@ int make_su(pid_t vpid, bool real)
         goto out;
     }
     struct task_struct *task = get_pid_task(pid_struct, PIDTYPE_PID);
-    put_pid(pid_struct);
     if (!task) {
         ret = ERR_ACCCTL_NO_SUCH_ID;
         goto out;
     }
     ret = add_white_task(task);
-    if (ret) return ret;
+    if (ret) goto free;
 
     // todo: COW
     struct cred *cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
@@ -170,8 +169,10 @@ int make_su(pid_t vpid, bool real)
         if (cred_offset.fsgid_offset >= 0) *(uid_t *)((uintptr_t)real_cred + cred_offset.fsgid_offset) = 0;
         if (cred_offset.sgid_offset >= 0) *(uid_t *)((uintptr_t)real_cred + cred_offset.sgid_offset) = 0;
     }
-    __put_task_struct(task);
 
+free:
+    put_pid(pid_struct);
+    // __put_task_struct(task);
 out:
     return ret;
 }

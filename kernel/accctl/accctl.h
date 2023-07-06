@@ -38,6 +38,6 @@ void _log_current_whites();
 
 int commit_su_nodep();
 int commit_su();
-int make_su(pid_t vpid, bool real);
+int grant_su(pid_t vpid, bool real);
 
 #endif
