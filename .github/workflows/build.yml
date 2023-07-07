@@ -19,12 +19,11 @@ jobs:
           fetch-depth: 0
       - name: Install Compiler
         run: |
-          curl -o aarch64-none-elf.tar.xz https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu/11.3.rel1/binrel/arm-gnu-toolchain-11.3.rel1-aarch64-aarch64-none-elf.tar.xz
+          curl -o aarch64-none-elf.tar.xz https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu/12.2.rel1/binrel/arm-gnu-toolchain-12.2.rel1-darwin-x86_64-aarch64-none-elf.tar.xz
           tar -Jxf aarch64-none-elf.tar.xz
-          chmod +x arm-gnu-toolchain-11.3.rel1-aarch64-aarch64-none-elf/bin/*
       - name: Build
         run: |
-          export TARGET_COMPILE=`pwd`/arm-gnu-toolchain-11.3.rel1-aarch64-aarch64-none-elf/bin/aarch64-none-elf-
+          export TARGET_COMPILE=`pwd`/arm-gnu-toolchain-12.2.rel1-darwin-x86_64-aarch64-none-elf/bin/aarch64-none-elf-
           cd kernel
           make
       - name: Upload kpimg
