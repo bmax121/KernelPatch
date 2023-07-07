@@ -16,11 +16,6 @@ KernelPatch 提供可以在无源码无符号情况下解析Linux内核镜像，
 
 Linux 3.8 - 6.2 (理论上)  
 Linux 6.3+ (暂未适配)  
-Linux 4.4, 4.20, 5.10 (测试过)  
-Pixel2xl-Android10, Linux 4.4.210 (测试过)  
-Pixel3xl-Android12, Linux 4.9.270 (测试过)  
-Pixel4xl-Android13, Linux 4.14.276 (测试过)  
-Oneplus8T-Android13, Linux 4.19.157 (测试过)  
 
 ## 获取帮助
 

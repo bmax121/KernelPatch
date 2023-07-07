@@ -18,11 +18,6 @@ Currently only supports arm64 architecture.
 
 Linux 3.8 - 6.2 (theoretically)  
 Linux 6.3+ (not yet adapted)  
-Linux 4.4, 4.20, 5.10 (tested)  
-Pixel2xl-Android10, Linux 4.4.210 (tested)  
-Pixel3xl-Android12, Linux 4.9.270 (tested)  
-Pixel4xl-Android13, Linux 4.14.276 (tested)  
-Oneplus8T-Android13, Linux 4.19.157 (tested)  
 
 ## Get Help
 
