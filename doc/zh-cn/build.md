@@ -2,12 +2,7 @@
 
 ## 编译 kpimg
 
-kpimg 运行在目标系统的内核空间，可能需要交叉编译器
-
-编译器某些情况下可能会生成 .got 表，暂未适配(todo)  
-当前只在 MacOS (Intel CPU) 上使用 aarch64-none-elf- 测试过  
-
-[下载编译器](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)
+kpimg 运行在目标系统的内核空间，你可能需要裸机交叉编译器，例如 aarch64-none-elf
 
 ```shell
 export TARGET_COMPILE=aarch64-none-elf-

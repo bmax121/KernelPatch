@@ -2,12 +2,8 @@
 
 ## Build kpimg
 
-kpimg runs in the kernel space of the target system and may require a cross-compiler.
-
-In some cases, the compiler may generate a .got table, which is not currently supported (todo).
-It has only been tested on MacOS (Intel CPU) with aarch64-none-elf-.
-
-[Download the Compiler](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)
+kpimg runs in the kernel space of the target system. 
+You may need a bare-metal cross-compiler, such as aarch64-none-elf, for compilation.
 
 ```shell
 export TARGET_COMPILE=aarch64-none-elf-

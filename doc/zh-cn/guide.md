@@ -26,4 +26,4 @@ kpimg 是一个经过特殊设计的 ELF，在它接管内核启动之后会对�
 
 ### [kpuser](/user/)
 
-kpuser 是 KernelPatch 的用户空间头文件，静态库，你可以直接将 kpatch 嵌入到你的程序中。  
+kpuser 是 KernelPatch 的用户空间头文件，库等，你可以直接将 kpatch 嵌入到你的程序中。  

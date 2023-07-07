@@ -8,6 +8,7 @@ AS = $(TARGET_COMPILE)as
 OBJCOPY = $(TARGET_COMPILE)objcopy
 
 CFLAGS += -Wall -fno-builtin -std=gnu11 -nostdinc
+CFLAGS += -g
 
 ifdef DEBUG
 	CFLAGS += -DDEBUG -DMAP_DEBUG -g
@@ -39,10 +40,10 @@ OBJS := $(OBJS:.S=.o)
 
 all: kpimg
 
-kpimg: kp.elf
+kpimg: kpimg.elf
 	${OBJCOPY} -O binary -S $^ $@
 
-kp.elf: ${OBJS}
+kpimg.elf: ${OBJS}
 	${LD} -nostdlib -static -no-pie -Tkpimg.lds -o $@ $^
 
 %.o: %.c

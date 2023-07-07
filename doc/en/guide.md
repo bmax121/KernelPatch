@@ -25,4 +25,4 @@ After that, we enter a relatively comfortable C language world (where almost all
 
 ### [kpuser](/user/)
 
-kpuser is the user space header file and static library for KernelPatch. You can directly embed kpatch into your program.
+kpuser is the user space header file and library for KernelPatch. You can directly embed kpatch into your program.

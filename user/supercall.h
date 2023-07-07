@@ -2,6 +2,7 @@
 #define _KPU_SUPERCALL_H_
 
 #include <unistd.h>
+#include <sys/syscall.h>
 
 #define SUPER_KEY_LEN 32
 
