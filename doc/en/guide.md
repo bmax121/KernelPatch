@@ -23,7 +23,6 @@ After that, we enter a relatively comfortable C language world (where almost all
 
 - [Kernel Patch Module](./module.md)
 
-### [kpatch](/user/)
+### [kpuser](/user/)
 
-kpatch is the user-space program of KernelPatch. Currently, it only encapsulates the usage of SuperCall. You can embed kpatch into your own program.  
-In the future, kpatch may take on more responsibilities to assist kpimg in accomplishing certain functionalities.
+kpuser is the user space header file and static library for KernelPatch. You can directly embed kpatch into your program.
