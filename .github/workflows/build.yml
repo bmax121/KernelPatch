@@ -21,6 +21,7 @@ jobs:
         run: |
           curl -o aarch64-none-elf.tar.xz https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu/11.3.rel1/binrel/arm-gnu-toolchain-11.3.rel1-aarch64-aarch64-none-elf.tar.xz
           tar -Jxf aarch64-none-elf.tar.xz
+          chmod a+x arm-gnu-toolchain-11.3.rel1-aarch64-aarch64-none-elf/bin/*
       - name: Build
         run: |
           cd kernel
@@ -46,7 +47,6 @@ jobs:
   build-kptools-linux:
     permissions:
       contents: write
-    name: build-kptools on ubuntu-latest
     runs-on: ubuntu-latest
     steps:
       - name: Check out
@@ -77,7 +77,6 @@ jobs:
   build-kptools-x64-mac:
     permissions:
       contents: write
-    name: build-kptools on macos-latest
     runs-on: macos-latest
     steps:
       - name: Check out
@@ -106,6 +105,8 @@ jobs:
           replacesArtifacts: true
           
   build-kpuser:
+    permissions:
+      contents: write
     runs-on:  ubuntu-latest
     steps:
       - name: Check out
