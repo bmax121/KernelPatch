@@ -23,8 +23,8 @@ jobs:
           tar -Jxf aarch64-none-elf.tar.xz
       - name: Build
         run: |
-          export TARGET_COMPILE=./arm-gnu-toolchain-11.3.rel1-aarch64-aarch64-none-elf/bin/aarch64-none-elf-
           cd kernel
+          export TARGET_COMPILE=../arm-gnu-toolchain-11.3.rel1-aarch64-aarch64-none-elf/bin/aarch64-none-elf-
           make
       - name: Upload kpimg
         uses: actions/upload-artifact@v3
@@ -105,13 +105,13 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
           
-#   build-kpuser:
-#     runs-on:  ubuntu-latest
-#     steps:
-#       - name: Check out
-#         uses: actions/checkout@v3
-#         with:
-#           fetch-depth: 0
+  build-kpuser:
+    runs-on:  ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 #       - name: Install Toolchain
 #         run: |
 #           sudo apt-get update
@@ -121,12 +121,12 @@ jobs:
 #           export TARGET_COMPILE=aarch64-linux-gnu-
 #           cd user
 #           make
-#       - name: Release
-#         uses: ncipollo/release-action@v1
-#         with:
-#           token: ${{ secrets.GITHUB_TOKEN }}
-#           tag: latest
-#           body: "User space headers and library"
-#           artifacts: "user"
-#           allowUpdates: true
-#           replacesArtifacts: true
+      - name: Release
+        uses: ncipollo/release-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: latest
+          body: "User space headers and library"
+          artifacts: "user"
+          allowUpdates: true
+          replacesArtifacts: true
