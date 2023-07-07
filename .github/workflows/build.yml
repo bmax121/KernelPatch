@@ -1,0 +1,130 @@
+name: Build CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-kpimg:
+    runs-on:  macos-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@v3
+        with:
+          submodules: "recursive"
+          fetch-depth: 0
+      - name: Install Compiler
+        run: |
+          brew install aarch64-elf-gcc
+      - name: Build
+        run: |
+          export TARGET_COMPILE=aarch64-elf-
+          cd kernel
+          make
+      - name: Upload kpimg
+        uses: actions/upload-artifact@v3
+        with:
+          path: |
+            kernel/kpimg
+          name: kpimg
+      - name: Release
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: latest
+          body: "..."
+          artifacts: "kernel/kpimg"
+          allowUpdates: true
+          replacesArtifacts: true
+          
+  build-kptools-linux:
+    permissions:
+      contents: write
+    name: build-kptools on ubuntu-latest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v3
+        with:
+          submodules: "recursive"
+          fetch-depth: 0
+      - name: Build
+        run: |
+          cd tools
+          make
+          mv kptools kptools-linux
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          path: tools/kptools-linux
+          name: kptools-linux
+      - name: Release
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: latest
+          body: "..."
+          artifacts: "tools/kptools-linux"
+          allowUpdates: true
+          replacesArtifacts: true
+          
+  build-kptools-x64-mac:
+    permissions:
+      contents: write
+    name: build-kptools on macos-latest
+    runs-on: macos-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v3
+        with:
+          submodules: "recursive"
+          fetch-depth: 0
+      - name: Build
+        run: |
+          cd tools
+          make
+          mv kptools kptools-mac
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          path: tools/kptools-mac
+          name: kptools-mac
+      - name: Release
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: latest
+          body: "..."
+          artifacts: "tools/kptools-mac"
+          allowUpdates: true
+          replacesArtifacts: true
+          
+  build-kpuser:
+    runs-on:  ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Install Toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+      - name: Build
+        run: |
+          export TARGET_COMPILE=aarch64-linux-gnu-
+          cd user
+          make
+      - name: Release
+        uses: ncipollo/release-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: latest
+          body: "User space headers and library"
+          artifacts: "user"
+          allowUpdates: true
+          replacesArtifacts: true
