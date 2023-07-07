@@ -19,11 +19,11 @@ jobs:
           fetch-depth: 0
       - name: Install Compiler
         run: |
-          curl -o aarch64-none-elf.tar.xz https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu/11.3.rel1/binrel/arm-gnu-toolchain-11.3.rel1-aarch64-aarch64-none-elf.tar.xz
+          curl -o aarch64-none-elf.tar.xz https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu/11.3.rel1/binrel/arm-gnu-toolchain-11.3.rel1-darwin-x86_64-aarch64-none-elf.tar.xz
           tar -Jxf aarch64-none-elf.tar.xz
       - name: Build
         run: |
-          export TARGET_COMPILE=arm-gnu-toolchain-11.3.rel1-aarch64-aarch64-none-elf/bin/aarch64-none-elf-
+          export TARGET_COMPILE=`pwd`/arm-gnu-toolchain-11.3.rel1-darwin-x86_64-aarch64-none-elf/bin/aarch64-none-elf-
           cd kernel
           make
       - name: Upload kpimg
@@ -31,7 +31,6 @@ jobs:
         with:
           path: |
             kernel/kpimg
-            kernel/kpimg.elf
           name: kpimg
       - name: Release
         uses: ncipollo/release-action@v1.12.0
@@ -46,7 +45,6 @@ jobs:
   build-kptools-linux:
     permissions:
       contents: write
-    name: build-kptools on ubuntu-latest
     runs-on: ubuntu-latest
     steps:
       - name: Check out
@@ -74,10 +72,9 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
           
-  build-kptools-x64-mac:
+  build-kptools-mac:
     permissions:
       contents: write
-    name: build-kptools on macos-latest
     runs-on: macos-latest
     steps:
       - name: Check out
@@ -106,27 +103,32 @@ jobs:
           replacesArtifacts: true
           
   build-kpuser:
+    permissions:
+      contents: write
     runs-on:  ubuntu-latest
     steps:
       - name: Check out
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-      - name: Install Toolchain
+#       - name: Install Toolchain
+#         run: |
+#           sudo apt-get update
+#           sudo apt-get install -y gcc-aarch64-linux-gnu
+#       - name: Build
+#         run: |
+#           export TARGET_COMPILE=aarch64-linux-gnu-
+#           cd user
+#           make
+      - name: Tar
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-      - name: Build
-        run: |
-          export TARGET_COMPILE=aarch64-linux-gnu-
-          cd user
-          make
+          tar -zcvf kpuser.tgz user
       - name: Release
         uses: ncipollo/release-action@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: latest
           body: "User space headers and library"
-          artifacts: "user"
+          artifacts: "kpuser.tgz"
           allowUpdates: true
           replacesArtifacts: true
