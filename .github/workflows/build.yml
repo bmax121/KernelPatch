@@ -20,7 +20,7 @@ jobs:
       - name: Install Compiler
         run: |
           curl -o aarch64-none-elf.tar.xz https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu/11.3.rel1/binrel/arm-gnu-toolchain-11.3.rel1-aarch64-aarch64-none-elf.tar.xz
-          tar -Jxf aarch64-none-elf.tar.xz
+          tar -Jxvf aarch64-none-elf.tar.xz
           chmod a+x arm-gnu-toolchain-11.3.rel1-aarch64-aarch64-none-elf/bin/*
       - name: Build
         run: |
@@ -122,12 +122,15 @@ jobs:
 #           export TARGET_COMPILE=aarch64-linux-gnu-
 #           cd user
 #           make
+      - name: Tar
+        run: |
+          tar -zcvf kpuser.tgz user
       - name: Release
         uses: ncipollo/release-action@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: latest
           body: "User space headers and library"
-          artifacts: "user"
+          artifacts: "kpuser.tgz"
           allowUpdates: true
           replacesArtifacts: true
