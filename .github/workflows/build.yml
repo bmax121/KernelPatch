@@ -73,7 +73,7 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
           
-  build-kptools-x64-mac:
+  build-kptools-mac:
     permissions:
       contents: write
     runs-on: macos-latest
