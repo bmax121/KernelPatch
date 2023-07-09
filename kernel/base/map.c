@@ -172,7 +172,7 @@ void __noinline _paging_init()
 #endif
 
     // todo: May cause memory wastage
-    ((memblock_reserve_f)preset->memblock_reserve_relo)(preset->start_offset + preset->kernel_pa, preset->start_size);
+    // ((memblock_reserve_f)preset->memblock_reserve_relo)(preset->start_offset + preset->kernel_pa, preset->start_size);
 
     // paging_init
     uint64_t paging_init_va = preset->paging_init_relo;
@@ -187,17 +187,17 @@ void __noinline _paging_init()
     ((paging_init_f)(paging_init_va))();
 
     // start
-    uint64_t old_start = phys_to_virt(preset, preset->start_offset + preset->kernel_pa);
-    phys_addr_t page_size = 1 << preset->page_shift;
-    phys_addr_t start_size = (preset->start_size + page_size - 1) & ~(page_size - 1);
-    phys_addr_t alloc_size = start_size + preset->alloc_size;
-    uint64_t start =
-        (uint64_t)((memblock_alloc_try_nid_f)preset->memblock_alloc_try_nid_relo)(alloc_size, page_size, 0, 0, -1);
-    if (!(start & 0xF000000000000000)) { start = phys_to_virt(preset, start); }
-    for (int32_t i = 0; i < preset->start_size; i += 4) { *(uint32_t *)(start + i) = *(uint32_t *)(old_start + i); }
-    flush_icache_all();
-    uint64_t start_entry = get_entry(start, preset, 0);
-    *(uint64_t *)start_entry &= 0xFFDFFFFFFFFFFFFF;
-    flush_tlb_all();
-    ((start_f)start)(preset->kernel_pa, preset->kernel_va);
+    // uint64_t old_start = phys_to_virt(preset, preset->start_offset + preset->kernel_pa);
+    // phys_addr_t page_size = 1 << preset->page_shift;
+    // phys_addr_t start_size = (preset->start_size + page_size - 1) & ~(page_size - 1);
+    // phys_addr_t alloc_size = start_size + preset->alloc_size;
+    // uint64_t start =
+    //     (uint64_t)((memblock_alloc_try_nid_f)preset->memblock_alloc_try_nid_relo)(alloc_size, page_size, 0, 0, -1);
+    // if (!(start & 0xF000000000000000)) { start = phys_to_virt(preset, start); }
+    // for (int32_t i = 0; i < preset->start_size; i += 4) { *(uint32_t *)(start + i) = *(uint32_t *)(old_start + i); }
+    // flush_icache_all();
+    // uint64_t start_entry = get_entry(start, preset, 0);
+    // *(uint64_t *)start_entry &= 0xFFDFFFFFFFFFFFFF;
+    // flush_tlb_all();
+    // ((start_f)start)(preset->kernel_pa, preset->kernel_va);
 }

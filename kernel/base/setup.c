@@ -11,11 +11,11 @@ static setup_header_t header __section(.setup.header) = { .magic = "KP1158",
                                                           .kp_version.patch = PATCH,
                                                           .compile_time = __TIME__ " " __DATE__ };
 
-static setup_preset_t preset __section(.setup.preset) = { 0 };
+setup_preset_t preset __section(.setup.preset) = { 0 };
 
-static uint64_t kernel_pa __section(.setup.data) = 0;
+// static uint64_t kernel_pa __section(.setup.data) = 0;
 
-static struct
+struct
 {
     uint8_t fp[STACK_SIZE];
     uint8_t sp[0];
@@ -23,53 +23,48 @@ static struct
 
 #define B_REL(src, dst) (0x14000000u | (((dst - src) & 0x0FFFFFFFu) >> 2u))
 #define BL_REL(src, dst) (0x94000000u | (((dst - src) & 0x0FFFFFFFu) >> 2u))
-#define INSN_IS_B(inst) (((inst)&0xFC000000) == 0x14000000)
 
-#define bits32(n, high, low) ((uint32_t)((n) << (31u - (high))) >> (31u - (high) + (low)))
-#define sign64_extend(n, len) \
-    (((uint64_t)((n) << (63u - (len - 1))) >> 63u) ? ((n) | (0xFFFFFFFFFFFFFFFF << (len))) : n)
-
-static void __noinline memcpy32(uint64_t dst, uint64_t src, int32_t size)
+void __noinline memcpy32(uint64_t dst, uint64_t src, int64_t size)
 {
     for (int32_t i = size - 4; i >= 0; i -= 4) *(uint32_t *)(dst + i) = *(uint32_t *)(src + i);
 }
 
-static void __noinline start_prepare()
-{
-    // backup map occupied area
-    uint64_t map_pa = kernel_pa + preset.map_offset;
-    int32_t map_size = (int32_t)(_map_end - _map_start);
-    start_preset.kernel_size = preset.kernel_size;
-    start_preset.kallsyms_lookup_name_offset = preset.kallsyms_lookup_name_offset;
-    start_preset.map_offset = preset.map_offset;
-    start_preset.map_backup_len = map_size;
-    memcpy32((uint64_t)start_preset.map_backup, map_pa, map_size);
+// static void __noinline start_prepare()
+// {
+//     // backup map occupied area
+//     uint64_t map_pa = kernel_pa + preset.map_offset;
+//     int64_t map_size = (int64_t)(_map_end - _map_start);
+//     start_preset.kernel_size = preset.kernel_size;
+//     start_preset.kallsyms_lookup_name_offset = preset.kallsyms_lookup_name_offset;
+//     start_preset.map_offset = preset.map_offset;
+//     start_preset.map_backup_len = map_size;
+//     memcpy32((uint64_t)start_preset.map_backup, map_pa, map_size);
 
-    // start_preset
-    start_preset.kernel_version = preset.kernel_version;
-    start_preset.kp_version = header.kp_version;
-    memcpy32((uint64_t)start_preset.superkey, (uint64_t)preset.superkey, SUPER_KEY_LEN);
-    memcpy32((uint64_t)start_preset.compile_time, (uint64_t)header.compile_time, SUPER_KEY_LEN);
+//     // start_preset
+//     start_preset.kernel_version = preset.kernel_version;
+//     start_preset.kp_version = header.kp_version;
+//     memcpy32((uint64_t)start_preset.superkey, (uint64_t)preset.superkey, SUPER_KEY_LEN);
+//     memcpy32((uint64_t)start_preset.compile_time, (uint64_t)header.compile_time, SUPER_KEY_LEN);
 
-    // move start
-    uint64_t from = (uint64_t)_kp_start;
-    int32_t start_size = (int32_t)(_kp_end - _kp_start);
-    int32_t start_offset = preset.kernel_size;
+//     // move start
+//     uint64_t from = (uint64_t)_kp_start;
+//     int64_t start_size = (int64_t)(_kp_end - _kp_start);
+//     int32_t start_offset = preset.kernel_size;
 
-    uint32_t version_code =
-        (uint32_t)VERSION(preset.kernel_version.major, preset.kernel_version.minor, preset.kernel_version.patch);
-    if (version_code >= VERSION(4, 13, 0)) start_offset += (1 << preset.page_shift); // vm guard page
+//     uint32_t version_code =
+//         (uint32_t)VERSION(preset.kernel_version.major, preset.kernel_version.minor, preset.kernel_version.patch);
+//     if (version_code >= VERSION(4, 13, 0)) start_offset += (1 << preset.page_shift); // vm guard page
 
-    uint64_t to = kernel_pa + start_offset;
+//     uint64_t to = kernel_pa + start_offset;
 
-    memcpy32(to, from, start_size);
+//     memcpy32(to, from, start_size);
 
-    map_preset.start_offset = start_offset;
-    map_preset.start_size = start_size;
-    map_preset.alloc_size = HOOK_ALLOC_SIZE;
-}
+//     map_preset.start_offset = start_offset;
+//     map_preset.start_size = start_size;
+//     map_preset.alloc_size = HOOK_ALLOC_SIZE;
+// }
 
-static void __noinline map_prepare()
+void __noinline map_prepare(uint64_t kernel_pa)
 {
     int32_t map_offset = preset.map_offset;
     map_preset.kernel_pa = kernel_pa;
@@ -93,63 +88,49 @@ static void __noinline map_prepare()
     uint64_t paging_init_pa = paging_init_offset + kernel_pa;
     uint32_t paging_init_inst = *(uint32_t *)(paging_init_pa);
 
-    if (INSN_IS_B(paging_init_inst)) {
-        uint64_t imm26 = bits32(paging_init_inst, 25, 0);
-        uint64_t imm64 = sign64_extend(imm26 << 2u, 28u);
-        paging_init_offset += imm64;
-        paging_init_pa += imm64;
-        paging_init_inst = *(uint32_t *)(paging_init_pa);
-    }
-
     map_preset.paging_init_relo = paging_init_offset;
     map_preset.paging_init_backup = paging_init_inst;
     uint64_t replace_pa = (uint64_t)(_paging_init - _map_start) + map_offset + kernel_pa;
     // replace
     *(uint32_t *)paging_init_pa = B_REL(paging_init_pa, replace_pa);
 
-#ifdef MAP_TRY_INLINE_HOOK
-    map_preset.paging_init_relo_insts[0] = *(uint32_t *)(paging_init_pa);
-    map_preset.paging_init_relo_insts[1] =
-        B_REL(map_offset + offsetof(map_preset_t, paging_init_relo_insts) + 4, paging_init_offset + 4);
-#endif
-
     // move map
-    int32_t size = (int32_t)(_map_end - _map_start);
+    int64_t size = (int64_t)(_map_end - _map_start);
     uint64_t from = (uint64_t)_map_start;
     uint64_t to = preset.map_offset + kernel_pa;
     memcpy32(to, from, size);
 }
 
-static void __noinline setup(void *fdtp, void *r1, void *r2, void *r3)
-{
-    kernel_pa = (uint64_t)_link_base - preset.kp_offset;
+// void __noinline setup(void *fdtp, void *r1, void *r2, void *r3)
+// {
+//     kernel_pa = (uint64_t)_link_base - preset.kp_offset;
 
-    start_prepare();
-    map_prepare();
+//     // start_prepare();
+//     map_prepare(kernel_pa);
 
-    memcpy32(kernel_pa, (uint64_t)preset.header_backup, sizeof(preset.header_backup));
+//     memcpy32(kernel_pa, (uint64_t)preset.header_backup, sizeof(preset.header_backup));
 
-    // I-cache maybe on
-    asm volatile("dsb ish" : : : "memory");
-    asm volatile("ic iallu");
-    asm volatile("isb" : : : "memory");
+//     // I-cache maybe on
+//     asm volatile("dsb ish" : : : "memory");
+//     asm volatile("ic iallu");
+//     asm volatile("isb" : : : "memory");
 
-    void (*head)(void *, void *, void *, void *) = 0;
-    head = (typeof(head))(kernel_pa);
-    head(fdtp, r1, r2, r3);
-}
+//     void (*head)(void *, void *, void *, void *) = 0;
+//     head = (typeof(head))(kernel_pa);
+//     head(fdtp, r1, r2, r3);
+// }
 
 // arm64 not support  __attribute__((naked))
 // x0 = physical address to the FDT blob.
-void __section(.setup.text) setup_entry(void *fdtp, void *r1, void *r2, void *r3)
-{
-    asm volatile("nop");
-    asm volatile("nop");
-    asm volatile("nop");
-    asm volatile("nop");
-    // make sure not use stack here
-    uint64_t sp = (uint64_t)&stack.sp;
-    asm volatile("mov sp, %0" ::"r"(sp));
-    // now we can use stack
-    setup(fdtp, r1, r2, r3);
-}
+// void __section(.setup.text) setup_entry(void *fdtp, void *r1, void *r2, void *r3)
+// {
+//     asm volatile("nop");
+//     asm volatile("nop");
+//     asm volatile("nop");
+//     asm volatile("nop");
+//     // make sure not use stack here
+//     uint64_t sp = (uint64_t)&stack.sp;
+//     asm volatile("mov sp, %0" ::"r"(sp));
+//     // now we can use stack
+//     setup(fdtp, r1, r2, r3);
+// }
