@@ -5,9 +5,11 @@
 #include <stdint.h>
 #endif
 
-#define KP_HEADER_SIZE 64
-#define SUPER_KEY_LEN 32
-#define HDR_BACKUP_SIZE 8
+#define MAGIC_LEN 0x8
+#define KP_HEADER_SIZE 0x40
+#define SUPER_KEY_LEN 0x20
+#define HDR_BACKUP_SIZE 0x8
+#define COMPILE_TIME_LEN 0x18
 #define VERSION(major, minor, patch) (((major) << 16) + ((minor) << 8) + (patch))
 
 #ifndef __ASSEMBLY__
@@ -22,13 +24,14 @@ typedef struct __attribute__((packed)) version_t
 #endif
 
 #ifndef __ASSEMBLY__
+// 64-bits
 typedef struct __attribute__((packed)) _setup_header_t
 {
-    char magic[8];
+    char magic[MAGIC_LEN];
     version_t kp_version;
     version_t kernel_version;
-    char compile_time[24];
-    char _reserved[12];
+    char compile_time[COMPILE_TIME_LEN];
+    char _reserved[];
 } setup_header_t;
 #else
 #endif

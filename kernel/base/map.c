@@ -8,14 +8,14 @@ typedef void *(*memblock_alloc_try_nid_f)(phys_addr_t size, phys_addr_t align, p
 typedef void (*printk_f)(const char *fmt, ...);
 typedef void (*paging_init_f)(void);
 
-map_preset_t map_preset __section(.map.data) __align(MAP_ALIGN) = {
+map_preset_t map_preset __section(.map.data) __aligned(MAP_ALIGN) = {
 #ifdef MAP_DEBUG
     .str_fmt_px = "KP:%2d - 0x%llx\n",
 // .str_fmt_px = "KP:%2d - 0x%px\n",
 #endif
 };
 
-uint64_t __section(.map.text) __noinline __align(MAP_ALIGN) get_myva()
+uint64_t __section(.map.text) __noinline __aligned(MAP_ALIGN) get_myva()
 {
     uint64_t this_va;
     asm volatile("adr %0, ." : "=r"(this_va));

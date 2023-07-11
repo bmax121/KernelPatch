@@ -19,15 +19,15 @@ struct
 {
     uint8_t fp[STACK_SIZE];
     uint8_t sp[0];
-} stack __section(.setup.data) = { .fp = { '\0' } };
+} stack __section(.setup.data) __aligned(16);
 
 #define B_REL(src, dst) (0x14000000u | (((dst - src) & 0x0FFFFFFFu) >> 2u))
 #define BL_REL(src, dst) (0x94000000u | (((dst - src) & 0x0FFFFFFFu) >> 2u))
 
-void __noinline memcpy32(uint64_t dst, uint64_t src, int64_t size)
-{
-    for (int32_t i = size - 4; i >= 0; i -= 4) *(uint32_t *)(dst + i) = *(uint32_t *)(src + i);
-}
+// void __noinline rmemcpy32(uint64_t dst, uint64_t src, int64_t size)
+// {
+//     for (int32_t i = size - 4; i >= 0; i -= 4) *(uint32_t *)(dst + i) = *(uint32_t *)(src + i);
+// }
 
 // static void __noinline start_prepare()
 // {
@@ -64,42 +64,41 @@ void __noinline memcpy32(uint64_t dst, uint64_t src, int64_t size)
 //     map_preset.alloc_size = HOOK_ALLOC_SIZE;
 // }
 
-void __noinline map_prepare(uint64_t kernel_pa)
-{
-    int32_t map_offset = preset.map_offset;
-    map_preset.kernel_pa = kernel_pa;
-    map_preset.map_offset = map_offset;
+// void __noinline map_prepare1(uint64_t kernel_pa)
+// {
+//     int32_t map_offset = preset.map_offset;
+//     map_preset.kernel_pa = kernel_pa;
+//     map_preset.map_offset = map_offset;
 
-    map_preset.paging_init_relo = preset.paging_init_offset;
-    map_preset.memblock_reserve_relo = preset.memblock_reserve_offset;
-    map_preset.memblock_alloc_try_nid_relo = preset.memblock_alloc_try_nid_offset;
+//     map_preset.paging_init_relo = preset.paging_init_offset;
+//     map_preset.memblock_reserve_relo = preset.memblock_reserve_offset;
+//     map_preset.memblock_alloc_try_nid_relo = preset.memblock_alloc_try_nid_offset;
 
-    map_preset.vabits_actual_relo = preset.vabits_actual_offset < 0 ? 0 : preset.vabits_actual_offset;
-    map_preset.memstart_addr_relo = preset.memstart_addr_offset < 0 ? 0 : preset.memstart_addr_offset;
-    map_preset.kimage_voffset_relo = preset.kimage_voffset_offset < 0 ? 0 : preset.kimage_voffset_offset;
+//     map_preset.vabits_actual_relo = preset.vabits_actual_offset < 0 ? 0 : preset.vabits_actual_offset;
+//     map_preset.memstart_addr_relo = preset.memstart_addr_offset < 0 ? 0 : preset.memstart_addr_offset;
+//     map_preset.kimage_voffset_relo = preset.kimage_voffset_offset < 0 ? 0 : preset.kimage_voffset_offset;
 
-#ifdef MAP_DEBUG
-    map_preset.printk_relo = preset.printk_offset;
-    map_preset.kallsyms_lookup_name_relo = preset.kallsyms_lookup_name_offset;
-#endif
+// #ifdef MAP_DEBUG
+//     map_preset.printk_relo = preset.printk_offset;
+//     map_preset.kallsyms_lookup_name_relo = preset.kallsyms_lookup_name_offset;
+// #endif
 
-    // paging_init
-    uint64_t paging_init_offset = preset.paging_init_offset;
-    uint64_t paging_init_pa = paging_init_offset + kernel_pa;
-    uint32_t paging_init_inst = *(uint32_t *)(paging_init_pa);
+//     // paging_init
+//     uint64_t paging_init_offset = preset.paging_init_offset;
+//     uint32_t paging_init_inst = *(uint32_t *)(paging_init_pa);
+//     uint64_t paging_init_pa = paging_init_offset + kernel_pa;
 
-    map_preset.paging_init_relo = paging_init_offset;
-    map_preset.paging_init_backup = paging_init_inst;
-    uint64_t replace_pa = (uint64_t)(_paging_init - _map_start) + map_offset + kernel_pa;
-    // replace
-    *(uint32_t *)paging_init_pa = B_REL(paging_init_pa, replace_pa);
+//     map_preset.paging_init_backup = paging_init_inst;
+//     uint64_t replace_pa = (uint64_t)(_paging_init - _map_start) + map_offset + kernel_pa;
+//     // replace
+//     *(uint32_t *)paging_init_pa = B_REL(paging_init_pa, replace_pa);
 
-    // move map
-    int64_t size = (int64_t)(_map_end - _map_start);
-    uint64_t from = (uint64_t)_map_start;
-    uint64_t to = preset.map_offset + kernel_pa;
-    memcpy32(to, from, size);
-}
+//     // move map
+//     int64_t size = (int64_t)(_map_end - _map_start);
+//     uint64_t from = (uint64_t)_map_start;
+//     uint64_t to = preset.map_offset + kernel_pa;
+//     rmemcpy32(to, from, size);
+// }
 
 // void __noinline setup(void *fdtp, void *r1, void *r2, void *r3)
 // {
