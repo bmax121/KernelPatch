@@ -10,7 +10,7 @@
 #include <unistd.h>
 #include <string.h>
 
-#include "../kernel/preset/preset.h"
+#include "../kernel/base/preset.h"
 #include "image.h"
 #include "order.h"
 #include "kallsym.h"
@@ -104,16 +104,19 @@ static int32_t relo_branch_func(const char *img, int32_t func_offset)
     return func_offset;
 }
 
-// static void target_endian_preset(setup_preset_t *preset, int32_t target_is_be)
-// {
-//     if (!(is_be() ^ target_is_be)) return;
-//     preset->kernel_size = i32swp(preset->kernel_size);
-//     preset->page_shift = i32swp(preset->page_shift);
-//     preset->kp_offset = i32swp(preset->kp_offset);
-//     preset->map_offset = i32swp(preset->map_offset);
-//     preset->map_max_size = i32swp(preset->map_max_size);
-//     for (int32_t *pos = preset->_ksym_offset_start; pos < preset->_ksym_offset_end; pos++) { *pos = i32swp(*pos); }
-// }
+static void target_endian_preset(setup_preset_t *preset, int32_t target_is_be)
+{
+    if (!(is_be() ^ target_is_be)) return;
+    preset->kernel_size = i64swp(preset->kernel_size);
+    preset->page_shift = i64swp(preset->page_shift);
+    preset->kp_offset = i64swp(preset->kp_offset);
+    preset->map_offset = i64swp(preset->map_offset);
+    preset->map_max_size = i64swp(preset->map_max_size);
+    for (int64_t *pos = (int64_t *)&preset->kallsyms_lookup_name_offset;
+         pos <= (int64_t *)&preset->kimage_voffset_offset; pos++) {
+        *pos = i64swp(*pos);
+    }
+}
 
 // todo
 void select_map_area(int32_t *map_start, int32_t *max_size)
@@ -225,7 +228,7 @@ int patch_image()
     long text_offset = align_image_len + 4096;
     b((uint32_t *)(out_buf + kinfo.b_stext_insn_offset), kinfo.b_stext_insn_offset, text_offset);
 
-    // target_endian_preset(preset, kinfo.is_be);
+    target_endian_preset(preset, kinfo.is_be);
 
     FILE *fout = fopen(out, "wb");
     if (!fout) {

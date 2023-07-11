@@ -1,7 +1,7 @@
 #ifndef _KP_SETUP_H_
 #define _KP_SETUP_H_
 
-#include "../preset/preset.h"
+#include "./preset.h"
 
 #define HOOK_ALLOC_SIZE (256 * 1024)
 #define STACK_SIZE 2048

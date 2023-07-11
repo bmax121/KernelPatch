@@ -1,6 +1,6 @@
 
 #define __ASSEMBLY__
-#include "../preset/preset.h"
+#include "./preset.h"
 #include "./setup.h"
 #include "./start.h"
 
@@ -44,18 +44,61 @@ memcpy:
 start_prepare:
     stp x29, x30, [sp, -16]!
     stp x19, x20, [sp, -16]!
+    // kernel_pa
+    mov x19, x0
     // map_preset
     adrp x9, map_preset
     add x9, x9, :lo12:map_preset
-    // preset
-    adrp x10, preset
-    add x10, x10, :lo12:preset
+    // setup_preset
+    adrp x10, setup_preset
+    add x10, x10, :lo12:setup_preset
     // start_preset
     adrp x11, start_preset
     add x11, x11, :lo12:start_preset
-    // start_preset.kernel_size = preset.kernel_size;
-    ldr x12, [x10, #setup_kernel_size_offset]
-    str x12, [x9, #start_kernel_size_offset]
+    // header
+    adrp x12, header
+    add x12, x12, :lo12:header
+    // start_preset.kernel_version = header.kernel_version;
+    ldr w13, [x12, #header_kernel_version_offset]
+    str w13, [x11, #start_kernel_version_offset]
+    // start_preset.kp_version = header.kp_version;
+    ldr w13, [x12, #header_kp_version_offset]
+    str w13, [x11, #start_kp_version_offset] 
+    // start_preset.kallsyms_lookup_name_offset = setup_preset.set.kallsyms_lookup_name_offset;
+    ldr x13, [x10, #setup_kallsyms_lookup_name_offset_offset]
+    str x13, [x11, #start_kallsyms_lookup_name_offset_offset]
+    // start_preset.kernel_size = setup_preset.set.kernel_size;
+    // start_preset.start_offset = setup_preset.kernel_size;
+    ldr x13, [x10, #setup_kernel_size_offset]
+    str x13, [x11, #start_kernel_size_offset]
+    str x13, [x11, #start_start_offset_offset]
+    // start_preset.kernel_pa = kernel_pa;
+    str x19, [x11, #start_kernel_pa_offset]
+    // start_preset.map_offset = setup_preset.map_offset
+    ldr x13, [x10, #setup_map_offset_offset]
+    str x13, [x11, #start_map_offset_offset]
+    // copy map
+    adrp x13, _map_end
+    add x13, x13, :lo12:_map_end
+    adrp x14, _map_start
+    add x14, x14, :lo12:_map_start
+    // start_preset.map_backup_len = (uint64_t)_map_end - (uint64_t)_map_start
+    sub x2, x13, x14
+    str x2, [x11, #start_map_backup_len_offset]
+    // 
+    add x0, x0, 
+
+
+    ldr x13, [x10, #setup_map_offset_offset]
+    str x13, [x11, #start_map_offset_offset]
+    // start_preset.map_backup_len = setup_preset.set.kallsyms_lookup_name_offset;
+    ldr x13, [x10, #setup_kernel_size_offset]
+    str x13, [x11, #start_kernel_size_offset]
+
+
+    // start_preset.kernel_pa = setup_preset.set.kallsyms_lookup_name_offset;
+    ldr x13, [x10, #setup_kernel_size_offset]
+    str x13, [x9, #start_kernel_size_offset]
 
 
     // Restore
@@ -72,39 +115,39 @@ map_prepare:
     // map_preset
     adrp x9, map_preset
     add x9, x9, :lo12:map_preset
-    // preset
-    adrp x10, preset
-    add x10, x10, :lo12:preset
+    // setup_preset
+    adrp x10, setup_preset
+    add x10, x10, :lo12:setup_preset
     // map_preset.kernel_pa = kernel_pa;
     str x1, [x9, #map_kernel_pa_offset]
-    // map_preset.map_offset = preset.map_offset;
+    // map_preset.map_offset = setup_preset.map_offset;
     ldr x11, [x10, #setup_map_offset_offset]
     str x11, [x9, #map_map_offset_offset]
     mov x14, x11
-    // map_preset.paging_init_relo = preset.paging_init_offset;
+    // map_preset.paging_init_relo = setup_preset.paging_init_offset;
     ldr x11, [x10, #setup_paging_init_offset_offset]
     str x11, [x9, #map_paging_init_relo_offset]
     mov x15, x11
-    // map_preset.memblock_reserve_relo = preset.memblock_reserve_offset;
+    // map_preset.memblock_reserve_relo = setup_preset.memblock_reserve_offset;
     ldr x11, [x10, #setup_memblock_reserve_offset_offset]
     str x11, [x9, #map_memblock_reserve_relo_offset]
-    // map_preset.memblock_alloc_try_nid_relo = preset.memblock_alloc_try_nid_offset;
+    // map_preset.memblock_alloc_try_nid_relo = setup_preset.memblock_alloc_try_nid_offset;
     ldr x11, [x10, #setup_memblock_reserve_offset_offset]
     str x11, [x9, #map_memblock_reserve_relo_offset]
-    // map_preset.vabits_actual_relo = preset.vabits_actual_offset 
+    // map_preset.vabits_actual_relo = setup_preset.vabits_actual_offset 
     ldr x11, [x10, #setup_vabits_actual_offset_offset]
     str x11, [x9, #map_vabits_actual_relo_offset]
-    // map_preset.memstart_addr_relo = preset.memstart_addr_offset 
+    // map_preset.memstart_addr_relo = setup_preset.memstart_addr_offset 
     ldr x11, [x10, #setup_memstart_addr_offset_offset]
     str x11, [x9, #map_memstart_addr_relo_offset]
-    // map_preset.kimage_voffset_relo = preset.kimage_voffset_offset 
+    // map_preset.kimage_voffset_relo = setup_preset.kimage_voffset_offset 
     ldr x11, [x10, #setup_kimage_voffset_offset_offset]
     str x11, [x9, #map_kimage_voffset_relo_offset]
 #ifdef MAP_DEBUG
-    // map_preset.printk_relo = preset.printk_offset;
+    // map_preset.printk_relo = setup_preset.printk_offset;
     ldr x11, [x10, #setup_printk_offset_offset]
     str x11, [x9, #map_printk_relo_offset]
-    // map_preset.kallsyms_lookup_name_relo = preset.kallsyms_lookup_name_offset;
+    // map_preset.kallsyms_lookup_name_relo = setup_preset.kallsyms_lookup_name_offset;
     ldr x11, [x10, #setup_kallsyms_lookup_name_offset_offset]
     str x11, [x9, #map_kallsyms_lookup_name_relo_offset]
 #endif
@@ -161,13 +204,12 @@ setup:
     // _link_base
     adrp x9, _link_base
     add x9, x9, :lo12:_link_base
-    // preset
-    adrp x10, preset
-    add x10, x10, :lo12:preset
+    // setup_preset
+    adrp x10, setup_preset
+    add x10, x10, :lo12:setup_preset
     mov x20, x10
-    // preset.kp_offset
+    // uint64 kernel_pa = (uint64_t)_link_base - setup_preset.kp_offset;
     ldrsw x11, [x10, #setup_kp_offset_offset]
-    // uint64 kernel_pa = (uint64_t)_link_base - preset.kp_offset;
     sub x12, x9, x11
     mov x19, x12
 
@@ -178,7 +220,7 @@ setup:
     mov x0, x19
     // bl hook_paging_init
 
-    // memcpy32(kernel_pa, (uint64_t)preset.header_backup, sizeof(preset.header_backup));
+    // memcpy32(kernel_pa, (uint64_t)setup_preset.header_backup, sizeof(setup_preset.header_backup));
     mov x0, x19
     add x1, x20, #setup_header_backup_offset
     mov x2, #HDR_BACKUP_SIZE

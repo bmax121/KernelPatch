@@ -5,13 +5,13 @@
 extern map_preset_t map_preset;
 extern start_preset_t start_preset;
 
-static setup_header_t header __section(.setup.header) = { .magic = "KP1158",
-                                                          .kp_version.major = MAJOR,
-                                                          .kp_version.minor = MINOR,
-                                                          .kp_version.patch = PATCH,
-                                                          .compile_time = __TIME__ " " __DATE__ };
+setup_header_t header __section(.setup.header) = { .magic = "KP1158",
+                                                   .kp_version.major = MAJOR,
+                                                   .kp_version.minor = MINOR,
+                                                   .kp_version.patch = PATCH,
+                                                   .compile_time = __TIME__ " " __DATE__ };
 
-setup_preset_t preset __section(.setup.preset) = { 0 };
+setup_preset_t setup_preset __section(.setup.preset) = { 0 };
 
 // static uint64_t kernel_pa __section(.setup.data) = 0;
 

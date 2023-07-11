@@ -186,6 +186,8 @@ void __noinline _paging_init()
     flush_tlb_all();
     ((paging_init_f)(paging_init_va))();
 
+    map_debug(10, paging_init_va);
+
     // start
     // uint64_t old_start = phys_to_virt(preset, preset->start_offset + preset->kernel_pa);
     // phys_addr_t page_size = 1 << preset->page_shift;

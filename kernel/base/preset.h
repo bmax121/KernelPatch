@@ -5,6 +5,7 @@
 #include <stdint.h>
 #endif
 
+//
 #define MAGIC_LEN 0x8
 #define KP_HEADER_SIZE 0x40
 #define SUPER_KEY_LEN 0x20
@@ -34,6 +35,10 @@ typedef struct __attribute__((packed)) _setup_header_t
     char _reserved[];
 } setup_header_t;
 #else
+#define header_magic_offset 0
+#define header_kp_version_offset (MAGIC_LEN)
+#define header_kernel_version_offset (header_kp_version_offset + 4)
+#define header_compile_time_offset (header_kernel_version_offset + 4)
 #endif
 
 #ifndef __ASSEMBLY__
