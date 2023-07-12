@@ -47,6 +47,7 @@ typedef struct __attribute__((packed)) _setup_preset_t
     int64_t kernel_size;
     int64_t page_shift;
     int64_t kp_offset;
+    int64_t start_offset;
     int64_t map_offset; // must be divisibled by MAP_ALIGN
     int64_t map_max_size;
 
@@ -66,17 +67,18 @@ typedef struct __attribute__((packed)) _setup_preset_t
 #define setup_kernel_size_offset 0
 #define setup_page_shift_offset 8
 #define setup_kp_offset_offset 0x10
-#define setup_map_offset_offset 0x18
-#define setup_map_max_size_offset 0x20
-#define setup_kallsyms_lookup_name_offset_offset 0x28
-#define setup_paging_init_offset_offset 0x30
-#define setup_printk_offset_offset 0x38
-#define setup_memblock_reserve_offset_offset 0x40
-#define setup_memblock_alloc_try_nid_offset_offset 0x48
-#define setup_vabits_actual_offset_offset 0x50
-#define setup_memstart_addr_offset_offset 0x58
-#define setup_kimage_voffset_offset_offset 0x60
-#define setup_header_backup_offset 0x68
+#define setup_start_offset_offset 0x18
+#define setup_map_offset_offset 0x20
+#define setup_map_max_size_offset 0x28
+#define setup_kallsyms_lookup_name_offset_offset 0x30
+#define setup_paging_init_offset_offset 0x38
+#define setup_printk_offset_offset 0x40
+#define setup_memblock_reserve_offset_offset 0x48
+#define setup_memblock_alloc_try_nid_offset_offset 0x50
+#define setup_vabits_actual_offset_offset 0x58
+#define setup_memstart_addr_offset_offset 0x60
+#define setup_kimage_voffset_offset_offset 0x68
+#define setup_header_backup_offset 0x70
 #define setup_superkey_offset (setup_header_backup_offset + HDR_BACKUP_SIZE)
 #endif
 

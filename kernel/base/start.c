@@ -187,10 +187,10 @@ static int hook_init()
     return 0;
 }
 
-static int start_init(uint64_t kpa, uint64_t kva)
+static int start_init(uint64_t kva)
 {
-    kernel_pa = kpa;
     kernel_va = kva;
+    kernel_pa = start_preset.kernel_pa;
     uint64_t kallsym_addr = kva + start_preset.kallsyms_lookup_name_offset;
     kallsyms_lookup_name = (typeof(kallsyms_lookup_name))(kallsym_addr);
     printk = (typeof(printk))kallsyms_lookup_name("printk");
@@ -220,20 +220,16 @@ static int nice_zone()
     return init();
 }
 
-int __attribute__((section(".start.text"))) __noinline start(uint64_t kpa, uint64_t kva)
+int __attribute__((section(".start.text"))) __noinline start(uint64_t kva)
 {
-    asm volatile("nop");
-    asm volatile("nop");
-    asm volatile("nop");
-    asm volatile("nop");
     int err = 0;
-    if ((err = start_init(kpa, kva))) goto out;
+    if ((err = start_init(kva))) goto out;
     if ((err = pgtable_init())) goto out;
     if ((err = prot_myself())) goto out;
     if ((err = restore_map())) goto out;
     if ((err = predata_init())) goto out;
     if ((err = hook_init())) goto out;
-    if ((err = nice_zone())) goto out;
+//     if ((err = nice_zone())) goto out;
 out:
     logki("Started with code: %d\n", err);
     return 0;

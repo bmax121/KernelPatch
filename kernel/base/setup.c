@@ -13,8 +13,6 @@ setup_header_t header __section(.setup.header) = { .magic = "KP1158",
 
 setup_preset_t setup_preset __section(.setup.preset) = { 0 };
 
-// static uint64_t kernel_pa __section(.setup.data) = 0;
-
 struct
 {
     uint8_t fp[STACK_SIZE];

@@ -40,7 +40,6 @@ typedef struct
 
 extern start_preset_t start_preset;
 
-int start(uint64_t kpa, uint64_t kva);
 int predata_init();
 
 void _kp_start();

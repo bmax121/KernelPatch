@@ -22,12 +22,12 @@
 typedef struct
 {
     // preset
-    int32_t map_offset;
     uint32_t paging_init_backup;
-    int32_t start_offset;
-    int32_t start_size;
-    int32_t alloc_size;
-    int32_t __;
+    uint32_t __;
+    int64_t map_offset;
+    int64_t start_offset;
+    int64_t start_size;
+    int64_t alloc_size;
     uint64_t kernel_pa;
     uint64_t paging_init_relo;
     uint64_t memblock_reserve_relo;
@@ -43,35 +43,35 @@ typedef struct
     char str_fmt_px[24];
 #endif
     // local
-    int32_t va1_bits;
-    int32_t page_shift;
+    int64_t va1_bits;
+    int64_t page_shift;
     uint64_t kernel_va;
     uint64_t page_offset;
 } map_preset_t;
 #else
-#define map_map_offset_offset 0
-#define map_paging_init_backup_offset 4
-#define map_start_offset_offset 8
-#define map_start_size_offset 0xc
-#define map_alloc_size_offset 0x10
-#define map_kernel_pa_offset 0x18
-#define map_paging_init_relo_offset 0x20
-#define map_memblock_reserve_relo_offset 0x28
-#define map_memblock_alloc_try_nid_relo_offset 0x30
-#define map_vabits_actual_relo_offset 0x38
-#define map_memstart_addr_relo_offset 0x40
-#define map_kimage_voffset_relo_offset 0x48
+#define map_paging_init_backup_offset 0
+#define map_map_offset_offset 0x8
+#define map_start_offset_offset 0x10
+#define map_start_size_offset 0x18
+#define map_alloc_size_offset 0x20
+#define map_kernel_pa_offset 0x28
+#define map_paging_init_relo_offset 0x30
+#define map_memblock_reserve_relo_offset 0x38
+#define map_memblock_alloc_try_nid_relo_offset 0x40
+#define map_vabits_actual_relo_offset 0x48
+#define map_memstart_addr_relo_offset 0x50
+#define map_kimage_voffset_relo_offset 0x58
 #ifdef MAP_DEBUG
-#define map_printk_relo_offset 0x50
-#define map_kallsyms_lookup_name_relo_offset 0x58
-#define map_tmp0_offset 0x60
-#define map_tmp1_offset 0x68
-#define map_str_fmt_px_offset 0x70
+#define map_printk_relo_offset 0x60
+#define map_kallsyms_lookup_name_relo_offset 0x68
+#define map_tmp0_offset 0x70
+#define map_tmp1_offset 0x78
+#define map_str_fmt_px_offset 0x80
 #endif // MAP_DEBUG
 #endif
 
 #ifndef __ASSEMBLY__
-typedef int (*start_f)(uint64_t kpa, uint64_t kva);
+typedef int (*start_f)(uint64_t kva);
 extern void _start_kernel();
 extern void _paging_init();
 extern void _link_base();

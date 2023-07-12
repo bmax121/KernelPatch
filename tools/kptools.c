@@ -95,13 +95,14 @@ int dump_kallsym()
 static int32_t relo_branch_func(const char *img, int32_t func_offset)
 {
     uint32_t inst = *(uint32_t *)(img + func_offset);
+    int32_t relo_offset = func_offset;
     if (INSN_IS_B(inst)) {
         uint64_t imm26 = bits32(inst, 25, 0);
         uint64_t imm64 = sign64_extend(imm26 << 2u, 28u);
-        int32_t relo_offset = func_offset + (int32_t)imm64;
+        relo_offset = func_offset + (int32_t)imm64;
         fprintf(stdout, "[+] kptools relocate branch function 0x%x to 0x%x\n", func_offset, relo_offset);
     }
-    return func_offset;
+    return relo_offset;
 }
 
 static void target_endian_preset(setup_preset_t *preset, int32_t target_is_be)
@@ -184,6 +185,7 @@ int patch_image()
     setup_preset_t *preset = (setup_preset_t *)(out_buf + align_image_len + 64);
 
     preset->kernel_size = kinfo.kernel_size;
+    preset->start_offset = align_kernel_size;
     preset->page_shift = kinfo.page_shift;
     sdata->kernel_version.major = kallsym.version.major;
     sdata->kernel_version.minor = kallsym.version.minor;
