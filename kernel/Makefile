@@ -20,7 +20,7 @@ BASE_SRCS += base/hook.c
 BASE_SRCS += base/map.c 
 BASE_SRCS += base/hmem.c 
 BASE_SRCS += base/setup.c 
-BASE_SRCS += base/entry.S
+BASE_SRCS += base/setup1.S
 BASE_SRCS += base/start.c 
 BASE_SRCS += base/predata.c 
 

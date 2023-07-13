@@ -11,6 +11,10 @@
 #define SUPER_KEY_LEN 0x20
 #define HDR_BACKUP_SIZE 0x8
 #define COMPILE_TIME_LEN 0x18
+#define MAP_MAX_SIZE 0xa00
+#define HOOK_ALLOC_SIZE (256 * 1024)
+#define MAP_ALIGN 16
+
 #define VERSION(major, minor, patch) (((major) << 16) + ((minor) << 8) + (patch))
 
 #ifndef __ASSEMBLY__
@@ -21,7 +25,6 @@ typedef struct __attribute__((packed)) version_t
     uint8_t minor;
     uint8_t major;
 } version_t;
-#else
 #endif
 
 #ifndef __ASSEMBLY__

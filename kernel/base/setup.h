@@ -3,10 +3,7 @@
 
 #include "./preset.h"
 
-#define HOOK_ALLOC_SIZE (256 * 1024)
-#define STACK_SIZE 2048
-#define MAP_MAX_SIZE 0xa00
-#define MAP_ALIGN 16
+#define STACK_SIZE 0x800
 
 #ifndef __ASSEMBLY__
 

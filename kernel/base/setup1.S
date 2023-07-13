@@ -1,27 +1,7 @@
 
 #define __ASSEMBLY__
-#include "./preset.h"
 #include "./setup.h"
 #include "./start.h"
-
-//     .section .setup.data, "a"
-//     .align 3
-//     .global stack
-// stack:
-//     .space 2048
-
-// - X0~X7：用于传递子程序参数和结果，使用时不需要保存，多余参数采用堆栈传递，64位返回结果采用X0表示，128位返回结果采用X1:X0表示。
-// - X8：用于保存子程序返回地址， 尽量不要使用 。
-// - X9~X15：临时寄存器，使用时不需要保存。
-// - X16~X17：子程序内部调用寄存器，使用时不需要保存，尽量不要使用。
-// - X18：平台寄存器，它的使用与平台相关，尽量不要使用。
-// - X19~X28：临时寄存器，使用时必须保存。
-// - X29：帧指针寄存器，用于连接栈帧，使用时需要保存。
-// - X30：链接寄存器LR
-// - X31：堆栈指针寄存器SP或零寄存器ZXR
-// 子程序调用时必须要保存的寄存器：X19~X29和SP(X31)。
-// 不需要保存的寄存器：X0~X7,X9~X15
-
 
 .text
 .align 2
@@ -303,9 +283,9 @@ setup:
 
 
 .section .entry.text, "ax"
-.global entry
+.global setup_entry
 .type entry, %function
-entry:
+setup_entry:
     // x0 = physical address to the FDT blob.
     // Preserve the arguments passed by the bootloader in x0 .. x3
     mov x9, sp

@@ -5,6 +5,8 @@
 #include <uapi/asm-generic/errno.h>
 #include <uapi/asm-generic/unistd.h>
 
+#define SYS_CALL_MAX_NR 512
+
 #define __MAP0(m, ...)
 #define __MAP1(m, t, a, ...) m(t, a)
 #define __MAP2(m, t, a, ...) m(t, a), __MAP1(m, __VA_ARGS__)

@@ -1,7 +1,7 @@
 #ifndef _KP_START_H_
 #define _KP_START_H_
 
-#include "setup.h"
+#include "preset.h"
 
 #define bits(n, high, low) (((n) << (63u - (high))) >> (63u - (high) + (low)))
 #define align_floor(x, align) ((uint64_t)(x) & ~((uint64_t)(align)-1))

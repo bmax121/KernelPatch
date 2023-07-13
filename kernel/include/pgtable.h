@@ -73,10 +73,10 @@ extern uint64_t page_offset;
 extern uint64_t vabits_actual;
 extern uint64_t kernel_va;
 extern uint64_t kernel_pa;
-extern int32_t page_shift;
-extern int32_t page_size;
-extern int32_t va_bits;
-// extern int32_t pa_bits;
+extern int64_t page_shift;
+extern int64_t page_size;
+extern int64_t va_bits;
+// extern int64_t pa_bits;
 
 static inline uint64_t phys_to_virt(uint64_t phys)
 {

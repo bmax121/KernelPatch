@@ -73,29 +73,37 @@ static inline void flush_icache_all(void)
 }
 
 // todo: 52-bits pa
-static uint64_t __noinline get_entry(uint64_t va, map_preset_t *preset, int32_t is_kimg)
+static uint64_t __noinline get_entry(uint64_t va, map_preset_t *preset, uint64_t is_kimg)
 {
-    int32_t page_shift = preset->page_shift;
-    int32_t va_bits = preset->va1_bits;
-    uint32_t page_level = (va_bits - 4) / (page_shift - 3);
-    uint32_t pxd_bits = page_shift - 3;
-    uint32_t pxd_ptrs = 1u << pxd_bits;
+    // #ifdef MAP_DEBUG
+    //     printk_f printk = (printk_f)(preset->printk_relo);
+    // #define map_debug(idx, val) printk(preset->str_fmt_px, idx, val)
+    //     map_debug(50, va);
+    // #endif
+
+    uint64_t page_shift = preset->page_shift;
+    uint64_t va_bits = preset->va1_bits;
+    uint64_t page_level = (va_bits - 4) / (page_shift - 3);
+    uint64_t pxd_bits = page_shift - 3;
+    uint64_t pxd_ptrs = 1u << pxd_bits;
     uint64_t ttbr1_el1;
     asm volatile("mrs %0, ttbr1_el1" : "=r"(ttbr1_el1));
     uint64_t pxd_pa = ttbr1_el1 & ~0xfff;
     uint64_t pxd_va = pa_to_va(preset, pxd_pa, is_kimg);
     uint64_t pxd_entry_va = 0;
-    uint32_t block_flag = 0;
-    for (int lv = 4 - page_level; lv < 4; lv++) {
-        uint32_t pxd_shift = (page_shift - 3) * (4 - lv) + 3;
-        uint32_t pxd_index = (va >> pxd_shift) & (pxd_ptrs - 1);
+    uint64_t block_flag = 0;
+
+    for (int64_t lv = 4 - page_level; lv < 4; lv++) {
+        uint64_t pxd_shift = (page_shift - 3) * (4 - lv) + 3;
+        uint64_t pxd_index = (va >> pxd_shift) & (pxd_ptrs - 1);
         pxd_entry_va = pxd_va + pxd_index * 8;
         uint64_t pxd_desc = *((uint64_t *)pxd_entry_va);
+
         if ((pxd_desc & 0b11) == 0b11) { // table
             pxd_pa = pxd_desc & (((1ul << (48 - page_shift)) - 1) << page_shift);
         } else if ((pxd_desc & 0b11) == 0b01) { // block
             // 4k page: lv1, lv2. 16k and 64k page: only lv2.
-            uint32_t block_bits = (3 - lv) * pxd_bits + page_shift;
+            uint64_t block_bits = (3 - lv) * pxd_bits + page_shift;
             pxd_pa = pxd_desc & (((1ul << (48 - block_bits)) - 1) << block_bits);
             block_flag = 1;
         } else { // invalid
@@ -112,16 +120,9 @@ static map_preset_t *__noinline mem_proc()
     map_preset_t *preset = get_preset();
     uint64_t kernel_va = get_kva();
     preset->kernel_va = kernel_va;
-
     preset->paging_init_relo += kernel_va;
     preset->memblock_reserve_relo += kernel_va;
     preset->memblock_alloc_try_nid_relo += kernel_va;
-
-#ifdef MAP_DEBUG
-    preset->kallsyms_lookup_name_relo += kernel_va;
-    preset->printk_relo += kernel_va;
-#endif
-
     if (preset->vabits_actual_relo) {
         preset->vabits_actual_relo = *(uint64_t *)(kernel_va + preset->vabits_actual_relo);
     }
@@ -131,16 +132,22 @@ static map_preset_t *__noinline mem_proc()
     if (preset->kimage_voffset_relo) {
         preset->kimage_voffset_relo = *(uint64_t *)(kernel_va + preset->kimage_voffset_relo);
     }
+#ifdef MAP_DEBUG
+    preset->kallsyms_lookup_name_relo += kernel_va;
+    preset->printk_relo += kernel_va;
+#endif
 
     uint64_t tcr_el1;
     asm volatile("mrs %0, tcr_el1" : "=r"(tcr_el1));
-    int32_t t1sz = tcr_el1 << 42 >> 58; // bits(tcr_el1, 21, 16)
-    int32_t va1_bits = 64 - t1sz;
+    uint64_t t1sz = tcr_el1 << 42 >> 58; // bits(tcr_el1, 21, 16)
+    uint64_t va1_bits = 64 - t1sz;
     preset->va1_bits = va1_bits;
-
-    int32_t tg1 = tcr_el1 << 32 >> 62; // bits(tcr_el1, 31, 30)
-    int32_t shift_map[] = { 12, 14, 12, 16 };
-    int32_t page_shift = shift_map[tg1];
+    uint64_t tg1 = tcr_el1 << 32 >> 62; // bits(tcr_el1, 31, 30)
+    // uint64_t shift_map[] = { 12, 14, 12, 16 };   // Can't use
+    // uint64_t page_shift = shift_map[tg1];
+    uint64_t page_shift = 12;
+    if (tg1 == 1) page_shift = 14;
+    if (tg1 == 3) page_shift = 16;
     preset->page_shift = page_shift;
     preset->page_offset = preset->vabits_actual_relo ? -(1ul << va1_bits) : (0xffffffffffffffff << (va1_bits - 1));
     return preset;
@@ -159,15 +166,12 @@ void __noinline _paging_init()
     printk_f printk = (printk_f)(preset->printk_relo);
 #define map_debug(idx, val) printk(preset->str_fmt_px, idx, val)
     map_debug(0, kallsyms_lookup_name);
-    map_debug(1, preset->tmp0);
-#else
-#define printk(fmt, ...)
-#define kallsyms_lookup_name()
-#define map_debug(idx, val)
+    map_debug(1, preset->kernel_va);
+    map_debug(2, preset->tmp0);
 #endif
 
     // todo: May cause memory wastage
-    // ((memblock_reserve_f)preset->memblock_reserve_relo)(preset->start_offset + preset->kernel_pa, preset->start_size);
+    ((memblock_reserve_f)preset->memblock_reserve_relo)(preset->start_offset + preset->kernel_pa, preset->start_size);
 
     // paging_init
     uint64_t paging_init_va = preset->paging_init_relo;
@@ -182,18 +186,18 @@ void __noinline _paging_init()
     ((paging_init_f)(paging_init_va))();
 
     // start
-    // uint64_t old_start = phys_to_virt(preset, preset->start_offset + preset->kernel_pa);
-    // phys_addr_t page_size = 1 << preset->page_shift;
-    // phys_addr_t start_size = (preset->start_size + page_size - 1) & ~(page_size - 1);
-    // phys_addr_t alloc_size = start_size + preset->alloc_size;
+    uint64_t old_start = phys_to_virt(preset, preset->start_offset + preset->kernel_pa);
+    phys_addr_t page_size = 1 << preset->page_shift;
+    phys_addr_t start_size = (preset->start_size + page_size - 1) & ~(page_size - 1);
+    phys_addr_t alloc_size = start_size + preset->alloc_size;
 
-    // uint64_t start =
-    //     (uint64_t)((memblock_alloc_try_nid_f)preset->memblock_alloc_try_nid_relo)(alloc_size, page_size, 0, 0, -1);
-    // if (!(start & 0xF000000000000000)) { start = phys_to_virt(preset, start); }
-    // for (int32_t i = 0; i < preset->start_size; i += 4) { *(uint32_t *)(start + i) = *(uint32_t *)(old_start + i); }
-    // flush_icache_all();
-    // uint64_t start_entry = get_entry(start, preset, 0);
-    // *(uint64_t *)start_entry &= 0xFFDFFFFFFFFFFFFF;
-    // flush_tlb_all();
-    // ((start_f)start)(preset->kernel_va);
+    uint64_t start =
+        (uint64_t)((memblock_alloc_try_nid_f)preset->memblock_alloc_try_nid_relo)(alloc_size, page_size, 0, 0, -1);
+    if (!(start & 0xF000000000000000)) { start = phys_to_virt(preset, start); }
+    for (int32_t i = 0; i < preset->start_size; i += 4) { *(uint32_t *)(start + i) = *(uint32_t *)(old_start + i); }
+    flush_icache_all();
+    uint64_t start_entry = get_entry(start, preset, 0);
+    *(uint64_t *)start_entry &= 0xFFDFFFFFFFFFFFFF;
+    flush_tlb_all();
+    ((start_f)start)(preset->kernel_va);
 }
