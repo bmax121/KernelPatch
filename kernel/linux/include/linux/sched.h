@@ -52,13 +52,14 @@ struct task_struct_offset
     int16_t sessionid_offset;
     int16_t seccomp_offset;
     int16_t security_offset;
+    int16_t stack_offset;
 };
 
 extern struct task_struct_offset task_struct_offset;
 
 extern union thread_union *kvar(init_thread_union);
 extern struct task_struct *kvar(init_task);
-extern int kvlen(init_task);
+
 extern struct mm_struct *kvar(init_mm);
 extern struct pid_namespace *kvar(init_pid_ns);
 

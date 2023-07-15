@@ -27,7 +27,7 @@ int _local_strcmp(const char *s1, const char *s2);
         kv_##var = (typeof(kv_##var))addr;         \
         kvl_##var = 0;                             \
     }                                              \
-    if (kv_##var && !kvl_##var) { kvl_##var = addr - (uint64_t)kv_##var; }
+    if (kv_##var && !kvl_##var && (uint64_t)kv_##var != addr) { kvl_##var = addr - (uint64_t)kv_##var; }
 #endif
 
 #define kfunc_call(func, ...) \
@@ -53,22 +53,5 @@ int _local_strcmp(const char *s1, const char *s2);
     } else {                                                                               \
         logkv("hook: %s not found\n", #func);                                              \
     }
-
-void _linux_kernel_cred_sym_match(const char *name, unsigned long addr);
-void _linux_kernel_pid_sym_match(const char *name, unsigned long addr);
-void _linux_kernel_fork_sym_match(const char *name, unsigned long addr);
-void _linux_lib_strncpy_from_user_sym_match(const char *name, unsigned long addr);
-void _linxu_lib_strnlen_user_sym_match(const char *name, unsigned long addr);
-void _linux_lib_string_sym_match(const char *name, unsigned long addr);
-void _linux_mm_utils_sym_match(const char *name, unsigned long addr);
-void _linux_lib_argv_split_sym_match(const char *name, unsigned long addr);
-void _linxu_lib_kstrtox_sym_match(const char *name, unsigned long addr);
-void _linux_kernel_stop_machine_sym_match(const char *name, unsigned long addr);
-void _linux_init_task_sym_match(const char *name, unsigned long addr);
-void _linux_mm_vmalloc_sym_match(const char *name, unsigned long addr);
-void _linux_security_security_sym_match(const char *name, unsigned long addr);
-void _linux_security_selinux_avc_sym_match(const char *name, unsigned long addr);
-void _linux_security_commoncap_sym_match(const char *name, unsigned long addr);
-void _linux_locking_spinlock_sym_match(const char *name, unsigned long addr);
 
 #endif

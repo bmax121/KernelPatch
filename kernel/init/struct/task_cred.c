@@ -1,9 +1,8 @@
-#include <init/struct.h>
-
 #include <log.h>
 #include <stdbool.h>
 #include <linux/cred.h>
 #include <linux/sched.h>
+#include <linux/sched/task.h>
 #include <linux/string.h>
 #include <linux/vmalloc.h>
 #include <linux/string.h>
@@ -14,6 +13,7 @@
 #include <uapi/linux/prctl.h>
 #include <linux/capability.h>
 #include <init/ksyms.h>
+#include <pgtable.h>
 
 struct task_struct_offset task_struct_offset = {
     .pid_offset = -1,
@@ -28,6 +28,7 @@ struct task_struct_offset task_struct_offset = {
     .sessionid_offset = -1,
     .seccomp_offset = -1,
     .security_offset = -1,
+    .stack_offset = -1,
 };
 
 struct cred_offset cred_offset = {
@@ -64,6 +65,16 @@ struct cred_offset cred_offset = {
 
     .rcu_offset = -1,
 };
+
+int thread_size = -1;
+bool thread_info_in_task = false;
+bool task_is_sp_el0 = false;
+bool thread_info_is_sp_el0 = false;
+bool thread_info_is_sp = false;
+int task_in_thread_info_offset = -1;
+int stack_in_task_offset = -1;
+
+struct task_struct *task = 0;
 
 static int16_t *bl_list = 0;
 static int bl_cap = 0;
@@ -111,20 +122,21 @@ int build_cred_offset()
         logke("init_task or init_cred length unknown\n");
         return -1;
     }
-
-    uintptr_t backup = (uintptr_t)current;
-
     reinit_bllist(128);
 
-    struct task_struct *task = (struct task_struct *)vmalloc(task_len);
+    // struct cred *cred = (struct cred *)vmalloc(cred_len);
+    // struct cred *cred1 = (struct cred *)vmalloc(cred_len);
+    struct cred *cred = cred_alloc_blank();
+    struct cred *cred1 = cred_alloc_blank();
+
     memcpy(task, kvar(init_task), task_len);
-    struct cred *cred = (struct cred *)vmalloc(cred_len);
-    struct cred *cred1 = (struct cred *)vmalloc(cred_len);
     memcpy(cred, kvar(init_cred), cred_len);
     memcpy(cred1, kvar(init_cred), cred_len);
     *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset) = cred;
     *(struct cred **)((uintptr_t)task + task_struct_offset.real_cred_offset) = cred;
-    asm volatile("msr sp_el0, %0" ::"r"(task));
+
+    const struct task_struct *backup = override_current(task);
+    logkd("backup: %llx\n", backup);
 
     // todo:
     unsigned long root_user_ptr = kallsyms_lookup_name("root_user");
@@ -336,28 +348,20 @@ int build_cred_offset()
     }
     logkd("struct cred offsets: cap_ambient: %d\n", cred_offset.cap_ambient_offset);
 
-    // todo: put new_cred
+    // todo: put cred
+    // __put_cred(new_cred);
 
-    asm volatile("msr sp_el0, %0" ::"r"(backup));
+    revert_current(backup);
     uninit_bllist();
-
-    vfree(task);
-    vfree(cred);
-    vfree(cred1);
     return 0;
 }
 
+// todo: tid and tgid offsets of task_struct.
 int build_task_offset()
 {
     int cred_len = kvlen(init_cred);
     int task_len = kvlen(init_task);
 
-    if (task_len <= 0 || cred_len <= 0) {
-        logke("init_task or init_cred length unknown\n");
-        return -1;
-    }
-
-    struct task_struct *task = (struct task_struct *)vmalloc(task_len);
     memcpy(task, kvar(init_task), task_len);
 
     uintptr_t start = (uintptr_t)task;
@@ -366,7 +370,7 @@ int build_task_offset()
     int16_t cand[8] = { 0 };
     int ci = 0;
 
-    // find: cred real_cred
+    // cred and real_cred
     find = (uintptr_t)kvar(init_cred);
     memset(cand, 0, sizeof(cand));
     ci = 0;
@@ -376,10 +380,9 @@ int build_task_offset()
     }
     if (ci != 2) return -2;
     //
-    struct cred *flag = (struct cred *)vmalloc(cred_len);
+    struct cred *flag = (struct cred *)vmalloc(kvlen(init_cred));
     memcpy(flag, kvar(init_cred), cred_len);
 
-    // struct cred *flag = cred_alloc_blank();
     *(uintptr_t *)(start + cand[0]) = (uintptr_t)flag;
     const struct cred *real_cred = get_task_cred(task);
     if (real_cred == flag) {
@@ -390,27 +393,91 @@ int build_task_offset()
         task_struct_offset.cred_offset = cand[0];
     }
     vfree(flag);
+
     logkd("struct task_struct offsets: cred: %d, read_cred: %d\n", task_struct_offset.cred_offset,
           task_struct_offset.real_cred_offset);
 
-    vfree(task);
+    // stack
+    uintptr_t stack_base = (uintptr_t)kvar(init_thread_union);
+    for (uintptr_t i = start; i < end; i += sizeof(uintptr_t)) {
+        uintptr_t val = *(uintptr_t *)i;
+        if (stack_base == val) {
+            stack_in_task_offset = i - start;
+            task_struct_offset.stack_offset = stack_in_task_offset;
+            break;
+        }
+    }
+    logkd("struct task_struct offsets: stack: %d\n", task_struct_offset.stack_offset);
+
     return 0;
 }
 
-// todo: tid and tgid offsets of task_struct.
-
-int struct_offset_init()
+int resolve_current()
 {
-    unsigned long offset = 0;
-    unsigned long size = 0;
-    char mod[16] = { '\0' };
-    char name[16] = { '\0' };
+    int err = 0;
 
-    lookup_symbol_attrs((unsigned long)kvar(init_cred), &size, &offset, mod, name);
-    kvlen(init_cred) = size;
+    unsigned long init_thread_info_addr = kallsyms_lookup_name("init_thread_info");
+    thread_info_in_task = init_thread_info_addr <= 0;
+    logkd("thread_info_in_task: %d\n", thread_info_in_task);
 
-    lookup_symbol_attrs((unsigned long)kvar(init_task), &size, &offset, mod, name);
-    kvlen(init_task) = size;
+    unsigned long sp_el0;
+    asm("mrs %0, sp_el0" : "=r"(sp_el0));
+    if (sp_el0 == (unsigned long)kvar(init_task)) {
+        task_is_sp_el0 = true;
+        logkd("task is sp_el0\n");
+        goto out;
+    }
 
-    return 0;
+    if (is_kimg_range((uint64_t)legacy_current_thread_info_sp_el0())) {
+        thread_info_is_sp_el0 = true;
+        logkd("thread_info is sp_el0\n");
+    }
+    if (is_kimg_range((uint64_t)legacy_current_thread_info_sp())) {
+        thread_info_is_sp = true;
+        logkd("thread_info is sp\n");
+    }
+
+    if ((!thread_info_is_sp && !thread_info_is_sp_el0) || (thread_info_is_sp && thread_info_is_sp_el0)) {
+        logke("unknow thread_info\n");
+        err = -1;
+        goto out;
+    }
+
+    for (int i = 0; i < KP_THREAD_INFO_MAX_SIZE; i += sizeof(uintptr_t)) {
+        struct thread_info *thread_info = current_thread_info();
+        uintptr_t ptr = (uintptr_t)thread_info + i;
+        if (*(uintptr_t *)ptr == (uintptr_t)kvar(init_task)) {
+            thread_info_is_sp = true;
+            task_in_thread_info_offset = i;
+            break;
+        }
+    }
+    logkd("struct thread_info offset: task: %d\n", task_in_thread_info_offset);
+
+out:
+    return err;
+}
+
+int build_struct()
+{
+    if (kvlen(init_task) <= 0 || kvlen(init_cred) <= 0) {
+        logke("init_task or init_cred length unknown\n");
+        return -1;
+    }
+    if (thread_size <= 0) {
+        logke("init_thread_union length unknown\n");
+        return -1;
+    }
+
+    full_cap = CAP_FULL_SET;
+    task = (struct task_struct *)vmalloc(kvlen(init_task));
+
+    int err = 0;
+    err = build_task_offset();
+    err = resolve_current();
+    err = build_cred_offset();
+
+    vfree(task);
+
+    return err;
 }

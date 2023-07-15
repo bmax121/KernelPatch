@@ -33,6 +33,7 @@ endian_t endian = little;
 
 uint64_t kernel_va = 0;
 uint64_t kernel_pa = 0;
+int64_t kernel_size = 0;
 uint64_t vabits_actual = 0;
 int64_t memstart_addr = 0;
 uint64_t kimage_voffset = 0;
@@ -71,7 +72,7 @@ uint64_t *get_pte(uint64_t va)
             return 0;
         }
         pxd_va = phys_to_virt(pxd_pa);
-        // It works! ?
+        // todo: It works! ?
         dsb(ish);
         if (block_lv) break;
     }
@@ -191,6 +192,7 @@ static int start_init(uint64_t kva)
 {
     kernel_va = kva;
     kernel_pa = start_preset.kernel_pa;
+    kernel_size = start_preset.kernel_size;
     uint64_t kallsym_addr = kva + start_preset.kallsyms_lookup_name_offset;
     kallsyms_lookup_name = (typeof(kallsyms_lookup_name))(kallsym_addr);
     printk = (typeof(printk))kallsyms_lookup_name("printk");
@@ -216,7 +218,7 @@ static int start_init(uint64_t kva)
 
 static int nice_zone()
 {
-    logki("Entering nicezone\n");
+    logki("==== KernelPatch Entering Nicezone ====\n");
     return init();
 }
 
@@ -229,8 +231,8 @@ int __attribute__((section(".start.text"))) __noinline start(uint64_t kva)
     if ((err = restore_map())) goto out;
     if ((err = predata_init())) goto out;
     if ((err = hook_init())) goto out;
+
     if ((err = nice_zone())) goto out;
 out:
-    logki("Started with code: %d\n", err);
     return 0;
 }

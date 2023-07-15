@@ -11,10 +11,6 @@ struct task_struct; // __randomize_layout
 #define CRED_MAGIC 0x43736564
 #define CRED_MAGIC_DEAD 0x44656144
 
-extern struct cred *kvar(init_cred);
-extern int kvlen(init_cred);
-extern struct group_info *kvar(init_groups);
-
 extern struct group_info *groups_alloc(int);
 extern void groups_free(struct group_info *);
 
