@@ -21,5 +21,6 @@ typedef int8_t s8;
 
 typedef unsigned long size_t;
 typedef long ssize_t;
+typedef unsigned long uintptr_t;
 
 #endif

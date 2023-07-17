@@ -51,7 +51,9 @@ int linux_symbol_init(void *data, const char *name, struct module *m, unsigned l
     _linux_lib_argv_split_sym_match(name, addr);
     _linxu_lib_kstrtox_sym_match(name, addr);
     _linux_kernel_stop_machine_sym_match(name, addr);
+#if 0
     _linux_security_security_sym_match(name, addr);
+#endif
     _linux_init_task_sym_match(name, addr);
     _linux_mm_vmalloc_sym_match(name, addr);
     _linux_security_selinux_avc_sym_match(name, addr);
@@ -73,6 +75,7 @@ void before_rest_init(hook_fdata0_t *fdata, void *udata)
     syscall_init();
     build_struct();
     acccss_control_init();
+
     logki("==== KernelPatch Everything Done ====\n");
 }
 

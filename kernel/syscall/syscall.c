@@ -163,7 +163,7 @@ int syscall_init()
     compact_syscall_table_addr = kallsyms_lookup_name("compat_sys_call_table");
     syscall_table_addr = kallsyms_lookup_name("sys_call_table");
     syscall_has_wrapper = kallsyms_lookup_name("__arm64_sys_openat") ? true : false;
-    logkd("Syscall has wrapper: %d\n", syscall_has_wrapper);
+    logkd("syscall has wrapper: %d\n", syscall_has_wrapper);
     supercall_init();
     return 0;
 }

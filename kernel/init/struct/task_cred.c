@@ -136,7 +136,6 @@ int build_cred_offset()
     *(struct cred **)((uintptr_t)task + task_struct_offset.real_cred_offset) = cred;
 
     const struct task_struct *backup = override_current(task);
-    logkd("backup: %llx\n", backup);
 
     // todo:
     unsigned long root_user_ptr = kallsyms_lookup_name("root_user");
@@ -416,33 +415,44 @@ int resolve_current()
 {
     int err = 0;
 
-    unsigned long init_thread_info_addr = kallsyms_lookup_name("init_thread_info");
-    thread_info_in_task = init_thread_info_addr <= 0;
+    // unsigned long init_thread_info_addr = kallsyms_lookup_name("init_thread_info");
+    thread_info_in_task = true;
+    for (int i = 0; i < KP_THREAD_INFO_MAX_SIZE; i += 8) {
+        uintptr_t addr = (uintptr_t)kvar(init_thread_union) + i;
+        if (*(uint64_t *)addr) {
+            thread_info_in_task = false;
+            break;
+        }
+    }
     logkd("thread_info_in_task: %d\n", thread_info_in_task);
 
+    // task_is_sp_el0
     unsigned long sp_el0;
     asm("mrs %0, sp_el0" : "=r"(sp_el0));
     if (sp_el0 == (unsigned long)kvar(init_task)) {
         task_is_sp_el0 = true;
-        logkd("task is sp_el0\n");
+        logkd("struct task is sp_el0\n");
         goto out;
     }
 
+    // thread_info_is_sp_el0
     if (is_kimg_range((uint64_t)legacy_current_thread_info_sp_el0())) {
         thread_info_is_sp_el0 = true;
-        logkd("thread_info is sp_el0\n");
+        logkd("struct thread_info is sp_el0\n");
     }
+    // thread_info_is_sp
     if (is_kimg_range((uint64_t)legacy_current_thread_info_sp())) {
         thread_info_is_sp = true;
-        logkd("thread_info is sp\n");
+        logkd("struct thread_info is sp\n");
     }
 
     if ((!thread_info_is_sp && !thread_info_is_sp_el0) || (thread_info_is_sp && thread_info_is_sp_el0)) {
-        logke("unknow thread_info\n");
+        logke("struct thread_info error\n");
         err = -1;
         goto out;
     }
 
+    // task_in_thread_info_offset
     for (int i = 0; i < KP_THREAD_INFO_MAX_SIZE; i += sizeof(uintptr_t)) {
         struct thread_info *thread_info = current_thread_info();
         uintptr_t ptr = (uintptr_t)thread_info + i;
@@ -452,7 +462,7 @@ int resolve_current()
             break;
         }
     }
-    logkd("struct thread_info offset: task: %d\n", task_in_thread_info_offset);
+    logkd("struct thread_info offsets: task: %d\n", task_in_thread_info_offset);
 
 out:
     return err;
@@ -473,11 +483,11 @@ int build_struct()
     task = (struct task_struct *)vmalloc(kvlen(init_task));
 
     int err = 0;
-    err = build_task_offset();
-    err = resolve_current();
-    err = build_cred_offset();
+    if (err = build_task_offset()) goto out;
+    if (err = resolve_current()) goto out;
+    if (err = build_cred_offset()) goto out;
 
+out:
     vfree(task);
-
     return err;
 }
