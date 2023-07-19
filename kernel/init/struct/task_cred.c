@@ -13,6 +13,7 @@
 #include <uapi/linux/prctl.h>
 #include <linux/capability.h>
 #include <init/ksyms.h>
+#include <uapi/linux/magic.h>
 #include <pgtable.h>
 
 struct task_struct_offset task_struct_offset = {
@@ -415,11 +416,11 @@ int resolve_current()
 {
     int err = 0;
 
-    // unsigned long init_thread_info_addr = kallsyms_lookup_name("init_thread_info");
     thread_info_in_task = true;
     for (int i = 0; i < KP_THREAD_INFO_MAX_SIZE; i += 8) {
         uintptr_t addr = (uintptr_t)kvar(init_thread_union) + i;
-        if (*(uint64_t *)addr) {
+        uintptr_t val = *(uintptr_t *)addr;
+        if (val && val != STACK_END_MAGIC) {
             thread_info_in_task = false;
             break;
         }
@@ -483,9 +484,9 @@ int build_struct()
     task = (struct task_struct *)vmalloc(kvlen(init_task));
 
     int err = 0;
-    if (err = build_task_offset()) goto out;
-    if (err = resolve_current()) goto out;
-    if (err = build_cred_offset()) goto out;
+    if ((err = build_task_offset())) goto out;
+    if ((err = resolve_current())) goto out;
+    if ((err = build_cred_offset())) goto out;
 
 out:
     vfree(task);

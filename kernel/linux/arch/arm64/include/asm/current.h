@@ -74,7 +74,8 @@ static __always_inline void *get_current_stack()
 static __always_inline struct task_ext *get_task_ext(struct task_struct *task)
 {
     uintptr_t addr = (uintptr_t)get_stack(task);
-    if (thread_info_in_task) return (void *)addr;
+    addr += 0x10;
+    if (thread_info_in_task) { return (void *)addr; }
     return (void *)(addr + KP_THREAD_INFO_MAX_SIZE);
 }
 

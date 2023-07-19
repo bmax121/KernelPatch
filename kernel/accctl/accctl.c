@@ -178,7 +178,7 @@ int grant_su(pid_t vpid, bool real)
         if (cred_offset.sgid_offset >= 0) *(uid_t *)((uintptr_t)real_cred + cred_offset.sgid_offset) = 0;
     }
 
-free:
+    // free:
     put_pid(pid_struct);
     // __put_task_struct(task);
 out:

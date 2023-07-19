@@ -226,7 +226,7 @@ int patch_image()
     fprintf(stdout, "[+] kptools supercall key: %s\n", preset->superkey);
 
     // todo: need this?
-    kernel_resize(&kinfo, out_buf, align_kernel_size + align_image_len);
+    // kernel_resize(&kinfo, out_buf, align_kernel_size + align_image_len);
     long text_offset = align_image_len + 4096;
     b((uint32_t *)(out_buf + kinfo.b_stext_insn_offset), kinfo.b_stext_insn_offset, text_offset);
 
