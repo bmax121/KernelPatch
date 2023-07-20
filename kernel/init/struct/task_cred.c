@@ -125,8 +125,6 @@ int build_cred_offset()
     }
     reinit_bllist(128);
 
-    // struct cred *cred = (struct cred *)vmalloc(cred_len);
-    // struct cred *cred1 = (struct cred *)vmalloc(cred_len);
     struct cred *cred = cred_alloc_blank();
     struct cred *cred1 = cred_alloc_blank();
 
@@ -289,7 +287,7 @@ int build_cred_offset()
     struct cred *new_cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
     for (int i = 0; i < cred_len; i += sizeof(gid_t)) {
         if (is_bl(i)) continue;
-        gid_t *gidp = (gid_t *)((uintptr_t)cred + i);
+        gid_t *gidp = (gid_t *)((uintptr_t)new_cred + i);
         gid_t backup = *gidp;
         *gidp = 1158;
         gid_t old_gid = raw_syscall1(__NR_setfsgid, -1);
