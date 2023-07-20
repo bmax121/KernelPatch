@@ -33,30 +33,31 @@ endian_t endian = little;
 
 uint64_t kernel_va = 0;
 uint64_t kernel_pa = 0;
+int64_t kernel_size = 0;
 uint64_t vabits_actual = 0;
 int64_t memstart_addr = 0;
 uint64_t kimage_voffset = 0;
 uint64_t page_offset = 0;
-int32_t page_shift = 0;
-int32_t page_size = 0;
-int32_t va_bits = 0;
-// int32_t pa_bits = 0;
+int64_t page_shift = 0;
+int64_t page_size = 0;
+int64_t va_bits = 0;
+// int64_t pa_bits = 0;
 
 uint64_t *get_pte(uint64_t va)
 {
-    uint32_t page_level = (va_bits - 4) / (page_shift - 3);
-    uint32_t pxd_bits = page_shift - 3;
-    uint32_t pxd_ptrs = 1u << pxd_bits;
+    uint64_t page_level = (va_bits - 4) / (page_shift - 3);
+    uint64_t pxd_bits = page_shift - 3;
+    uint64_t pxd_ptrs = 1u << pxd_bits;
     uint64_t ttbr1_el1;
     asm volatile("mrs %0, ttbr1_el1" : "=r"(ttbr1_el1));
     uint64_t pxd_pa = ttbr1_el1 & ~0xfff;
     uint64_t pxd_va = phys_to_virt(pxd_pa);
     uint64_t pxd_entry_va = 0;
-    uint32_t block_lv = 0;
+    uint64_t block_lv = 0;
 
-    for (int32_t lv = 4 - page_level; lv < 4; lv++) {
-        uint32_t pxd_shift = (page_shift - 3) * (4 - lv) + 3;
-        uint32_t pxd_index = (va >> pxd_shift) & (pxd_ptrs - 1);
+    for (int64_t lv = 4 - page_level; lv < 4; lv++) {
+        uint64_t pxd_shift = (page_shift - 3) * (4 - lv) + 3;
+        uint64_t pxd_index = (va >> pxd_shift) & (pxd_ptrs - 1);
         pxd_entry_va = pxd_va + pxd_index * 8;
         if (!pxd_entry_va) return 0;
         uint64_t pxd_desc = *((uint64_t *)pxd_entry_va);
@@ -64,14 +65,14 @@ uint64_t *get_pte(uint64_t va)
             pxd_pa = pxd_desc & (((1ul << (48 - page_shift)) - 1) << page_shift);
         } else if ((pxd_desc & 0b11) == 0b01) { // block
             // 4k page: lv1, lv2. 16k and 64k page: only lv2.
-            uint32_t block_bits = (3 - lv) * pxd_bits + page_shift;
+            uint64_t block_bits = (3 - lv) * pxd_bits + page_shift;
             pxd_pa = pxd_desc & (((1ul << (48 - block_bits)) - 1) << block_bits);
             block_lv = lv;
         } else { // invalid
             return 0;
         }
         pxd_va = phys_to_virt(pxd_pa);
-        // It works! ?
+        // todo: It works! ?
         dsb(ish);
         if (block_lv) break;
     }
@@ -161,13 +162,13 @@ static int pgtable_init()
 
     uint64_t tcr_el1;
     asm("mrs %0, tcr_el1" : "=r"(tcr_el1));
-    int32_t t1sz = bits(tcr_el1, 21, 16);
+    uint64_t t1sz = bits(tcr_el1, 21, 16);
     va_bits = 64 - t1sz;
-    int32_t tg1 = bits(tcr_el1, 31, 30);
-    int32_t shift_map[] = { 12, 14, 12, 16 };
-    page_shift = shift_map[tg1];
+    uint64_t tg1 = bits(tcr_el1, 31, 30);
+    page_shift = 12;
+    if (tg1 == 1) page_shift = 14;
+    if (tg1 == 3) page_shift = 16;
     page_size = 1 << page_shift;
-
     page_offset = vabits_actual ? -(1ul << va_bits) : (0xffffffffffffffff << (va_bits - 1));
     return 0;
 }
@@ -187,10 +188,11 @@ static int hook_init()
     return 0;
 }
 
-static int start_init(uint64_t kpa, uint64_t kva)
+static int start_init(uint64_t kva)
 {
-    kernel_pa = kpa;
     kernel_va = kva;
+    kernel_pa = start_preset.kernel_pa;
+    kernel_size = start_preset.kernel_size;
     uint64_t kallsym_addr = kva + start_preset.kallsyms_lookup_name_offset;
     kallsyms_lookup_name = (typeof(kallsyms_lookup_name))(kallsym_addr);
     printk = (typeof(printk))kallsyms_lookup_name("printk");
@@ -216,25 +218,21 @@ static int start_init(uint64_t kpa, uint64_t kva)
 
 static int nice_zone()
 {
-    logki("Entering nicezone\n");
+    logki("==== KernelPatch Entering Nicezone ====\n");
     return init();
 }
 
-int __attribute__((section(".start.text"))) __noinline start(uint64_t kpa, uint64_t kva)
+int __attribute__((section(".start.text"))) __noinline start(uint64_t kva)
 {
-    asm volatile("nop");
-    asm volatile("nop");
-    asm volatile("nop");
-    asm volatile("nop");
     int err = 0;
-    if ((err = start_init(kpa, kva))) goto out;
+    if ((err = start_init(kva))) goto out;
     if ((err = pgtable_init())) goto out;
     if ((err = prot_myself())) goto out;
     if ((err = restore_map())) goto out;
     if ((err = predata_init())) goto out;
     if ((err = hook_init())) goto out;
+
     if ((err = nice_zone())) goto out;
 out:
-    logki("Started with code: %d\n", err);
     return 0;
 }

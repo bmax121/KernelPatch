@@ -3,11 +3,12 @@
 #include <hook.h>
 #include <log.h>
 
-#include <init/ksyms.h>
+#include <ksyms.h>
 #include <security/include/avc.h>
 #include <linux/pid.h>
 #include <linux/sched/task.h>
 #include <asm/current.h>
+#include <taskext.h>
 
 int hook_backup(avc_has_perm_noaudit)(struct selinux_state *state, u32 ssid, u32 tsid, u16 tclass, u32 requested,
                                       unsigned flags, struct av_decision *avd) = 0;
@@ -25,7 +26,9 @@ int hook_replace(avc_has_perm_noaudit)(struct selinux_state *state, u32 ssid, u3
 {
     int ret = hook_call_backup(avc_has_perm_noaudit, state, ssid, tsid, tclass, requested, flags, avd);
     struct task_struct *task = current;
-    if (!is_white_task(task)) return ret;
+    // if (!is_white_task(task)) return ret;
+    struct task_ext *ext = get_task_ext(task);
+    if (!task_ext_valid(ext) || ext->selinux_perm != EXT_SELINUX_PERM_ALL) return ret;
 #ifdef SHOW_AVC_PASS_LOG
     if (ret) {
         struct pid *spid = get_task_pid(task, PIDTYPE_PID);
@@ -43,7 +46,9 @@ int hook_replace(avc_has_perm)(struct selinux_state *state, u32 ssid, u32 tsid, 
 {
     int ret = hook_call_backup(avc_has_perm, state, ssid, tsid, tclass, requested, auditdata);
     struct task_struct *task = current;
-    if (!is_white_task(task)) return ret;
+    // if (!is_white_task(task)) return ret;
+    struct task_ext *ext = get_task_ext(task);
+    if (!task_ext_valid(ext) || ext->selinux_perm != EXT_SELINUX_PERM_ALL) return ret;
 #ifdef SHOW_AVC_PASS_LOG
     if (ret) {
         struct pid *spid = get_task_pid(task, PIDTYPE_PID);
@@ -61,7 +66,9 @@ int hook_replace(avc_has_perm_flags)(struct selinux_state *state, u32 ssid, u32 
 {
     int ret = hook_call_backup(avc_has_perm_flags, state, ssid, tsid, tclass, requested, auditdata, flags);
     struct task_struct *task = current;
-    if (!is_white_task(task)) return ret;
+    // if (!is_white_task(task)) return ret;
+    struct task_ext *ext = get_task_ext(task);
+    if (!task_ext_valid(ext) || ext->selinux_perm != EXT_SELINUX_PERM_ALL) return ret;
 #ifdef SHOW_AVC_PASS_LOG
     if (ret) {
         struct pid *spid = get_task_pid(task, PIDTYPE_PID);
@@ -79,7 +86,9 @@ int hook_replace(avc_has_extended_perms)(struct selinux_state *state, u32 ssid, 
 {
     int ret = hook_call_backup(avc_has_extended_perms, state, ssid, tsid, tclass, requested, driver, perm, ad);
     struct task_struct *task = current;
-    if (!is_white_task(task)) return ret;
+    // if (!is_white_task(task)) return ret;
+    struct task_ext *ext = get_task_ext(task);
+    if (!task_ext_valid(ext) || ext->selinux_perm != EXT_SELINUX_PERM_ALL) return ret;
 #ifdef SHOW_AVC_PASS_LOG
     if (ret) {
         struct pid *spid = get_task_pid(task, PIDTYPE_PID);

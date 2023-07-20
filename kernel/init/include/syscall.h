@@ -5,6 +5,8 @@
 #include <uapi/asm-generic/errno.h>
 #include <uapi/asm-generic/unistd.h>
 
+#define SYS_CALL_MAX_NR 512
+
 #define __MAP0(m, ...)
 #define __MAP1(m, t, a, ...) m(t, a)
 #define __MAP2(m, t, a, ...) m(t, a), __MAP1(m, __VA_ARGS__)
@@ -76,13 +78,21 @@
 
 #define HOOK_SYSCALL_CALL_ORIGIN(nr, ...) __HOOK_SYSCALL_CALL_ORIGIN(nr, __VA_ARGS__)
 
-#define __HOOK_SYSCALL_INSTALL(nr)                                                                            \
+#define __REPLACE_SYSCALL_INSTALL(nr)                                                                         \
     if (syscall_has_wrapper) {                                                                                \
         replace_syscall_with(nr, (uintptr_t *)&__hook_sys_wrap_backup_##nr, (uintptr_t)__hook_sys_wrap_##nr); \
     } else {                                                                                                  \
         replace_syscall_with(nr, (uintptr_t *)&__hook_sys_backup_##nr, (uintptr_t)__hook_sys_##nr);           \
     }
-#define HOOK_SYSCALL_INSTALL(nr) __HOOK_SYSCALL_INSTALL(nr)
+#define REPLACE_SYSCALL_INSTALL(nr) __REPLACE_SYSCALL_INSTALL(nr)
+
+#define __INLINE_SYSCALL_INSTALL(nr)                                                                         \
+    if (syscall_has_wrapper) {                                                                               \
+        inline_syscall_with(nr, (uintptr_t *)&__hook_sys_wrap_backup_##nr, (uintptr_t)__hook_sys_wrap_##nr); \
+    } else {                                                                                                 \
+        inline_syscall_with(nr, (uintptr_t *)&__hook_sys_backup_##nr, (uintptr_t)__hook_sys_##nr);           \
+    }
+#define INLINE_SYSCALL_INSTALL(nr) __INLINE_SYSCALL_INSTALL(nr)
 
 #define _ARGS_TO_REGS(regs, idx, val, ...)        \
     do {                                          \
@@ -96,6 +106,8 @@ extern bool syscall_has_wrapper;
 extern uintptr_t syscall_table_addr;
 extern uintptr_t compact_syscall_table_addr;
 
+void inline_syscall_with(long nr, uintptr_t *old, uintptr_t new);
+void inline_compact_syscall_with(long nr, uintptr_t *old, uintptr_t new);
 void replace_syscall_with(long nr, uintptr_t *old, uintptr_t newsc);
 void replace_compact_syscall_whit(long nr, uintptr_t *old, uintptr_t newsc);
 

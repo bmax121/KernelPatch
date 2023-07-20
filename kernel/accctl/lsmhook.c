@@ -6,7 +6,7 @@
 #include <uapi/asm-generic/errno.h>
 #include <uapi/asm-generic/errno-base.h>
 #include <linux/errno.h>
-#include <init/ksyms.h>
+#include <ksyms.h>
 #include <hook.h>
 #include <log.h>
 

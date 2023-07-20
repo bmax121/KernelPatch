@@ -9,8 +9,7 @@ static int32_t superkey_len = 0;
 
 int superkey_auth(const char *key, int32_t len)
 {
-    if (!key || len <= 0) return -1;
-    len = len > superkey_len ? superkey_len : len;
+    if (!key || len <= 0 || superkey_len != len) return -1;
     for (int i = 0; i < len; i++) {
         if (superkey[i] != key[i]) return -1;
     }

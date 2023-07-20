@@ -2,7 +2,7 @@
 #define _SELINUX_AVC_H_
 
 #include <ktypes.h>
-#include <init/ksyms.h>
+#include <ksyms.h>
 
 struct avc_entry;
 

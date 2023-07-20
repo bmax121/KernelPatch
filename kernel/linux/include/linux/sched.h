@@ -2,10 +2,11 @@
 #define _LINUX_SCHED_H
 
 #include <ktypes.h>
-#include <init/ksyms.h>
+#include <ksyms.h>
 #include <linux/spinlock.h>
 #include <linux/rwlock.h>
 #include <linux/pid.h>
+#include <linux/init_task.h>
 
 struct task_struct; // __randomize_layout
 struct cpumask;
@@ -52,13 +53,11 @@ struct task_struct_offset
     int16_t sessionid_offset;
     int16_t seccomp_offset;
     int16_t security_offset;
+    int16_t stack_offset;
 };
 
 extern struct task_struct_offset task_struct_offset;
 
-extern union thread_union *kvar(init_thread_union);
-extern struct task_struct *kvar(init_task);
-extern int kvlen(init_task);
 extern struct mm_struct *kvar(init_mm);
 extern struct pid_namespace *kvar(init_pid_ns);
 

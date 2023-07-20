@@ -14,20 +14,21 @@ ifdef DEBUG
 	CFLAGS += -DDEBUG -DMAP_DEBUG -g
 endif
 
-INCLUDE := -I. -Iinclude -Ilinux -Ilinux/include -Ilinux/arch/arm64/include
+INCLUDE := -I. -Iinclude -Iinit/include -Ilinux -Ilinux/include -Ilinux/arch/arm64/include
 
 BASE_SRCS += base/hook.c 
 BASE_SRCS += base/map.c 
 BASE_SRCS += base/hmem.c 
 BASE_SRCS += base/setup.c 
+BASE_SRCS += base/setup1.S
 BASE_SRCS += base/start.c 
 BASE_SRCS += base/predata.c 
 
-BASE_SRCS += $(wildcard syscall/*.c)
 BASE_SRCS += $(wildcard module/*.c)
 BASE_SRCS += $(wildcard accctl/*.c)
 
 BASE_SRCS += $(wildcard init/*.c)
+BASE_SRCS += $(wildcard init/ext/*.c)
 BASE_SRCS += $(wildcard init/ksyms/*.c)
 BASE_SRCS += $(wildcard init/struct/*.c)
 

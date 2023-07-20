@@ -17,7 +17,8 @@ SECTIONS
     }
     
     .setup.text : {
-        base/setup.o(.setup.text)
+        base/setup1.o(.entry.text)
+        base/setup1.o(.text)
         base/setup.o(.text)
         _setup_end = .;
     }

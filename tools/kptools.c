@@ -10,13 +10,20 @@
 #include <unistd.h>
 #include <string.h>
 
-#include "../kernel/preset/preset.h"
+#include "../kernel/base/preset.h"
 #include "image.h"
 #include "order.h"
 #include "kallsym.h"
 
 #define align_floor(x, align) ((uint64_t)(x) & ~((uint64_t)(align)-1))
 #define align_ceil(x, align) (((uint64_t)(x) + (uint64_t)(align)-1) & ~((uint64_t)(align)-1))
+
+#define INSN_IS_B(inst) (((inst)&0xFC000000) == 0x14000000)
+
+#define bits32(n, high, low) ((uint32_t)((n) << (31u - (high))) >> (31u - (high) + (low)))
+
+#define sign64_extend(n, len) \
+    (((uint64_t)((n) << (63u - (len - 1))) >> 63u) ? ((n) | (0xFFFFFFFFFFFFFFFF << (len))) : n)
 
 static int can_b_imm(uint64_t from, uint64_t to)
 {
@@ -85,15 +92,31 @@ int dump_kallsym()
     return 0;
 }
 
+static int32_t relo_branch_func(const char *img, int32_t func_offset)
+{
+    uint32_t inst = *(uint32_t *)(img + func_offset);
+    int32_t relo_offset = func_offset;
+    if (INSN_IS_B(inst)) {
+        uint64_t imm26 = bits32(inst, 25, 0);
+        uint64_t imm64 = sign64_extend(imm26 << 2u, 28u);
+        relo_offset = func_offset + (int32_t)imm64;
+        fprintf(stdout, "[+] kptools relocate branch function 0x%x to 0x%x\n", func_offset, relo_offset);
+    }
+    return relo_offset;
+}
+
 static void target_endian_preset(setup_preset_t *preset, int32_t target_is_be)
 {
     if (!(is_be() ^ target_is_be)) return;
-    preset->kernel_size = i32swp(preset->kernel_size);
-    preset->page_shift = i32swp(preset->page_shift);
-    preset->kp_offset = i32swp(preset->kp_offset);
-    preset->map_offset = i32swp(preset->map_offset);
-    preset->map_max_size = i32swp(preset->map_max_size);
-    for (int32_t *pos = preset->_ksym_offset_start; pos < preset->_ksym_offset_end; pos++) { *pos = i32swp(*pos); }
+    preset->kernel_size = i64swp(preset->kernel_size);
+    preset->page_shift = i64swp(preset->page_shift);
+    preset->kp_offset = i64swp(preset->kp_offset);
+    preset->map_offset = i64swp(preset->map_offset);
+    preset->map_max_size = i64swp(preset->map_max_size);
+    for (int64_t *pos = (int64_t *)&preset->kallsyms_lookup_name_offset;
+         pos <= (int64_t *)&preset->kimage_voffset_offset; pos++) {
+        *pos = i64swp(*pos);
+    }
 }
 
 // todo
@@ -162,10 +185,11 @@ int patch_image()
     setup_preset_t *preset = (setup_preset_t *)(out_buf + align_image_len + 64);
 
     preset->kernel_size = kinfo.kernel_size;
+    preset->start_offset = align_kernel_size;
     preset->page_shift = kinfo.page_shift;
-    preset->kernel_version.major = kallsym.version.major;
-    preset->kernel_version.minor = kallsym.version.minor;
-    preset->kernel_version.patch = kallsym.version.patch;
+    sdata->kernel_version.major = kallsym.version.major;
+    sdata->kernel_version.minor = kallsym.version.minor;
+    sdata->kernel_version.patch = kallsym.version.patch;
 
     memcpy(preset->header_backup, out_buf, sizeof(preset->header_backup));
     preset->kp_offset = align_image_len;
@@ -177,9 +201,9 @@ int patch_image()
     fprintf(stdout, "[+] kptools map_start: 0x%x, max_size: 0x%x\n", map_start, map_max_size);
 
     preset->kallsyms_lookup_name_offset = get_symbol_offset(&kallsym, image_buf, "kallsyms_lookup_name");
-    preset->start_kernel_offset = get_symbol_offset(&kallsym, image_buf, "start_kernel");
-    preset->paging_init_offset = get_symbol_offset(&kallsym, image_buf, "paging_init");
     preset->printk_offset = get_symbol_offset(&kallsym, image_buf, "printk");
+    int32_t paging_init_offset = get_symbol_offset(&kallsym, image_buf, "paging_init");
+    preset->paging_init_offset = relo_branch_func(image_buf, paging_init_offset);
     preset->memblock_reserve_offset = get_symbol_offset(&kallsym, image_buf, "memblock_reserve");
     preset->memblock_alloc_try_nid_offset = get_symbol_offset(&kallsym, image_buf, "memblock_alloc_try_nid");
     if (preset->memblock_alloc_try_nid_offset <= 0)
@@ -187,8 +211,11 @@ int patch_image()
     if (preset->memblock_alloc_try_nid_offset <= 0)
         preset->memblock_alloc_try_nid_offset = get_symbol_offset(&kallsym, image_buf, "memblock_phys_alloc_try_nid");
     preset->memstart_addr_offset = get_symbol_offset(&kallsym, image_buf, "memstart_addr");
+    if (preset->memstart_addr_offset < 0) preset->memstart_addr_offset = 0;
     preset->vabits_actual_offset = get_symbol_offset(&kallsym, image_buf, "vabits_actual");
+    if (preset->vabits_actual_offset < 0) preset->vabits_actual_offset = 0;
     preset->kimage_voffset_offset = get_symbol_offset(&kallsym, image_buf, "kimage_voffset");
+    if (preset->kimage_voffset_offset < 0) preset->kimage_voffset_offset = 0;
 
     if (strlen(superkey) > 0) {
         strncpy((char *)preset->superkey, superkey, SUPER_KEY_LEN);
@@ -199,7 +226,7 @@ int patch_image()
     fprintf(stdout, "[+] kptools supercall key: %s\n", preset->superkey);
 
     // todo: need this?
-    kernel_resize(&kinfo, out_buf, align_kernel_size + align_image_len);
+    // kernel_resize(&kinfo, out_buf, align_kernel_size + align_image_len);
     long text_offset = align_image_len + 4096;
     b((uint32_t *)(out_buf + kinfo.b_stext_insn_offset), kinfo.b_stext_insn_offset, text_offset);
 

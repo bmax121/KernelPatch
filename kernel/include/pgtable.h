@@ -73,10 +73,11 @@ extern uint64_t page_offset;
 extern uint64_t vabits_actual;
 extern uint64_t kernel_va;
 extern uint64_t kernel_pa;
-extern int32_t page_shift;
-extern int32_t page_size;
-extern int32_t va_bits;
-// extern int32_t pa_bits;
+extern int64_t kernel_size;
+extern int64_t page_shift;
+extern int64_t page_size;
+extern int64_t va_bits;
+// extern int64_t pa_bits;
 
 static inline uint64_t phys_to_virt(uint64_t phys)
 {
@@ -131,6 +132,11 @@ static inline void flush_tlb_kernel_page(uint64_t addr)
     tlbi_1(vaale1is, addr);
     dsb(ish);
     isb();
+}
+
+static inline bool is_kimg_range(uint64_t addr)
+{
+    return addr > kernel_va && addr < (kernel_va + kernel_size);
 }
 
 uint64_t *get_pte(uint64_t va);

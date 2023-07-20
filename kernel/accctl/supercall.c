@@ -1,12 +1,11 @@
 #include "supercall.h"
-#include "syscall.h"
 
 #include <hook.h>
 #include <common.h>
 #include <log.h>
 #include <predata.h>
 #include <pgtable.h>
-
+#include <syscall.h>
 #include <linux/uaccess.h>
 #include <linux/cred.h>
 #include <asm/current.h>
@@ -17,7 +16,7 @@
 #include <accctl/accctl.h>
 
 #define __NR_truncate_scall __NR3264_truncate // 45
-#define __NR_scall 0x99
+// #define __NR_scall 0x99
 #define MAX_KEY_LEN 128
 
 static inline long call_hello()
@@ -111,18 +110,26 @@ HOOK_SYSCALL_DEFINE6(__NR_truncate_scall, const char __user *, ukey, long, cmd, 
     return supercall(key, cmd, a2, a3, a4, a5);
 }
 
-HOOK_SYSCALL_DEFINE6(__NR_scall, const char __user *, ukey, long, cmd, long, a2, long, a3, long, a4, long, a5)
-{
-    char key[MAX_KEY_LEN] = { '\0' };
-    long len = strncpy_from_user(key, ukey, MAX_KEY_LEN);
-    if (superkey_auth(key, len)) { return HOOK_SYSCALL_CALL_ORIGIN(__NR_scall, ukey, cmd, a2, a3, a4, a5); }
-    logkd("SuperCall: cmd: %x, a2: %x, a3: %x, a4: %x, a5: %x\n", cmd, a2, a3, a4, a5);
-    return supercall(key, cmd, a2, a3, a4, a5);
-}
+// HOOK_SYSCALL_DEFINE6(__NR_scall, const char __user *, ukey, long, cmd, long, a2, long, a3, long, a4, long, a5)
+// {
+//     char key[MAX_KEY_LEN] = { '\0' };
+//     long len = strncpy_from_user(key, ukey, MAX_KEY_LEN);
+//     if (superkey_auth(key, len)) { return HOOK_SYSCALL_CALL_ORIGIN(__NR_scall, ukey, cmd, a2, a3, a4, a5); }
+//     logkd("SuperCall: cmd: %x, a2: %x, a3: %x, a4: %x, a5: %x\n", cmd, a2, a3, a4, a5);
+//     return supercall(key, cmd, a2, a3, a4, a5);
+// }
+
+// long (*backup)(const struct pt_regs *regs, long arg1, long arg2, long arg3, long arg4) = 0;
+
+// long rep(const struct pt_regs *regs, long arg1, long arg2, long arg3, long arg4)
+// {
+//     logkd("fffffff: replace %llx\n", regs);
+//     return backup(regs, arg1, arg2, arg3, arg4);
+// }
 
 int supercall_init()
 {
-    HOOK_SYSCALL_INSTALL(__NR_truncate_scall);
-    HOOK_SYSCALL_INSTALL(__NR_scall);
+    // REPLACE_SYSCALL_INSTALL(__NR_truncate_scall);
+    INLINE_SYSCALL_INSTALL(__NR_truncate_scall);
     return 0;
 }

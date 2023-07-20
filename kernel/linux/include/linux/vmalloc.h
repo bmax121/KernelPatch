@@ -2,7 +2,7 @@
 #define _LINUX_VMALLOC_H
 
 #include <ktypes.h>
-#include <init/ksyms.h>
+#include <ksyms.h>
 
 typedef size_t pgprot_t;
 

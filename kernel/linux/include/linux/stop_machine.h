@@ -2,7 +2,7 @@
 #define _LINUX_STOP_MACHINE
 
 #include <ktypes.h>
-#include <init/ksyms.h>
+#include <ksyms.h>
 
 typedef int (*cpu_stop_fn_t)(void *arg);
 

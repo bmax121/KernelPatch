@@ -1,13 +1,16 @@
 #include "accctl.h"
+#include "supercall.h"
+
+#include <taskext.h>
 #include <linux/spinlock.h>
 #include <linux/capability.h>
 #include <linux/security.h>
 #include <asm/current.h>
 #include <linux/pid.h>
 #include <linux/sched/task.h>
+#include <linux/sched.h>
 #include <pgtable.h>
-
-// todo: It would be great if there is some available space in the task_struct.
+#include <ksyms.h>
 
 struct task_struct *white_tasks[MAX_WHITE_TASK_NUM + 1] = { 0 };
 DEFINE_SPINLOCK(white_task_lock);
@@ -54,8 +57,11 @@ int commit_su_nodep()
 {
     int ret = 0;
     struct task_struct *task = current;
-    ret = add_white_task(task);
-    if (ret) return ret;
+    // ret = add_white_task(task);
+    // if (ret) return ret;
+    struct task_ext *ext = get_task_ext(task);
+    ext->selinux_perm = EXT_SELINUX_PERM_ALL;
+
     const struct cred *old = get_task_cred(task);
     struct cred *new = prepare_kernel_cred(0);
     u32 secid;
@@ -64,15 +70,17 @@ int commit_su_nodep()
         set_security_override(new, secid);
     }
     commit_creds(new);
-    return 0;
+    return ret;
 }
 
 int commit_su()
 {
     int ret = 0;
     struct task_struct *task = current;
-    ret = add_white_task(task);
-    if (ret) return ret;
+    // ret = add_white_task(task);
+    // if (ret) return ret;
+    struct task_ext *ext = get_task_ext(task);
+    ext->selinux_perm = EXT_SELINUX_PERM_ALL;
 
     struct cred *new = prepare_creds();
 
@@ -119,8 +127,10 @@ int grant_su(pid_t vpid, bool real)
         ret = ERR_ACCCTL_NO_SUCH_ID;
         goto out;
     }
-    ret = add_white_task(task);
-    if (ret) goto free;
+    // ret = add_white_task(task);
+    // if (ret) goto free;
+    struct task_ext *ext = get_task_ext(task);
+    ext->selinux_perm = EXT_SELINUX_PERM_ALL;
 
     // todo: COW
     struct cred *cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
@@ -170,7 +180,7 @@ int grant_su(pid_t vpid, bool real)
         if (cred_offset.sgid_offset >= 0) *(uid_t *)((uintptr_t)real_cred + cred_offset.sgid_offset) = 0;
     }
 
-free:
+    // free:
     put_pid(pid_struct);
     // __put_task_struct(task);
 out:
@@ -194,6 +204,6 @@ int acccss_control_init()
     lsm_hook_install();
 #endif
     selinux_hook_install();
-    task_observer();
+    supercall_init();
     return 0;
 }

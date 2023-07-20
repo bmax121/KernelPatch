@@ -3,7 +3,7 @@
 
 #include <ktypes.h>
 #include <linux/capability.h>
-#include <init/ksyms.h>
+#include <ksyms.h>
 
 typedef struct
 {

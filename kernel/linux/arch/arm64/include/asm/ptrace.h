@@ -1,7 +1,7 @@
 #ifndef __ASM_PTRACE_H
 #define __ASM_PTRACE_H
 
-#include <init/ksyms.h>
+#include <ksyms.h>
 #include <pgtable.h>
 #include <stdbool.h>
 #include <uapi/asm-generic/unistd.h>

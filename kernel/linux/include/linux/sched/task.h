@@ -2,7 +2,8 @@
 #define _LINUX_SCHED_TASK_H
 
 #include <ktypes.h>
-#include <init/ksyms.h>
+#include <ksyms.h>
+#include <linux/init_task.h>
 
 struct task_struct;
 struct rusage;
@@ -10,8 +11,8 @@ union thread_union;
 struct css_set;
 struct kernel_clone_args;
 
-// extern rwlock_t tasklist_lock;
-// extern spinlock_t mmlist_lock;
+extern rwlock_t *kvar(tasklist_lock);
+extern spinlock_t *kvar(mmlist_lock);
 
 extern void kfunc_def(__put_task_struct)(struct task_struct *t);
 extern int kfunc_def(lockdep_tasklist_lock_is_held)(void);

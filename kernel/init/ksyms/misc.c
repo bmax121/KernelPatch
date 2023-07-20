@@ -1,12 +1,14 @@
-#include <init/ksyms.h>
+#include <ksyms.h>
 
 #include <ktypes.h>
 
-// init/init_task.c
+// init/init_task.c  kernel/cred.c
 #include <linux/sched.h>
+#include <linux/cred.h>
+#include <linux/sched/task.h>
 
 struct task_struct *kvar(init_task) = 0;
-int kvlen(init_task) = -1;
+union thread_union *kvar(init_thread_union) = 0;
 
 void _linux_init_task_sym_match(const char *name, unsigned long addr)
 {
@@ -15,14 +17,10 @@ void _linux_init_task_sym_match(const char *name, unsigned long addr)
 #else
     kvar_match_len(init_task, name, addr);
 #endif
+    kvar_match(init_thread_union, name, addr);
 }
 
-// kernel/cred.c
-#include <linux/cred.h>
-
 struct cred *kvar(init_cred) = 0;
-int kvlen(init_cred) = -1;
-
 struct group_info *kvar(init_groups) = 0;
 
 void kfunc_def(__put_cred)(struct cred *) = 0;
@@ -139,7 +137,7 @@ void _linux_locking_spinlock_sym_match(const char *name, unsigned long addr)
 }
 
 // kernel/fork.c
-#include <init/ksyms.h>
+#include <ksyms.h>
 
 struct file;
 struct mm_struct;

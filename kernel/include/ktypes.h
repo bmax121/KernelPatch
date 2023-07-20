@@ -161,8 +161,6 @@ typedef struct
     gid_t val;
 } kgid_t;
 
-typedef unsigned long uintptr_t;
-
 typedef struct
 {
     int counter;

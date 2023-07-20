@@ -2,7 +2,7 @@
 #define _LINUX_STRING_H_
 
 #include <ktypes.h>
-#include <init/ksyms.h>
+#include <ksyms.h>
 
 extern void kfunc_def(kfree_const)(const void *x);
 extern char *kfunc_def(kstrdup)(const char *s, gfp_t gfp);
