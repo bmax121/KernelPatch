@@ -1,21 +1,30 @@
+#include "syscall.h"
+
 #include <cache.h>
 #include <ktypes.h>
 #include <hook.h>
 #include <common.h>
 #include <linux/string.h>
 
-#include "syscall.h"
-#include "supercall.h"
-
-/*
-Note:
-https://stackoverflow.com/questions/8190575/linux-kernel-printk-from-open-syscall-dont-work
-*/
-
 bool syscall_has_wrapper = false;
 uintptr_t syscall_table_addr = 0;
 uintptr_t compact_syscall_table_addr = 0;
 
+void inline_syscall_with(long nr, uintptr_t *old, uintptr_t new)
+{
+    uintptr_t addr = syscall_table_addr + nr * sizeof(uintptr_t);
+    uint64_t func = *(uintptr_t *)addr;
+    hook((void *)func, (void *)new, (void **)old);
+}
+
+void inline_compact_syscall_with(long nr, uintptr_t *old, uintptr_t new)
+{
+    uintptr_t addr = compact_syscall_table_addr + nr * sizeof(uintptr_t);
+    uint64_t func = *(uintptr_t *)addr;
+    hook((void *)func, (void *)new, (void **)old);
+}
+
+// todo: Control Flow Integrity, CONFIG_LTO_CLANG=y CONFIG_CFI_CLANG=y
 void replace_syscall_with(long nr, uintptr_t *old, uintptr_t new)
 {
     uintptr_t addr = syscall_table_addr + nr * sizeof(uintptr_t);
@@ -25,7 +34,7 @@ void replace_syscall_with(long nr, uintptr_t *old, uintptr_t new)
     *pte = (ori_prot | PTE_DBM) & ~PTE_RDONLY;
     flush_tlb_kernel_page(addr);
     *(uintptr_t *)addr = new;
-    flush_icache_all();
+    // flush_icache_all();
     *pte = ori_prot;
     flush_tlb_kernel_page(addr);
 }
@@ -39,7 +48,7 @@ void replace_compact_syscall_whit(long nr, uintptr_t *old, uintptr_t new)
     *pte = (ori_prot | PTE_DBM) & ~PTE_RDONLY;
     flush_tlb_kernel_page(addr);
     *(uintptr_t *)addr = new;
-    flush_icache_all();
+    // flush_icache_all();
     *pte = ori_prot;
     flush_tlb_kernel_page(addr);
 }
@@ -164,6 +173,5 @@ int syscall_init()
     syscall_table_addr = kallsyms_lookup_name("sys_call_table");
     syscall_has_wrapper = kallsyms_lookup_name("__arm64_sys_openat") ? true : false;
     logkd("syscall has wrapper: %d\n", syscall_has_wrapper);
-    supercall_init();
     return 0;
 }

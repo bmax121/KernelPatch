@@ -1,4 +1,4 @@
-#include <init/ksyms.h>
+#include <ksyms.h>
 
 #include <ktypes.h>
 
@@ -137,7 +137,7 @@ void _linux_locking_spinlock_sym_match(const char *name, unsigned long addr)
 }
 
 // kernel/fork.c
-#include <init/ksyms.h>
+#include <ksyms.h>
 
 struct file;
 struct mm_struct;

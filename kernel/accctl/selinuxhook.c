@@ -3,12 +3,12 @@
 #include <hook.h>
 #include <log.h>
 
-#include <init/ksyms.h>
+#include <ksyms.h>
 #include <security/include/avc.h>
 #include <linux/pid.h>
 #include <linux/sched/task.h>
 #include <asm/current.h>
-#include "taskext.h"
+#include <taskext.h>
 
 int hook_backup(avc_has_perm_noaudit)(struct selinux_state *state, u32 ssid, u32 tsid, u16 tclass, u32 requested,
                                       unsigned flags, struct av_decision *avd) = 0;

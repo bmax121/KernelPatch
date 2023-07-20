@@ -2,7 +2,7 @@
 #define __LINUX_UACCESS_H__
 
 #include <ktypes.h>
-#include <init/ksyms.h>
+#include <ksyms.h>
 
 #define get_fs() (current_thread_info()->addr_limit)
 

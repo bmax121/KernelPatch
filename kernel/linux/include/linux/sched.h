@@ -2,7 +2,7 @@
 #define _LINUX_SCHED_H
 
 #include <ktypes.h>
-#include <init/ksyms.h>
+#include <ksyms.h>
 #include <linux/spinlock.h>
 #include <linux/rwlock.h>
 #include <linux/pid.h>

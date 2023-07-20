@@ -5,7 +5,7 @@
 #include <ktypes.h>
 #include <compiler.h>
 #include <stdint.h>
-#include <init/ksyms.h>
+#include <ksyms.h>
 #include <linux/rwlock.h>
 
 // todo: arch, enough size

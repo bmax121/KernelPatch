@@ -1,7 +1,7 @@
 #include "init.h"
-#include "ksyms.h"
 
 #include <log.h>
+#include <ksyms.h>
 #include <kallsyms.h>
 #include <hook.h>
 #include <accctl/accctl.h>
@@ -9,7 +9,7 @@
 #include <linux/sched/task.h>
 #include <linux/cred.h>
 #include <linux/capability.h>
-#include <syscall/syscall.h>
+#include <syscall.h>
 
 void _linux_kernel_cred_sym_match(const char *name, unsigned long addr);
 void _linux_kernel_pid_sym_match(const char *name, unsigned long addr);
@@ -31,6 +31,7 @@ void _linux_locking_spinlock_sym_match(const char *name, unsigned long addr);
 void linux_sybmol_len_init();
 
 int build_struct();
+int task_observer();
 
 int _local_strcmp(const char *s1, const char *s2)
 {
@@ -64,7 +65,7 @@ int linux_symbol_init(void *data, const char *name, struct module *m, unsigned l
 
 void before_rest_init(hook_fdata0_t *fdata, void *udata)
 {
-    logkd("final init before rest_init\n");
+    logkd("init before rest_init\n");
 
 #ifdef USE_KALLSYMS_LOOKUP_NAME_INSTEAD
     linux_symbol_init(0, 0, 0, 0);
@@ -74,6 +75,8 @@ void before_rest_init(hook_fdata0_t *fdata, void *udata)
 #endif
     syscall_init();
     build_struct();
+    task_observer();
+
     acccss_control_init();
 
     logki("==== KernelPatch Everything Done ====\n");

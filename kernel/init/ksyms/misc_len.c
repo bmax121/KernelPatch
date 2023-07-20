@@ -2,7 +2,7 @@
 #define _KP_MISC_LEN_H_
 
 #include <ktypes.h>
-#include <init/ksyms.h>
+#include <ksyms.h>
 #include <linux/sched.h>
 #include <linux/cred.h>
 #include <linux/sched/task.h>

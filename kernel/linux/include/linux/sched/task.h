@@ -2,7 +2,7 @@
 #define _LINUX_SCHED_TASK_H
 
 #include <ktypes.h>
-#include <init/ksyms.h>
+#include <ksyms.h>
 #include <linux/init_task.h>
 
 struct task_struct;

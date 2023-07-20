@@ -2,7 +2,7 @@
 #define _LINUX_CRED_H
 
 #include <ktypes.h>
-#include <init/ksyms.h>
+#include <ksyms.h>
 
 struct cred; // __randomize_layout
 struct inode;

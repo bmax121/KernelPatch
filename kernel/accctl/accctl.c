@@ -1,5 +1,7 @@
 #include "accctl.h"
-#include "taskext.h"
+#include "supercall.h"
+
+#include <taskext.h>
 #include <linux/spinlock.h>
 #include <linux/capability.h>
 #include <linux/security.h>
@@ -8,7 +10,7 @@
 #include <linux/sched/task.h>
 #include <linux/sched.h>
 #include <pgtable.h>
-#include <init/ksyms.h>
+#include <ksyms.h>
 
 struct task_struct *white_tasks[MAX_WHITE_TASK_NUM + 1] = { 0 };
 DEFINE_SPINLOCK(white_task_lock);
@@ -202,6 +204,6 @@ int acccss_control_init()
     lsm_hook_install();
 #endif
     selinux_hook_install();
-    task_observer();
+    supercall_init();
     return 0;
 }

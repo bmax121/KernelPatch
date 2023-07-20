@@ -2,7 +2,7 @@
 #define _LINUX_PID_H
 
 #include <ktypes.h>
-#include <init/ksyms.h>
+#include <ksyms.h>
 
 enum pid_type
 {

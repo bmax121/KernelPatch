@@ -9,10 +9,10 @@
 #include <linux/pid.h>
 #include <asm/current.h>
 #include <linux/security.h>
-#include <syscall/syscall.h>
+#include <syscall.h>
 #include <uapi/linux/prctl.h>
 #include <linux/capability.h>
-#include <init/ksyms.h>
+#include <ksyms.h>
 #include <uapi/linux/magic.h>
 #include <pgtable.h>
 
@@ -270,19 +270,37 @@ int build_cred_offset()
           cred_offset.euid_offset, cred_offset.gid_offset, cred_offset.egid_offset);
 
     // fsuid
-    raw_syscall1(__NR_setfsuid, 1158);
-    struct cred *new_cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
     for (int i = 0; i < cred_len; i += sizeof(uid_t)) {
         if (is_bl(i)) continue;
-        uid_t *uidp = (uid_t *)((uintptr_t)new_cred + i);
-        if (*uidp == 1158) {
+        uid_t *uidp = (uid_t *)((uintptr_t)cred + i);
+        uid_t backup = *uidp;
+        *uidp = 1158;
+        uid_t old_uid = raw_syscall1(__NR_setfsuid, -1);
+        *uidp = backup;
+        if (old_uid == 1158) {
             cred_offset.fsuid_offset = i;
-            *uidp = 0;
             add_bll(i, sizeof(uid_t));
             break;
         }
     }
     logkd("struct cred offsets: fsuid: %d\n", cred_offset.fsuid_offset);
+
+    // fsgid
+    struct cred *new_cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
+    for (int i = 0; i < cred_len; i += sizeof(gid_t)) {
+        if (is_bl(i)) continue;
+        gid_t *gidp = (gid_t *)((uintptr_t)cred + i);
+        gid_t backup = *gidp;
+        *gidp = 1158;
+        gid_t old_gid = raw_syscall1(__NR_setfsgid, -1);
+        *gidp = backup;
+        if (old_gid == 1158) {
+            cred_offset.fsgid_offset = i;
+            add_bll(i, sizeof(gid_t));
+            break;
+        }
+    }
+    logkd("struct cred offsets: fsgid: %d\n", cred_offset.fsgid_offset);
 
     // suid
     raw_syscall3(__NR_setresuid, 0, 0, 1158);
@@ -298,21 +316,6 @@ int build_cred_offset()
         }
     }
     logkd("struct cred offsets: suid: %d\n", cred_offset.suid_offset);
-
-    // fsgid
-    raw_syscall1(__NR_setfsgid, 1158);
-    new_cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
-    for (int i = 0; i < cred_len; i += sizeof(gid_t)) {
-        if (is_bl(i)) continue;
-        gid_t *uidp = (gid_t *)((uintptr_t)new_cred + i);
-        if (*uidp == 1158) {
-            cred_offset.fsgid_offset = i;
-            *uidp = 0;
-            add_bll(i, sizeof(gid_t));
-            break;
-        }
-    }
-    logkd("struct cred offsets: fsgid: %d\n", cred_offset.fsgid_offset);
 
     // sgid
     raw_syscall3(__NR_setresgid, 0, 0, 1158);
@@ -432,23 +435,23 @@ int resolve_current()
     asm("mrs %0, sp_el0" : "=r"(sp_el0));
     if (sp_el0 == (unsigned long)kvar(init_task)) {
         task_is_sp_el0 = true;
-        logkd("struct task is sp_el0\n");
+        logkd("current is sp_el0\n");
         goto out;
     }
 
     // thread_info_is_sp_el0
     if (is_kimg_range((uint64_t)legacy_current_thread_info_sp_el0())) {
         thread_info_is_sp_el0 = true;
-        logkd("struct thread_info is sp_el0\n");
+        logkd("current_thread_info is sp_el0\n");
     }
     // thread_info_is_sp
     if (is_kimg_range((uint64_t)legacy_current_thread_info_sp())) {
         thread_info_is_sp = true;
-        logkd("struct thread_info is sp\n");
+        logkd("current_thread_info is sp\n");
     }
 
     if ((!thread_info_is_sp && !thread_info_is_sp_el0) || (thread_info_is_sp && thread_info_is_sp_el0)) {
-        logke("struct thread_info error\n");
+        logke("current_thread_info error\n");
         err = -1;
         goto out;
     }

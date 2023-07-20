@@ -19,7 +19,6 @@ extern struct task_struct *white_tasks[];
 int lsm_hook_install();
 int selinux_hook_install();
 int acccss_control_init();
-int task_observer();
 
 static inline bool is_white_task(struct task_struct *task)
 {
@@ -33,8 +32,6 @@ static inline bool is_white_task(struct task_struct *task)
 
 int add_white_task(struct task_struct *task);
 void del_white_task(struct task_struct *task);
-// todo: test, remove
-void _log_current_whites();
 
 int commit_su_nodep();
 int commit_su();
