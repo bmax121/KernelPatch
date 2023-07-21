@@ -2,11 +2,8 @@
 
 ## Build kpimg
 
-kpimg runs in the kernel space of the target system and may require a cross-compiler.  
-
-Currently only tested on macOS(x86_64) with the bare metal compiler
-
-[Download the Compiler](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)
+Need to use a bare-metal cross-compiler.  
+[Download](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)
 
 ```shell
 export TARGET_COMPILE=aarch64-none-elf-

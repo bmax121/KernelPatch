@@ -2,9 +2,7 @@
 
 ## 编译 kpimg
 
-kpimg 运行在目标系统的内核空间  
-目前只在 macOS(x86_64) 上使用裸机编译器测试过
-
+需要使用裸机交叉编译器  
 [下载编译器](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)
 
 ```shell
