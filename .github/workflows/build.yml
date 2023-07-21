@@ -166,7 +166,6 @@ jobs:
 #           replacesArtifacts: true
       - name: Zip-lib
         run: |
-          make clean
           zip -r kpuser.zip user
       - name: Release-kpuser-lib
         uses: ncipollo/release-action@v1
