@@ -8,13 +8,13 @@
 .type memcpy8, %function
 memcpy8:
     cmp x2, 0
-    ble .8end
-.8loop:
+    ble .l8end
+.l8loop:
     ldrb w9, [x1], 1
     strb w9, [x0], 1
     subs x2, x2, 1
-    cbnz x2, .8loop
-.8end:
+    cbnz x2, .l8loop
+.l8end:
     ret
 
 .text
