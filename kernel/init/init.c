@@ -77,6 +77,7 @@ void before_rest_init(hook_fdata0_t *fdata, void *udata)
     build_struct();
     task_observer();
 
+    //
     acccss_control_init();
 
     logki("==== KernelPatch Everything Done ====\n");

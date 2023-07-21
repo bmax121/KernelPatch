@@ -57,9 +57,9 @@ int commit_su_nodep()
 {
     int ret = 0;
     struct task_struct *task = current;
-    // ret = add_white_task(task);
-    // if (ret) return ret;
     struct task_ext *ext = get_task_ext(task);
+    if (!task_ext_valid(ext)) goto out;
+
     ext->selinux_perm = EXT_SELINUX_PERM_ALL;
 
     const struct cred *old = get_task_cred(task);
@@ -70,6 +70,7 @@ int commit_su_nodep()
         set_security_override(new, secid);
     }
     commit_creds(new);
+out:
     return ret;
 }
 
@@ -77,9 +78,9 @@ int commit_su()
 {
     int ret = 0;
     struct task_struct *task = current;
-    // ret = add_white_task(task);
-    // if (ret) return ret;
     struct task_ext *ext = get_task_ext(task);
+    if (!task_ext_valid(ext)) goto out;
+
     ext->selinux_perm = EXT_SELINUX_PERM_ALL;
 
     struct cred *new = prepare_creds();
@@ -110,6 +111,7 @@ int commit_su()
     pid_t pid = __task_pid_nr_ns(task, PIDTYPE_PID, 0);
     logkd("commit_su: tgid: %d, pid: %d, ret: %d\n", tgid, pid, ret);
 
+out:
     return ret;
 }
 
@@ -127,10 +129,12 @@ int grant_su(pid_t vpid, bool real)
         ret = ERR_ACCCTL_NO_SUCH_ID;
         goto out;
     }
-    // ret = add_white_task(task);
-    // if (ret) goto free;
     struct task_ext *ext = get_task_ext(task);
+    if (!task_ext_valid(ext)) goto out;
+
     ext->selinux_perm = EXT_SELINUX_PERM_ALL;
+
+    logkd("pid: %d grant_su, task: %llx, ext: %llx\n", vpid, task, ext);
 
     // todo: COW
     struct cred *cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
