@@ -37,107 +37,12 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: latest
-          body: "..."
+          body: "core kernel patch image"
           artifacts: "kernel/kpimg"
           allowUpdates: true
           replacesArtifacts: true
 
-#   build-kpimg:
-#     runs-on:  macos-latest
-#     permissions:
-#       contents: write
-#     steps:
-#       - name: Check out
-#         uses: actions/checkout@v3
-#         with:
-#           submodules: "recursive"
-#           fetch-depth: 0
-#       - name: Install Compiler
-#         run: |
-#           curl -o aarch64-none-elf.tar.xz https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu/11.3.rel1/binrel/arm-gnu-toolchain-11.3.rel1-darwin-x86_64-aarch64-none-elf.tar.xz
-#           tar -Jxf aarch64-none-elf.tar.xz
-#       - name: Build
-#         run: |
-#           export TARGET_COMPILE=`pwd`/arm-gnu-toolchain-11.3.rel1-darwin-x86_64-aarch64-none-elf/bin/aarch64-none-elf-
-#           cd kernel
-#           make
-#       - name: Upload kpimg
-#         uses: actions/upload-artifact@v3
-#         with:
-#           path: |
-#             kernel/kpimg
-#           name: kpimg
-#       - name: Release
-#         uses: ncipollo/release-action@v1.12.0
-#         with:
-#           token: ${{ secrets.GITHUB_TOKEN }}
-#           tag: latest
-#           body: "..."
-#           artifacts: "kernel/kpimg"
-#           allowUpdates: true
-#           replacesArtifacts: true
-          
-  build-kptools-linux:
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out
-        uses: actions/checkout@v3
-        with:
-          submodules: "recursive"
-          fetch-depth: 0
-      - name: Build
-        run: |
-          cd tools
-          make
-          mv kptools kptools-linux
-      - name: Upload artifact
-        uses: actions/upload-artifact@v3
-        with:
-          path: tools/kptools-linux
-          name: kptools-linux
-      - name: Release
-        uses: ncipollo/release-action@v1.12.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: latest
-          body: "..."
-          artifacts: "tools/kptools-linux"
-          allowUpdates: true
-          replacesArtifacts: true
-          
-  build-kptools-mac:
-    permissions:
-      contents: write
-    runs-on: macos-latest
-    steps:
-      - name: Check out
-        uses: actions/checkout@v3
-        with:
-          submodules: "recursive"
-          fetch-depth: 0
-      - name: Build
-        run: |
-          cd tools
-          make
-          mv kptools kptools-mac
-      - name: Upload artifact
-        uses: actions/upload-artifact@v3
-        with:
-          path: tools/kptools-mac
-          name: kptools-mac
-      - name: Release
-        uses: ncipollo/release-action@v1.12.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: latest
-          body: "..."
-          artifacts: "tools/kptools-mac"
-          allowUpdates: true
-          replacesArtifacts: true
-          
-  upload-kpuser:
+  upload-tools-user:
     permissions:
       contents: write
     runs-on:  ubuntu-latest
@@ -146,33 +51,88 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-#       - name: Install Toolchain
-#         run: |
-#           sudo apt-get update
-#           sudo apt-get install -y gcc-aarch64-linux-gnu
-#       - name: Build
-#         run: |
-#           export TARGET_COMPILE=aarch64-linux-gnu-
-#           cd user
-#           make
-#       - name: Release-kpuser
-#         uses: ncipollo/release-action@v1
-#         with:
-#           token: ${{ secrets.GITHUB_TOKEN }}
-#           tag: latest
-#           body: "User space kpatch"
-#           artifacts: "kpatch"
-#           allowUpdates: true
-#           replacesArtifacts: true
       - name: Zip-lib
         run: |
+          zip -r kptools.zip tools
           zip -r kpuser.zip user
-      - name: Release-kpuser-lib
+      - name: Release-kptools
         uses: ncipollo/release-action@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: latest
-          body: "User space headers and library"
+          body: "kernel patch tools code"
+          artifacts: "kptools.zip"
+          allowUpdates: true
+          replacesArtifacts: true
+      - name: Release-kpuser
+        uses: ncipollo/release-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: latest
+          body: "kernel patch user space code"
           artifacts: "kpuser.zip"
           allowUpdates: true
           replacesArtifacts: true
+
+
+#   build-kptools-linux:
+#     permissions:
+#       contents: write
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Check out
+#         uses: actions/checkout@v3
+#         with:
+#           submodules: "recursive"
+#           fetch-depth: 0
+#       - name: Build
+#         run: |
+#           cd tools
+#           make
+#           mv kptools kptools-linux
+#       - name: Upload artifact
+#         uses: actions/upload-artifact@v3
+#         with:
+#           path: tools/kptools-linux
+#           name: kptools-linux
+#       - name: Release
+#         uses: ncipollo/release-action@v1.12.0
+#         with:
+#           token: ${{ secrets.GITHUB_TOKEN }}
+#           tag: latest
+#           body: "..."
+#           artifacts: "tools/kptools-linux"
+#           allowUpdates: true
+#           replacesArtifacts: true
+          
+#   build-kptools-mac:
+#     permissions:
+#       contents: write
+#     runs-on: macos-latest
+#     steps:
+#       - name: Check out
+#         uses: actions/checkout@v3
+#         with:
+#           submodules: "recursive"
+#           fetch-depth: 0
+#       - name: Build
+#         run: |
+#           cd tools
+#           make
+#           mv kptools kptools-mac
+#       - name: Upload artifact
+#         uses: actions/upload-artifact@v3
+#         with:
+#           path: tools/kptools-mac
+#           name: kptools-mac
+#       - name: Release
+#         uses: ncipollo/release-action@v1.12.0
+#         with:
+#           token: ${{ secrets.GITHUB_TOKEN }}
+#           tag: latest
+#           body: "..."
+#           artifacts: "tools/kptools-mac"
+#           allowUpdates: true
+#           replacesArtifacts: true
+          
+
