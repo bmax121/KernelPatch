@@ -12,6 +12,4 @@ static inline uint32_t get_version()
 
 long su_fork(const char *key);
 
-long su_tid(const char *key, pid_t tid);
-
 #endif

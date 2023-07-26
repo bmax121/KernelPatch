@@ -31,5 +31,6 @@
 
 build/*
 
+scdefs.h
 kpatch
 

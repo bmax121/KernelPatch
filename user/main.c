@@ -7,6 +7,7 @@
 
 #include "libkp.h"
 
+#define SUPER_KEY_LEN 0x20
 char key[SUPER_KEY_LEN] = { '\0' };
 
 void print_usage(char **argv)
@@ -34,6 +35,10 @@ void print_usage(char **argv)
               "     Grant root privileges to the thread corresponding to the given tid.\n"
               "  --revoke_su --arg2 tid\n"
               "     Revoke root privileges to the thread corresponding to the given tid.\n"
+              "  --load_kpm --arg2 kpm_patch\n"
+              "     (Unimplemented ...).\n"
+              "  --unload_kpm --arg2 kpm_patch\n"
+              "     (Unimplemented ...).\n"
               "\n";
     fprintf(stdout, "%s", c);
 }
@@ -42,7 +47,7 @@ int main(int argc, char **argv)
 {
     int cmd = -1;
     char *arg2 = 0, *arg3 = 0, *arg4 = 0, *arg5 = 0;
-    if(argc == 1) {
+    if (argc == 1) {
         print_usage(argv);
         return 0;
     }
@@ -97,7 +102,8 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    fprintf(stdout, "key: %s, command no: %x, arg2: %s, arg3:%s, arg4: %s, arg5: %s\n", key, cmd, arg2, arg3, arg4, arg5);
+    // fprintf(stdout, "key: %s, command no: %x, arg2: %s, arg3:%s, arg4: %s, arg5: %s\n", key, cmd, arg2, arg3, arg4,
+    //         arg5);
 
     long ret = 0;
     if (cmd == SUPERCALL_HELLO) {
@@ -111,14 +117,14 @@ int main(int argc, char **argv)
     } else if (cmd == SUPERCALL_SU) {
         ret = su_fork(key);
     } else if (cmd == SUPERCALL_GRANT_SU) {
-        if(!arg2) {
+        if (!arg2) {
             fprintf(stderr, "Empty Tid!\n");
             return -1;
         }
         int pid = atoi(arg2);
         ret = sc_grant_su(key, pid);
     } else if (cmd == SUPERCALL_REVOKE_SU) {
-        if(!arg2) {
+        if (!arg2) {
             fprintf(stderr, "Empty Tid!\n");
             return -1;
         }
@@ -128,6 +134,6 @@ int main(int argc, char **argv)
         fprintf(stderr, "Invalid SuperCall command!\n");
         return 0;
     }
-    fprintf(stdout, "ret: %ld\n", ret);
+    // fprintf(stdout, "ret: %ld\n", ret);
     return ret;
 }

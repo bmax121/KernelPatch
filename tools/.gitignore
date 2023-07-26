@@ -25,4 +25,5 @@
 
 build/*
 
+preset.h
 kptools

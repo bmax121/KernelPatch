@@ -9,13 +9,14 @@ kpatch: main.o ${objs}
 	${CC} -o $@ $^
 
 libkp.a: ${objs}
-	ar rcs $@ $^
+	${AR} rcs $@ $^
 
 %.o : %.c
 	$(CC) -c $(CFLAGS) $(CPPFLAGS) $< -o $@
 
 .PHONY: clean
 clean:
+	rm -rf scdefs.h
 	rm -rf kpatch
 	rm -rf libkp.a 
 	find . -name "*.o" | xargs rm -f

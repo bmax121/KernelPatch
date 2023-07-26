@@ -39,7 +39,7 @@ SRCS += $(LINUX_SRCS)
 OBJS := $(SRCS:.c=.o)
 OBJS := $(OBJS:.S=.o)
 
-all: kpimg
+all: kpimg hdr
 
 kpimg: kpimg.elf
 	${OBJCOPY} -O binary -S $^ $@
@@ -52,6 +52,10 @@ kpimg.elf: ${OBJS}
 
 %.o: %.S
 	${CC} $(CFLAGS) $(INCLUDE) -c -o $@ $<
+
+hdr:
+	cp base/preset.h ../tools/
+	cp accctl/scdefs.h ../user/
 
 .PHONY: clean
 clean:

@@ -7,7 +7,6 @@
 #include <linux/capability.h>
 
 #include "version"
-#include "supercall.h"
 
 long su_fork(const char *key)
 {

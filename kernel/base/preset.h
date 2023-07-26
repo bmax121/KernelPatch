@@ -1,11 +1,10 @@
-#ifndef _PRESET_H_
-#define _PRESET_H_
+#ifndef _KP_PRESET_H_
+#define _KP_PRESET_H_
 
 #ifndef __ASSEMBLY__
 #include <stdint.h>
 #endif
 
-//
 #define MAGIC_LEN 0x8
 #define KP_HEADER_SIZE 0x40
 #define SUPER_KEY_LEN 0x20
@@ -18,7 +17,7 @@
 #define VERSION(major, minor, patch) (((major) << 16) + ((minor) << 8) + (patch))
 
 #ifndef __ASSEMBLY__
-typedef struct __attribute__((packed)) version_t
+typedef struct version_t
 {
     uint8_t _;
     uint8_t patch;
@@ -28,8 +27,7 @@ typedef struct __attribute__((packed)) version_t
 #endif
 
 #ifndef __ASSEMBLY__
-// 64-bits
-typedef struct __attribute__((packed)) _setup_header_t
+typedef struct _setup_header_t // 64-bytes
 {
     char magic[MAGIC_LEN];
     version_t kp_version;
@@ -45,7 +43,7 @@ typedef struct __attribute__((packed)) _setup_header_t
 #endif
 
 #ifndef __ASSEMBLY__
-typedef struct __attribute__((packed)) _setup_preset_t
+typedef struct _setup_preset_t
 {
     int64_t kernel_size;
     int64_t page_shift;
@@ -91,4 +89,4 @@ typedef struct
 } setup_config_t;
 #endif
 
-#endif // _PRESET_H_
+#endif // _KP_PRESET_H_

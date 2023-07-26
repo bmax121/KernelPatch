@@ -10,7 +10,7 @@
 #include <unistd.h>
 #include <string.h>
 
-#include "../kernel/base/preset.h"
+#include "preset.h"
 #include "image.h"
 #include "order.h"
 #include "kallsym.h"
@@ -139,12 +139,12 @@ int patch_image()
 
     FILE *fimage = fopen(image, "rb");
     if (!fimage) {
-        printf("[-] kptools open file %s error\n", image);
+        fprintf(stderr, "[-] kptools open file %s error\n", image);
         return EXIT_FAILURE;
     }
     fseek(fimage, 0, SEEK_END);
     long image_len = ftell(fimage);
-    printf("[+] kptools image size 0x%08lx\n", image_len);
+    fprintf(stdout, "[+] kptools image size 0x%08lx\n", image_len);
 
     fseek(fimage, 0, SEEK_SET);
 
@@ -154,7 +154,7 @@ int patch_image()
 
     FILE *fkpimg = fopen(kpimg, "rb");
     if (!fkpimg) {
-        printf("[-] kptools open file %s error\n", kpimg);
+        fprintf(stderr, "[-] kptools open file %s error\n", kpimg);
         return EXIT_FAILURE;
     }
     fseek(fimage, 0, SEEK_END);
@@ -174,7 +174,7 @@ int patch_image()
     get_kernel_info(&kinfo, image_buf, image_len);
     long align_kernel_size = align_ceil(kinfo.kernel_size, 4096);
 
-    printf("[+] kptools kernel new size 0x%08lx\n", align_kernel_size + kpimg_len);
+    fprintf(stdout, "[+] kptools kernel new size 0x%08lx\n", align_kernel_size + kpimg_len);
 
     if (analyze_kallsym_info(&kallsym, image_buf, image_len, ARM64, 1)) {
         fprintf(stderr, "[-] kptools analyze_kallsym_info error\n");
@@ -225,7 +225,7 @@ int patch_image()
     }
     fprintf(stdout, "[+] kptools supercall key: %s\n", preset->superkey);
 
-    // todo: need this?
+    // todo:
     // kernel_resize(&kinfo, out_buf, align_kernel_size + align_image_len);
     long text_offset = align_image_len + 4096;
     b((uint32_t *)(out_buf + kinfo.b_stext_insn_offset), kinfo.b_stext_insn_offset, text_offset);
