@@ -260,7 +260,7 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
         printf("[-] kallsyms find arm64 relocation table error\n");
         return 0;
     }
-    printf("[+] kallsyms find arm64 relocation table range: [0x%08x, 0x%08x), text_va: 0x%08llx, count: 0x%08x\n",
+    printf("[+] kallsyms find arm64 relocation table range: [0x%08x, 0x%08x), text_va: 0x%08lx, count: 0x%08x\n",
            cand_start, cand_end, kernel_va, rela_num);
 
     // apply relocations
@@ -271,7 +271,7 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
         uint64_t r_addend = uint_unpack(img + cand + 16, 8, info->is_be);
         if (!r_offset && !r_info && !r_addend) continue;
         if (r_offset <= kernel_va || r_offset >= max_va - imglen) {
-            // printf("[-] kallsyms warn ignore arm64 relocation r_offset: 0x%08llx at 0x%08x\n", r_offset, cand);
+            // printf("[-] kallsyms warn ignore arm64 relocation r_offset: 0x%08lx at 0x%08x\n", r_offset, cand);
             continue;
         }
         int32_t offset = r_offset - kernel_va;
