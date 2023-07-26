@@ -55,6 +55,9 @@ jobs:
         run: |
           zip -r kptools.zip tools
           zip -r kpuser.zip user
+          cd kernel
+          make hdr
+          cd ..
       - name: Release-kptools
         uses: ncipollo/release-action@v1
         with:
