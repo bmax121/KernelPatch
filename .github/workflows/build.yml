@@ -37,7 +37,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: latest
-          body: "core kernel patch image"
+          body: ""
           artifacts: "kernel/kpimg"
           allowUpdates: true
           replacesArtifacts: true
@@ -64,7 +64,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: latest
-          body: "kernel patch tools code"
+          body: ""
           artifacts: "kptools.zip"
           allowUpdates: true
           replacesArtifacts: true
@@ -73,12 +73,26 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: latest
-          body: "kernel patch user space code"
+          body: ""
           artifacts: "kpuser.zip"
           allowUpdates: true
           replacesArtifacts: true
-
-
+          
+  release-body:
+    permissions:
+      contents: write
+    runs-on:  ubuntu-latest
+    steps:
+      - name: Release-body
+        uses: ncipollo/release-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: latest
+          body: "kpimg, kptools source, kpuser source"
+          artifacts: ""
+          allowUpdates: true
+          replacesArtifacts: true
+          
 #   build-kptools-linux:
 #     permissions:
 #       contents: write
