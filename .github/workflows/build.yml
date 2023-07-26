@@ -53,12 +53,12 @@ jobs:
           fetch-depth: 0
       - name: Zip-lib
         run: |
-          zip -r kptools.zip tools
-          zip -r kpuser.zip user
           export TARGET_COMPILE="placeholder"
           cd kernel
           make hdr
           cd ..
+          zip -r kptools.zip tools
+          zip -r kpuser.zip user
       - name: Release-kptools
         uses: ncipollo/release-action@v1
         with:
