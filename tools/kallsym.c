@@ -70,7 +70,7 @@ static int find_linux_banner(kallsym_t *info, char *img, int32_t imglen)
     while ((banner = (char *)memmem(banner + 1, imglen, linux_banner_prefix, prefix_len)) != NULL)
         if (isdigit(*(banner + prefix_len)) && *(banner + prefix_len + 1) == '.') break;
 
-    info->linux_banner_offset = (void *)banner - (void *)img;
+    info->linux_banner_offset = (int32_t)(banner - img);
     printf("[+] kernel linux_banner offset: 0x%08x\n", info->linux_banner_offset);
     printf("[+] kernel linux_banner: %s", banner);
 
@@ -228,7 +228,7 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
     uint64_t kernel_va = max_va;
     int32_t cand = 0;
     int rela_num = 0;
-    while (cand < imglen) {
+    while (cand < imglen - 24) {
         uint64_t r_offset = uint_unpack(img + cand, 8, info->is_be);
         uint64_t r_info = uint_unpack(img + cand + 8, 8, info->is_be);
         uint64_t r_addend = uint_unpack(img + cand + 16, 8, info->is_be);
