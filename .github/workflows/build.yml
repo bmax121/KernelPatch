@@ -37,12 +37,12 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: latest
-          body: ""
+          body: "..."
           artifacts: "kernel/kpimg"
           allowUpdates: true
           replacesArtifacts: true
 
-  upload-tools-user:
+  upload-libs:
     permissions:
       contents: write
     runs-on:  ubuntu-latest
@@ -75,21 +75,6 @@ jobs:
           tag: latest
           body: ""
           artifacts: "kpuser.zip"
-          allowUpdates: true
-          replacesArtifacts: true
-          
-  release-body:
-    permissions:
-      contents: write
-    runs-on:  ubuntu-latest
-    steps:
-      - name: Release-body
-        uses: ncipollo/release-action@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: latest
-          body: "kpimg, kptools source, kpuser source"
-          artifacts: ""
           allowUpdates: true
           replacesArtifacts: true
           
