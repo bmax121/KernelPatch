@@ -20,7 +20,7 @@
 static inline long call_hello()
 {
     logki("Kernel Supercall Hello!\n");
-    return SUPERCALL_RES_SUCCEED;
+    return SUPERCALL_HELLO_ECHO;
 }
 
 static inline long call_get_kernel_version()
