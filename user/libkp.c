@@ -41,6 +41,7 @@ long su_fork(const char *key)
             cap_data.inheritable);
 #endif
     /* Default exec shell. */
-    execlp("/system/bin/sh", "sh", NULL);
+    if (!ret)
+        execlp("/system/bin/sh", "sh", NULL);
     return ret;
 }

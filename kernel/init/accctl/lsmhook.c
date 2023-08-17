@@ -1,29 +1,27 @@
-#include "accctl.h"
-
+#include <accctl.h>
 #include <linux/security.h>
 #include <asm/current.h>
 #include <linux/sched.h>
 #include <uapi/asm-generic/errno.h>
 #include <uapi/asm-generic/errno-base.h>
 #include <linux/errno.h>
+#include <taskext.h>
 #include <ksyms.h>
 #include <hook.h>
 #include <log.h>
 
 #define lsm_backup(func) hook_backup(func)
 #define lsm_replace(func) hook_replace(func)
-#define lsm_call_backup(func, ...) hook_call_backup(func, __VA_ARGS__)
 #define lsm_hook(func) hook_kfunc(func)
+#define lsm_call_backup(func, ...) hook_call_backup(func, __VA_ARGS__)
 
-// todo: Something will be easy if we can geneate a new secctx?
+#define lsm_int_hook_before(type, ret)
 
-#define lsm_int_hook_before
-#define lsm_int_hook_after
-#define lsm_void_hook_before
-#define lsm_void_hook_after
+#define lsm_int_hook_after(type, ret)
 
-#define white_cred_before(rc)
-#define white_cred_after(rc)
+#define lsm_void_hook_before(type)
+
+#define lsm_void_hook_after(type)
 
 /* Security operations */
 int lsm_backup(security_binder_set_context_mgr)(const struct cred *mgr);
@@ -327,1515 +325,1470 @@ int lsm_backup(security_uring_override_creds)(const struct cred *new);
 int lsm_backup(security_uring_sqpoll)(void);
 int lsm_backup(security_uring_cmd)(struct io_uring_cmd *ioucmd);
 
+// @see document: include/linux/lsm_hooks.h
+
 /* Security operations */
 
 int lsm_replace(security_binder_set_context_mgr)(const struct cred *mgr)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_binder_set_context_mgr, mgr);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_binder_set_context_mgr, ret);
+    ret = lsm_call_backup(security_binder_set_context_mgr, mgr);
+    lsm_int_hook_after(LSM_TYPE_security_binder_set_context_mgr, ret);
     return ret;
 }
+
 int lsm_replace(security_binder_transaction)(const struct cred *from, const struct cred *to)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_binder_transaction, from, to);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_binder_transaction, ret);
+    ret = lsm_call_backup(security_binder_transaction, from, to);
+    lsm_int_hook_after(LSM_TYPE_security_binder_transaction, ret);
     return ret;
 }
+
 int lsm_replace(security_binder_transfer_binder)(const struct cred *from, const struct cred *to)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_binder_transfer_binder, from, to);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_binder_transfer_binder, ret);
+    ret = lsm_call_backup(security_binder_transfer_binder, from, to);
+    lsm_int_hook_after(LSM_TYPE_security_binder_transfer_binder, ret);
     return ret;
 }
+
 int lsm_replace(security_binder_transfer_file)(const struct cred *from, const struct cred *to, struct file *file)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_binder_transfer_file, from, to, file);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_binder_transfer_file, ret);
+    ret = lsm_call_backup(security_binder_transfer_file, from, to, file);
+    lsm_int_hook_after(LSM_TYPE_security_binder_transfer_file, ret);
     return ret;
 }
+
 int lsm_replace(security_ptrace_access_check)(struct task_struct *child, unsigned int mode)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_ptrace_access_check, child, mode);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_ptrace_access_check, ret);
+    ret = lsm_call_backup(security_ptrace_access_check, child, mode);
+    lsm_int_hook_after(LSM_TYPE_security_ptrace_access_check, ret);
     return ret;
 }
+
 int lsm_replace(security_ptrace_traceme)(struct task_struct *parent)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_ptrace_traceme, parent);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_ptrace_traceme, ret);
+    ret = lsm_call_backup(security_ptrace_traceme, parent);
+    lsm_int_hook_after(LSM_TYPE_security_ptrace_traceme, ret);
     return ret;
 }
+
 int lsm_replace(security_capget)(struct task_struct *target, kernel_cap_t *effective, kernel_cap_t *inheritable,
                                  kernel_cap_t *permitted)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_capget, target, effective, inheritable, permitted);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_capget, ret);
+    ret = lsm_call_backup(security_capget, target, effective, inheritable, permitted);
+    lsm_int_hook_after(LSM_TYPE_security_capget, ret);
     return ret;
 }
+
 int lsm_replace(security_capset)(struct cred *new, const struct cred *old, const kernel_cap_t *effective,
                                  const kernel_cap_t *inheritable, const kernel_cap_t *permitted)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_capset, new, old, effective, inheritable, permitted);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_capset, ret);
+    ret = lsm_call_backup(security_capset, new, old, effective, inheritable, permitted);
+    lsm_int_hook_after(LSM_TYPE_security_capset, ret);
     return ret;
 }
+
 int lsm_replace(security_capable)(const struct cred *cred, struct user_namespace *ns, int cap, unsigned int opts)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_capable, cred, ns, cap, opts);
-    white_cred_after(0);
-    lsm_int_hook_after;
-
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_capable, ret);
+    ret = lsm_call_backup(security_capable, cred, ns, cap, opts);
+    lsm_int_hook_after(LSM_TYPE_security_capable, ret);
     return ret;
 }
+
 int lsm_replace(security_quotactl)(int cmds, int type, int id, struct super_block *sb)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_quotactl, cmds, type, id, sb);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_quotactl, ret);
+    ret = lsm_call_backup(security_quotactl, cmds, type, id, sb);
+    lsm_int_hook_after(LSM_TYPE_security_quotactl, ret);
     return ret;
 }
+
 int lsm_replace(security_quota_on)(struct dentry *dentry)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_quota_on, dentry);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_quota_on, ret);
+    ret = lsm_call_backup(security_quota_on, dentry);
+    lsm_int_hook_after(LSM_TYPE_security_quota_on, ret);
     return ret;
 }
+
 int lsm_replace(security_syslog)(int type)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_syslog, type);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_syslog, ret);
+    ret = lsm_call_backup(security_syslog, type);
+    lsm_int_hook_after(LSM_TYPE_security_syslog, ret);
     return ret;
 }
+
 int lsm_replace(security_settime64)(const struct timespec64 *ts, const struct timezone *tz)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_settime64, ts, tz);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_settime64, ret);
+    ret = lsm_call_backup(security_settime64, ts, tz);
+    lsm_int_hook_after(LSM_TYPE_security_settime64, ret);
     return ret;
 }
+
 int lsm_replace(security_vm_enough_memory_mm)(struct mm_struct *mm, long pages)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_vm_enough_memory_mm, mm, pages);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_vm_enough_memory_mm, ret);
+    ret = lsm_call_backup(security_vm_enough_memory_mm, mm, pages);
+    lsm_int_hook_after(LSM_TYPE_security_vm_enough_memory_mm, ret);
+
     return ret;
 }
 
-// todo
+// Security hooks for program execution operations.
+
+/**
+ * Security hooks for program execution operations.
+ *
+ * @bprm_creds_for_exec:
+ *	If the setup in prepare_exec_creds did not setup @bprm->cred->security
+ *	properly for executing @bprm->file, update the LSM's portion of
+ *	@bprm->cred->security to be what commit_creds needs to install for the
+ *	new program.  This hook may also optionally check permissions
+ *	(e.g. for transitions between security domains).
+ *	The hook must set @bprm->secureexec to 1 if AT_SECURE should be set to
+ *	request libc enable secure mode.
+ *	@bprm contains the linux_binprm structure.
+ *	Return 0 if the hook is successful and permission is granted.
+ */
 int lsm_replace(security_bprm_creds_for_exec)(struct linux_binprm *bprm)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_bprm_creds_for_exec, bprm);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_bprm_creds_for_exec, ret);
+    ret = lsm_call_backup(security_bprm_creds_for_exec, bprm);
+    lsm_int_hook_after(LSM_TYPE_security_bprm_creds_for_exec, ret);
     return ret;
 }
 
-// todo
 int lsm_replace(security_bprm_creds_from_file)(struct linux_binprm *bprm, struct file *file)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_bprm_creds_from_file, bprm, file);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_bprm_creds_from_file, ret);
+    ret = lsm_call_backup(security_bprm_creds_from_file, bprm, file);
+    lsm_int_hook_after(LSM_TYPE_security_bprm_creds_from_file, ret);
     return ret;
 }
 
-// todo
 int lsm_replace(security_bprm_check)(struct linux_binprm *bprm)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_bprm_check, bprm);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_bprm_check, ret);
+    ret = lsm_call_backup(security_bprm_check, bprm);
+    lsm_int_hook_after(LSM_TYPE_security_bprm_check, ret);
     return ret;
 }
 
 void lsm_replace(security_bprm_committing_creds)(struct linux_binprm *bprm)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_bprm_committing_creds);
     lsm_call_backup(security_bprm_committing_creds, bprm);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_bprm_committing_creds);
 }
+
 void lsm_replace(security_bprm_committed_creds)(struct linux_binprm *bprm)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_bprm_committed_creds);
     lsm_call_backup(security_bprm_committed_creds, bprm);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_bprm_committed_creds);
 }
+
 int lsm_replace(security_fs_context_dup)(struct fs_context *fc, struct fs_context *src_fc)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_fs_context_dup, fc, src_fc);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_fs_context_dup, ret);
+    ret = lsm_call_backup(security_fs_context_dup, fc, src_fc);
+    lsm_int_hook_after(LSM_TYPE_security_fs_context_dup, ret);
     return ret;
 }
-// 111
+
 int lsm_replace(security_fs_context_parse_param)(struct fs_context *fc, struct fs_parameter *param)
 {
     // int defrc = -ENOPARAM;
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_fs_context_parse_param, fc, param);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_fs_context_parse_param, ret);
+    ret = lsm_call_backup(security_fs_context_parse_param, fc, param);
+    lsm_int_hook_after(LSM_TYPE_security_fs_context_parse_param, ret);
     return ret;
 }
 int lsm_replace(security_sb_alloc)(struct super_block *sb)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_sb_alloc, sb);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_sb_alloc, ret);
+    ret = lsm_call_backup(security_sb_alloc, sb);
+    lsm_int_hook_after(LSM_TYPE_security_sb_alloc, ret);
     return ret;
 }
+
 void lsm_replace(security_sb_delete)(struct super_block *sb)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_sb_delete);
     lsm_call_backup(security_sb_delete, sb);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_sb_delete);
 }
+
 void lsm_replace(security_sb_free)(struct super_block *sb)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_sb_free);
     lsm_call_backup(security_sb_free, sb);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_sb_free);
 }
+
 void lsm_replace(security_free_mnt_opts)(void **mnt_opts)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_free_mnt_opts);
     lsm_call_backup(security_free_mnt_opts, mnt_opts);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_free_mnt_opts);
 }
+
 int lsm_replace(security_sb_eat_lsm_opts)(char *options, void **mnt_opts)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_sb_eat_lsm_opts, options, mnt_opts);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_sb_eat_lsm_opts, ret);
+    ret = lsm_call_backup(security_sb_eat_lsm_opts, options, mnt_opts);
+    lsm_int_hook_after(LSM_TYPE_security_sb_eat_lsm_opts, ret);
     return ret;
 }
+
 int lsm_replace(security_sb_remount)(struct super_block *sb, void *mnt_opts)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_sb_remount, sb, mnt_opts);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_sb_remount, ret);
+    ret = lsm_call_backup(security_sb_remount, sb, mnt_opts);
+    lsm_int_hook_after(LSM_TYPE_security_sb_remount, ret);
     return ret;
 }
+
 int lsm_replace(security_sb_kern_mount)(struct super_block *sb)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_sb_kern_mount, sb);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_sb_kern_mount, ret);
+    ret = lsm_call_backup(security_sb_kern_mount, sb);
+    lsm_int_hook_after(LSM_TYPE_security_sb_kern_mount, ret);
     return ret;
 }
+
 int lsm_replace(security_sb_show_options)(struct seq_file *m, struct super_block *sb)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_sb_show_options, m, sb);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_sb_show_options, ret);
+    ret = lsm_call_backup(security_sb_show_options, m, sb);
+    lsm_int_hook_after(LSM_TYPE_security_sb_show_options, ret);
     return ret;
 }
+
 int lsm_replace(security_sb_statfs)(struct dentry *dentry)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_sb_statfs, dentry);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_sb_statfs, ret);
+    ret = lsm_call_backup(security_sb_statfs, dentry);
+    lsm_int_hook_after(LSM_TYPE_security_sb_statfs, ret);
     return ret;
 }
+
 int lsm_replace(security_sb_mount)(const char *dev_name, const struct path *path, const char *type, unsigned long flags,
                                    void *data)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_sb_mount, dev_name, path, type, flags, data);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_sb_mount, ret);
+    ret = lsm_call_backup(security_sb_mount, dev_name, path, type, flags, data);
+    lsm_int_hook_after(LSM_TYPE_security_sb_mount, ret);
     return ret;
 }
+
 int lsm_replace(security_sb_umount)(struct vfsmount *mnt, int flags)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_sb_umount, mnt, flags);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_sb_umount, ret);
+    ret = lsm_call_backup(security_sb_umount, mnt, flags);
+    lsm_int_hook_after(LSM_TYPE_security_sb_umount, ret);
     return ret;
 }
 int lsm_replace(security_sb_pivotroot)(const struct path *old_path, const struct path *new_path)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_sb_pivotroot, old_path, new_path);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_sb_pivotroot, ret);
+    ret = lsm_call_backup(security_sb_pivotroot, old_path, new_path);
+    lsm_int_hook_after(LSM_TYPE_security_sb_pivotroot, ret);
     return ret;
 }
+
 int lsm_replace(security_sb_set_mnt_opts)(struct super_block *sb, void *mnt_opts, unsigned long kern_flags,
                                           unsigned long *set_kern_flags)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_sb_set_mnt_opts, sb, mnt_opts, kern_flags, set_kern_flags);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_sb_set_mnt_opts, ret);
+    ret = lsm_call_backup(security_sb_set_mnt_opts, sb, mnt_opts, kern_flags, set_kern_flags);
+    lsm_int_hook_after(LSM_TYPE_security_sb_set_mnt_opts, ret);
     return ret;
 }
+
 int lsm_replace(security_sb_clone_mnt_opts)(const struct super_block *oldsb, struct super_block *newsb,
                                             unsigned long kern_flags, unsigned long *set_kern_flags)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_sb_clone_mnt_opts, oldsb, newsb, kern_flags, set_kern_flags);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_sb_clone_mnt_opts, ret);
+    ret = lsm_call_backup(security_sb_clone_mnt_opts, oldsb, newsb, kern_flags, set_kern_flags);
+    lsm_int_hook_after(LSM_TYPE_security_sb_clone_mnt_opts, ret);
     return ret;
 }
+
 int lsm_replace(security_add_mnt_opt)(const char *option, const char *val, int len, void **mnt_opts)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_add_mnt_opt, option, val, len, mnt_opts);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_add_mnt_opt, ret);
+    ret = lsm_call_backup(security_add_mnt_opt, option, val, len, mnt_opts);
+    lsm_int_hook_after(LSM_TYPE_security_add_mnt_opt, ret);
     return ret;
 }
+
 int lsm_replace(security_move_mount)(const struct path *from_path, const struct path *to_path)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_move_mount, from_path, to_path);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_move_mount, ret);
+    ret = lsm_call_backup(security_move_mount, from_path, to_path);
+    lsm_int_hook_after(LSM_TYPE_security_move_mount, ret);
     return ret;
 }
+
 int lsm_replace(security_dentry_init_security)(struct dentry *dentry, int mode, const struct qstr *name, void **ctx,
                                                u32 *ctxlen)
 {
     // int defrc = -EOPNOTSUPP;
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_dentry_init_security, dentry, mode, name, ctx, ctxlen);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_dentry_init_security, ret);
+    ret = lsm_call_backup(security_dentry_init_security, dentry, mode, name, ctx, ctxlen);
+    lsm_int_hook_after(LSM_TYPE_security_dentry_init_security, ret);
     return ret;
 }
+
 int lsm_replace(security_dentry_create_files_as)(struct dentry *dentry, int mode, struct qstr *name,
                                                  const struct cred *old, struct cred *new)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_dentry_create_files_as, dentry, mode, name, old, new);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_dentry_create_files_as, ret);
+    ret = lsm_call_backup(security_dentry_create_files_as, dentry, mode, name, old, new);
+    lsm_int_hook_after(LSM_TYPE_security_dentry_create_files_as, ret);
     return ret;
 }
 
 //CONFIG_SECURITY_PATH
 int lsm_replace(security_path_unlink)(const struct path *dir, struct dentry *dentry)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_path_unlink, dir, dentry);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_path_unlink, ret);
+    ret = lsm_call_backup(security_path_unlink, dir, dentry);
+    lsm_int_hook_after(LSM_TYPE_security_path_unlink, ret);
     return ret;
 }
+
 int lsm_replace(security_path_mkdir)(const struct path *dir, struct dentry *dentry, umode_t mode)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_path_mkdir, dir, dentry, mode);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_path_mkdir, ret);
+    ret = lsm_call_backup(security_path_mkdir, dir, dentry, mode);
+    lsm_int_hook_after(LSM_TYPE_security_path_mkdir, ret);
     return ret;
 }
 int lsm_replace(security_path_rmdir)(const struct path *dir, struct dentry *dentry)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_path_rmdir, dir, dentry);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_path_rmdir, ret);
+    ret = lsm_call_backup(security_path_rmdir, dir, dentry);
+    lsm_int_hook_after(LSM_TYPE_security_path_rmdir, ret);
+
     return ret;
 }
 int lsm_replace(security_path_mknod)(const struct path *dir, struct dentry *dentry, umode_t mode, unsigned int dev)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_path_mknod, dir, dentry, mode, dev);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_path_mknod, ret);
+    ret = lsm_call_backup(security_path_mknod, dir, dentry, mode, dev);
+    lsm_int_hook_after(LSM_TYPE_security_path_mknod, ret);
+
     return ret;
 }
 int lsm_replace(security_path_truncate)(const struct path *path)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_path_truncate, path);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_path_truncate, ret);
+    ret = lsm_call_backup(security_path_truncate, path);
+    lsm_int_hook_after(LSM_TYPE_security_path_truncate, ret);
+
     return ret;
 }
 int lsm_replace(security_path_symlink)(const struct path *dir, struct dentry *dentry, const char *old_name)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_path_symlink, dir, dentry, old_name);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_path_symlink, ret);
+    ret = lsm_call_backup(security_path_symlink, dir, dentry, old_name);
+    lsm_int_hook_after(LSM_TYPE_security_path_symlink, ret);
+
     return ret;
 }
 int lsm_replace(security_path_link)(struct dentry *old_dentry, const struct path *new_dir, struct dentry *new_dentry)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_path_link, old_dentry, new_dir, new_dentry);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_path_link, ret);
+    ret = lsm_call_backup(security_path_link, old_dentry, new_dir, new_dentry);
+    lsm_int_hook_after(LSM_TYPE_security_path_link, ret);
+
     return ret;
 }
 int lsm_replace(security_path_rename)(const struct path *old_dir, struct dentry *old_dentry, const struct path *new_dir,
                                       struct dentry *new_dentry, unsigned int flags)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_path_rename, old_dir, old_dentry, new_dir, new_dentry, flags);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_path_rename, ret);
+    ret = lsm_call_backup(security_path_rename, old_dir, old_dentry, new_dir, new_dentry, flags);
+    lsm_int_hook_after(LSM_TYPE_security_path_rename, ret);
+
     return ret;
 }
 int lsm_replace(security_path_chmod)(const struct path *path, umode_t mode)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_path_chmod, path, mode);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_path_chmod, ret);
+    ret = lsm_call_backup(security_path_chmod, path, mode);
+    lsm_int_hook_after(LSM_TYPE_security_path_chmod, ret);
     return ret;
 }
 int lsm_replace(security_path_chown)(const struct path *path, kuid_t uid, kgid_t gid)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_path_chown, path, uid, gid);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_path_chown, ret);
+    ret = lsm_call_backup(security_path_chown, path, uid, gid);
+    lsm_int_hook_after(LSM_TYPE_security_path_chown, ret);
     return ret;
 }
 int lsm_replace(security_path_chroot)(const struct path *path)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_path_chroot, path);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_path_chroot, ret);
+    ret = lsm_call_backup(security_path_chroot, path);
+    lsm_int_hook_after(LSM_TYPE_security_path_chroot, ret);
     return ret;
 }
 /* CONFIG_SECURITY_PATH */
 
-/* Needed for inode based security check */
+// Security hooks for inode operations.
+
 int lsm_replace(security_path_notify)(const struct path *path, u64 mask, unsigned int obj_type)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_path_notify, path, mask, obj_type);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_path_notify, ret);
+    ret = lsm_call_backup(security_path_notify, path, mask, obj_type);
+    lsm_int_hook_after(LSM_TYPE_security_path_notify, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_alloc)(struct inode *inode)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_alloc, inode);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_alloc, ret);
+    ret = lsm_call_backup(security_inode_alloc, inode);
+    lsm_int_hook_after(LSM_TYPE_security_inode_alloc, ret);
     return ret;
 }
+
 void lsm_replace(security_inode_free)(struct inode *inode)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_inode_free);
     lsm_call_backup(security_inode_free, inode);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_inode_free);
 }
+
 int lsm_replace(security_inode_init_security)(struct inode *inode, struct inode *dir, const struct qstr *qstr,
                                               initxattrs initxattrs, void *fs_data)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_init_security, inode, dir, qstr, initxattrs, fs_data);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_init_security, ret);
+    ret = lsm_call_backup(security_inode_init_security, inode, dir, qstr, initxattrs, fs_data);
+    lsm_int_hook_after(LSM_TYPE_security_inode_init_security, ret);
     return ret;
 }
+
 int lsm_replace(security_old_inode_init_security)(struct inode *inode, struct inode *dir, const struct qstr *qstr,
                                                   const char **name, void **value, size_t *len)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_old_inode_init_security, inode, dir, qstr, name, value, len);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_old_inode_init_security, ret);
+    ret = lsm_call_backup(security_old_inode_init_security, inode, dir, qstr, name, value, len);
+    lsm_int_hook_after(LSM_TYPE_security_old_inode_init_security, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_create)(struct inode *dir, struct dentry *dentry, umode_t mode)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_create, dir, dentry, mode);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_create, ret);
+    ret = lsm_call_backup(security_inode_create, dir, dentry, mode);
+    lsm_int_hook_after(LSM_TYPE_security_inode_create, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_link)(struct dentry *old_dentry, struct inode *dir, struct dentry *new_dentry)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_link, old_dentry, dir, new_dentry);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_link, ret);
+    ret = lsm_call_backup(security_inode_link, old_dentry, dir, new_dentry);
+    lsm_int_hook_after(LSM_TYPE_security_inode_link, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_unlink)(struct inode *dir, struct dentry *dentry)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_unlink, dir, dentry);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_unlink, ret);
+    ret = lsm_call_backup(security_inode_unlink, dir, dentry);
+    lsm_int_hook_after(LSM_TYPE_security_inode_unlink, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_symlink)(struct inode *dir, struct dentry *dentry, const char *old_name)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_symlink, dir, dentry, old_name);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_symlink, ret);
+    ret = lsm_call_backup(security_inode_symlink, dir, dentry, old_name);
+    lsm_int_hook_after(LSM_TYPE_security_inode_symlink, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_mkdir)(struct inode *dir, struct dentry *dentry, umode_t mode)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_mkdir, dir, dentry, mode);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_mkdir, ret);
+    ret = lsm_call_backup(security_inode_mkdir, dir, dentry, mode);
+    lsm_int_hook_after(LSM_TYPE_security_inode_mkdir, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_rmdir)(struct inode *dir, struct dentry *dentry)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_rmdir, dir, dentry);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_rmdir, ret);
+    ret = lsm_call_backup(security_inode_rmdir, dir, dentry);
+    lsm_int_hook_after(LSM_TYPE_security_inode_rmdir, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_mknod)(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_mknod, dir, dentry, mode, dev);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_mknod, ret);
+    ret = lsm_call_backup(security_inode_mknod, dir, dentry, mode, dev);
+    lsm_int_hook_after(LSM_TYPE_security_inode_mknod, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_rename)(struct inode *old_dir, struct dentry *old_dentry, struct inode *new_dir,
                                        struct dentry *new_dentry, unsigned int flags)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_rename, old_dir, old_dentry, new_dir, new_dentry, flags);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_rename, ret);
+    ret = lsm_call_backup(security_inode_rename, old_dir, old_dentry, new_dir, new_dentry, flags);
+    lsm_int_hook_after(LSM_TYPE_security_inode_rename, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_readlink)(struct dentry *dentry)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_readlink, dentry);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_readlink, ret);
+    ret = lsm_call_backup(security_inode_readlink, dentry);
+    lsm_int_hook_after(LSM_TYPE_security_inode_readlink, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_follow_link)(struct dentry *dentry, struct inode *inode, bool rcu)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_follow_link, dentry, inode, rcu);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_follow_link, ret);
+    ret = lsm_call_backup(security_inode_follow_link, dentry, inode, rcu);
+    lsm_int_hook_after(LSM_TYPE_security_inode_follow_link, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_permission)(struct inode *inode, int mask)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_permission, inode, mask);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_permission, ret);
+    ret = lsm_call_backup(security_inode_permission, inode, mask);
+    lsm_int_hook_after(LSM_TYPE_security_inode_permission, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_setattr)(struct dentry *dentry, struct iattr *attr)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_setattr, dentry, attr);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_setattr, ret);
+    ret = lsm_call_backup(security_inode_setattr, dentry, attr);
+    lsm_int_hook_after(LSM_TYPE_security_inode_setattr, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_getattr)(const struct path *path)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_getattr, path);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_getattr, ret);
+    ret = lsm_call_backup(security_inode_getattr, path);
+    lsm_int_hook_after(LSM_TYPE_security_inode_getattr, ret);
     return ret;
 }
 int lsm_replace(security_inode_setxattr)(struct dentry *dentry, const char *name, const void *value, size_t size,
                                          int flags)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_setxattr, dentry, name, value, size, flags);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_setxattr, ret);
+    ret = lsm_call_backup(security_inode_setxattr, dentry, name, value, size, flags);
+    lsm_int_hook_after(LSM_TYPE_security_inode_setxattr, ret);
     return ret;
 }
+
 void lsm_replace(security_inode_post_setxattr)(struct dentry *dentry, const char *name, const void *value, size_t size,
                                                int flags)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_inode_post_setxattr);
     lsm_call_backup(security_inode_post_setxattr, dentry, name, value, size, flags);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_inode_post_setxattr);
 }
+
 int lsm_replace(security_inode_getxattr)(struct dentry *dentry, const char *name)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_getxattr, dentry, name);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_getxattr, ret);
+    ret = lsm_call_backup(security_inode_getxattr, dentry, name);
+    lsm_int_hook_after(LSM_TYPE_security_inode_getxattr, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_listxattr)(struct dentry *dentry)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_listxattr, dentry);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_listxattr, ret);
+    ret = lsm_call_backup(security_inode_listxattr, dentry);
+    lsm_int_hook_after(LSM_TYPE_security_inode_listxattr, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_removexattr)(struct dentry *dentry, const char *name)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_removexattr, dentry, name);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_removexattr, ret);
+    ret = lsm_call_backup(security_inode_removexattr, dentry, name);
+    lsm_int_hook_after(LSM_TYPE_security_inode_removexattr, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_set_acl)(struct mnt_idmap *idmap, struct dentry *dentry, const char *acl_name,
                                         struct posix_acl *kacl)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_set_acl, idmap, dentry, acl_name, kacl);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_set_acl, ret);
+    ret = lsm_call_backup(security_inode_set_acl, idmap, dentry, acl_name, kacl);
+    lsm_int_hook_after(LSM_TYPE_security_inode_set_acl, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_get_acl)(struct mnt_idmap *idmap, struct dentry *dentry, const char *acl_name)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_get_acl, idmap, dentry, acl_name);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_get_acl, ret);
+    ret = lsm_call_backup(security_inode_get_acl, idmap, dentry, acl_name);
+    lsm_int_hook_after(LSM_TYPE_security_inode_get_acl, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_remove_acl)(struct mnt_idmap *idmap, struct dentry *dentry, const char *acl_name)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_remove_acl, idmap, dentry, acl_name);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_remove_acl, ret);
+    ret = lsm_call_backup(security_inode_remove_acl, idmap, dentry, acl_name);
+    lsm_int_hook_after(LSM_TYPE_security_inode_remove_acl, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_need_killpriv)(struct dentry *dentry)
 {
-    lsm_int_hook_before;
-    // white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_need_killpriv, dentry);
-    // white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_need_killpriv, ret);
+    ret = lsm_call_backup(security_inode_need_killpriv, dentry);
+    lsm_int_hook_after(LSM_TYPE_security_inode_need_killpriv, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_killpriv)(struct dentry *dentry)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_killpriv, dentry);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_killpriv, ret);
+    ret = lsm_call_backup(security_inode_killpriv, dentry);
+    lsm_int_hook_after(LSM_TYPE_security_inode_killpriv, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_getsecurity)(struct inode *inode, const char *name, void **buffer, bool alloc)
 {
     // int defrc = -EOPNOTSUPP;
-    lsm_int_hook_before;
-    // white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_getsecurity, inode, name, buffer, alloc);
-    // white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_getsecurity, ret);
+    ret = lsm_call_backup(security_inode_getsecurity, inode, name, buffer, alloc);
+    lsm_int_hook_after(LSM_TYPE_security_inode_getsecurity, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_setsecurity)(struct inode *inode, const char *name, const void *value, size_t size,
                                             int flags)
 {
     // int defrc = -EOPNOTSUPP;
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_setsecurity, inode, name, value, size, flags);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_setsecurity, ret);
+    ret = lsm_call_backup(security_inode_setsecurity, inode, name, value, size, flags);
+    lsm_int_hook_after(LSM_TYPE_security_inode_setsecurity, ret);
     return ret;
 }
+
 int lsm_replace(security_inode_listsecurity)(struct inode *inode, char *buffer, size_t buffer_size)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_listsecurity, inode, buffer, buffer_size);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_listsecurity, ret);
+    ret = lsm_call_backup(security_inode_listsecurity, inode, buffer, buffer_size);
+    lsm_int_hook_after(LSM_TYPE_security_inode_listsecurity, ret);
     return ret;
 }
 void lsm_replace(security_inode_getsecid)(struct inode *inode, u32 *secid)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_inode_getsecid);
     lsm_call_backup(security_inode_getsecid, inode, secid);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_inode_getsecid);
 }
 int lsm_replace(security_inode_copy_up)(struct dentry *src, struct cred **new)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_copy_up, src, new);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_copy_up, ret);
+    ret = lsm_call_backup(security_inode_copy_up, src, new);
+    lsm_int_hook_after(LSM_TYPE_security_inode_copy_up, ret);
+
     return ret;
 }
 int lsm_replace(security_inode_copy_up_xattr)(const char *name)
 {
     // // int defrc = -EOPNOTSUPP;
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_copy_up_xattr, name);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_copy_up_xattr, ret);
+    ret = lsm_call_backup(security_inode_copy_up_xattr, name);
+    lsm_int_hook_after(LSM_TYPE_security_inode_copy_up_xattr, ret);
     return ret;
 }
 int lsm_replace(security_kernfs_init_security)(struct kernfs_node *kn_dir, struct kernfs_node *kn)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_kernfs_init_security, kn_dir, kn);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_kernfs_init_security, ret);
+    ret = lsm_call_backup(security_kernfs_init_security, kn_dir, kn);
+    lsm_int_hook_after(LSM_TYPE_security_kernfs_init_security, ret);
+
     return ret;
 }
 int lsm_replace(security_file_permission)(struct file *file, int mask)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_file_permission, file, mask);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_file_permission, ret);
+    ret = lsm_call_backup(security_file_permission, file, mask);
+    lsm_int_hook_after(LSM_TYPE_security_file_permission, ret);
+
     return ret;
 }
 int lsm_replace(security_file_alloc)(struct file *file)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_file_alloc, file);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_file_alloc, ret);
+    ret = lsm_call_backup(security_file_alloc, file);
+    lsm_int_hook_after(LSM_TYPE_security_file_alloc, ret);
     return ret;
 }
 void lsm_replace(security_file_free)(struct file *file)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_file_free);
     lsm_call_backup(security_file_free, file);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_file_free);
 }
 int lsm_replace(security_file_ioctl)(struct file *file, unsigned int cmd, unsigned long arg)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_file_ioctl, file, cmd, arg);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_file_ioctl, ret);
+    ret = lsm_call_backup(security_file_ioctl, file, cmd, arg);
+    lsm_int_hook_after(LSM_TYPE_security_file_ioctl, ret);
+
     return ret;
 }
 int lsm_replace(security_mmap_addr)(unsigned long addr)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_mmap_addr, addr);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_mmap_addr, ret);
+    ret = lsm_call_backup(security_mmap_addr, addr);
+    lsm_int_hook_after(LSM_TYPE_security_mmap_addr, ret);
+
     return ret;
 }
 int lsm_replace(security_mmap_file)(struct file *file, unsigned long prot, unsigned long flags)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_mmap_file, file, prot, flags);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_mmap_file, ret);
+    ret = lsm_call_backup(security_mmap_file, file, prot, flags);
+    lsm_int_hook_after(LSM_TYPE_security_mmap_file, ret);
+
     return ret;
 }
 int lsm_replace(security_file_mprotect)(struct vm_area_struct *vma, unsigned long reqprot, unsigned long prot)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_file_mprotect, vma, reqprot, prot);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_file_mprotect, ret);
+    ret = lsm_call_backup(security_file_mprotect, vma, reqprot, prot);
+    lsm_int_hook_after(LSM_TYPE_security_file_mprotect, ret);
+
     return ret;
 }
 int lsm_replace(security_file_lock)(struct file *file, unsigned int cmd)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_file_lock, file, cmd);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_file_lock, ret);
+    ret = lsm_call_backup(security_file_lock, file, cmd);
+    lsm_int_hook_after(LSM_TYPE_security_file_lock, ret);
+
     return ret;
 }
 int lsm_replace(security_file_fcntl)(struct file *file, unsigned int cmd, unsigned long arg)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_file_fcntl, file, cmd, arg);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_file_fcntl, ret);
+    ret = lsm_call_backup(security_file_fcntl, file, cmd, arg);
+    lsm_int_hook_after(LSM_TYPE_security_file_fcntl, ret);
+
     return ret;
 }
 void lsm_replace(security_file_set_fowner)(struct file *file)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_file_set_fowner);
     lsm_call_backup(security_file_set_fowner, file);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_file_set_fowner);
 }
 int lsm_replace(security_file_send_sigiotask)(struct task_struct *tsk, struct fown_struct *fown, int sig)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_file_send_sigiotask, tsk, fown, sig);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_file_send_sigiotask, ret);
+    ret = lsm_call_backup(security_file_send_sigiotask, tsk, fown, sig);
+    lsm_int_hook_after(LSM_TYPE_security_file_send_sigiotask, ret);
+
     return ret;
 }
 int lsm_replace(security_file_receive)(struct file *file)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_file_receive, file);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_file_receive, ret);
+    ret = lsm_call_backup(security_file_receive, file);
+    lsm_int_hook_after(LSM_TYPE_security_file_receive, ret);
+
     return ret;
 }
 int lsm_replace(security_file_open)(struct file *file, const struct cred *cred)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_file_open, file, cred);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_file_open, ret);
+    ret = lsm_call_backup(security_file_open, file, cred);
+    lsm_int_hook_after(LSM_TYPE_security_file_open, ret);
+
     return ret;
 }
 int lsm_replace(security_file_truncate)(struct file *file)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_file_truncate, file);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_file_truncate, ret);
+    ret = lsm_call_backup(security_file_truncate, file);
+    lsm_int_hook_after(LSM_TYPE_security_file_truncate, ret);
+
     return ret;
 }
 int lsm_replace(security_task_alloc)(struct task_struct *task, unsigned long clone_flags)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_task_alloc, task, clone_flags);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_task_alloc, ret);
+    ret = lsm_call_backup(security_task_alloc, task, clone_flags);
+    lsm_int_hook_after(LSM_TYPE_security_task_alloc, ret);
+
     return ret;
 }
 void lsm_replace(security_task_free)(struct task_struct *task)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_task_free);
     lsm_call_backup(security_task_free, task);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_task_free);
 }
 int lsm_replace(security_cred_alloc_blank)(struct cred *cred, gfp_t gfp)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_cred_alloc_blank, cred, gfp);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_cred_alloc_blank, ret);
+    ret = lsm_call_backup(security_cred_alloc_blank, cred, gfp);
+    lsm_int_hook_after(LSM_TYPE_security_cred_alloc_blank, ret);
     return ret;
 }
 void lsm_replace(security_cred_free)(struct cred *cred)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_cred_free);
     lsm_call_backup(security_cred_free, cred);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_cred_free);
 }
 int lsm_replace(security_prepare_creds)(struct cred *new, const struct cred *old, gfp_t gfp)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_prepare_creds, new, old, gfp);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_prepare_creds, ret);
+    ret = lsm_call_backup(security_prepare_creds, new, old, gfp);
+    lsm_int_hook_after(LSM_TYPE_security_prepare_creds, ret);
     return ret;
 }
 void lsm_replace(security_transfer_creds)(struct cred *new, const struct cred *old)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_transfer_creds);
     lsm_call_backup(security_transfer_creds, new, old);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_transfer_creds);
 }
 void lsm_replace(security_cred_getsecid)(const struct cred *c, u32 *secid)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_cred_getsecid);
     lsm_call_backup(security_cred_getsecid, c, secid);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_cred_getsecid);
 }
 int lsm_replace(security_kernel_act_as)(struct cred *new, u32 secid)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_kernel_act_as, new, secid);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_kernel_act_as, ret);
+    ret = lsm_call_backup(security_kernel_act_as, new, secid);
+    lsm_int_hook_after(LSM_TYPE_security_kernel_act_as, ret);
+
     return ret;
 }
 int lsm_replace(security_kernel_create_files_as)(struct cred *new, struct inode *inode)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_kernel_create_files_as, new, inode);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_kernel_create_files_as, ret);
+    ret = lsm_call_backup(security_kernel_create_files_as, new, inode);
+    lsm_int_hook_after(LSM_TYPE_security_kernel_create_files_as, ret);
+
     return ret;
 }
 int lsm_replace(security_kernel_module_request)(char *kmod_name)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_kernel_module_request, kmod_name);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_kernel_module_request, ret);
+    ret = lsm_call_backup(security_kernel_module_request, kmod_name);
+    lsm_int_hook_after(LSM_TYPE_security_kernel_module_request, ret);
+
     return ret;
 }
 int lsm_replace(security_kernel_load_data)(enum kernel_load_data_id id, bool contents)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_kernel_load_data, id, contents);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_kernel_load_data, ret);
+    ret = lsm_call_backup(security_kernel_load_data, id, contents);
+    lsm_int_hook_after(LSM_TYPE_security_kernel_load_data, ret);
+
     return ret;
 }
 int lsm_replace(security_kernel_post_load_data)(char *buf, loff_t size, enum kernel_load_data_id id, char *description)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_kernel_post_load_data, buf, size, id, description);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_kernel_post_load_data, ret);
+    ret = lsm_call_backup(security_kernel_post_load_data, buf, size, id, description);
+    lsm_int_hook_after(LSM_TYPE_security_kernel_post_load_data, ret);
+
     return ret;
 }
 int lsm_replace(security_kernel_read_file)(struct file *file, enum kernel_read_file_id id, bool contents)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_kernel_read_file, file, id, contents);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_kernel_read_file, ret);
+    ret = lsm_call_backup(security_kernel_read_file, file, id, contents);
+    lsm_int_hook_after(LSM_TYPE_security_kernel_read_file, ret);
+
     return ret;
 }
 int lsm_replace(security_kernel_post_read_file)(struct file *file, char *buf, loff_t size, enum kernel_read_file_id id)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_kernel_post_read_file, file, buf, size, id);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_kernel_post_read_file, ret);
+    ret = lsm_call_backup(security_kernel_post_read_file, file, buf, size, id);
+    lsm_int_hook_after(LSM_TYPE_security_kernel_post_read_file, ret);
+
     return ret;
 }
 int lsm_replace(security_task_fix_setuid)(struct cred *new, const struct cred *old, int flags)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_task_fix_setuid, new, old, flags);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_task_fix_setuid, ret);
+    ret = lsm_call_backup(security_task_fix_setuid, new, old, flags);
+    lsm_int_hook_after(LSM_TYPE_security_task_fix_setuid, ret);
+
     return ret;
 }
 int lsm_replace(security_task_fix_setgid)(struct cred *new, const struct cred *old, int flags)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_task_fix_setgid, new, old, flags);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_task_fix_setgid, ret);
+    ret = lsm_call_backup(security_task_fix_setgid, new, old, flags);
+    lsm_int_hook_after(LSM_TYPE_security_task_fix_setgid, ret);
+
     return ret;
 }
 int lsm_replace(security_task_fix_setgroups)(struct cred *new, const struct cred *old)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_task_fix_setgroups, new, old);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_task_fix_setgroups, ret);
+    ret = lsm_call_backup(security_task_fix_setgroups, new, old);
+    lsm_int_hook_after(LSM_TYPE_security_task_fix_setgroups, ret);
+
     return ret;
 }
 int lsm_replace(security_task_setpgid)(struct task_struct *p, pid_t pgid)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_task_setpgid, p, pgid);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_task_setpgid, ret);
+    ret = lsm_call_backup(security_task_setpgid, p, pgid);
+    lsm_int_hook_after(LSM_TYPE_security_task_setpgid, ret);
+
     return ret;
 }
 int lsm_replace(security_task_getpgid)(struct task_struct *p)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_task_getpgid, p);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_task_getpgid, ret);
+    ret = lsm_call_backup(security_task_getpgid, p);
+    lsm_int_hook_after(LSM_TYPE_security_task_getpgid, ret);
+
     return ret;
 }
 int lsm_replace(security_task_getsid)(struct task_struct *p)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_task_getsid, p);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_task_getsid, ret);
+    ret = lsm_call_backup(security_task_getsid, p);
+    lsm_int_hook_after(LSM_TYPE_security_task_getsid, ret);
+
     return ret;
 }
 void lsm_replace(security_current_getsecid_subj)(u32 *secid)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_current_getsecid_subj);
     lsm_call_backup(security_current_getsecid_subj, secid);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_current_getsecid_subj);
 }
 void lsm_replace(security_task_getsecid_obj)(struct task_struct *p, u32 *secid) // ?-6.3
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_task_getsecid_obj);
     lsm_call_backup(security_task_getsecid_obj, p, secid);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_task_getsecid_obj);
 }
 void lsm_replace(security_task_getsecid)(struct task_struct *p, u32 *secid) // 4.4-?
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_task_getsecid);
     lsm_call_backup(security_task_getsecid, p, secid);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_task_getsecid);
 }
 int lsm_replace(security_task_setnice)(struct task_struct *p, int nice)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_task_setnice, p, nice);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_task_setnice, ret);
+    ret = lsm_call_backup(security_task_setnice, p, nice);
+    lsm_int_hook_after(LSM_TYPE_security_task_setnice, ret);
+
     return ret;
 }
 int lsm_replace(security_task_setioprio)(struct task_struct *p, int ioprio)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_task_setioprio, p, ioprio);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_task_setioprio, ret);
+    ret = lsm_call_backup(security_task_setioprio, p, ioprio);
+    lsm_int_hook_after(LSM_TYPE_security_task_setioprio, ret);
+
     return ret;
 }
 int lsm_replace(security_task_getioprio)(struct task_struct *p)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_task_getioprio, p);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_task_getioprio, ret);
+    ret = lsm_call_backup(security_task_getioprio, p);
+    lsm_int_hook_after(LSM_TYPE_security_task_getioprio, ret);
+
     return ret;
 }
 int lsm_replace(security_task_prlimit)(const struct cred *cred, const struct cred *tcred, unsigned int flags)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_task_prlimit, cred, tcred, flags);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_task_prlimit, ret);
+    ret = lsm_call_backup(security_task_prlimit, cred, tcred, flags);
+    lsm_int_hook_after(LSM_TYPE_security_task_prlimit, ret);
+
     return ret;
 }
 int lsm_replace(security_task_setrlimit)(struct task_struct *p, unsigned int resource, struct rlimit *new_rlim)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_task_setrlimit, p, resource, new_rlim);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_task_setrlimit, ret);
+    ret = lsm_call_backup(security_task_setrlimit, p, resource, new_rlim);
+    lsm_int_hook_after(LSM_TYPE_security_task_setrlimit, ret);
+
     return ret;
 }
 int lsm_replace(security_task_setscheduler)(struct task_struct *p)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_task_setscheduler, p);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_task_setscheduler, ret);
+    ret = lsm_call_backup(security_task_setscheduler, p);
+    lsm_int_hook_after(LSM_TYPE_security_task_setscheduler, ret);
+
     return ret;
 }
 int lsm_replace(security_task_getscheduler)(struct task_struct *p)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_task_getscheduler, p);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_task_getscheduler, ret);
+    ret = lsm_call_backup(security_task_getscheduler, p);
+    lsm_int_hook_after(LSM_TYPE_security_task_getscheduler, ret);
+
     return ret;
 }
 int lsm_replace(security_task_movememory)(struct task_struct *p)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_task_movememory, p);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_task_movememory, ret);
+    ret = lsm_call_backup(security_task_movememory, p);
+    lsm_int_hook_after(LSM_TYPE_security_task_movememory, ret);
+
     return ret;
 }
 int lsm_replace(security_task_kill)(struct task_struct *p, struct kernel_siginfo *info, int sig,
                                     const struct cred *cred)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_task_kill, p, info, sig, cred);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_task_kill, ret);
+    ret = lsm_call_backup(security_task_kill, p, info, sig, cred);
+    lsm_int_hook_after(LSM_TYPE_security_task_kill, ret);
+
     return ret;
 }
 int lsm_replace(security_task_prctl)(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4,
                                      unsigned long arg5)
 {
     // int defrc = -ENOSYS;
-    lsm_int_hook_before;
-    // white_cred_before(0);
-    int ret = lsm_call_backup(security_task_prctl, option, arg2, arg3, arg4, arg5);
-    // white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_task_prctl, ret);
+    ret = lsm_call_backup(security_task_prctl, option, arg2, arg3, arg4, arg5);
+    lsm_int_hook_after(LSM_TYPE_security_task_prctl, ret);
     return ret;
 }
 void lsm_replace(security_task_to_inode)(struct task_struct *p, struct inode *inode)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_task_to_inode);
     lsm_call_backup(security_task_to_inode, p, inode);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_task_to_inode);
 }
 int lsm_replace(security_create_user_ns)(const struct cred *cred)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_create_user_ns, cred);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_create_user_ns, ret);
+    ret = lsm_call_backup(security_create_user_ns, cred);
+    lsm_int_hook_after(LSM_TYPE_security_create_user_ns, ret);
+
     return ret;
 }
 int lsm_replace(security_ipc_permission)(struct kern_ipc_perm *ipcp, short flag)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_ipc_permission, ipcp, flag);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_ipc_permission, ret);
+    ret = lsm_call_backup(security_ipc_permission, ipcp, flag);
+    lsm_int_hook_after(LSM_TYPE_security_ipc_permission, ret);
+
     return ret;
 }
 void lsm_replace(security_ipc_getsecid)(struct kern_ipc_perm *ipcp, u32 *secid)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_ipc_getsecid);
     lsm_call_backup(security_ipc_getsecid, ipcp, secid);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_ipc_getsecid);
 }
 int lsm_replace(security_msg_msg_alloc)(struct msg_msg *msg)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_msg_msg_alloc, msg);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_msg_msg_alloc, ret);
+    ret = lsm_call_backup(security_msg_msg_alloc, msg);
+    lsm_int_hook_after(LSM_TYPE_security_msg_msg_alloc, ret);
+
     return ret;
 }
 void lsm_replace(security_msg_msg_free)(struct msg_msg *msg)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_msg_msg_free);
     lsm_call_backup(security_msg_msg_free, msg);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_msg_msg_free);
 }
 int lsm_replace(security_msg_queue_alloc)(struct kern_ipc_perm *msq)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_msg_queue_alloc, msq);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_msg_queue_alloc, ret);
+    ret = lsm_call_backup(security_msg_queue_alloc, msq);
+    lsm_int_hook_after(LSM_TYPE_security_msg_queue_alloc, ret);
+
     return ret;
 }
 void lsm_replace(security_msg_queue_free)(struct kern_ipc_perm *msq)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_msg_queue_free);
     lsm_call_backup(security_msg_queue_free, msq);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_msg_queue_free);
 }
 int lsm_replace(security_msg_queue_associate)(struct kern_ipc_perm *msq, int msqflg)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_msg_queue_associate, msq, msqflg);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_msg_queue_associate, ret);
+    ret = lsm_call_backup(security_msg_queue_associate, msq, msqflg);
+    lsm_int_hook_after(LSM_TYPE_security_msg_queue_associate, ret);
+
     return ret;
 }
 int lsm_replace(security_msg_queue_msgctl)(struct kern_ipc_perm *msq, int cmd)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_msg_queue_msgctl, msq, cmd);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_msg_queue_msgctl, ret);
+    ret = lsm_call_backup(security_msg_queue_msgctl, msq, cmd);
+    lsm_int_hook_after(LSM_TYPE_security_msg_queue_msgctl, ret);
+
     return ret;
 }
 int lsm_replace(security_msg_queue_msgsnd)(struct kern_ipc_perm *msq, struct msg_msg *msg, int msqflg)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_msg_queue_msgsnd, msq, msg, msqflg);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_msg_queue_msgsnd, ret);
+    ret = lsm_call_backup(security_msg_queue_msgsnd, msq, msg, msqflg);
+    lsm_int_hook_after(LSM_TYPE_security_msg_queue_msgsnd, ret);
+
     return ret;
 }
 int lsm_replace(security_msg_queue_msgrcv)(struct kern_ipc_perm *msq, struct msg_msg *msg, struct task_struct *target,
                                            long type, int mode)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_msg_queue_msgrcv, msq, msg, target, type, mode);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_msg_queue_msgrcv, ret);
+    ret = lsm_call_backup(security_msg_queue_msgrcv, msq, msg, target, type, mode);
+    lsm_int_hook_after(LSM_TYPE_security_msg_queue_msgrcv, ret);
+
     return ret;
 }
 int lsm_replace(security_shm_alloc)(struct kern_ipc_perm *shp)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_shm_alloc, shp);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_shm_alloc, ret);
+    ret = lsm_call_backup(security_shm_alloc, shp);
+    lsm_int_hook_after(LSM_TYPE_security_shm_alloc, ret);
+
     return ret;
 }
 void lsm_replace(security_shm_free)(struct kern_ipc_perm *shp)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_shm_free);
     lsm_call_backup(security_shm_free, shp);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_shm_free);
 }
 int lsm_replace(security_shm_associate)(struct kern_ipc_perm *shp, int shmflg)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_shm_associate, shp, shmflg);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_shm_associate, ret);
+    ret = lsm_call_backup(security_shm_associate, shp, shmflg);
+    lsm_int_hook_after(LSM_TYPE_security_shm_associate, ret);
+
     return ret;
 }
 int lsm_replace(security_shm_shmctl)(struct kern_ipc_perm *shp, int cmd)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_shm_shmctl, shp, cmd);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_shm_shmctl, ret);
+    ret = lsm_call_backup(security_shm_shmctl, shp, cmd);
+    lsm_int_hook_after(LSM_TYPE_security_shm_shmctl, ret);
+
     return ret;
 }
 int lsm_replace(security_shm_shmat)(struct kern_ipc_perm *shp, char __user *shmaddr, int shmflg)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_shm_shmat, shp, shmaddr, shmflg);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_shm_shmat, ret);
+    ret = lsm_call_backup(security_shm_shmat, shp, shmaddr, shmflg);
+    lsm_int_hook_after(LSM_TYPE_security_shm_shmat, ret);
+
     return ret;
 }
 int lsm_replace(security_sem_alloc)(struct kern_ipc_perm *sma)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_sem_alloc, sma);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_sem_alloc, ret);
+    ret = lsm_call_backup(security_sem_alloc, sma);
+    lsm_int_hook_after(LSM_TYPE_security_sem_alloc, ret);
+
     return ret;
 }
 void lsm_replace(security_sem_free)(struct kern_ipc_perm *sma)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_sem_free);
     lsm_call_backup(security_sem_free, sma);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_sem_free);
 }
 int lsm_replace(security_sem_associate)(struct kern_ipc_perm *sma, int semflg)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_sem_associate, sma, semflg);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_sem_associate, ret);
+    ret = lsm_call_backup(security_sem_associate, sma, semflg);
+    lsm_int_hook_after(LSM_TYPE_security_sem_associate, ret);
+
     return ret;
 }
 int lsm_replace(security_sem_semctl)(struct kern_ipc_perm *sma, int cmd)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_sem_semctl, sma, cmd);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_sem_semctl, ret);
+    ret = lsm_call_backup(security_sem_semctl, sma, cmd);
+    lsm_int_hook_after(LSM_TYPE_security_sem_semctl, ret);
+
     return ret;
 }
 int lsm_replace(security_sem_semop)(struct kern_ipc_perm *sma, struct sembuf *sops, unsigned nsops, int alter)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_sem_semop, sma, sops, nsops, alter);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_sem_semop, ret);
+    ret = lsm_call_backup(security_sem_semop, sma, sops, nsops, alter);
+    lsm_int_hook_after(LSM_TYPE_security_sem_semop, ret);
+
     return ret;
 }
 void lsm_replace(security_d_instantiate)(struct dentry *dentry, struct inode *inode)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_d_instantiate);
     lsm_call_backup(security_d_instantiate, dentry, inode);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_d_instantiate);
 }
 int lsm_replace(security_getprocattr)(struct task_struct *p, const char *lsm, char *name, char **value)
 {
     // int defrc = -EINVAL;
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_getprocattr, p, lsm, name, value);
-    white_cred_after(0);
-    lsm_int_hook_after;
+
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_getprocattr, ret);
+    ret = lsm_call_backup(security_getprocattr, p, lsm, name, value);
+    lsm_int_hook_after(LSM_TYPE_security_getprocattr, ret);
+
     return ret;
 }
 int lsm_replace(security_setprocattr)(const char *lsm, const char *name, void *value, size_t size)
 {
     // int defrc = -EINVAL;
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_setprocattr, lsm, name, value, size);
-    white_cred_after(0);
-    lsm_int_hook_after;
+
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_setprocattr, ret);
+    ret = lsm_call_backup(security_setprocattr, lsm, name, value, size);
+    lsm_int_hook_after(LSM_TYPE_security_setprocattr, ret);
+
     return ret;
 }
 int lsm_replace(security_netlink_send)(struct sock *sk, struct sk_buff *skb)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_netlink_send, sk, skb);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_netlink_send, ret);
+    ret = lsm_call_backup(security_netlink_send, sk, skb);
+    lsm_int_hook_after(LSM_TYPE_security_netlink_send, ret);
+
     return ret;
 }
 int lsm_replace(security_ismaclabel)(const char *name)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_ismaclabel, name);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_ismaclabel, ret);
+    ret = lsm_call_backup(security_ismaclabel, name);
+    lsm_int_hook_after(LSM_TYPE_security_ismaclabel, ret);
+
     return ret;
 }
 int lsm_replace(security_secid_to_secctx)(u32 secid, char **secdata, u32 *seclen)
 {
     // int defrc = -EOPNOTSUPP;
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_secid_to_secctx, secid, secdata, seclen);
-    white_cred_after(0);
-    lsm_int_hook_after;
+
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_secid_to_secctx, ret);
+    ret = lsm_call_backup(security_secid_to_secctx, secid, secdata, seclen);
+    lsm_int_hook_after(LSM_TYPE_security_secid_to_secctx, ret);
+
     return ret;
 }
 int lsm_replace(security_secctx_to_secid)(const char *secdata, u32 seclen, u32 *secid)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_secctx_to_secid, secdata, seclen, secid);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_secctx_to_secid, ret);
+    ret = lsm_call_backup(security_secctx_to_secid, secdata, seclen, secid);
+    lsm_int_hook_after(LSM_TYPE_security_secctx_to_secid, ret);
+
     return ret;
 }
 void lsm_replace(security_release_secctx)(char *secdata, u32 seclen)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_release_secctx);
     lsm_call_backup(security_release_secctx, secdata, seclen);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_release_secctx);
 }
 void lsm_replace(security_inode_invalidate_secctx)(struct inode *inode)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_inode_invalidate_secctx);
     lsm_call_backup(security_inode_invalidate_secctx, inode);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_inode_invalidate_secctx);
 }
 int lsm_replace(security_inode_notifysecctx)(struct inode *inode, void *ctx, u32 ctxlen)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_notifysecctx, inode, ctx, ctxlen);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_notifysecctx, ret);
+    ret = lsm_call_backup(security_inode_notifysecctx, inode, ctx, ctxlen);
+    lsm_int_hook_after(LSM_TYPE_security_inode_notifysecctx, ret);
+
     return ret;
 }
 int lsm_replace(security_inode_setsecctx)(struct dentry *dentry, void *ctx, u32 ctxlen)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_setsecctx, dentry, ctx, ctxlen);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_setsecctx, ret);
+    ret = lsm_call_backup(security_inode_setsecctx, dentry, ctx, ctxlen);
+    lsm_int_hook_after(LSM_TYPE_security_inode_setsecctx, ret);
+
     return ret;
 }
 int lsm_replace(security_inode_getsecctx)(struct inode *inode, void **ctx, u32 *ctxlen)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inode_getsecctx, inode, ctx, ctxlen);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inode_getsecctx, ret);
+    ret = lsm_call_backup(security_inode_getsecctx, inode, ctx, ctxlen);
+    lsm_int_hook_after(LSM_TYPE_security_inode_getsecctx, ret);
+
     return ret;
 }
 
@@ -1843,752 +1796,713 @@ int lsm_replace(security_inode_getsecctx)(struct inode *inode, void **ctx, u32 *
 int lsm_replace(security_post_notification)(const struct cred *w_cred, const struct cred *cred,
                                             struct watch_notification *n)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_post_notification, w_cred, cred, n);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_post_notification, ret);
+    ret = lsm_call_backup(security_post_notification, w_cred, cred, n);
+    lsm_int_hook_after(LSM_TYPE_security_post_notification, ret);
+
     return ret;
 }
 
 // CONFIG_KEY_NOTIFICATIONS
 int lsm_replace(security_watch_key)(struct key *key)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_watch_key, key);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_watch_key, ret);
+    ret = lsm_call_backup(security_watch_key, key);
+    lsm_int_hook_after(LSM_TYPE_security_watch_key, ret);
+
     return ret;
 }
 
 // CONFIG_SECURITY_NETWORK
 int lsm_replace(security_unix_stream_connect)(struct sock *sock, struct sock *other, struct sock *newsk)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_unix_stream_connect, sock, other, newsk);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_unix_stream_connect, ret);
+    ret = lsm_call_backup(security_unix_stream_connect, sock, other, newsk);
+    lsm_int_hook_after(LSM_TYPE_security_unix_stream_connect, ret);
+
     return ret;
 }
 int lsm_replace(security_unix_may_send)(struct socket *sock, struct socket *other)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_unix_may_send, sock, other);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_unix_may_send, ret);
+    ret = lsm_call_backup(security_unix_may_send, sock, other);
+    lsm_int_hook_after(LSM_TYPE_security_unix_may_send, ret);
+
     return ret;
 }
 int lsm_replace(security_socket_create)(int family, int type, int protocol, int kern)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_socket_create, family, type, protocol, kern);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_socket_create, ret);
+    ret = lsm_call_backup(security_socket_create, family, type, protocol, kern);
+    lsm_int_hook_after(LSM_TYPE_security_socket_create, ret);
+
     return ret;
 }
 int lsm_replace(security_socket_post_create)(struct socket *sock, int family, int type, int protocol, int kern)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_socket_post_create, sock, family, type, protocol, kern);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_socket_post_create, ret);
+    ret = lsm_call_backup(security_socket_post_create, sock, family, type, protocol, kern);
+    lsm_int_hook_after(LSM_TYPE_security_socket_post_create, ret);
+
     return ret;
 }
 int lsm_replace(security_socket_socketpair)(struct socket *socka, struct socket *sockb)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_socket_socketpair, socka, sockb);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_socket_socketpair, ret);
+    ret = lsm_call_backup(security_socket_socketpair, socka, sockb);
+    lsm_int_hook_after(LSM_TYPE_security_socket_socketpair, ret);
+
     return ret;
 }
 int lsm_replace(security_socket_bind)(struct socket *sock, struct sockaddr *address, int addrlen)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_socket_bind, sock, address, addrlen);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_socket_bind, ret);
+    ret = lsm_call_backup(security_socket_bind, sock, address, addrlen);
+    lsm_int_hook_after(LSM_TYPE_security_socket_bind, ret);
+
     return ret;
 }
 int lsm_replace(security_socket_connect)(struct socket *sock, struct sockaddr *address, int addrlen)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_socket_connect, sock, address, addrlen);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_socket_connect, ret);
+    ret = lsm_call_backup(security_socket_connect, sock, address, addrlen);
+    lsm_int_hook_after(LSM_TYPE_security_socket_connect, ret);
+
     return ret;
 }
 int lsm_replace(security_socket_listen)(struct socket *sock, int backlog)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_socket_listen, sock, backlog);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_socket_listen, ret);
+    ret = lsm_call_backup(security_socket_listen, sock, backlog);
+    lsm_int_hook_after(LSM_TYPE_security_socket_listen, ret);
+
     return ret;
 }
 int lsm_replace(security_socket_accept)(struct socket *sock, struct socket *newsock)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_socket_accept, sock, newsock);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_socket_accept, ret);
+    ret = lsm_call_backup(security_socket_accept, sock, newsock);
+    lsm_int_hook_after(LSM_TYPE_security_socket_accept, ret);
+
     return ret;
 }
 int lsm_replace(security_socket_sendmsg)(struct socket *sock, struct msghdr *msg, int size)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_socket_sendmsg, sock, msg, size);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_socket_sendmsg, ret);
+    ret = lsm_call_backup(security_socket_sendmsg, sock, msg, size);
+    lsm_int_hook_after(LSM_TYPE_security_socket_sendmsg, ret);
+
     return ret;
 }
 int lsm_replace(security_socket_recvmsg)(struct socket *sock, struct msghdr *msg, int size, int flags)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_socket_recvmsg, sock, msg, size, flags);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_socket_recvmsg, ret);
+    ret = lsm_call_backup(security_socket_recvmsg, sock, msg, size, flags);
+    lsm_int_hook_after(LSM_TYPE_security_socket_recvmsg, ret);
+
     return ret;
 }
 int lsm_replace(security_socket_getsockname)(struct socket *sock)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_socket_getsockname, sock);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_socket_getsockname, ret);
+    ret = lsm_call_backup(security_socket_getsockname, sock);
+    lsm_int_hook_after(LSM_TYPE_security_socket_getsockname, ret);
+
     return ret;
 }
 int lsm_replace(security_socket_getpeername)(struct socket *sock)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_socket_getpeername, sock);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_socket_getpeername, ret);
+    ret = lsm_call_backup(security_socket_getpeername, sock);
+    lsm_int_hook_after(LSM_TYPE_security_socket_getpeername, ret);
+
     return ret;
 }
 int lsm_replace(security_socket_getsockopt)(struct socket *sock, int level, int optname)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_socket_getsockopt, sock, level, optname);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_socket_getsockopt, ret);
+    ret = lsm_call_backup(security_socket_getsockopt, sock, level, optname);
+    lsm_int_hook_after(LSM_TYPE_security_socket_getsockopt, ret);
+
     return ret;
 }
 int lsm_replace(security_socket_setsockopt)(struct socket *sock, int level, int optname)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_socket_setsockopt, sock, level, optname);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_socket_setsockopt, ret);
+    ret = lsm_call_backup(security_socket_setsockopt, sock, level, optname);
+    lsm_int_hook_after(LSM_TYPE_security_socket_setsockopt, ret);
+
     return ret;
 }
 int lsm_replace(security_socket_shutdown)(struct socket *sock, int how)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_socket_shutdown, sock, how);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_socket_shutdown, ret);
+    ret = lsm_call_backup(security_socket_shutdown, sock, how);
+    lsm_int_hook_after(LSM_TYPE_security_socket_shutdown, ret);
+
     return ret;
 }
 int lsm_replace(security_sock_rcv_skb)(struct sock *sk, struct sk_buff *skb)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_sock_rcv_skb, sk, skb);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_sock_rcv_skb, ret);
+    ret = lsm_call_backup(security_sock_rcv_skb, sk, skb);
+    lsm_int_hook_after(LSM_TYPE_security_sock_rcv_skb, ret);
+
     return ret;
 }
 int lsm_replace(security_socket_getpeersec_stream)(struct socket *sock, sockptr_t optval, sockptr_t optlen,
                                                    unsigned int len)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_socket_getpeersec_stream, sock, optval, optlen, len);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_socket_getpeersec_stream, ret);
+    ret = lsm_call_backup(security_socket_getpeersec_stream, sock, optval, optlen, len);
+    lsm_int_hook_after(LSM_TYPE_security_socket_getpeersec_stream, ret);
+
     return ret;
 }
 int lsm_replace(security_socket_getpeersec_dgram)(struct socket *sock, struct sk_buff *skb, u32 *secid)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_socket_getpeersec_dgram, sock, skb, secid);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_socket_getpeersec_dgram, ret);
+    ret = lsm_call_backup(security_socket_getpeersec_dgram, sock, skb, secid);
+    lsm_int_hook_after(LSM_TYPE_security_socket_getpeersec_dgram, ret);
+
     return ret;
 }
 int lsm_replace(security_sk_alloc)(struct sock *sk, int family, gfp_t priority)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_sk_alloc, sk, family, priority);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_sk_alloc, ret);
+    ret = lsm_call_backup(security_sk_alloc, sk, family, priority);
+    lsm_int_hook_after(LSM_TYPE_security_sk_alloc, ret);
+
     return ret;
 }
 void lsm_replace(security_sk_free)(struct sock *sk)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_sk_free);
     lsm_call_backup(security_sk_free, sk);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_sk_free);
 }
 void lsm_replace(security_sk_clone)(const struct sock *sk, struct sock *newsk)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_sk_clone);
     lsm_call_backup(security_sk_clone, sk, newsk);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_sk_clone);
 }
 void lsm_replace(security_sk_classify_flow)(struct sock *sk, struct flowi_common *flic)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_sk_classify_flow);
     lsm_call_backup(security_sk_classify_flow, sk, flic);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_sk_classify_flow);
 }
 void lsm_replace(security_req_classify_flow)(const struct request_sock *req, struct flowi_common *flic)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_req_classify_flow);
     lsm_call_backup(security_req_classify_flow, req, flic);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_req_classify_flow);
 }
 void lsm_replace(security_sock_graft)(struct sock *sk, struct socket *parent)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_sock_graft);
     lsm_call_backup(security_sock_graft, sk, parent);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_sock_graft);
 }
 int lsm_replace(security_inet_conn_request)(const struct sock *sk, struct sk_buff *skb, struct request_sock *req)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_inet_conn_request, sk, skb, req);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_inet_conn_request, ret);
+    ret = lsm_call_backup(security_inet_conn_request, sk, skb, req);
+    lsm_int_hook_after(LSM_TYPE_security_inet_conn_request, ret);
+
     return ret;
 }
 void lsm_replace(security_inet_csk_clone)(struct sock *newsk, const struct request_sock *req)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_inet_csk_clone);
     lsm_call_backup(security_inet_csk_clone, newsk, req);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_inet_csk_clone);
 }
 void lsm_replace(security_inet_conn_established)(struct sock *sk, struct sk_buff *skb)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_inet_conn_established);
     lsm_call_backup(security_inet_conn_established, sk, skb);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_inet_conn_established);
 }
 int lsm_replace(security_secmark_relabel_packet)(u32 secid)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_secmark_relabel_packet, secid);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_secmark_relabel_packet, ret);
+    ret = lsm_call_backup(security_secmark_relabel_packet, secid);
+    lsm_int_hook_after(LSM_TYPE_security_secmark_relabel_packet, ret);
+
     return ret;
 }
 void lsm_replace(security_secmark_refcount_inc)(void)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_secmark_refcount_inc);
     lsm_call_backup(security_secmark_refcount_inc, );
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_secmark_refcount_inc);
 }
+
 void lsm_replace(security_secmark_refcount_dec)(void)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_secmark_refcount_dec);
     lsm_call_backup(security_secmark_refcount_dec);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_secmark_refcount_dec);
 }
 int lsm_replace(security_tun_dev_alloc_security)(void **security)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_tun_dev_alloc_security, security);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_tun_dev_alloc_security, ret);
+    ret = lsm_call_backup(security_tun_dev_alloc_security, security);
+    lsm_int_hook_after(LSM_TYPE_security_tun_dev_alloc_security, ret);
+
     return ret;
 }
 void lsm_replace(security_tun_dev_free_security)(void *security)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_tun_dev_free_security);
     lsm_call_backup(security_tun_dev_free_security, security);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_tun_dev_free_security);
 }
+
 int lsm_replace(security_tun_dev_create)(void)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_tun_dev_create);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_tun_dev_create, ret);
+    ret = lsm_call_backup(security_tun_dev_create);
+    lsm_int_hook_after(LSM_TYPE_security_tun_dev_create, ret);
     return ret;
 }
+
 int lsm_replace(security_tun_dev_attach_queue)(void *security)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_tun_dev_attach_queue, security);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_tun_dev_attach_queue, ret);
+    ret = lsm_call_backup(security_tun_dev_attach_queue, security);
+    lsm_int_hook_after(LSM_TYPE_security_tun_dev_attach_queue, ret);
     return ret;
 }
+
 int lsm_replace(security_tun_dev_attach)(struct sock *sk, void *security)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_tun_dev_attach, sk, security);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_tun_dev_attach, ret);
+    ret = lsm_call_backup(security_tun_dev_attach, sk, security);
+    lsm_int_hook_after(LSM_TYPE_security_tun_dev_attach, ret);
     return ret;
 }
+
 int lsm_replace(security_tun_dev_open)(void *security)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_tun_dev_open, security);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_tun_dev_open, ret);
+    ret = lsm_call_backup(security_tun_dev_open, security);
+    lsm_int_hook_after(LSM_TYPE_security_tun_dev_open, ret);
     return ret;
 }
+
 int lsm_replace(security_sctp_assoc_request)(struct sctp_association *asoc, struct sk_buff *skb)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_sctp_assoc_request, asoc, skb);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_sctp_assoc_request, ret);
+    ret = lsm_call_backup(security_sctp_assoc_request, asoc, skb);
+    lsm_int_hook_after(LSM_TYPE_security_sctp_assoc_request, ret);
     return ret;
 }
+
 int lsm_replace(security_sctp_bind_connect)(struct sock *sk, int optname, struct sockaddr *address, int addrlen)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_sctp_bind_connect, sk, optname, address, addrlen);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_sctp_bind_connect, ret);
+    ret = lsm_call_backup(security_sctp_bind_connect, sk, optname, address, addrlen);
+    lsm_int_hook_after(LSM_TYPE_security_sctp_bind_connect, ret);
     return ret;
 }
+
 void lsm_replace(security_sctp_sk_clone)(struct sctp_association *asoc, struct sock *sk, struct sock *newsk)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_sctp_sk_clone);
     lsm_call_backup(security_sctp_sk_clone, asoc, sk, newsk);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_sctp_sk_clone);
 }
+
 int lsm_replace(security_sctp_assoc_established)(struct sctp_association *asoc, struct sk_buff *skb)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_sctp_assoc_established, asoc, skb);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_sctp_assoc_established, ret);
+    ret = lsm_call_backup(security_sctp_assoc_established, asoc, skb);
+    lsm_int_hook_after(LSM_TYPE_security_sctp_assoc_established, ret);
     return ret;
 }
 
 // CONFIG_SECURITY_INFINIBAND
 int lsm_replace(security_ib_pkey_access)(void *sec, u64 subnet_prefix, u16 pkey)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_ib_pkey_access, sec, subnet_prefix, pkey);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_ib_pkey_access, ret);
+    ret = lsm_call_backup(security_ib_pkey_access, sec, subnet_prefix, pkey);
+    lsm_int_hook_after(LSM_TYPE_security_ib_pkey_access, ret);
     return ret;
 }
 int lsm_replace(security_ib_endport_manage_subnet)(void *sec, const char *dev_name, u8 port_num)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_ib_endport_manage_subnet, sec, dev_name, port_num);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_ib_endport_manage_subnet, ret);
+    ret = lsm_call_backup(security_ib_endport_manage_subnet, sec, dev_name, port_num);
+    lsm_int_hook_after(LSM_TYPE_security_ib_endport_manage_subnet, ret);
+
     return ret;
 }
 int lsm_replace(security_ib_alloc_security)(void **sec)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_ib_alloc_security, sec);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_ib_alloc_security, ret);
+    ret = lsm_call_backup(security_ib_alloc_security, sec);
+    lsm_int_hook_after(LSM_TYPE_security_ib_alloc_security, ret);
     return ret;
 }
+
 void lsm_replace(security_ib_free_security)(void *sec)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_ib_free_security);
     lsm_call_backup(security_ib_free_security, sec);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_ib_free_security);
 }
 
 // CONFIG_SECURITY_NETWORK_XFRM
 int lsm_replace(security_xfrm_policy_alloc)(struct xfrm_sec_ctx **ctxp, struct xfrm_user_sec_ctx *sec_ctx, gfp_t gfp)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_xfrm_policy_alloc, ctxp, sec_ctx, gfp);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_xfrm_policy_alloc, ret);
+    ret = lsm_call_backup(security_xfrm_policy_alloc, ctxp, sec_ctx, gfp);
+    lsm_int_hook_after(LSM_TYPE_security_xfrm_policy_alloc, ret);
     return ret;
 }
+
 int lsm_replace(security_xfrm_policy_clone)(struct xfrm_sec_ctx *old_ctx, struct xfrm_sec_ctx **new_ctxp)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_xfrm_policy_clone, old_ctx, new_ctxp);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_xfrm_policy_clone, ret);
+    ret = lsm_call_backup(security_xfrm_policy_clone, old_ctx, new_ctxp);
+    lsm_int_hook_after(LSM_TYPE_security_xfrm_policy_clone, ret);
     return ret;
 }
+
 void lsm_replace(security_xfrm_policy_free)(struct xfrm_sec_ctx *ctx)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_xfrm_policy_free);
     lsm_call_backup(security_xfrm_policy_free, ctx);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_xfrm_policy_free);
 }
+
 int lsm_replace(security_xfrm_policy_delete)(struct xfrm_sec_ctx *ctx)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_xfrm_policy_delete, ctx);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_xfrm_policy_delete, ret);
+    ret = lsm_call_backup(security_xfrm_policy_delete, ctx);
+    lsm_int_hook_after(LSM_TYPE_security_xfrm_policy_delete, ret);
     return ret;
 }
+
 int lsm_replace(security_xfrm_state_alloc)(struct xfrm_state *x, struct xfrm_user_sec_ctx *sec_ctx)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_xfrm_state_alloc, x, sec_ctx);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_xfrm_state_alloc, ret);
+    ret = lsm_call_backup(security_xfrm_state_alloc, x, sec_ctx);
+    lsm_int_hook_after(LSM_TYPE_security_xfrm_state_alloc, ret);
     return ret;
 }
+
 int lsm_replace(security_xfrm_state_alloc_acquire)(struct xfrm_state *x, struct xfrm_sec_ctx *polsec, u32 secid)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_xfrm_state_alloc_acquire, x, polsec, secid);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_xfrm_state_alloc_acquire, ret);
+    ret = lsm_call_backup(security_xfrm_state_alloc_acquire, x, polsec, secid);
+    lsm_int_hook_after(LSM_TYPE_security_xfrm_state_alloc_acquire, ret);
     return ret;
 }
+
 int lsm_replace(security_xfrm_state_delete)(struct xfrm_state *x)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_xfrm_state_delete, x);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_xfrm_state_delete, ret);
+    ret = lsm_call_backup(security_xfrm_state_delete, x);
+    lsm_int_hook_after(LSM_TYPE_security_xfrm_state_delete, ret);
     return ret;
 }
+
 void lsm_replace(security_xfrm_state_free)(struct xfrm_state *x)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_xfrm_state_free);
     lsm_call_backup(security_xfrm_state_free, x);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_xfrm_state_free);
 }
+
 int lsm_replace(security_xfrm_policy_lookup)(struct xfrm_sec_ctx *ctx, u32 fl_secid)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_xfrm_policy_lookup, ctx, fl_secid);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_xfrm_policy_lookup, ret);
+    ret = lsm_call_backup(security_xfrm_policy_lookup, ctx, fl_secid);
+    lsm_int_hook_after(LSM_TYPE_security_xfrm_policy_lookup, ret);
     return ret;
 }
+
 int lsm_replace(security_xfrm_state_pol_flow_match)(struct xfrm_state *x, struct xfrm_policy *xp,
                                                     const struct flowi_common *flic)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_xfrm_state_pol_flow_match, x, xp, flic);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_xfrm_state_pol_flow_match, ret);
+    ret = lsm_call_backup(security_xfrm_state_pol_flow_match, x, xp, flic);
+    lsm_int_hook_after(LSM_TYPE_security_xfrm_state_pol_flow_match, ret);
     return ret;
 }
+
 int lsm_replace(security_xfrm_decode_session)(struct sk_buff *skb, u32 *secid)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_xfrm_decode_session, skb, secid);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_xfrm_decode_session, ret);
+    ret = lsm_call_backup(security_xfrm_decode_session, skb, secid);
+    lsm_int_hook_after(LSM_TYPE_security_xfrm_decode_session, ret);
     return ret;
 }
+
 void lsm_replace(security_skb_classify_flow)(struct sk_buff *skb, struct flowi_common *flic)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_skb_classify_flow);
     lsm_call_backup(security_skb_classify_flow, skb, flic);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_skb_classify_flow);
 }
 
 /* key management security hooks */
 // CONFIG_KEYS
 int lsm_replace(security_key_alloc)(struct key *key, const struct cred *cred, unsigned long flags)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_key_alloc, key, cred, flags);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_key_alloc, ret);
+    ret = lsm_call_backup(security_key_alloc, key, cred, flags);
+    lsm_int_hook_after(LSM_TYPE_security_key_alloc, ret);
     return ret;
 }
+
 void lsm_replace(security_key_free)(struct key *key)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_key_free);
     lsm_call_backup(security_key_free, key);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_key_free);
 }
+
 int lsm_replace(security_key_permission)(key_ref_t key_ref, const struct cred *cred, enum key_need_perm need_perm)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_key_permission, key_ref, cred, need_perm);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_key_permission, ret);
+    ret = lsm_call_backup(security_key_permission, key_ref, cred, need_perm);
+    lsm_int_hook_after(LSM_TYPE_security_key_permission, ret);
     return ret;
 }
+
 int lsm_replace(security_key_getsecurity)(struct key *key, char **_buffer)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_key_getsecurity, key, _buffer);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_key_getsecurity, ret);
+    ret = lsm_call_backup(security_key_getsecurity, key, _buffer);
+    lsm_int_hook_after(LSM_TYPE_security_key_getsecurity, ret);
     return ret;
 }
 
 // CONFIG_AUDIT
 int lsm_replace(security_audit_rule_init)(u32 field, u32 op, char *rulestr, void **lsmrule)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_audit_rule_init, field, op, rulestr, lsmrule);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_audit_rule_init, ret);
+    ret = lsm_call_backup(security_audit_rule_init, field, op, rulestr, lsmrule);
+    lsm_int_hook_after(LSM_TYPE_security_audit_rule_init, ret);
+
     return ret;
 }
 int lsm_replace(security_audit_rule_known)(struct audit_krule *krule)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_audit_rule_known, krule);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_audit_rule_known, ret);
+    ret = lsm_call_backup(security_audit_rule_known, krule);
+    lsm_int_hook_after(LSM_TYPE_security_audit_rule_known, ret);
+
     return ret;
 }
 void lsm_replace(security_audit_rule_free)(void *lsmrule)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_audit_rule_free);
     lsm_call_backup(security_audit_rule_free, lsmrule);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_audit_rule_free);
 }
 int lsm_replace(security_audit_rule_match)(u32 secid, u32 field, u32 op, void *lsmrule)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_audit_rule_match, secid, field, op, lsmrule);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_audit_rule_match, ret);
+    ret = lsm_call_backup(security_audit_rule_match, secid, field, op, lsmrule);
+    lsm_int_hook_after(LSM_TYPE_security_audit_rule_match, ret);
+
     return ret;
 }
 
 // CONFIG_BPF_SYSCALL
 int lsm_replace(security_bpf)(int cmd, union bpf_attr *attr, unsigned int size)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_bpf, cmd, attr, size);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_bpf, ret);
+    ret = lsm_call_backup(security_bpf, cmd, attr, size);
+    lsm_int_hook_after(LSM_TYPE_security_bpf, ret);
+
     return ret;
 }
 int lsm_replace(security_bpf_map)(struct bpf_map *map, fmode_t fmode)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_bpf_map, map, fmode);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_bpf_map, ret);
+    ret = lsm_call_backup(security_bpf_map, map, fmode);
+    lsm_int_hook_after(LSM_TYPE_security_bpf_map, ret);
+
     return ret;
 }
 int lsm_replace(security_bpf_prog)(struct bpf_prog *prog)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_bpf_prog, prog);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_bpf_prog, ret);
+    ret = lsm_call_backup(security_bpf_prog, prog);
+    lsm_int_hook_after(LSM_TYPE_security_bpf_prog, ret);
+
     return ret;
 }
 int lsm_replace(security_bpf_map_alloc)(struct bpf_map *map)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_bpf_map_alloc, map);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_bpf_map_alloc, ret);
+    ret = lsm_call_backup(security_bpf_map_alloc, map);
+    lsm_int_hook_after(LSM_TYPE_security_bpf_map_alloc, ret);
+
     return ret;
 }
 int lsm_replace(security_bpf_prog_alloc)(struct bpf_prog_aux *aux)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_bpf_prog_alloc, aux);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_bpf_prog_alloc, ret);
+    ret = lsm_call_backup(security_bpf_prog_alloc, aux);
+    lsm_int_hook_after(LSM_TYPE_security_bpf_prog_alloc, ret);
+
     return ret;
 }
 void lsm_replace(security_bpf_map_free)(struct bpf_map *map)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_bpf_map_free);
     lsm_call_backup(security_bpf_map_free, map);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_bpf_map_free);
 }
 void lsm_replace(security_bpf_prog_free)(struct bpf_prog_aux *aux)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_bpf_prog_free);
     lsm_call_backup(security_bpf_prog_free, aux);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_bpf_prog_free);
 }
 // CONFIG_BPF_SYSCALL
 
 int lsm_replace(security_locked_down)(enum lockdown_reason what)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_locked_down, what);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_locked_down, ret);
+    ret = lsm_call_backup(security_locked_down, what);
+    lsm_int_hook_after(LSM_TYPE_security_locked_down, ret);
+
     return ret;
 }
 
 // CONFIG_PERF_EVENTS
 int lsm_replace(security_perf_event_open)(struct perf_event_attr *attr, int type)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_perf_event_open, attr, type);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_perf_event_open, ret);
+    ret = lsm_call_backup(security_perf_event_open, attr, type);
+    lsm_int_hook_after(LSM_TYPE_security_perf_event_open, ret);
+
     return ret;
 }
 int lsm_replace(security_perf_event_alloc)(struct perf_event *event)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_perf_event_alloc, event);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_perf_event_alloc, ret);
+    ret = lsm_call_backup(security_perf_event_alloc, event);
+    lsm_int_hook_after(LSM_TYPE_security_perf_event_alloc, ret);
+
     return ret;
 }
 void lsm_replace(security_perf_event_free)(struct perf_event *event)
 {
-    lsm_void_hook_before;
-    white_cred_before((void)0);
+    lsm_void_hook_before(LSM_TYPE_security_perf_event_free);
     lsm_call_backup(security_perf_event_free, event);
-    white_cred_after((void)0);
-    lsm_void_hook_after;
+    lsm_void_hook_after(LSM_TYPE_security_perf_event_free);
 }
 int lsm_replace(security_perf_event_read)(struct perf_event *event)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_perf_event_read, event);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_perf_event_read, ret);
+    ret = lsm_call_backup(security_perf_event_read, event);
+    lsm_int_hook_after(LSM_TYPE_security_perf_event_read, ret);
+
     return ret;
 }
 int lsm_replace(security_perf_event_write)(struct perf_event *event)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_perf_event_write, event);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_perf_event_write, ret);
+    ret = lsm_call_backup(security_perf_event_write, event);
+    lsm_int_hook_after(LSM_TYPE_security_perf_event_write, ret);
+
     return ret;
 }
 
 // CONFIG_IO_URING
 int lsm_replace(security_uring_override_creds)(const struct cred *new)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_uring_override_creds, new);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_uring_override_creds, ret);
+    ret = lsm_call_backup(security_uring_override_creds, new);
+    lsm_int_hook_after(LSM_TYPE_security_uring_override_creds, ret);
+
     return ret;
 }
 int lsm_replace(security_uring_sqpoll)(void)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_uring_sqpoll);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_uring_sqpoll, ret);
+    ret = lsm_call_backup(security_uring_sqpoll);
+    lsm_int_hook_after(LSM_TYPE_security_uring_sqpoll, ret);
     return ret;
 }
 int lsm_replace(security_uring_cmd)(struct io_uring_cmd *ioucmd)
 {
-    lsm_int_hook_before;
-    white_cred_before(0);
-    int ret = lsm_call_backup(security_uring_cmd, ioucmd);
-    white_cred_after(0);
-    lsm_int_hook_after;
+    int ret = 0;
+    lsm_int_hook_before(LSM_TYPE_security_uring_cmd, ret);
+    ret = lsm_call_backup(security_uring_cmd, ioucmd);
+    lsm_int_hook_after(LSM_TYPE_security_uring_cmd, ret);
     return ret;
 }
 

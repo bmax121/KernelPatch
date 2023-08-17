@@ -14,7 +14,11 @@ ifdef DEBUG
 	CFLAGS += -DDEBUG -DMAP_DEBUG -g
 endif
 
-INCLUDE := -I. -Iinclude -Iinit/include -Ilinux -Ilinux/include -Ilinux/arch/arm64/include
+ifdef ANDROID
+	CFLAGS += -DANDROID
+endif
+
+INCLUDE := -I. -Iinclude -Ilibc -Iinit/include -Ilinux -Ilinux/include -Ilinux/arch/arm64/include -Ilinux/tools/arch/arm64/include
 
 BASE_SRCS += base/hook.c 
 BASE_SRCS += base/map.c 
@@ -24,13 +28,16 @@ BASE_SRCS += base/setup1.S
 BASE_SRCS += base/start.c 
 BASE_SRCS += base/predata.c 
 
+BASE_SRCS += $(wildcard minc/*.c)
+
 BASE_SRCS += $(wildcard module/*.c)
-BASE_SRCS += $(wildcard accctl/*.c)
 
 BASE_SRCS += $(wildcard init/*.c)
-BASE_SRCS += $(wildcard init/ext/*.c)
+BASE_SRCS += $(wildcard init/accctl/*.c)
+BASE_SRCS += $(wildcard init/extend/*.c)
 BASE_SRCS += $(wildcard init/ksyms/*.c)
 BASE_SRCS += $(wildcard init/struct/*.c)
+BASE_SRCS += $(wildcard init/debug/*.c)
 
 
 SRCS += $(BASE_SRCS)
@@ -55,7 +62,7 @@ kpimg.elf: ${OBJS}
 
 hdr:
 	cp base/preset.h ../tools/
-	cp accctl/scdefs.h ../user/
+	cp -rf init/include/uapi ../user/
 
 .PHONY: clean
 clean:

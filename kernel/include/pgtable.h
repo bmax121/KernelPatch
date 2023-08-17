@@ -120,7 +120,8 @@ static inline void flush_tlb_kernel_range(uint64_t start, uint64_t end)
     start = tlbi_vaddr(start, 0);
     end = tlbi_vaddr(end, 0);
     dsb(ishst);
-    for (uint64_t addr = start; addr < end; addr += 1 << (page_shift - 12)) tlbi_1(vaale1is, addr);
+    for (uint64_t addr = start; addr < end; addr += 1 << (page_shift - 12))
+        tlbi_1(vaale1is, addr);
     dsb(ish);
     isb();
 }

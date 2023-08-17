@@ -10,7 +10,10 @@ int _local_strcmp(const char *s1, const char *s2);
 #define USE_KALLSYMS_LOOKUP_NAME_INSTEAD
 
 #define kvar(var) kv_##var
+#define kvar_def(var) (*kv_##var)
 #define kvlen(var) kvl_##var
+#define kvar_val(var) (*kvar(var))
+
 #define kfunc(func) kf_##func
 #define kfunc_def(func) (*kf_##func)
 
@@ -18,22 +21,28 @@ int _local_strcmp(const char *s1, const char *s2);
 #define kvar_match(var, name, addr) kv_##var = (typeof(kv_##var))kallsyms_lookup_name(#var)
 #define kfunc_match(func, name, addr) kf_##func = (typeof(kf_##func))kallsyms_lookup_name(#func)
 #else
-#define kvar_match(var, name, addr) \
-    if (!kv_##var && !_local_strcmp(#var, name)) kv_##var = (typeof(kv_##var))addr;
-#define kfunc_match(func, name, addr) \
-    if (!kf_##func && !_local_strcmp(#func, name)) kf_##func = (typeof(kf_##func))addr
-#define kvar_match_len(var, name, addr)            \
-    if (!kv_##var && !_local_strcmp(#var, name)) { \
-        kv_##var = (typeof(kv_##var))addr;         \
-        kvl_##var = 0;                             \
-    }                                              \
-    if (kv_##var && !kvl_##var && (uint64_t)kv_##var != addr) { kvl_##var = addr - (uint64_t)kv_##var; }
+#define kvar_match(var, name, addr)              \
+    if (!kv_##var && !_local_strcmp(#var, name)) \
+        kv_##var = (typeof(kv_##var))addr;
+#define kfunc_match(func, name, addr)              \
+    if (!kf_##func && !_local_strcmp(#func, name)) \
+    kf_##func = (typeof(kf_##func))addr
+#define kvar_match_len(var, name, addr)                         \
+    if (!kv_##var && !_local_strcmp(#var, name)) {              \
+        kv_##var = (typeof(kv_##var))addr;                      \
+        kvl_##var = 0;                                          \
+    }                                                           \
+    if (kv_##var && !kvl_##var && (uint64_t)kv_##var != addr) { \
+        kvl_##var = addr - (uint64_t)kv_##var;                  \
+    }
 #endif
 
 #define kfunc_call(func, ...) \
-    if (kf_##func) return kf_##func(__VA_ARGS__);
+    if (kf_##func)            \
+        return kf_##func(__VA_ARGS__);
 #define kfunc_call_void(func, ...) \
-    if (kf_##func) kf_##func(__VA_ARGS__);
+    if (kf_##func)                 \
+        kf_##func(__VA_ARGS__);
 
 // todo
 #define kfunc_not_found() logke("kfunc: %s not found\n", __func__);
@@ -42,16 +51,16 @@ int _local_strcmp(const char *s1, const char *s2);
 #define hook_replace(func) replace_##func
 #define hook_call_backup(func, ...) backup_##func(__VA_ARGS__)
 
-#define hook_kfunc(func)                                                                   \
-    if (kfunc(func)) {                                                                     \
-        hook_err_t err##func = hook(kfunc(func), replace_##func, (void **)&backup_##func); \
-        if (err##func != HOOK_NO_ERR) {                                                    \
-            logke("hook: %s, ret: %d\n", #func, err##func);                                \
-        } else {                                                                           \
-            logkv("hook: %s, ret: %d\n", #func, err##func);                                \
-        }                                                                                  \
-    } else {                                                                               \
-        logkv("hook: %s not found\n", #func);                                              \
+#define hook_kfunc_with(func, replace, backup)                                \
+    if (kfunc(func)) {                                                        \
+        hook_err_t err_##func = hook(kfunc(func), replace, (void **)&backup); \
+        if (err_##func != HOOK_NO_ERR) {                                      \
+            logke("hook: %s, ret: %d\n", #func, err_##func);                  \
+        }                                                                     \
+    } else {                                                                  \
+        logkw("hook: %s not found\n", #func);                                 \
     }
+
+#define hook_kfunc(func) hook_kfunc_with(func, replace_##func, backup_##func)
 
 #endif

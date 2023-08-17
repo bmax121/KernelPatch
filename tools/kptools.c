@@ -107,7 +107,8 @@ static int32_t relo_branch_func(const char *img, int32_t func_offset)
 
 static void target_endian_preset(setup_preset_t *preset, int32_t target_is_be)
 {
-    if (!(is_be() ^ target_is_be)) return;
+    if (!(is_be() ^ target_is_be))
+        return;
     preset->kernel_size = i64swp(preset->kernel_size);
     preset->page_shift = i64swp(preset->page_shift);
     preset->kp_offset = i64swp(preset->kp_offset);
@@ -201,21 +202,33 @@ int patch_image()
     fprintf(stdout, "[+] kptools map_start: 0x%x, max_size: 0x%x\n", map_start, map_max_size);
 
     preset->kallsyms_lookup_name_offset = get_symbol_offset(&kallsym, image_buf, "kallsyms_lookup_name");
+
     preset->printk_offset = get_symbol_offset(&kallsym, image_buf, "printk");
+
     int32_t paging_init_offset = get_symbol_offset(&kallsym, image_buf, "paging_init");
     preset->paging_init_offset = relo_branch_func(image_buf, paging_init_offset);
+
     preset->memblock_reserve_offset = get_symbol_offset(&kallsym, image_buf, "memblock_reserve");
+
     preset->memblock_alloc_try_nid_offset = get_symbol_offset(&kallsym, image_buf, "memblock_alloc_try_nid");
+
     if (preset->memblock_alloc_try_nid_offset <= 0)
         preset->memblock_alloc_try_nid_offset = get_symbol_offset(&kallsym, image_buf, "memblock_virt_alloc_try_nid");
     if (preset->memblock_alloc_try_nid_offset <= 0)
         preset->memblock_alloc_try_nid_offset = get_symbol_offset(&kallsym, image_buf, "memblock_phys_alloc_try_nid");
+
     preset->memstart_addr_offset = get_symbol_offset(&kallsym, image_buf, "memstart_addr");
-    if (preset->memstart_addr_offset < 0) preset->memstart_addr_offset = 0;
+
+    if (preset->memstart_addr_offset < 0)
+        preset->memstart_addr_offset = 0;
+
     preset->vabits_actual_offset = get_symbol_offset(&kallsym, image_buf, "vabits_actual");
-    if (preset->vabits_actual_offset < 0) preset->vabits_actual_offset = 0;
+    if (preset->vabits_actual_offset < 0)
+        preset->vabits_actual_offset = 0;
+
     preset->kimage_voffset_offset = get_symbol_offset(&kallsym, image_buf, "kimage_voffset");
-    if (preset->kimage_voffset_offset < 0) preset->kimage_voffset_offset = 0;
+    if (preset->kimage_voffset_offset < 0)
+        preset->kimage_voffset_offset = 0;
 
     if (strlen(superkey) > 0) {
         strncpy((char *)preset->superkey, superkey, SUPER_KEY_LEN);

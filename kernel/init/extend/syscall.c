@@ -8,7 +8,7 @@
 
 bool syscall_has_wrapper = false;
 uintptr_t syscall_table_addr = 0;
-uintptr_t compact_syscall_table_addr = 0;
+uintptr_t compat_syscall_table_addr = 0;
 
 void inline_syscall_with(long nr, uintptr_t *old, uintptr_t new)
 {
@@ -17,9 +17,9 @@ void inline_syscall_with(long nr, uintptr_t *old, uintptr_t new)
     hook((void *)func, (void *)new, (void **)old);
 }
 
-void inline_compact_syscall_with(long nr, uintptr_t *old, uintptr_t new)
+void inline_compat_syscall_with(long nr, uintptr_t *old, uintptr_t new)
 {
-    uintptr_t addr = compact_syscall_table_addr + nr * sizeof(uintptr_t);
+    uintptr_t addr = compat_syscall_table_addr + nr * sizeof(uintptr_t);
     uint64_t func = *(uintptr_t *)addr;
     hook((void *)func, (void *)new, (void **)old);
 }
@@ -39,9 +39,9 @@ void replace_syscall_with(long nr, uintptr_t *old, uintptr_t new)
     flush_tlb_kernel_page(addr);
 }
 
-void replace_compact_syscall_whit(long nr, uintptr_t *old, uintptr_t new)
+void replace_compat_syscall_whit(long nr, uintptr_t *old, uintptr_t new)
 {
-    uintptr_t addr = compact_syscall_table_addr + nr * sizeof(uintptr_t);
+    uintptr_t addr = compat_syscall_table_addr + nr * sizeof(uintptr_t);
     *old = *(uintptr_t *)addr;
     uintptr_t *pte = get_pte(addr);
     uintptr_t ori_prot = *pte;
@@ -67,6 +67,7 @@ long raw_syscall0(long nr)
     uintptr_t addr = syscall_table_addr + nr * sizeof(uintptr_t);
     addr = *(uintptr_t *)addr;
     if (syscall_has_wrapper) {
+        // todo:
         struct pt_regs regs;
         memset(&regs, 0, sizeof(regs));
         return ((warp_raw_syscall_f)addr)(&regs);
@@ -169,7 +170,7 @@ long raw_syscall6(long nr, long arg0, long arg1, long arg2, long arg3, long arg4
 
 int syscall_init()
 {
-    compact_syscall_table_addr = kallsyms_lookup_name("compat_sys_call_table");
+    compat_syscall_table_addr = kallsyms_lookup_name("compat_sys_call_table");
     syscall_table_addr = kallsyms_lookup_name("sys_call_table");
     syscall_has_wrapper = kallsyms_lookup_name("__arm64_sys_openat") ? true : false;
     logkd("syscall has wrapper: %d\n", syscall_has_wrapper);

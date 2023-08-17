@@ -1,27 +1,27 @@
 #ifndef __KERNEL_PRINTK__
 #define __KERNEL_PRINTK__
 
-#include <stdarg.h>
 #include <ktypes.h>
+#include <ksyms.h>
 #include <linux/kern_levels.h>
 
-extern const char linux_banner[];
-extern const char linux_proc_banner[];
-extern int oops_in_progress; /* If set, an oops, panic(), BUG() or die() is in progress */
-extern int console_printk[];
-struct va_format
-{
-    const char *fmt;
-    va_list *va;
-};
+// extern const char linux_banner[];
+// extern const char linux_proc_banner[];
+// extern int oops_in_progress; /* If set, an oops, panic(), BUG() or die() is in progress */
+// extern int console_printk[];
+// struct va_format
+// {
+//     const char *fmt;
+//     va_list *va;
+// };
 
-extern int vprintk_emit(int facility, int level, const struct dev_printk_info *dev_info, const char *fmt, va_list args);
-extern int vprintk(const char *fmt, va_list args);
-extern int printk(const char *fmt, ...);
-extern int printk_deferred(const char *fmt, ...);
+// extern int vprintk_emit(int facility, int level, const struct dev_printk_info *dev_info, const char *fmt, va_list args);
+// extern int vprintk(const char *fmt, va_list args);
+// extern int printk(const char *fmt, ...);
+// extern int printk_deferred(const char *fmt, ...);
 
-extern asmlinkage void dump_stack_lvl(const char *log_lvl) __cold;
-extern asmlinkage void dump_stack(void) __cold;
+extern void kfunc_def(dump_stack_lvl)(const char *log_lvl) __cold;
+extern void kfunc_def(dump_stack)(void) __cold;
 
 extern int __printk_ratelimit(const char *func);
 #define printk_ratelimit() __printk_ratelimit(__func__)
@@ -30,11 +30,12 @@ extern bool printk_timed_ratelimit(unsigned long *caller_jiffies, unsigned int i
 extern int printk_delay_msec;
 extern int dmesg_restrict;
 
+struct ctl_table;
+
 extern int devkmsg_sysctl_set_loglvl(struct ctl_table *table, int write, void *buf, size_t *lenp, loff_t *ppos);
 
 extern void wake_up_klogd(void);
 
-extern asmlinkage void dump_stack(void) __cold;
 extern void printk_safe_flush(void);
 extern void printk_safe_flush_on_panic(void);
 
@@ -52,5 +53,17 @@ extern int kptr_restrict;
 
 extern int hex_dump_to_buffer(const void *buf, size_t len, int rowsize, int groupsize, char *linebuf, size_t linebuflen,
                               bool ascii);
+
+static inline void dump_stack_lvl(const char *log_lvl)
+{
+    kfunc_call(dump_stack_lvl, log_lvl);
+    kfunc_not_found();
+}
+
+static inline void dump_stack(void)
+{
+    kfunc_call(dump_stack);
+    kfunc_not_found();
+}
 
 #endif

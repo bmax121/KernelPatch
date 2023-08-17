@@ -113,7 +113,8 @@ int32_t kernel_resize(kernel_info_t *kinfo, char *img, int32_t size)
 {
     arm64_hdr_t *khdr = (arm64_hdr_t *)img;
     uint64_t ksize = size;
-    if (is_be() ^ kinfo->is_be) ksize = u64swp(size);
+    if (is_be() ^ kinfo->is_be)
+        ksize = u64swp(size);
     khdr->kernel_size_le = ksize;
     return 0;
 }

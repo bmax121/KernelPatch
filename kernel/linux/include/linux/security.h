@@ -1,5 +1,5 @@
-#ifndef _SELINUX_SECURITY_H_
-#define _SELINUX_SECURITY_H_
+#ifndef __LINUX_SECURITY_H
+#define __LINUX_SECURITY_H
 
 #include <ktypes.h>
 #include <linux/capability.h>
@@ -623,4 +623,35 @@ static inline int cap_vm_enough_memory(struct mm_struct *mm, long pages)
     kfunc_not_found();
     return 0;
 }
+
+//
+
+static inline void security_task_getsecid(struct task_struct *task, u32 *secid)
+{
+    kfunc_call(security_task_getsecid, task, secid);
+    kfunc_call(security_task_getsecid_obj, task, secid);
+    kfunc_not_found();
+}
+
+// When we are uncertain whether secctx exists or is correct, we cannot rely on security_secctx_to_secid; otherwise, secid might be set to an unexpected value.
+static inline int security_secctx_to_secid(const char *secdata, u32 seclen, u32 *secid)
+{
+    kfunc_call(security_secctx_to_secid, secdata, seclen, secid);
+    kfunc_not_found();
+    return 0;
+}
+
+static inline int security_secid_to_secctx(u32 secid, char **secdata, u32 *seclen)
+{
+    kfunc_call(security_secid_to_secctx, secid, secdata, seclen);
+    kfunc_not_found();
+    return 0;
+}
+
+static inline void security_release_secctx(char *secdata, u32 seclen)
+{
+    kfunc_call_void(security_release_secctx, secdata, seclen);
+    kfunc_not_found();
+}
+
 #endif

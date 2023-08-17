@@ -167,13 +167,15 @@ static __always_inline __s64 sign_extend64(__u64 value, int index)
 
 static inline unsigned fls_long(unsigned long l)
 {
-    if (sizeof(l) == 4) return fls(l);
+    if (sizeof(l) == 4)
+        return fls(l);
     return fls64(l);
 }
 
 static inline int get_count_order(unsigned int count)
 {
-    if (count == 0) return -1;
+    if (count == 0)
+        return -1;
 
     return fls(--count);
 }
@@ -186,7 +188,8 @@ static inline int get_count_order(unsigned int count)
  */
 static inline int get_count_order_long(unsigned long l)
 {
-    if (l == 0UL) return -1;
+    if (l == 0UL)
+        return -1;
     return (int)fls_long(--l);
 }
 
@@ -201,7 +204,8 @@ static inline int get_count_order_long(unsigned long l)
 static inline unsigned long __ffs64(u64 word)
 {
 #if BITS_PER_LONG == 32
-    if (((u32)word) == 0UL) return __ffs((u32)(word >> 32)) + 32;
+    if (((u32)word) == 0UL)
+        return __ffs((u32)(word >> 32)) + 32;
 #elif BITS_PER_LONG != 64
 #error BITS_PER_LONG not 32 or 64
 #endif

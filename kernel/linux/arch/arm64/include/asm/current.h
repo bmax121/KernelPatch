@@ -43,7 +43,8 @@ static __always_inline struct thread_info *current_thread_info()
         }
     }
     struct thread_info *ti = legacy_current_thread_info_sp_el0();
-    if (thread_info_is_sp) ti = legacy_current_thread_info_sp();
+    if (thread_info_is_sp)
+        ti = legacy_current_thread_info_sp();
     return ti;
 }
 
@@ -75,7 +76,9 @@ static __always_inline struct task_ext *get_task_ext(struct task_struct *task)
 {
     uintptr_t addr = (uintptr_t)get_stack(task);
     addr += 0x10;
-    if (thread_info_in_task) { return (void *)addr; }
+    if (thread_info_in_task) {
+        return (void *)addr;
+    }
     return (void *)(addr + KP_THREAD_INFO_MAX_SIZE);
 }
 

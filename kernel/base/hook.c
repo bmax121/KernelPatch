@@ -72,7 +72,8 @@ static bool is_in_tramp(hook_t *hook, uint64_t addr)
 {
     uint64_t tramp_start = hook->origin_addr;
     uint64_t tramp_end = tramp_start + hook->tramp_insts_len * 4;
-    if (addr >= tramp_start && addr < tramp_end) return true;
+    if (addr >= tramp_start && addr < tramp_end)
+        return true;
     return false;
 }
 
@@ -80,7 +81,8 @@ static uint64_t relo_in_tramp(hook_t *hook, uint64_t addr)
 {
     uint64_t tramp_start = hook->origin_addr;
     uint64_t tramp_end = tramp_start + hook->tramp_insts_len * 4;
-    if (!(addr >= tramp_start && addr < tramp_end)) return addr;
+    if (!(addr >= tramp_start && addr < tramp_end))
+        return addr;
     uint32_t addr_inst_index = (addr - tramp_start) / 4;
     uint64_t fix_addr = hook->relo_addr;
     for (int i = 0; i < addr_inst_index; i++) {
@@ -152,7 +154,8 @@ bool relo_adr(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
         addr = inst_addr + sign64_extend((immhi << 2u) | immlo, 21u);
     } else {
         addr = (inst_addr + sign64_extend((immhi << 14u) | (immlo << 12u), 33u)) & 0xFFFFFFFFFFFFF000;
-        if (is_in_tramp(hook, addr)) return false;
+        if (is_in_tramp(hook, addr))
+            return false;
     }
     buf[0] = 0x58000040u | xd; // LDR Xd, #8
     buf[1] = 0x14000003; // B #12
@@ -170,7 +173,8 @@ bool relo_ldr(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
     uint64_t offset = sign64_extend((imm19 << 2u), 21u);
     uint64_t addr = inst_addr + offset;
 
-    if (is_in_tramp(hook, addr) && type != INST_PRFM_LIT) return false;
+    if (is_in_tramp(hook, addr) && type != INST_PRFM_LIT)
+        return false;
 
     addr = relo_in_tramp(hook, addr);
 
@@ -280,7 +284,8 @@ int32_t branch_from_to(uint32_t *tramp_buf, uint64_t src_addr, uint64_t dst_addr
 {
 #if 1
     uint32_t len = branch_relative(tramp_buf, src_addr, dst_addr);
-    if (len) return len;
+    if (len)
+        return len;
 #endif
     return branch_absolute(tramp_buf, dst_addr);
 }
@@ -293,13 +298,15 @@ uint64_t __attribute__((section(".transit0.text"))) __attribute__((__noinline__)
     uint64_t this_va;
     asm volatile("adr %0, ." : "=r"(this_va));
     uint32_t *vptr = (uint32_t *)this_va;
-    while (*--vptr != ARM64_NOP) {};
-    hook_chain_t *hook_chain = container_of((uint64_t)vptr, hook_chain_t, transit);
+    while (*--vptr != ARM64_NOP) {
+    };
+    hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, hook_chain_t, transit);
     hook_fdata0_t fdata = { 0 };
     fdata.chain = hook_chain;
     for (int32_t i = 0; i < HOOK_CHAIN_NUM; i++) {
         hook_chain0_callback func = hook_chain->befores[i];
-        if (func) func(&fdata, hook_chain->udata[i]);
+        if (func)
+            func(&fdata, hook_chain->udata[i]);
     }
     if (!fdata.early_ret) {
         transit0_func_t origin_func = (transit0_func_t)hook_chain->hook.relo_addr;
@@ -307,7 +314,8 @@ uint64_t __attribute__((section(".transit0.text"))) __attribute__((__noinline__)
     }
     for (int32_t i = HOOK_CHAIN_NUM - 1; i >= 0; i--) {
         hook_chain0_callback func = hook_chain->afters[i];
-        if (func) func(&fdata, hook_chain->udata[i]);
+        if (func)
+            func(&fdata, hook_chain->udata[i]);
     }
     return fdata.ret;
 }
@@ -321,14 +329,16 @@ uint64_t __attribute__((section(".transit1.text"))) __attribute__((__noinline__)
     uint64_t this_va;
     asm volatile("adr %0, ." : "=r"(this_va));
     uint32_t *vptr = (uint32_t *)this_va;
-    while (*--vptr != ARM64_NOP) {};
-    hook_chain_t *hook_chain = container_of((uint64_t)vptr, hook_chain_t, transit);
+    while (*--vptr != ARM64_NOP) {
+    };
+    hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, hook_chain_t, transit);
     hook_fdata1_t fdata = { 0 };
     fdata.arg0 = arg0;
     fdata.chain = hook_chain;
     for (int32_t i = 0; i < HOOK_CHAIN_NUM; i++) {
         hook_chain1_callback func = hook_chain->befores[i];
-        if (func) func(&fdata, hook_chain->udata[i]);
+        if (func)
+            func(&fdata, hook_chain->udata[i]);
     }
     if (!fdata.early_ret) {
         transit1_func_t origin_func = (transit1_func_t)hook_chain->hook.relo_addr;
@@ -336,7 +346,8 @@ uint64_t __attribute__((section(".transit1.text"))) __attribute__((__noinline__)
     }
     for (int32_t i = HOOK_CHAIN_NUM - 1; i >= 0; i--) {
         hook_chain1_callback func = hook_chain->afters[i];
-        if (func) func(&fdata, hook_chain->udata[i]);
+        if (func)
+            func(&fdata, hook_chain->udata[i]);
     }
     return fdata.ret;
 }
@@ -352,15 +363,17 @@ _transit2(uint64_t arg0, uint64_t arg1)
     uint64_t this_va;
     asm volatile("adr %0, ." : "=r"(this_va));
     uint32_t *vptr = (uint32_t *)this_va;
-    while (*--vptr != ARM64_NOP) {};
-    hook_chain_t *hook_chain = container_of((uint64_t)vptr, hook_chain_t, transit);
+    while (*--vptr != ARM64_NOP) {
+    };
+    hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, hook_chain_t, transit);
     hook_fdata2_t fdata = { 0 };
     fdata.arg0 = arg0;
     fdata.arg1 = arg1;
     fdata.chain = hook_chain;
     for (int32_t i = 0; i < HOOK_CHAIN_NUM; i++) {
         hook_chain2_callback func = hook_chain->befores[i];
-        if (func) func(&fdata, hook_chain->udata[i]);
+        if (func)
+            func(&fdata, hook_chain->udata[i]);
     }
     if (!fdata.early_ret) {
         transit2_func_t origin_func = (transit2_func_t)hook_chain->hook.relo_addr;
@@ -368,7 +381,8 @@ _transit2(uint64_t arg0, uint64_t arg1)
     }
     for (int32_t i = HOOK_CHAIN_NUM - 1; i >= 0; i--) {
         hook_chain2_callback func = hook_chain->afters[i];
-        if (func) func(&fdata, hook_chain->udata[i]);
+        if (func)
+            func(&fdata, hook_chain->udata[i]);
     }
     return fdata.ret;
 }
@@ -384,8 +398,9 @@ _transit3(uint64_t arg0, uint64_t arg1, uint64_t arg2)
     uint64_t this_va;
     asm volatile("adr %0, ." : "=r"(this_va));
     uint32_t *vptr = (uint32_t *)this_va;
-    while (*--vptr != ARM64_NOP) {};
-    hook_chain_t *hook_chain = container_of((uint64_t)vptr, hook_chain_t, transit);
+    while (*--vptr != ARM64_NOP) {
+    };
+    hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, hook_chain_t, transit);
     hook_fdata3_t fdata = { 0 };
     fdata.arg0 = arg0;
     fdata.arg1 = arg1;
@@ -393,7 +408,8 @@ _transit3(uint64_t arg0, uint64_t arg1, uint64_t arg2)
     fdata.chain = hook_chain;
     for (int32_t i = 0; i < HOOK_CHAIN_NUM; i++) {
         hook_chain3_callback func = hook_chain->befores[i];
-        if (func) func(&fdata, hook_chain->udata[i]);
+        if (func)
+            func(&fdata, hook_chain->udata[i]);
     }
     if (!fdata.early_ret) {
         transit3_func_t origin_func = (transit3_func_t)hook_chain->hook.relo_addr;
@@ -401,7 +417,8 @@ _transit3(uint64_t arg0, uint64_t arg1, uint64_t arg2)
     }
     for (int32_t i = HOOK_CHAIN_NUM - 1; i >= 0; i--) {
         hook_chain3_callback func = hook_chain->afters[i];
-        if (func) func(&fdata, hook_chain->udata[i]);
+        if (func)
+            func(&fdata, hook_chain->udata[i]);
     }
     return fdata.ret;
 }
@@ -417,8 +434,9 @@ _transit4(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3)
     uint64_t this_va;
     asm volatile("adr %0, ." : "=r"(this_va));
     uint32_t *vptr = (uint32_t *)this_va;
-    while (*--vptr != ARM64_NOP) {};
-    hook_chain_t *hook_chain = container_of((uint64_t)vptr, hook_chain_t, transit);
+    while (*--vptr != ARM64_NOP) {
+    };
+    hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, hook_chain_t, transit);
     hook_fdata4_t fdata = { 0 };
     fdata.arg0 = arg0;
     fdata.arg1 = arg1;
@@ -427,7 +445,8 @@ _transit4(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3)
     fdata.chain = hook_chain;
     for (int32_t i = 0; i < HOOK_CHAIN_NUM; i++) {
         hook_chain4_callback func = hook_chain->befores[i];
-        if (func) func(&fdata, hook_chain->udata[i]);
+        if (func)
+            func(&fdata, hook_chain->udata[i]);
     }
     if (!fdata.early_ret) {
         transit4_func_t origin_func = (transit4_func_t)hook_chain->hook.relo_addr;
@@ -435,7 +454,8 @@ _transit4(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3)
     }
     for (int32_t i = HOOK_CHAIN_NUM - 1; i >= 0; i--) {
         hook_chain4_callback func = hook_chain->afters[i];
-        if (func) func(&fdata, hook_chain->udata[i]);
+        if (func)
+            func(&fdata, hook_chain->udata[i]);
     }
     return fdata.ret;
 }
@@ -452,8 +472,9 @@ _transit8(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t a
     uint64_t this_va;
     asm volatile("adr %0, ." : "=r"(this_va));
     uint32_t *vptr = (uint32_t *)this_va;
-    while (*--vptr != ARM64_NOP) {};
-    hook_chain_t *hook_chain = container_of((uint64_t)vptr, hook_chain_t, transit);
+    while (*--vptr != ARM64_NOP) {
+    };
+    hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, hook_chain_t, transit);
     hook_fdata8_t fdata = { 0 };
     fdata.arg0 = arg0;
     fdata.arg1 = arg1;
@@ -466,7 +487,8 @@ _transit8(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t a
     fdata.chain = hook_chain;
     for (int32_t i = 0; i < HOOK_CHAIN_NUM; i++) {
         hook_chain8_callback func = hook_chain->befores[i];
-        if (func) func(&fdata, hook_chain->udata[i]);
+        if (func)
+            func(&fdata, hook_chain->udata[i]);
     }
     if (!fdata.early_ret) {
         transit8_func_t origin_func = (transit8_func_t)hook_chain->hook.relo_addr;
@@ -475,7 +497,8 @@ _transit8(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t a
     }
     for (int32_t i = HOOK_CHAIN_NUM - 1; i >= 0; i--) {
         hook_chain8_callback func = hook_chain->afters[i];
-        if (func) func(&fdata, hook_chain->udata[i]);
+        if (func)
+            func(&fdata, hook_chain->udata[i]);
     }
     return fdata.ret;
 }
@@ -493,8 +516,9 @@ _transit12(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t 
     uint64_t this_va;
     asm volatile("adr %0, ." : "=r"(this_va));
     uint32_t *vptr = (uint32_t *)this_va;
-    while (*--vptr != ARM64_NOP) {};
-    hook_chain_t *hook_chain = container_of((uint64_t)vptr, hook_chain_t, transit);
+    while (*--vptr != ARM64_NOP) {
+    };
+    hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, hook_chain_t, transit);
     hook_fdata12_t fdata = { 0 };
     fdata.arg0 = arg0;
     fdata.arg1 = arg1;
@@ -511,7 +535,8 @@ _transit12(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t 
     fdata.chain = hook_chain;
     for (int32_t i = 0; i < HOOK_CHAIN_NUM; i++) {
         hook_chain12_callback func = hook_chain->befores[i];
-        if (func) func(&fdata, hook_chain->udata[i]);
+        if (func)
+            func(&fdata, hook_chain->udata[i]);
     }
     if (!fdata.early_ret) {
         transit12_func_t origin_func = (transit12_func_t)hook_chain->hook.relo_addr;
@@ -520,7 +545,8 @@ _transit12(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t 
     }
     for (int32_t i = HOOK_CHAIN_NUM - 1; i >= 0; i--) {
         hook_chain12_callback func = hook_chain->afters[i];
-        if (func) func(&fdata, hook_chain->udata[i]);
+        if (func)
+            func(&fdata, hook_chain->udata[i]);
     }
     return fdata.ret;
 }
@@ -532,9 +558,13 @@ extern void _transit12_end();
 // todo: no task has the function in its call stack
 hook_err_t hook_prepare(hook_t *hook)
 {
-    if (!hook->func_addr || !hook->origin_addr || !hook->replace_addr || !hook->relo_addr) { return HOOK_INPUT_NULL; }
+    if (!hook->func_addr || !hook->origin_addr || !hook->replace_addr || !hook->relo_addr) {
+        return HOOK_INPUT_NULL;
+    }
     // backup origin instruction
-    for (int i = 0; i < TRAMPOLINE_NUM; i++) { hook->origin_insts[i] = *((uint32_t *)hook->origin_addr + i); }
+    for (int i = 0; i < TRAMPOLINE_NUM; i++) {
+        hook->origin_insts[i] = *((uint32_t *)hook->origin_addr + i);
+    }
     // trampline to replace_addr
     hook->tramp_insts_len = branch_from_to(hook->tramp_insts, hook->origin_addr, hook->replace_addr);
     // relocate
@@ -581,7 +611,8 @@ hook_err_t hook_prepare(hook_t *hook)
                 hook->relo_insts_len += relo_len[j];
                 break;
             }
-            if (!relo_res) return HOOK_BAD_RELO;
+            if (!relo_res)
+                return HOOK_BAD_RELO;
         }
     }
     // jump back
@@ -599,7 +630,9 @@ void hook_install(hook_t *hook)
     uint64_t ori_prot = *entry;
     *entry = (ori_prot | PTE_DBM) & ~PTE_RDONLY;
     flush_tlb_kernel_page(va);
-    for (int32_t i = 0; i < hook->tramp_insts_len; i++) { *((uint32_t *)hook->origin_addr + i) = hook->tramp_insts[i]; }
+    for (int32_t i = 0; i < hook->tramp_insts_len; i++) {
+        *((uint32_t *)hook->origin_addr + i) = hook->tramp_insts[i];
+    }
     dsb(ishst);
     flush_icache_all();
     *entry = ori_prot;
@@ -625,23 +658,25 @@ void hook_uninstall(hook_t *hook)
 hook_err_t hook(void *func, void *replace, void **backup)
 {
     hook_chain_t *chain = (hook_chain_t *)hook_mem_alloc();
-    if (!chain) return HOOK_NO_MEM;
+    if (!chain)
+        return HOOK_NO_MEM;
     hook_t *hook = &chain->hook;
     hook->func_addr = (uint64_t)func;
     hook->origin_addr = relo_func(hook->func_addr);
     hook->replace_addr = (uint64_t)replace;
     hook->relo_addr = (uint64_t)hook->relo_insts;
     *backup = (void *)hook->relo_addr;
-    logkd("Hook func: %llx, origin: %llx, replace: %llx, relocate: %llx, chain: %llx\n", hook->func_addr,
+    logkv("Hook func: %llx, origin: %llx, replace: %llx, relocate: %llx, chain: %llx\n", hook->func_addr,
           hook->origin_addr, hook->replace_addr, hook->relo_addr, chain);
     hook_err_t err = hook_prepare(hook);
-    if (err) goto out;
+    if (err)
+        goto out;
     hook_install(hook);
-    logkd("Hook func: %llx succsseed\n", hook->func_addr);
+    logkv("Hook func: %llx succsseed\n", hook->func_addr);
     return HOOK_NO_ERR;
 out:
     hook_mem_free(chain);
-    logkd("Hook func: %llx failed, err: %d\n", hook->func_addr, err);
+    logkv("Hook func: %llx failed, err: %d\n", hook->func_addr, err);
     return err;
 }
 
@@ -649,17 +684,19 @@ void unhook(void *func)
 {
     uint64_t origin = relo_func((uint64_t)func);
     hook_chain_t *chain = hook_get_chain_from_origin(origin);
-    if (!chain) return;
+    if (!chain)
+        return;
     hook_uninstall(&chain->hook);
     hook_mem_free(chain);
-    logkd("Unhook func: %llx\n", func);
+    logkv("Unhook func: %llx\n", func);
 }
 
 hook_err_t hook_chain_prepare(hook_chain_t *chain, int32_t argno)
 {
     hook_t *hook = &chain->hook;
     hook_err_t err = hook_prepare(hook);
-    if (err) return err;
+    if (err)
+        return err;
 
     uint64_t transit, transit_end;
     switch (argno) {
@@ -697,10 +734,13 @@ hook_err_t hook_chain_prepare(hook_chain_t *chain, int32_t argno)
     }
 
     int32_t transit_num = (transit_end - transit) / 4;
-    if (transit_num >= TRANSIT_INST_NUM) return HOOK_TRANSIT_NO_MEM;
+    if (transit_num >= TRANSIT_INST_NUM)
+        return HOOK_TRANSIT_NO_MEM;
 
     chain->transit[0] = ARM64_NOP;
-    for (int i = 0; i < transit_num; i++) { chain->transit[i + 1] = ((uint32_t *)transit)[i]; }
+    for (int i = 0; i < transit_num; i++) {
+        chain->transit[i + 1] = ((uint32_t *)transit)[i];
+    }
     return HOOK_NO_ERR;
 }
 
@@ -711,11 +751,11 @@ hook_err_t hook_chain_add(hook_chain_t *chain, void *before, void *after, void *
             chain->udata[i] = udata;
             chain->befores[i] = before;
             chain->afters[i] = after;
-            logkd("Wrap chain add: %llx, %llx, %llx successed\n", chain->hook.func_addr, before, after);
+            logkv("Wrap chain add: %llx, %llx, %llx successed\n", chain->hook.func_addr, before, after);
             return HOOK_NO_ERR;
         }
     }
-    logkd("Wrap chain add: %llx, %llx, %llx filed\n", chain->hook.func_addr, before, after);
+    logkv("Wrap chain add: %llx, %llx, %llx filed\n", chain->hook.func_addr, before, after);
     return HOOK_CHAIN_FULL;
 }
 
@@ -729,37 +769,43 @@ void hook_chain_remove(hook_chain_t *chain, void *before, void *after)
             break;
         }
     }
-    logkd("Wrap chain remove: %llx, %llx, %llx\n", chain->hook.func_addr, before, after);
+    logkv("Wrap chain remove: %llx, %llx, %llx\n", chain->hook.func_addr, before, after);
 }
 
 // todo: lock
 hook_err_t hook_wrap(void *func, int32_t argno, void *before, void *after, void *udata, void **backup)
 {
-    if (!func) return HOOK_INPUT_NULL;
+    if (!func)
+        return HOOK_INPUT_NULL;
     uint64_t faddr = (uint64_t)func;
     uint64_t origin = relo_func(faddr);
     hook_chain_t *chain = hook_get_chain_from_origin(origin);
-    if (chain) return hook_chain_add(chain, before, after, udata);
+    if (chain)
+        return hook_chain_add(chain, before, after, udata);
     chain = hook_mem_alloc();
-    if (!chain) return HOOK_NO_MEM;
+    if (!chain)
+        return HOOK_NO_MEM;
     hook_t *hook = &chain->hook;
     hook->func_addr = faddr;
     hook->origin_addr = origin;
     hook->replace_addr = (uint64_t)chain->transit;
     hook->relo_addr = (uint64_t)hook->relo_insts;
-    if (backup) *(uint64_t *)backup = chain->hook.relo_addr;
-    logkd("Wrap func: %llx, origin: %llx, replace: %llx, relocate: %llx, chain: %llx\n", hook->func_addr,
+    if (backup)
+        *(uint64_t *)backup = chain->hook.relo_addr;
+    logkv("Wrap func: %llx, origin: %llx, replace: %llx, relocate: %llx, chain: %llx\n", hook->func_addr,
           hook->origin_addr, hook->replace_addr, hook->relo_addr, chain);
     hook_err_t err = hook_chain_prepare(chain, argno);
-    if (err) goto err;
+    if (err)
+        goto err;
     err = hook_chain_add(chain, before, after, udata);
-    if (err) goto err;
+    if (err)
+        goto err;
     hook_chain_install(chain);
-    logkd("Wrap func: %llx succsseed\n", hook->func_addr);
+    logkv("Wrap func: %llx succsseed\n", hook->func_addr);
     return HOOK_NO_ERR;
 err:
     hook_mem_free(chain);
-    logkd("Wrap func: %llx failed, err: %d\n", hook->func_addr, err);
+    logkv("Wrap func: %llx failed, err: %d\n", hook->func_addr, err);
     return err;
 }
 
@@ -768,12 +814,14 @@ void hook_unwrap(void *func, void *before, void *after)
     uint64_t faddr = (uint64_t)func;
     uint64_t origin = relo_func(faddr);
     hook_chain_t *chain = hook_get_chain_from_origin(origin);
-    if (!chain) return;
+    if (!chain)
+        return;
     hook_chain_remove(chain, before, after);
     for (int i = 0; i < HOOK_CHAIN_NUM; i++) {
-        if (chain->befores[i] || chain->afters[i]) return;
+        if (chain->befores[i] || chain->afters[i])
+            return;
     }
     hook_chain_uninstall(chain);
     hook_mem_free(chain);
-    logkd("Unwrap func: %llx\n", func);
+    logkv("Unwrap func: %llx\n", func);
 }

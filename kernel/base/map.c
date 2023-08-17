@@ -50,7 +50,9 @@ static inline uint64_t phys_to_kimg(map_preset_t *preset, uint64_t phys)
 
 static uint64_t __noinline pa_to_va(map_preset_t *preset, uint64_t phys, uint32_t is_kimg)
 {
-    if (preset->kimage_voffset_relo && is_kimg) { return phys_to_kimg(preset, phys); }
+    if (preset->kimage_voffset_relo && is_kimg) {
+        return phys_to_kimg(preset, phys);
+    }
     return phys_to_virt(preset, phys);
 }
 
@@ -110,7 +112,9 @@ static uint64_t __noinline get_entry(uint64_t va, map_preset_t *preset, uint64_t
             return (uint64_t)0;
         }
         pxd_va = pa_to_va(preset, pxd_pa, is_kimg);
-        if (block_flag) { break; }
+        if (block_flag) {
+            break;
+        }
     }
     return pxd_entry_va;
 }
@@ -146,8 +150,10 @@ static map_preset_t *__noinline mem_proc()
     // uint64_t shift_map[] = { 12, 14, 12, 16 };   // Can't use
     // uint64_t page_shift = shift_map[tg1];
     uint64_t page_shift = 12;
-    if (tg1 == 1) page_shift = 14;
-    if (tg1 == 3) page_shift = 16;
+    if (tg1 == 1)
+        page_shift = 14;
+    if (tg1 == 3)
+        page_shift = 16;
     preset->page_shift = page_shift;
     preset->page_offset = preset->vabits_actual_relo ? -(1ul << va1_bits) : (0xffffffffffffffff << (va1_bits - 1));
     return preset;
@@ -193,8 +199,12 @@ void __noinline _paging_init()
 
     uint64_t start =
         (uint64_t)((memblock_alloc_try_nid_f)preset->memblock_alloc_try_nid_relo)(alloc_size, page_size, 0, 0, -1);
-    if (!(start & 0xF000000000000000)) { start = phys_to_virt(preset, start); }
-    for (int32_t i = 0; i < preset->start_size; i += 4) { *(uint32_t *)(start + i) = *(uint32_t *)(old_start + i); }
+    if (!(start & 0xF000000000000000)) {
+        start = phys_to_virt(preset, start);
+    }
+    for (int32_t i = 0; i < preset->start_size; i += 4) {
+        *(uint32_t *)(start + i) = *(uint32_t *)(old_start + i);
+    }
     flush_icache_all();
     uint64_t start_entry = get_entry(start, preset, 0);
     *(uint64_t *)start_entry &= 0xFFDFFFFFFFFFFFFF;

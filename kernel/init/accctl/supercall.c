@@ -1,5 +1,4 @@
-#include "scdefs.h"
-
+#include <uapi/scdefs.h>
 #include <hook.h>
 #include <common.h>
 #include <log.h>
@@ -13,7 +12,7 @@
 #include <linux/pid.h>
 #include <linux/sched.h>
 #include <linux/security.h>
-#include <accctl/accctl.h>
+#include <accctl.h>
 
 #define MAX_KEY_LEN 128
 
@@ -65,7 +64,6 @@ static long call_revoke_su(pid_t pid)
 static long call_test()
 {
     int ret = SUPERCALL_RES_SUCCEED;
-    void _log_current_whites();
     return ret;
 }
 
@@ -103,12 +101,14 @@ HOOK_SYSCALL_DEFINE6(__NR_supercall, const char __user *, ukey, long, cmd, long,
 {
     char key[MAX_KEY_LEN] = { '\0' };
     long len = strncpy_from_user(key, ukey, MAX_KEY_LEN);
-    if (superkey_auth(key, len)) { return HOOK_SYSCALL_CALL_ORIGIN(__NR_supercall, ukey, cmd, a2, a3, a4, a5); }
+    if (superkey_auth(key, len)) {
+        return HOOK_SYSCALL_CALL_ORIGIN(__NR_supercall, ukey, cmd, a2, a3, a4, a5);
+    }
     logkd("SuperCall cmd: %x, a2: %x, a3: %x, a4: %x, a5: %x\n", cmd, a2, a3, a4, a5);
     return supercall(key, cmd, a2, a3, a4, a5);
 }
 
-int supercall_init()
+int supercall_install()
 {
     // REPLACE_SYSCALL_INSTALL(__NR_supercall);
     INLINE_SYSCALL_INSTALL(__NR_supercall);

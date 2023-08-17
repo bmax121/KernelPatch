@@ -59,7 +59,8 @@ uint64_t *get_pte(uint64_t va)
         uint64_t pxd_shift = (page_shift - 3) * (4 - lv) + 3;
         uint64_t pxd_index = (va >> pxd_shift) & (pxd_ptrs - 1);
         pxd_entry_va = pxd_va + pxd_index * 8;
-        if (!pxd_entry_va) return 0;
+        if (!pxd_entry_va)
+            return 0;
         uint64_t pxd_desc = *((uint64_t *)pxd_entry_va);
         if ((pxd_desc & 0b11) == 0b11) { // table
             pxd_pa = pxd_desc & (((1ul << (48 - page_shift)) - 1) << page_shift);
@@ -74,7 +75,8 @@ uint64_t *get_pte(uint64_t va)
         pxd_va = phys_to_virt(pxd_pa);
         // todo: It works! ?
         dsb(ish);
-        if (block_lv) break;
+        if (block_lv)
+            break;
     }
 
 #if 1
@@ -105,11 +107,14 @@ static int prot_myself()
 
     for (uint64_t i = text_start; i < align_text_end; i += page_size) {
         uint64_t *pte = get_pte(i);
-        if (!pte) return -1;
+        if (!pte)
+            return -1;
         *pte |= PTE_SHARED;
         *pte = *pte & ~PTE_PXN & ~PTE_DBM & ~PTE_RDONLY;
-        if (rdonly) *pte |= PTE_RDONLY;
-        if (dbm) *pte |= PTE_DBM;
+        if (rdonly)
+            *pte |= PTE_RDONLY;
+        if (dbm)
+            *pte |= PTE_DBM;
     }
     flush_tlb_kernel_range(text_start, align_text_end);
 
@@ -121,7 +126,8 @@ static int prot_myself()
 
     for (uint64_t i = data_start; i < align_data_end; i += page_size) {
         uint64_t *pte = get_pte(i);
-        if (!pte) return -2;
+        if (!pte)
+            return -2;
         *pte = (*pte | PTE_DBM | PTE_SHARED) & ~PTE_RDONLY;
     }
     flush_tlb_kernel_range(data_start, align_data_end);
@@ -137,7 +143,8 @@ static int restore_map()
 
     for (uint64_t i = start; i < align_ceil(end, page_size); i += page_size) {
         uint64_t *pte = get_pte(i);
-        if (!pte) return -3;
+        if (!pte)
+            return -3;
         uint64_t orig = *pte;
         *pte = (orig | PTE_DBM) & ~PTE_RDONLY;
         flush_tlb_kernel_page(i);
@@ -154,11 +161,14 @@ static int restore_map()
 static int pgtable_init()
 {
     uint64_t addr = kallsyms_lookup_name("memstart_addr");
-    if (addr) memstart_addr = *(int64_t *)addr;
+    if (addr)
+        memstart_addr = *(int64_t *)addr;
     addr = kallsyms_lookup_name("kimage_voffset");
-    if (addr) kimage_voffset = *(uint64_t *)addr;
+    if (addr)
+        kimage_voffset = *(uint64_t *)addr;
     addr = kallsyms_lookup_name("vabits_actual");
-    if (addr) vabits_actual = *(uint64_t *)addr;
+    if (addr)
+        vabits_actual = *(uint64_t *)addr;
 
     uint64_t tcr_el1;
     asm("mrs %0, tcr_el1" : "=r"(tcr_el1));
@@ -166,8 +176,10 @@ static int pgtable_init()
     va_bits = 64 - t1sz;
     uint64_t tg1 = bits(tcr_el1, 31, 30);
     page_shift = 12;
-    if (tg1 == 1) page_shift = 14;
-    if (tg1 == 3) page_shift = 16;
+    if (tg1 == 1)
+        page_shift = 14;
+    if (tg1 == 3)
+        page_shift = 16;
     page_size = 1 << page_shift;
     page_offset = vabits_actual ? -(1ul << va_bits) : (0xffffffffffffffff << (va_bits - 1));
     return 0;
@@ -179,7 +191,8 @@ static int hook_init()
     for (uint32_t i = 0; i < HOOK_ALLOC_SIZE; i += (1 << page_shift)) {
         uint64_t va = (uint64_t)_kp_end + i;
         uint64_t *pte = get_pte(va);
-        if (!pte) return -4;
+        if (!pte)
+            return -4;
         *pte = (*pte & ~PTE_PXN & ~PTE_RDONLY) | PTE_DBM | PTE_SHARED;
     }
     hook_mem_add((uint64_t)_kp_end, HOOK_ALLOC_SIZE);
@@ -225,14 +238,21 @@ static int nice_zone()
 int __attribute__((section(".start.text"))) __noinline start(uint64_t kva)
 {
     int err = 0;
-    if ((err = start_init(kva))) goto out;
-    if ((err = pgtable_init())) goto out;
-    if ((err = prot_myself())) goto out;
-    if ((err = restore_map())) goto out;
-    if ((err = predata_init())) goto out;
-    if ((err = hook_init())) goto out;
+    if ((err = start_init(kva)))
+        goto out;
+    if ((err = pgtable_init()))
+        goto out;
+    if ((err = prot_myself()))
+        goto out;
+    if ((err = restore_map()))
+        goto out;
+    if ((err = predata_init()))
+        goto out;
+    if ((err = hook_init()))
+        goto out;
 
-    if ((err = nice_zone())) goto out;
+    if ((err = nice_zone()))
+        goto out;
 out:
     return 0;
 }

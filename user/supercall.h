@@ -1,7 +1,7 @@
 #ifndef _KPU_SUPERCALL_H_
 #define _KPU_SUPERCALL_H_
 
-#include "scdefs.h"
+#include "uapi/scdefs.h"
 
 #include <unistd.h>
 #include <sys/syscall.h>

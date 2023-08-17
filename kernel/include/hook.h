@@ -18,8 +18,8 @@ typedef enum
     HOOK_NOT_HOOK,
 } hook_err_t;
 
-#define offsetof(TYPE, MEMBER) ((size_t) & ((TYPE *)0)->MEMBER)
-#define container_of(ptr, type, member) ({ (type *)((char *)(ptr)-offsetof(type, member)); })
+#define local_offsetof(TYPE, MEMBER) ((size_t) & ((TYPE *)0)->MEMBER)
+#define local_container_of(ptr, type, member) ({ (type *)((char *)(ptr)-local_offsetof(type, member)); })
 
 #define HOOK_MEM_REGION_NUM 4
 #define TRAMPOLINE_NUM 4

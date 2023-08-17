@@ -131,7 +131,7 @@ typedef __kernel_gid32_t gid_t;
 typedef __kernel_uid16_t uid16_t;
 typedef __kernel_gid16_t gid16_t;
 typedef __kernel_loff_t loff_t;
-typedef __kernel_ptrdiff_t ptrdiff_t;
+// typedef __kernel_ptrdiff_t ptrdiff_t;
 typedef __kernel_clock_t clock_t;
 typedef __kernel_caddr_t caddr_t;
 typedef u64 sector_t;
@@ -210,7 +210,7 @@ typedef void (*swap_func_t)(void *a, void *b, int size);
 typedef int (*cmp_r_func_t)(const void *a, const void *b, const void *priv);
 typedef int (*cmp_func_t)(const void *a, const void *b);
 
-#define NULL ((void *)0)
+#define NULL 0
 
 #define RET_VOID ((void)0)
 

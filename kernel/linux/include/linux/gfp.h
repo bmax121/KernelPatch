@@ -31,6 +31,15 @@
 #define ___GFP_NOLOCKDEP 0
 #endif
 
+#define __GFP_IO ((__force gfp_t)___GFP_IO)
+#define __GFP_FS ((__force gfp_t)___GFP_FS)
+#define __GFP_DIRECT_RECLAIM ((__force gfp_t)___GFP_DIRECT_RECLAIM) /* Caller can reclaim */
+#define __GFP_KSWAPD_RECLAIM ((__force gfp_t)___GFP_KSWAPD_RECLAIM) /* kswapd can wake */
+#define __GFP_RECLAIM ((__force gfp_t)(___GFP_DIRECT_RECLAIM | ___GFP_KSWAPD_RECLAIM))
+#define __GFP_RETRY_MAYFAIL ((__force gfp_t)___GFP_RETRY_MAYFAIL)
+#define __GFP_NOFAIL ((__force gfp_t)___GFP_NOFAIL)
+#define __GFP_NORETRY ((__force gfp_t)___GFP_NORETRY)
+
 #define GFP_ATOMIC (__GFP_HIGH | __GFP_ATOMIC | __GFP_KSWAPD_RECLAIM)
 #define GFP_KERNEL (__GFP_RECLAIM | __GFP_IO | __GFP_FS)
 #define GFP_KERNEL_ACCOUNT (GFP_KERNEL | __GFP_ACCOUNT)

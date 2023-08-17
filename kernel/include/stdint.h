@@ -19,8 +19,13 @@ typedef int16_t s16;
 typedef uint8_t u8;
 typedef int8_t s8;
 
+typedef long ptrdiff_t;
+
 typedef unsigned long size_t;
 typedef long ssize_t;
 typedef unsigned long uintptr_t;
+
+typedef int intmax_t;
+typedef unsigned long uintmax_t;
 
 #endif

@@ -22,7 +22,8 @@
 #define __user
 #define __kernel
 #define __safe __attribute__((safe))
-#define __force __attribute__((force))
+// #define __force __attribute__((force))
+#define __force
 #define __nocast __attribute__((nocast))
 #define __iomem
 #define __chk_user_ptr(x) (void)0
@@ -42,5 +43,12 @@
 #define __percpu
 #define __rcu
 #define __pmem
+
+#define likely(x) __builtin_expect(!!(x), 1)
+#define unlikely(x) __builtin_expect(!!(x), 0)
+#define __weak __attribute__((weak))
+#define __packed __attribute__((__packed__))
+#define __used __attribute__((__unused__))
+#define __maybe_unused __attribute__((unused))
 
 #endif

@@ -60,7 +60,9 @@
     }                                                                                                       \
     static long inline __hook_sys_bridge_##nr(const struct pt_regs *regs, __MAP(x, __SC_DECL, __VA_ARGS__)) \
     {                                                                                                       \
-        if (regs) { __REGS_ASSIGN(x, __VA_ARGS__); }                                                        \
+        if (regs) {                                                                                         \
+            __REGS_ASSIGN(x, __VA_ARGS__);                                                                  \
+        }                                                                                                   \
         return __hook_sys_common_##nr(regs, __MAP(x, __SC_ARGS, __VA_ARGS__));                              \
     }                                                                                                       \
     static long inline __hook_sys_common_##nr(const struct pt_regs *regs, __MAP(x, __SC_DECL, __VA_ARGS__))
@@ -104,12 +106,12 @@
 
 extern bool syscall_has_wrapper;
 extern uintptr_t syscall_table_addr;
-extern uintptr_t compact_syscall_table_addr;
+extern uintptr_t compat_syscall_table_addr;
 
 void inline_syscall_with(long nr, uintptr_t *old, uintptr_t new);
-void inline_compact_syscall_with(long nr, uintptr_t *old, uintptr_t new);
+void inline_compat_syscall_with(long nr, uintptr_t *old, uintptr_t new);
 void replace_syscall_with(long nr, uintptr_t *old, uintptr_t newsc);
-void replace_compact_syscall_whit(long nr, uintptr_t *old, uintptr_t newsc);
+void replace_compat_syscall_whit(long nr, uintptr_t *old, uintptr_t newsc);
 
 long raw_syscall0(long nr);
 long raw_syscall1(long nr, long arg0);

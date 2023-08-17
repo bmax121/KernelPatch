@@ -1,5 +1,4 @@
 #include <ksyms.h>
-
 #include <ktypes.h>
 
 // init/init_task.c  kernel/cred.c
@@ -464,6 +463,16 @@ void _linux_mm_utils_sym_match(const char *name, unsigned long addr)
     kfunc_match(__page_mapcount, name, addr);
     kfunc_match(vm_memory_committed, name, addr);
     kfunc_match(get_cmdline, name, addr);
+}
+
+// lib/dump_stack.c
+void kfunc_def(dump_stack_lvl)(const char *log_lvl) = 0;
+void kfunc_def(dump_stack)(void) = 0;
+
+void _linux_lib_dump_stack_sym_match(const char *name, unsigned long addr)
+{
+    kfunc_match(dump_stack_lvl, name, addr);
+    kfunc_match(dump_stack, name, addr);
 }
 
 // mm/vmalloc.c

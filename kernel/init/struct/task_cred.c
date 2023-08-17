@@ -84,7 +84,9 @@ static void reinit_bllist(int num)
 {
     bl_cap = num;
     bl_list = (int16_t *)vmalloc(bl_cap * sizeof(int16_t));
-    for (int i = 0; i < bl_cap; i++) { bl_list[i] = -1; }
+    for (int i = 0; i < bl_cap; i++) {
+        bl_list[i] = -1;
+    }
 }
 
 static void uninit_bllist()
@@ -96,8 +98,10 @@ static void uninit_bllist()
 static bool is_bl(int16_t off)
 {
     for (int i = 0; i < bl_cap; i++) {
-        if (bl_list[i] < 0) break;
-        if (bl_list[i] == off) return true;
+        if (bl_list[i] < 0)
+            break;
+        if (bl_list[i] == off)
+            return true;
     }
     return false;
 }
@@ -107,7 +111,8 @@ static void add_bll(int16_t off, int16_t size)
     for (int i = 0; i < bl_cap; i++) {
         if (bl_list[i] < 0) {
             bl_list[i] = off;
-            if (size == 8) bl_list[i + 1] = off + 4;
+            if (size == 8)
+                bl_list[i + 1] = off + 4;
             break;
         }
     }
@@ -192,7 +197,8 @@ int build_cred_offset()
     cap_capset(cred1, cred, &new_cap_e, &new_cap_i, &new_cap_p);
 
     for (int16_t i = 0; i < cred_len; i += sizeof(kernel_cap_t)) {
-        if (is_bl(i)) continue;
+        if (is_bl(i))
+            continue;
         kernel_cap_t cap = *(kernel_cap_t *)((uintptr_t)cred + i);
         kernel_cap_t cap1 = *(kernel_cap_t *)((uintptr_t)cred1 + i);
         if (cap.val == effective.val && cap1.val == new_cap_e.val) {
@@ -214,7 +220,8 @@ int build_cred_offset()
 
     // cap_bset
     for (int16_t i = 0; i < cred_len; i += sizeof(kernel_cap_t)) {
-        if (is_bl(i)) continue;
+        if (is_bl(i))
+            continue;
         kernel_cap_t cap1 = *(kernel_cap_t *)((uintptr_t)cred1 + i);
         if (cap1.val == effective.val) {
             cred_offset.cap_bset_offset = i;
@@ -227,7 +234,8 @@ int build_cred_offset()
 
     // securebits
     for (int i = 0; i < cred_len; i += sizeof(unsigned)) {
-        if (is_bl(i)) continue;
+        if (is_bl(i))
+            continue;
         unsigned *sbitsp = (unsigned *)((uintptr_t)cred + i);
         unsigned oribits = *sbitsp;
         *sbitsp = 1158;
@@ -245,9 +253,11 @@ int build_cred_offset()
 
     // euid, uid, egid, gid
     for (int i = 0; i < cred_len; i += sizeof(uid_t)) {
-        if (is_bl(i)) continue;
+        if (is_bl(i))
+            continue;
         uid_t *uidp = (uid_t *)((uintptr_t)cred + i);
-        if (*uidp) continue;
+        if (*uidp)
+            continue;
         *uidp = 1158;
         if (raw_syscall0(__NR_geteuid) == 1158) {
             cred_offset.euid_offset = i;
@@ -269,7 +279,8 @@ int build_cred_offset()
 
     // fsuid
     for (int i = 0; i < cred_len; i += sizeof(uid_t)) {
-        if (is_bl(i)) continue;
+        if (is_bl(i))
+            continue;
         uid_t *uidp = (uid_t *)((uintptr_t)cred + i);
         uid_t backup = *uidp;
         *uidp = 1158;
@@ -286,7 +297,8 @@ int build_cred_offset()
     // fsgid
     struct cred *new_cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
     for (int i = 0; i < cred_len; i += sizeof(gid_t)) {
-        if (is_bl(i)) continue;
+        if (is_bl(i))
+            continue;
         gid_t *gidp = (gid_t *)((uintptr_t)new_cred + i);
         gid_t backup = *gidp;
         *gidp = 1158;
@@ -304,7 +316,8 @@ int build_cred_offset()
     raw_syscall3(__NR_setresuid, 0, 0, 1158);
     new_cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
     for (int i = 0; i < cred_len; i += sizeof(uid_t)) {
-        if (is_bl(i)) continue;
+        if (is_bl(i))
+            continue;
         uid_t *uidp = (uid_t *)((uintptr_t)new_cred + i);
         if (*uidp == 1158) {
             cred_offset.suid_offset = i;
@@ -319,7 +332,8 @@ int build_cred_offset()
     raw_syscall3(__NR_setresgid, 0, 0, 1158);
     new_cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
     for (int i = 0; i < cred_len; i += sizeof(gid_t)) {
-        if (is_bl(i)) continue;
+        if (is_bl(i))
+            continue;
         gid_t *uidp = (gid_t *)((uintptr_t)new_cred + i);
         if (*uidp == 1158) {
             cred_offset.sgid_offset = i;
@@ -339,7 +353,8 @@ int build_cred_offset()
     cap_task_prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_RAISE, 0xf, 0, 0);
     new_cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
     for (int16_t i = 0; i < cred_len; i += sizeof(kernel_cap_t)) {
-        if (is_bl(i)) continue;
+        if (is_bl(i))
+            continue;
         kernel_cap_t cap = *(kernel_cap_t *)((uintptr_t)cred + i);
         kernel_cap_t new_cap = *(kernel_cap_t *)((uintptr_t)new_cred + i);
         if (!cap.val && new_cap.val == (1 << 0xf)) {
@@ -377,9 +392,12 @@ int build_task_offset()
     ci = 0;
     for (uintptr_t i = start; i < end; i += sizeof(uintptr_t)) {
         uintptr_t val = *(uintptr_t *)i;
-        if (find == val) { cand[ci++] = i - start; }
+        if (find == val) {
+            cand[ci++] = i - start;
+        }
     }
-    if (ci != 2) return -2;
+    if (ci != 2)
+        return -2;
     //
     struct cred *flag = (struct cred *)vmalloc(kvlen(init_cred));
     memcpy(flag, kvar(init_cred), cred_len);
@@ -485,9 +503,12 @@ int build_struct()
     task = (struct task_struct *)vmalloc(kvlen(init_task));
 
     int err = 0;
-    if ((err = build_task_offset())) goto out;
-    if ((err = resolve_current())) goto out;
-    if ((err = build_cred_offset())) goto out;
+    if ((err = build_task_offset()))
+        goto out;
+    if ((err = resolve_current()))
+        goto out;
+    if ((err = build_cred_offset()))
+        goto out;
 
 out:
     vfree(task);

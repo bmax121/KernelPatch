@@ -2,305 +2,310 @@
 
 //
 /* Security operations */
-int kfunc_def(security_binder_set_context_mgr)(const struct cred *mgr);
-int kfunc_def(security_binder_transaction)(const struct cred *from, const struct cred *to);
-int kfunc_def(security_binder_transfer_binder)(const struct cred *from, const struct cred *to);
-int kfunc_def(security_binder_transfer_file)(const struct cred *from, const struct cred *to, struct file *file);
-int kfunc_def(security_ptrace_access_check)(struct task_struct *child, unsigned int mode);
-int kfunc_def(security_ptrace_traceme)(struct task_struct *parent);
+int kfunc_def(security_binder_set_context_mgr)(const struct cred *mgr) = 0;
+int kfunc_def(security_binder_transaction)(const struct cred *from, const struct cred *to) = 0;
+int kfunc_def(security_binder_transfer_binder)(const struct cred *from, const struct cred *to) = 0;
+int kfunc_def(security_binder_transfer_file)(const struct cred *from, const struct cred *to, struct file *file) = 0;
+int kfunc_def(security_ptrace_access_check)(struct task_struct *child, unsigned int mode) = 0;
+int kfunc_def(security_ptrace_traceme)(struct task_struct *parent) = 0;
 int kfunc_def(security_capget)(struct task_struct *target, kernel_cap_t *effective, kernel_cap_t *inheritable,
-                               kernel_cap_t *permitted);
+                               kernel_cap_t *permitted) = 0;
 int kfunc_def(security_capset)(struct cred *new, const struct cred *old, const kernel_cap_t *effective,
-                               const kernel_cap_t *inheritable, const kernel_cap_t *permitted);
-int kfunc_def(security_capable)(const struct cred *cred, struct user_namespace *ns, int cap, unsigned int opts);
-int kfunc_def(security_quotactl)(int cmds, int type, int id, struct super_block *sb);
-int kfunc_def(security_quota_on)(struct dentry *dentry);
-int kfunc_def(security_syslog)(int type);
-int kfunc_def(security_settime64)(const struct timespec64 *ts, const struct timezone *tz);
-int kfunc_def(security_vm_enough_memory_mm)(struct mm_struct *mm, long pages);
-int kfunc_def(security_bprm_creds_for_exec)(struct linux_binprm *bprm);
-int kfunc_def(security_bprm_creds_from_file)(struct linux_binprm *bprm, struct file *file);
-int kfunc_def(security_bprm_check)(struct linux_binprm *bprm);
-void kfunc_def(security_bprm_committing_creds)(struct linux_binprm *bprm);
-void kfunc_def(security_bprm_committed_creds)(struct linux_binprm *bprm);
-int kfunc_def(security_fs_context_dup)(struct fs_context *fc, struct fs_context *src_fc);
-int kfunc_def(security_fs_context_parse_param)(struct fs_context *fc, struct fs_parameter *param);
-int kfunc_def(security_sb_alloc)(struct super_block *sb);
-void kfunc_def(security_sb_delete)(struct super_block *sb);
-void kfunc_def(security_sb_free)(struct super_block *sb);
-void kfunc_def(security_free_mnt_opts)(void **mnt_opts);
-int kfunc_def(security_sb_eat_lsm_opts)(char *options, void **mnt_opts);
-int kfunc_def(security_sb_remount)(struct super_block *sb, void *mnt_opts);
-int kfunc_def(security_sb_kern_mount)(struct super_block *sb);
-int kfunc_def(security_sb_show_options)(struct seq_file *m, struct super_block *sb);
-int kfunc_def(security_sb_statfs)(struct dentry *dentry);
+                               const kernel_cap_t *inheritable, const kernel_cap_t *permitted) = 0;
+int kfunc_def(security_capable)(const struct cred *cred, struct user_namespace *ns, int cap, unsigned int opts) = 0;
+int kfunc_def(security_quotactl)(int cmds, int type, int id, struct super_block *sb) = 0;
+int kfunc_def(security_quota_on)(struct dentry *dentry) = 0;
+int kfunc_def(security_syslog)(int type) = 0;
+int kfunc_def(security_settime64)(const struct timespec64 *ts, const struct timezone *tz) = 0;
+int kfunc_def(security_vm_enough_memory_mm)(struct mm_struct *mm, long pages) = 0;
+int kfunc_def(security_bprm_creds_for_exec)(struct linux_binprm *bprm) = 0;
+int kfunc_def(security_bprm_creds_from_file)(struct linux_binprm *bprm, struct file *file) = 0;
+int kfunc_def(security_bprm_check)(struct linux_binprm *bprm) = 0;
+void kfunc_def(security_bprm_committing_creds)(struct linux_binprm *bprm) = 0;
+void kfunc_def(security_bprm_committed_creds)(struct linux_binprm *bprm) = 0;
+int kfunc_def(security_fs_context_dup)(struct fs_context *fc, struct fs_context *src_fc) = 0;
+int kfunc_def(security_fs_context_parse_param)(struct fs_context *fc, struct fs_parameter *param) = 0;
+int kfunc_def(security_sb_alloc)(struct super_block *sb) = 0;
+void kfunc_def(security_sb_delete)(struct super_block *sb) = 0;
+void kfunc_def(security_sb_free)(struct super_block *sb) = 0;
+void kfunc_def(security_free_mnt_opts)(void **mnt_opts) = 0;
+int kfunc_def(security_sb_eat_lsm_opts)(char *options, void **mnt_opts) = 0;
+int kfunc_def(security_sb_remount)(struct super_block *sb, void *mnt_opts) = 0;
+int kfunc_def(security_sb_kern_mount)(struct super_block *sb) = 0;
+int kfunc_def(security_sb_show_options)(struct seq_file *m, struct super_block *sb) = 0;
+int kfunc_def(security_sb_statfs)(struct dentry *dentry) = 0;
 int kfunc_def(security_sb_mount)(const char *dev_name, const struct path *path, const char *type, unsigned long flags,
-                                 void *data);
-int kfunc_def(security_sb_umount)(struct vfsmount *mnt, int flags);
-int kfunc_def(security_sb_pivotroot)(const struct path *old_path, const struct path *new_path);
+                                 void *data) = 0;
+int kfunc_def(security_sb_umount)(struct vfsmount *mnt, int flags) = 0;
+int kfunc_def(security_sb_pivotroot)(const struct path *old_path, const struct path *new_path) = 0;
 int kfunc_def(security_sb_set_mnt_opts)(struct super_block *sb, void *mnt_opts, unsigned long kern_flags,
-                                        unsigned long *set_kern_flags);
+                                        unsigned long *set_kern_flags) = 0;
 int kfunc_def(security_sb_clone_mnt_opts)(const struct super_block *oldsb, struct super_block *newsb,
-                                          unsigned long kern_flags, unsigned long *set_kern_flags);
-int kfunc_def(security_add_mnt_opt)(const char *option, const char *val, int len, void **mnt_opts);
-int kfunc_def(security_move_mount)(const struct path *from_path, const struct path *to_path);
+                                          unsigned long kern_flags, unsigned long *set_kern_flags) = 0;
+int kfunc_def(security_add_mnt_opt)(const char *option, const char *val, int len, void **mnt_opts) = 0;
+int kfunc_def(security_move_mount)(const struct path *from_path, const struct path *to_path) = 0;
 int kfunc_def(security_dentry_init_security)(struct dentry *dentry, int mode, const struct qstr *name, void **ctx,
-                                             u32 *ctxlen);
+                                             u32 *ctxlen) = 0;
 int kfunc_def(security_dentry_create_files_as)(struct dentry *dentry, int mode, struct qstr *name,
-                                               const struct cred *old, struct cred *new);
+                                               const struct cred *old, struct cred *new) = 0;
 
 //CONFIG_SECURITY_PATH
-int kfunc_def(security_path_unlink)(const struct path *dir, struct dentry *dentry);
-int kfunc_def(security_path_mkdir)(const struct path *dir, struct dentry *dentry, umode_t mode);
-int kfunc_def(security_path_rmdir)(const struct path *dir, struct dentry *dentry);
-int kfunc_def(security_path_mknod)(const struct path *dir, struct dentry *dentry, umode_t mode, unsigned int dev);
-int kfunc_def(security_path_truncate)(const struct path *path);
-int kfunc_def(security_path_symlink)(const struct path *dir, struct dentry *dentry, const char *old_name);
-int kfunc_def(security_path_link)(struct dentry *old_dentry, const struct path *new_dir, struct dentry *new_dentry);
+int kfunc_def(security_path_unlink)(const struct path *dir, struct dentry *dentry) = 0;
+int kfunc_def(security_path_mkdir)(const struct path *dir, struct dentry *dentry, umode_t mode) = 0;
+int kfunc_def(security_path_rmdir)(const struct path *dir, struct dentry *dentry) = 0;
+int kfunc_def(security_path_mknod)(const struct path *dir, struct dentry *dentry, umode_t mode, unsigned int dev) = 0;
+int kfunc_def(security_path_truncate)(const struct path *path) = 0;
+int kfunc_def(security_path_symlink)(const struct path *dir, struct dentry *dentry, const char *old_name) = 0;
+int kfunc_def(security_path_link)(struct dentry *old_dentry, const struct path *new_dir, struct dentry *new_dentry) = 0;
 int kfunc_def(security_path_rename)(const struct path *old_dir, struct dentry *old_dentry, const struct path *new_dir,
-                                    struct dentry *new_dentry, unsigned int flags);
-int kfunc_def(security_path_chmod)(const struct path *path, umode_t mode);
-int kfunc_def(security_path_chown)(const struct path *path, kuid_t uid, kgid_t gid);
-int kfunc_def(security_path_chroot)(const struct path *path);
+                                    struct dentry *new_dentry, unsigned int flags) = 0;
+int kfunc_def(security_path_chmod)(const struct path *path, umode_t mode) = 0;
+int kfunc_def(security_path_chown)(const struct path *path, kuid_t uid, kgid_t gid) = 0;
+int kfunc_def(security_path_chroot)(const struct path *path) = 0;
 /* CONFIG_SECURITY_PATH */
 
 /* Needed for inode based security check */
-int kfunc_def(security_path_notify)(const struct path *path, u64 mask, unsigned int obj_type);
-int kfunc_def(security_inode_alloc)(struct inode *inode);
-void kfunc_def(security_inode_free)(struct inode *inode);
+int kfunc_def(security_path_notify)(const struct path *path, u64 mask, unsigned int obj_type) = 0;
+int kfunc_def(security_inode_alloc)(struct inode *inode) = 0;
+void kfunc_def(security_inode_free)(struct inode *inode) = 0;
 int kfunc_def(security_inode_init_security)(struct inode *inode, struct inode *dir, const struct qstr *qstr,
-                                            initxattrs initxattrs, void *fs_data);
+                                            initxattrs initxattrs, void *fs_data) = 0;
 int kfunc_def(security_old_inode_init_security)(struct inode *inode, struct inode *dir, const struct qstr *qstr,
-                                                const char **name, void **value, size_t *len);
-int kfunc_def(security_inode_create)(struct inode *dir, struct dentry *dentry, umode_t mode);
-int kfunc_def(security_inode_link)(struct dentry *old_dentry, struct inode *dir, struct dentry *new_dentry);
-int kfunc_def(security_inode_unlink)(struct inode *dir, struct dentry *dentry);
-int kfunc_def(security_inode_symlink)(struct inode *dir, struct dentry *dentry, const char *old_name);
-int kfunc_def(security_inode_mkdir)(struct inode *dir, struct dentry *dentry, umode_t mode);
-int kfunc_def(security_inode_rmdir)(struct inode *dir, struct dentry *dentry);
-int kfunc_def(security_inode_mknod)(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev);
+                                                const char **name, void **value, size_t *len) = 0;
+int kfunc_def(security_inode_create)(struct inode *dir, struct dentry *dentry, umode_t mode) = 0;
+int kfunc_def(security_inode_link)(struct dentry *old_dentry, struct inode *dir, struct dentry *new_dentry) = 0;
+int kfunc_def(security_inode_unlink)(struct inode *dir, struct dentry *dentry) = 0;
+int kfunc_def(security_inode_symlink)(struct inode *dir, struct dentry *dentry, const char *old_name) = 0;
+int kfunc_def(security_inode_mkdir)(struct inode *dir, struct dentry *dentry, umode_t mode) = 0;
+int kfunc_def(security_inode_rmdir)(struct inode *dir, struct dentry *dentry) = 0;
+int kfunc_def(security_inode_mknod)(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev) = 0;
 int kfunc_def(security_inode_rename)(struct inode *old_dir, struct dentry *old_dentry, struct inode *new_dir,
-                                     struct dentry *new_dentry, unsigned int flags);
-int kfunc_def(security_inode_readlink)(struct dentry *dentry);
-int kfunc_def(security_inode_follow_link)(struct dentry *dentry, struct inode *inode, bool rcu);
-int kfunc_def(security_inode_permission)(struct inode *inode, int mask);
-int kfunc_def(security_inode_setattr)(struct dentry *dentry, struct iattr *attr);
-int kfunc_def(security_inode_getattr)(const struct path *path);
+                                     struct dentry *new_dentry, unsigned int flags) = 0;
+int kfunc_def(security_inode_readlink)(struct dentry *dentry) = 0;
+int kfunc_def(security_inode_follow_link)(struct dentry *dentry, struct inode *inode, bool rcu) = 0;
+int kfunc_def(security_inode_permission)(struct inode *inode, int mask) = 0;
+int kfunc_def(security_inode_setattr)(struct dentry *dentry, struct iattr *attr) = 0;
+int kfunc_def(security_inode_getattr)(const struct path *path) = 0;
 int kfunc_def(security_inode_setxattr)(struct dentry *dentry, const char *name, const void *value, size_t size,
-                                       int flags);
+                                       int flags) = 0;
 void kfunc_def(security_inode_post_setxattr)(struct dentry *dentry, const char *name, const void *value, size_t size,
-                                             int flags);
-int kfunc_def(security_inode_getxattr)(struct dentry *dentry, const char *name);
-int kfunc_def(security_inode_listxattr)(struct dentry *dentry);
-int kfunc_def(security_inode_removexattr)(struct dentry *dentry, const char *name);
+                                             int flags) = 0;
+int kfunc_def(security_inode_getxattr)(struct dentry *dentry, const char *name) = 0;
+int kfunc_def(security_inode_listxattr)(struct dentry *dentry) = 0;
+int kfunc_def(security_inode_removexattr)(struct dentry *dentry, const char *name) = 0;
 int kfunc_def(security_inode_set_acl)(struct mnt_idmap *idmap, struct dentry *dentry, const char *acl_name,
-                                      struct posix_acl *kacl);
-int kfunc_def(security_inode_get_acl)(struct mnt_idmap *idmap, struct dentry *dentry, const char *acl_name);
-int kfunc_def(security_inode_remove_acl)(struct mnt_idmap *idmap, struct dentry *dentry, const char *acl_name);
-int kfunc_def(security_inode_need_killpriv)(struct dentry *dentry);
-int kfunc_def(security_inode_killpriv)(struct dentry *dentry);
-int kfunc_def(security_inode_getsecurity)(struct inode *inode, const char *name, void **buffer, bool alloc);
+                                      struct posix_acl *kacl) = 0;
+int kfunc_def(security_inode_get_acl)(struct mnt_idmap *idmap, struct dentry *dentry, const char *acl_name) = 0;
+int kfunc_def(security_inode_remove_acl)(struct mnt_idmap *idmap, struct dentry *dentry, const char *acl_name) = 0;
+int kfunc_def(security_inode_need_killpriv)(struct dentry *dentry) = 0;
+int kfunc_def(security_inode_killpriv)(struct dentry *dentry) = 0;
+int kfunc_def(security_inode_getsecurity)(struct inode *inode, const char *name, void **buffer, bool alloc) = 0;
 int kfunc_def(security_inode_setsecurity)(struct inode *inode, const char *name, const void *value, size_t size,
-                                          int flags);
-int kfunc_def(security_inode_listsecurity)(struct inode *inode, char *buffer, size_t buffer_size);
-void kfunc_def(security_inode_getsecid)(struct inode *inode, u32 *secid);
-int kfunc_def(security_inode_copy_up)(struct dentry *src, struct cred **new);
-int kfunc_def(security_inode_copy_up_xattr)(const char *name);
-int kfunc_def(security_kernfs_init_security)(struct kernfs_node *kn_dir, struct kernfs_node *kn);
-int kfunc_def(security_file_permission)(struct file *file, int mask);
-int kfunc_def(security_file_alloc)(struct file *file);
-void kfunc_def(security_file_free)(struct file *file);
-int kfunc_def(security_file_ioctl)(struct file *file, unsigned int cmd, unsigned long arg);
-int kfunc_def(security_mmap_addr)(unsigned long addr);
-int kfunc_def(security_mmap_file)(struct file *file, unsigned long prot, unsigned long flags);
-int kfunc_def(security_file_mprotect)(struct vm_area_struct *vma, unsigned long reqprot, unsigned long prot);
-int kfunc_def(security_file_lock)(struct file *file, unsigned int cmd);
-int kfunc_def(security_file_fcntl)(struct file *file, unsigned int cmd, unsigned long arg);
-void kfunc_def(security_file_set_fowner)(struct file *file);
-int kfunc_def(security_file_send_sigiotask)(struct task_struct *tsk, struct fown_struct *fown, int sig);
-int kfunc_def(security_file_receive)(struct file *file);
-// int kfunc_def(security_file_open)(struct file *file);
-int kfunc_def(security_file_open)(struct file *file, const struct cred *cred);
-int kfunc_def(security_file_truncate)(struct file *file);
-int kfunc_def(security_task_alloc)(struct task_struct *task, unsigned long clone_flags);
-void kfunc_def(security_task_free)(struct task_struct *task);
-int kfunc_def(security_cred_alloc_blank)(struct cred *cred, gfp_t gfp);
-void kfunc_def(security_cred_free)(struct cred *cred);
-int kfunc_def(security_prepare_creds)(struct cred *new, const struct cred *old, gfp_t gfp);
-void kfunc_def(security_transfer_creds)(struct cred *new, const struct cred *old);
-void kfunc_def(security_cred_getsecid)(const struct cred *c, u32 *secid);
-int kfunc_def(security_kernel_act_as)(struct cred *new, u32 secid);
-int kfunc_def(security_kernel_create_files_as)(struct cred *new, struct inode *inode);
-int kfunc_def(security_kernel_module_request)(char *kmod_name);
-int kfunc_def(security_kernel_load_data)(enum kernel_load_data_id id, bool contents);
-int kfunc_def(security_kernel_post_load_data)(char *buf, loff_t size, enum kernel_load_data_id id, char *description);
-int kfunc_def(security_kernel_read_file)(struct file *file, enum kernel_read_file_id id, bool contents);
-int kfunc_def(security_kernel_post_read_file)(struct file *file, char *buf, loff_t size, enum kernel_read_file_id id);
-int kfunc_def(security_task_fix_setuid)(struct cred *new, const struct cred *old, int flags);
-int kfunc_def(security_task_fix_setgid)(struct cred *new, const struct cred *old, int flags);
-int kfunc_def(security_task_fix_setgroups)(struct cred *new, const struct cred *old);
-int kfunc_def(security_task_setpgid)(struct task_struct *p, pid_t pgid);
-int kfunc_def(security_task_getpgid)(struct task_struct *p);
-int kfunc_def(security_task_getsid)(struct task_struct *p);
-void kfunc_def(security_current_getsecid_subj)(u32 *secid);
+                                          int flags) = 0;
+int kfunc_def(security_inode_listsecurity)(struct inode *inode, char *buffer, size_t buffer_size) = 0;
+void kfunc_def(security_inode_getsecid)(struct inode *inode, u32 *secid) = 0;
+int kfunc_def(security_inode_copy_up)(struct dentry *src, struct cred **new) = 0;
+int kfunc_def(security_inode_copy_up_xattr)(const char *name) = 0;
+int kfunc_def(security_kernfs_init_security)(struct kernfs_node *kn_dir, struct kernfs_node *kn) = 0;
+int kfunc_def(security_file_permission)(struct file *file, int mask) = 0;
+int kfunc_def(security_file_alloc)(struct file *file) = 0;
+void kfunc_def(security_file_free)(struct file *file) = 0;
+int kfunc_def(security_file_ioctl)(struct file *file, unsigned int cmd, unsigned long arg) = 0;
+int kfunc_def(security_mmap_addr)(unsigned long addr) = 0;
+int kfunc_def(security_mmap_file)(struct file *file, unsigned long prot, unsigned long flags) = 0;
+int kfunc_def(security_file_mprotect)(struct vm_area_struct *vma, unsigned long reqprot, unsigned long prot) = 0;
+int kfunc_def(security_file_lock)(struct file *file, unsigned int cmd) = 0;
+int kfunc_def(security_file_fcntl)(struct file *file, unsigned int cmd, unsigned long arg) = 0;
+void kfunc_def(security_file_set_fowner)(struct file *file) = 0;
+int kfunc_def(security_file_send_sigiotask)(struct task_struct *tsk, struct fown_struct *fown, int sig) = 0;
+int kfunc_def(security_file_receive)(struct file *file) = 0;
+// int kfunc_def(security_file_open)(struct file *file) = 0;
+int kfunc_def(security_file_open)(struct file *file, const struct cred *cred) = 0;
+int kfunc_def(security_file_truncate)(struct file *file) = 0;
+int kfunc_def(security_task_alloc)(struct task_struct *task, unsigned long clone_flags) = 0;
+void kfunc_def(security_task_free)(struct task_struct *task) = 0;
+int kfunc_def(security_cred_alloc_blank)(struct cred *cred, gfp_t gfp) = 0;
+void kfunc_def(security_cred_free)(struct cred *cred) = 0;
+int kfunc_def(security_prepare_creds)(struct cred *new, const struct cred *old, gfp_t gfp) = 0;
+void kfunc_def(security_transfer_creds)(struct cred *new, const struct cred *old) = 0;
+void kfunc_def(security_cred_getsecid)(const struct cred *c, u32 *secid) = 0;
+int kfunc_def(security_kernel_act_as)(struct cred *new, u32 secid) = 0;
+int kfunc_def(security_kernel_create_files_as)(struct cred *new, struct inode *inode) = 0;
+int kfunc_def(security_kernel_module_request)(char *kmod_name) = 0;
+int kfunc_def(security_kernel_load_data)(enum kernel_load_data_id id, bool contents) = 0;
+int kfunc_def(security_kernel_post_load_data)(char *buf, loff_t size, enum kernel_load_data_id id,
+                                              char *description) = 0;
+int kfunc_def(security_kernel_read_file)(struct file *file, enum kernel_read_file_id id, bool contents) = 0;
+int kfunc_def(security_kernel_post_read_file)(struct file *file, char *buf, loff_t size,
+                                              enum kernel_read_file_id id) = 0;
+int kfunc_def(security_task_fix_setuid)(struct cred *new, const struct cred *old, int flags) = 0;
+int kfunc_def(security_task_fix_setgid)(struct cred *new, const struct cred *old, int flags) = 0;
+int kfunc_def(security_task_fix_setgroups)(struct cred *new, const struct cred *old) = 0;
+int kfunc_def(security_task_setpgid)(struct task_struct *p, pid_t pgid) = 0;
+int kfunc_def(security_task_getpgid)(struct task_struct *p) = 0;
+int kfunc_def(security_task_getsid)(struct task_struct *p) = 0;
+
+void kfunc_def(security_current_getsecid_subj)(u32 *secid); // 5.10
 void kfunc_def(security_task_getsecid_obj)(struct task_struct *p, u32 *secid); // ?-6.3
-void kfunc_def(security_task_getsecid)(struct task_struct *p, u32 *secid); // 4.4-?
-int kfunc_def(security_task_setnice)(struct task_struct *p, int nice);
-int kfunc_def(security_task_setioprio)(struct task_struct *p, int ioprio);
-int kfunc_def(security_task_getioprio)(struct task_struct *p);
-int kfunc_def(security_task_prlimit)(const struct cred *cred, const struct cred *tcred, unsigned int flags);
-int kfunc_def(security_task_setrlimit)(struct task_struct *p, unsigned int resource, struct rlimit *new_rlim);
-int kfunc_def(security_task_setscheduler)(struct task_struct *p);
-int kfunc_def(security_task_getscheduler)(struct task_struct *p);
-int kfunc_def(security_task_movememory)(struct task_struct *p);
-int kfunc_def(security_task_kill)(struct task_struct *p, struct kernel_siginfo *info, int sig, const struct cred *cred);
+void kfunc_def(security_task_getsecid)(struct task_struct *p, u32 *secid); // 4.4-5.10
+
+int kfunc_def(security_task_setnice)(struct task_struct *p, int nice) = 0;
+int kfunc_def(security_task_setioprio)(struct task_struct *p, int ioprio) = 0;
+int kfunc_def(security_task_getioprio)(struct task_struct *p) = 0;
+int kfunc_def(security_task_prlimit)(const struct cred *cred, const struct cred *tcred, unsigned int flags) = 0;
+int kfunc_def(security_task_setrlimit)(struct task_struct *p, unsigned int resource, struct rlimit *new_rlim) = 0;
+int kfunc_def(security_task_setscheduler)(struct task_struct *p) = 0;
+int kfunc_def(security_task_getscheduler)(struct task_struct *p) = 0;
+int kfunc_def(security_task_movememory)(struct task_struct *p) = 0;
+int kfunc_def(security_task_kill)(struct task_struct *p, struct kernel_siginfo *info, int sig,
+                                  const struct cred *cred) = 0;
 int kfunc_def(security_task_prctl)(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4,
-                                   unsigned long arg5);
-void kfunc_def(security_task_to_inode)(struct task_struct *p, struct inode *inode);
-int kfunc_def(security_create_user_ns)(const struct cred *cred);
-int kfunc_def(security_ipc_permission)(struct kern_ipc_perm *ipcp, short flag);
-void kfunc_def(security_ipc_getsecid)(struct kern_ipc_perm *ipcp, u32 *secid);
-int kfunc_def(security_msg_msg_alloc)(struct msg_msg *msg);
-void kfunc_def(security_msg_msg_free)(struct msg_msg *msg);
-int kfunc_def(security_msg_queue_alloc)(struct kern_ipc_perm *msq);
-void kfunc_def(security_msg_queue_free)(struct kern_ipc_perm *msq);
-int kfunc_def(security_msg_queue_associate)(struct kern_ipc_perm *msq, int msqflg);
-int kfunc_def(security_msg_queue_msgctl)(struct kern_ipc_perm *msq, int cmd);
-int kfunc_def(security_msg_queue_msgsnd)(struct kern_ipc_perm *msq, struct msg_msg *msg, int msqflg);
+                                   unsigned long arg5) = 0;
+void kfunc_def(security_task_to_inode)(struct task_struct *p, struct inode *inode) = 0;
+int kfunc_def(security_create_user_ns)(const struct cred *cred) = 0;
+int kfunc_def(security_ipc_permission)(struct kern_ipc_perm *ipcp, short flag) = 0;
+void kfunc_def(security_ipc_getsecid)(struct kern_ipc_perm *ipcp, u32 *secid) = 0;
+int kfunc_def(security_msg_msg_alloc)(struct msg_msg *msg) = 0;
+void kfunc_def(security_msg_msg_free)(struct msg_msg *msg) = 0;
+int kfunc_def(security_msg_queue_alloc)(struct kern_ipc_perm *msq) = 0;
+void kfunc_def(security_msg_queue_free)(struct kern_ipc_perm *msq) = 0;
+int kfunc_def(security_msg_queue_associate)(struct kern_ipc_perm *msq, int msqflg) = 0;
+int kfunc_def(security_msg_queue_msgctl)(struct kern_ipc_perm *msq, int cmd) = 0;
+int kfunc_def(security_msg_queue_msgsnd)(struct kern_ipc_perm *msq, struct msg_msg *msg, int msqflg) = 0;
 int kfunc_def(security_msg_queue_msgrcv)(struct kern_ipc_perm *msq, struct msg_msg *msg, struct task_struct *target,
-                                         long type, int mode);
-int kfunc_def(security_shm_alloc)(struct kern_ipc_perm *shp);
-void kfunc_def(security_shm_free)(struct kern_ipc_perm *shp);
-int kfunc_def(security_shm_associate)(struct kern_ipc_perm *shp, int shmflg);
-int kfunc_def(security_shm_shmctl)(struct kern_ipc_perm *shp, int cmd);
-int kfunc_def(security_shm_shmat)(struct kern_ipc_perm *shp, char __user *shmaddr, int shmflg);
-int kfunc_def(security_sem_alloc)(struct kern_ipc_perm *sma);
-void kfunc_def(security_sem_free)(struct kern_ipc_perm *sma);
-int kfunc_def(security_sem_associate)(struct kern_ipc_perm *sma, int semflg);
-int kfunc_def(security_sem_semctl)(struct kern_ipc_perm *sma, int cmd);
-int kfunc_def(security_sem_semop)(struct kern_ipc_perm *sma, struct sembuf *sops, unsigned nsops, int alter);
-void kfunc_def(security_d_instantiate)(struct dentry *dentry, struct inode *inode);
-int kfunc_def(security_getprocattr)(struct task_struct *p, const char *lsm, char *name, char **value);
-int kfunc_def(security_setprocattr)(const char *lsm, const char *name, void *value, size_t size);
-int kfunc_def(security_netlink_send)(struct sock *sk, struct sk_buff *skb);
-int kfunc_def(security_ismaclabel)(const char *name);
-int kfunc_def(security_secid_to_secctx)(u32 secid, char **secdata, u32 *seclen);
-int kfunc_def(security_secctx_to_secid)(const char *secdata, u32 seclen, u32 *secid);
-void kfunc_def(security_release_secctx)(char *secdata, u32 seclen);
-void kfunc_def(security_inode_invalidate_secctx)(struct inode *inode);
-int kfunc_def(security_inode_notifysecctx)(struct inode *inode, void *ctx, u32 ctxlen);
-int kfunc_def(security_inode_setsecctx)(struct dentry *dentry, void *ctx, u32 ctxlen);
-int kfunc_def(security_inode_getsecctx)(struct inode *inode, void **ctx, u32 *ctxlen);
+                                         long type, int mode) = 0;
+int kfunc_def(security_shm_alloc)(struct kern_ipc_perm *shp) = 0;
+void kfunc_def(security_shm_free)(struct kern_ipc_perm *shp) = 0;
+int kfunc_def(security_shm_associate)(struct kern_ipc_perm *shp, int shmflg) = 0;
+int kfunc_def(security_shm_shmctl)(struct kern_ipc_perm *shp, int cmd) = 0;
+int kfunc_def(security_shm_shmat)(struct kern_ipc_perm *shp, char __user *shmaddr, int shmflg) = 0;
+int kfunc_def(security_sem_alloc)(struct kern_ipc_perm *sma) = 0;
+void kfunc_def(security_sem_free)(struct kern_ipc_perm *sma) = 0;
+int kfunc_def(security_sem_associate)(struct kern_ipc_perm *sma, int semflg) = 0;
+int kfunc_def(security_sem_semctl)(struct kern_ipc_perm *sma, int cmd) = 0;
+int kfunc_def(security_sem_semop)(struct kern_ipc_perm *sma, struct sembuf *sops, unsigned nsops, int alter) = 0;
+void kfunc_def(security_d_instantiate)(struct dentry *dentry, struct inode *inode) = 0;
+int kfunc_def(security_getprocattr)(struct task_struct *p, const char *lsm, char *name, char **value) = 0;
+int kfunc_def(security_setprocattr)(const char *lsm, const char *name, void *value, size_t size) = 0;
+int kfunc_def(security_netlink_send)(struct sock *sk, struct sk_buff *skb) = 0;
+int kfunc_def(security_ismaclabel)(const char *name) = 0;
+int kfunc_def(security_secid_to_secctx)(u32 secid, char **secdata, u32 *seclen) = 0;
+int kfunc_def(security_secctx_to_secid)(const char *secdata, u32 seclen, u32 *secid) = 0;
+void kfunc_def(security_release_secctx)(char *secdata, u32 seclen) = 0;
+void kfunc_def(security_inode_invalidate_secctx)(struct inode *inode) = 0;
+int kfunc_def(security_inode_notifysecctx)(struct inode *inode, void *ctx, u32 ctxlen) = 0;
+int kfunc_def(security_inode_setsecctx)(struct dentry *dentry, void *ctx, u32 ctxlen) = 0;
+int kfunc_def(security_inode_getsecctx)(struct inode *inode, void **ctx, u32 *ctxlen) = 0;
 
 // CONFIG_WATCH_QUEUE
 int kfunc_def(security_post_notification)(const struct cred *w_cred, const struct cred *cred,
-                                          struct watch_notification *n);
+                                          struct watch_notification *n) = 0;
 
 // CONFIG_KEY_NOTIFICATIONS
-int kfunc_def(security_watch_key)(struct key *key);
+int kfunc_def(security_watch_key)(struct key *key) = 0;
 
 // CONFIG_SECURITY_NETWORK
-int kfunc_def(security_unix_stream_connect)(struct sock *sock, struct sock *other, struct sock *newsk);
-int kfunc_def(security_unix_may_send)(struct socket *sock, struct socket *other);
-int kfunc_def(security_socket_create)(int family, int type, int protocol, int kern);
-int kfunc_def(security_socket_post_create)(struct socket *sock, int family, int type, int protocol, int kern);
-int kfunc_def(security_socket_socketpair)(struct socket *socka, struct socket *sockb);
-int kfunc_def(security_socket_bind)(struct socket *sock, struct sockaddr *address, int addrlen);
-int kfunc_def(security_socket_connect)(struct socket *sock, struct sockaddr *address, int addrlen);
-int kfunc_def(security_socket_listen)(struct socket *sock, int backlog);
-int kfunc_def(security_socket_accept)(struct socket *sock, struct socket *newsock);
-int kfunc_def(security_socket_sendmsg)(struct socket *sock, struct msghdr *msg, int size);
-int kfunc_def(security_socket_recvmsg)(struct socket *sock, struct msghdr *msg, int size, int flags);
-int kfunc_def(security_socket_getsockname)(struct socket *sock);
-int kfunc_def(security_socket_getpeername)(struct socket *sock);
-int kfunc_def(security_socket_getsockopt)(struct socket *sock, int level, int optname);
-int kfunc_def(security_socket_setsockopt)(struct socket *sock, int level, int optname);
-int kfunc_def(security_socket_shutdown)(struct socket *sock, int how);
-int kfunc_def(security_sock_rcv_skb)(struct sock *sk, struct sk_buff *skb);
+int kfunc_def(security_unix_stream_connect)(struct sock *sock, struct sock *other, struct sock *newsk) = 0;
+int kfunc_def(security_unix_may_send)(struct socket *sock, struct socket *other) = 0;
+int kfunc_def(security_socket_create)(int family, int type, int protocol, int kern) = 0;
+int kfunc_def(security_socket_post_create)(struct socket *sock, int family, int type, int protocol, int kern) = 0;
+int kfunc_def(security_socket_socketpair)(struct socket *socka, struct socket *sockb) = 0;
+int kfunc_def(security_socket_bind)(struct socket *sock, struct sockaddr *address, int addrlen) = 0;
+int kfunc_def(security_socket_connect)(struct socket *sock, struct sockaddr *address, int addrlen) = 0;
+int kfunc_def(security_socket_listen)(struct socket *sock, int backlog) = 0;
+int kfunc_def(security_socket_accept)(struct socket *sock, struct socket *newsock) = 0;
+int kfunc_def(security_socket_sendmsg)(struct socket *sock, struct msghdr *msg, int size) = 0;
+int kfunc_def(security_socket_recvmsg)(struct socket *sock, struct msghdr *msg, int size, int flags) = 0;
+int kfunc_def(security_socket_getsockname)(struct socket *sock) = 0;
+int kfunc_def(security_socket_getpeername)(struct socket *sock) = 0;
+int kfunc_def(security_socket_getsockopt)(struct socket *sock, int level, int optname) = 0;
+int kfunc_def(security_socket_setsockopt)(struct socket *sock, int level, int optname) = 0;
+int kfunc_def(security_socket_shutdown)(struct socket *sock, int how) = 0;
+int kfunc_def(security_sock_rcv_skb)(struct sock *sk, struct sk_buff *skb) = 0;
 int kfunc_def(security_socket_getpeersec_stream)(struct socket *sock, sockptr_t optval, sockptr_t optlen,
-                                                 unsigned int len);
-int kfunc_def(security_socket_getpeersec_dgram)(struct socket *sock, struct sk_buff *skb, u32 *secid);
-int kfunc_def(security_sk_alloc)(struct sock *sk, int family, gfp_t priority);
-void kfunc_def(security_sk_free)(struct sock *sk);
-void kfunc_def(security_sk_clone)(const struct sock *sk, struct sock *newsk);
-void kfunc_def(security_sk_classify_flow)(struct sock *sk, struct flowi_common *flic);
-void kfunc_def(security_req_classify_flow)(const struct request_sock *req, struct flowi_common *flic);
-void kfunc_def(security_sock_graft)(struct sock *sk, struct socket *parent);
-int kfunc_def(security_inet_conn_request)(const struct sock *sk, struct sk_buff *skb, struct request_sock *req);
-void kfunc_def(security_inet_csk_clone)(struct sock *newsk, const struct request_sock *req);
-void kfunc_def(security_inet_conn_established)(struct sock *sk, struct sk_buff *skb);
-int kfunc_def(security_secmark_relabel_packet)(u32 secid);
-void kfunc_def(security_secmark_refcount_inc)(void);
-void kfunc_def(security_secmark_refcount_dec)(void);
-int kfunc_def(security_tun_dev_alloc_security)(void **security);
-void kfunc_def(security_tun_dev_free_security)(void *security);
-int kfunc_def(security_tun_dev_create)(void);
-int kfunc_def(security_tun_dev_attach_queue)(void *security);
-int kfunc_def(security_tun_dev_attach)(struct sock *sk, void *security);
-int kfunc_def(security_tun_dev_open)(void *security);
-int kfunc_def(security_sctp_assoc_request)(struct sctp_association *asoc, struct sk_buff *skb);
-int kfunc_def(security_sctp_bind_connect)(struct sock *sk, int optname, struct sockaddr *address, int addrlen);
-void kfunc_def(security_sctp_sk_clone)(struct sctp_association *asoc, struct sock *sk, struct sock *newsk);
-int kfunc_def(security_sctp_assoc_established)(struct sctp_association *asoc, struct sk_buff *skb);
+                                                 unsigned int len) = 0;
+int kfunc_def(security_socket_getpeersec_dgram)(struct socket *sock, struct sk_buff *skb, u32 *secid) = 0;
+int kfunc_def(security_sk_alloc)(struct sock *sk, int family, gfp_t priority) = 0;
+void kfunc_def(security_sk_free)(struct sock *sk) = 0;
+void kfunc_def(security_sk_clone)(const struct sock *sk, struct sock *newsk) = 0;
+void kfunc_def(security_sk_classify_flow)(struct sock *sk, struct flowi_common *flic) = 0;
+void kfunc_def(security_req_classify_flow)(const struct request_sock *req, struct flowi_common *flic) = 0;
+void kfunc_def(security_sock_graft)(struct sock *sk, struct socket *parent) = 0;
+int kfunc_def(security_inet_conn_request)(const struct sock *sk, struct sk_buff *skb, struct request_sock *req) = 0;
+void kfunc_def(security_inet_csk_clone)(struct sock *newsk, const struct request_sock *req) = 0;
+void kfunc_def(security_inet_conn_established)(struct sock *sk, struct sk_buff *skb) = 0;
+int kfunc_def(security_secmark_relabel_packet)(u32 secid) = 0;
+void kfunc_def(security_secmark_refcount_inc)(void) = 0;
+void kfunc_def(security_secmark_refcount_dec)(void) = 0;
+int kfunc_def(security_tun_dev_alloc_security)(void **security) = 0;
+void kfunc_def(security_tun_dev_free_security)(void *security) = 0;
+int kfunc_def(security_tun_dev_create)(void) = 0;
+int kfunc_def(security_tun_dev_attach_queue)(void *security) = 0;
+int kfunc_def(security_tun_dev_attach)(struct sock *sk, void *security) = 0;
+int kfunc_def(security_tun_dev_open)(void *security) = 0;
+int kfunc_def(security_sctp_assoc_request)(struct sctp_association *asoc, struct sk_buff *skb) = 0;
+int kfunc_def(security_sctp_bind_connect)(struct sock *sk, int optname, struct sockaddr *address, int addrlen) = 0;
+void kfunc_def(security_sctp_sk_clone)(struct sctp_association *asoc, struct sock *sk, struct sock *newsk) = 0;
+int kfunc_def(security_sctp_assoc_established)(struct sctp_association *asoc, struct sk_buff *skb) = 0;
 
 // CONFIG_SECURITY_INFINIBAND
-int kfunc_def(security_ib_pkey_access)(void *sec, u64 subnet_prefix, u16 pkey);
-int kfunc_def(security_ib_endport_manage_subnet)(void *sec, const char *dev_name, u8 port_num);
-int kfunc_def(security_ib_alloc_security)(void **sec);
-void kfunc_def(security_ib_free_security)(void *sec);
+int kfunc_def(security_ib_pkey_access)(void *sec, u64 subnet_prefix, u16 pkey) = 0;
+int kfunc_def(security_ib_endport_manage_subnet)(void *sec, const char *dev_name, u8 port_num) = 0;
+int kfunc_def(security_ib_alloc_security)(void **sec) = 0;
+void kfunc_def(security_ib_free_security)(void *sec) = 0;
 
 // CONFIG_SECURITY_NETWORK_XFRM
-int kfunc_def(security_xfrm_policy_alloc)(struct xfrm_sec_ctx **ctxp, struct xfrm_user_sec_ctx *sec_ctx, gfp_t gfp);
-int kfunc_def(security_xfrm_policy_clone)(struct xfrm_sec_ctx *old_ctx, struct xfrm_sec_ctx **new_ctxp);
-void kfunc_def(security_xfrm_policy_free)(struct xfrm_sec_ctx *ctx);
-int kfunc_def(security_xfrm_policy_delete)(struct xfrm_sec_ctx *ctx);
-int kfunc_def(security_xfrm_state_alloc)(struct xfrm_state *x, struct xfrm_user_sec_ctx *sec_ctx);
-int kfunc_def(security_xfrm_state_alloc_acquire)(struct xfrm_state *x, struct xfrm_sec_ctx *polsec, u32 secid);
-int kfunc_def(security_xfrm_state_delete)(struct xfrm_state *x);
-void kfunc_def(security_xfrm_state_free)(struct xfrm_state *x);
-int kfunc_def(security_xfrm_policy_lookup)(struct xfrm_sec_ctx *ctx, u32 fl_secid);
+int kfunc_def(security_xfrm_policy_alloc)(struct xfrm_sec_ctx **ctxp, struct xfrm_user_sec_ctx *sec_ctx, gfp_t gfp) = 0;
+int kfunc_def(security_xfrm_policy_clone)(struct xfrm_sec_ctx *old_ctx, struct xfrm_sec_ctx **new_ctxp) = 0;
+void kfunc_def(security_xfrm_policy_free)(struct xfrm_sec_ctx *ctx) = 0;
+int kfunc_def(security_xfrm_policy_delete)(struct xfrm_sec_ctx *ctx) = 0;
+int kfunc_def(security_xfrm_state_alloc)(struct xfrm_state *x, struct xfrm_user_sec_ctx *sec_ctx) = 0;
+int kfunc_def(security_xfrm_state_alloc_acquire)(struct xfrm_state *x, struct xfrm_sec_ctx *polsec, u32 secid) = 0;
+int kfunc_def(security_xfrm_state_delete)(struct xfrm_state *x) = 0;
+void kfunc_def(security_xfrm_state_free)(struct xfrm_state *x) = 0;
+int kfunc_def(security_xfrm_policy_lookup)(struct xfrm_sec_ctx *ctx, u32 fl_secid) = 0;
 int kfunc_def(security_xfrm_state_pol_flow_match)(struct xfrm_state *x, struct xfrm_policy *xp,
-                                                  const struct flowi_common *flic);
-int kfunc_def(security_xfrm_decode_session)(struct sk_buff *skb, u32 *secid);
-void kfunc_def(security_skb_classify_flow)(struct sk_buff *skb, struct flowi_common *flic);
+                                                  const struct flowi_common *flic) = 0;
+int kfunc_def(security_xfrm_decode_session)(struct sk_buff *skb, u32 *secid) = 0;
+void kfunc_def(security_skb_classify_flow)(struct sk_buff *skb, struct flowi_common *flic) = 0;
 
 /* key management security hooks */
 // CONFIG_KEYS
 typedef void *key_ref_t;
-int kfunc_def(security_key_alloc)(struct key *key, const struct cred *cred, unsigned long flags);
-void kfunc_def(security_key_free)(struct key *key);
-int kfunc_def(security_key_permission)(key_ref_t key_ref, const struct cred *cred, enum key_need_perm need_perm);
-int kfunc_def(security_key_getsecurity)(struct key *key, char **_buffer);
+int kfunc_def(security_key_alloc)(struct key *key, const struct cred *cred, unsigned long flags) = 0;
+void kfunc_def(security_key_free)(struct key *key) = 0;
+int kfunc_def(security_key_permission)(key_ref_t key_ref, const struct cred *cred, enum key_need_perm need_perm) = 0;
+int kfunc_def(security_key_getsecurity)(struct key *key, char **_buffer) = 0;
 
 // CONFIG_AUDIT
-int kfunc_def(security_audit_rule_init)(u32 field, u32 op, char *rulestr, void **lsmrule);
-int kfunc_def(security_audit_rule_known)(struct audit_krule *krule);
-void kfunc_def(security_audit_rule_free)(void *lsmrule);
-int kfunc_def(security_audit_rule_match)(u32 secid, u32 field, u32 op, void *lsmrule);
+int kfunc_def(security_audit_rule_init)(u32 field, u32 op, char *rulestr, void **lsmrule) = 0;
+int kfunc_def(security_audit_rule_known)(struct audit_krule *krule) = 0;
+void kfunc_def(security_audit_rule_free)(void *lsmrule) = 0;
+int kfunc_def(security_audit_rule_match)(u32 secid, u32 field, u32 op, void *lsmrule) = 0;
 
 // CONFIG_BPF_SYSCALL
-int kfunc_def(security_bpf)(int cmd, union bpf_attr *attr, unsigned int size);
-int kfunc_def(security_bpf_map)(struct bpf_map *map, fmode_t fmode);
-int kfunc_def(security_bpf_prog)(struct bpf_prog *prog);
-int kfunc_def(security_bpf_map_alloc)(struct bpf_map *map);
-int kfunc_def(security_bpf_prog_alloc)(struct bpf_prog_aux *aux);
-void kfunc_def(security_bpf_map_free)(struct bpf_map *map);
-void kfunc_def(security_bpf_prog_free)(struct bpf_prog_aux *aux);
+int kfunc_def(security_bpf)(int cmd, union bpf_attr *attr, unsigned int size) = 0;
+int kfunc_def(security_bpf_map)(struct bpf_map *map, fmode_t fmode) = 0;
+int kfunc_def(security_bpf_prog)(struct bpf_prog *prog) = 0;
+int kfunc_def(security_bpf_map_alloc)(struct bpf_map *map) = 0;
+int kfunc_def(security_bpf_prog_alloc)(struct bpf_prog_aux *aux) = 0;
+void kfunc_def(security_bpf_map_free)(struct bpf_map *map) = 0;
+void kfunc_def(security_bpf_prog_free)(struct bpf_prog_aux *aux) = 0;
 // CONFIG_BPF_SYSCALL
 
-int kfunc_def(security_locked_down)(enum lockdown_reason what);
+int kfunc_def(security_locked_down)(enum lockdown_reason what) = 0;
 
 // CONFIG_PERF_EVENTS
-int kfunc_def(security_perf_event_open)(struct perf_event_attr *attr, int type);
-int kfunc_def(security_perf_event_alloc)(struct perf_event *event);
-void kfunc_def(security_perf_event_free)(struct perf_event *event);
-int kfunc_def(security_perf_event_read)(struct perf_event *event);
-int kfunc_def(security_perf_event_write)(struct perf_event *event);
+int kfunc_def(security_perf_event_open)(struct perf_event_attr *attr, int type) = 0;
+int kfunc_def(security_perf_event_alloc)(struct perf_event *event) = 0;
+void kfunc_def(security_perf_event_free)(struct perf_event *event) = 0;
+int kfunc_def(security_perf_event_read)(struct perf_event *event) = 0;
+int kfunc_def(security_perf_event_write)(struct perf_event *event) = 0;
 
 // CONFIG_IO_URING
-int kfunc_def(security_uring_override_creds)(const struct cred *new);
-int kfunc_def(security_uring_sqpoll)(void);
-int kfunc_def(security_uring_cmd)(struct io_uring_cmd *ioucmd);
+int kfunc_def(security_uring_override_creds)(const struct cred *new) = 0;
+int kfunc_def(security_uring_sqpoll)(void) = 0;
+int kfunc_def(security_uring_cmd)(struct io_uring_cmd *ioucmd) = 0;
 
 void _linux_security_security_sym_match(const char *name, unsigned long addr)
 {
@@ -585,19 +590,21 @@ void _linux_security_security_sym_match(const char *name, unsigned long addr)
 }
 
 // security/selinux/avc.c
-#include <security/include/avc.h>
+#include <security/selinux/include/avc.h>
 
-int kfunc_def(avc_has_perm_noaudit)(struct selinux_state *state, u32 ssid, u32 tsid, u16 tclass, u32 requested,
-                                    unsigned flags, struct av_decision *avd) = 0;
-int kfunc_def(avc_has_perm)(struct selinux_state *state, u32 ssid, u32 tsid, u16 tclass, u32 requested,
-                            struct common_audit_data *auditdata) = 0;
-int kfunc_def(avc_has_perm_flags)(struct selinux_state *state, u32 ssid, u32 tsid, u16 tclass, u32 requested,
-                                  struct common_audit_data *auditdata, int flags) = 0;
-int kfunc_def(avc_has_extended_perms)(struct selinux_state *state, u32 ssid, u32 tsid, u16 tclass, u32 requested,
-                                      u8 driver, u8 perm, struct common_audit_data *ad) = 0;
+int kfunc_def(avc_denied)(u32 ssid, u32 tsid, u16 tclass, u32 requested, u8 driver, u8 xperm, unsigned int flags,
+                          struct av_decision *avd) = 0;
+int kfunc_def(avc_has_perm_noaudit)(u32 ssid, u32 tsid, u16 tclass, u32 requested, unsigned flags,
+                                    struct av_decision *avd) = 0;
+int kfunc_def(avc_has_perm)(u32 ssid, u32 tsid, u16 tclass, u32 requested, struct common_audit_data *auditdata) = 0;
+int kfunc_def(avc_has_perm_flags)(u32 ssid, u32 tsid, u16 tclass, u32 requested, struct common_audit_data *auditdata,
+                                  int flags) = 0;
+int kfunc_def(avc_has_extended_perms)(u32 ssid, u32 tsid, u16 tclass, u32 requested, u8 driver, u8 perm,
+                                      struct common_audit_data *ad) = 0;
 
 void _linux_security_selinux_avc_sym_match(const char *name, unsigned long addr)
 {
+    kfunc_match(avc_denied, name, addr);
     kfunc_match(avc_has_perm_noaudit, name, addr);
     kfunc_match(avc_has_perm, name, addr);
     kfunc_match(avc_has_perm_flags, name, addr);
@@ -607,29 +614,30 @@ void _linux_security_selinux_avc_sym_match(const char *name, unsigned long addr)
 // security/commmoncap.c
 #include <linux/security.h>
 
-int kfunc_def(cap_capable)(const struct cred *cred, struct user_namespace *ns, int cap, unsigned int opts);
-int kfunc_def(cap_settime)(const struct timespec64 *ts, const struct timezone *tz);
-int kfunc_def(cap_ptrace_access_check)(struct task_struct *child, unsigned int mode);
-int kfunc_def(cap_ptrace_traceme)(struct task_struct *parent);
+int kfunc_def(cap_capable)(const struct cred *cred, struct user_namespace *ns, int cap, unsigned int opts) = 0;
+int kfunc_def(cap_settime)(const struct timespec64 *ts, const struct timezone *tz) = 0;
+int kfunc_def(cap_ptrace_access_check)(struct task_struct *child, unsigned int mode) = 0;
+int kfunc_def(cap_ptrace_traceme)(struct task_struct *parent) = 0;
 int kfunc_def(cap_capget)(struct task_struct *target, kernel_cap_t *effective, kernel_cap_t *inheritable,
-                          kernel_cap_t *permitted);
+                          kernel_cap_t *permitted) = 0;
 int kfunc_def(cap_capset)(struct cred *new, const struct cred *old, const kernel_cap_t *effective,
-                          const kernel_cap_t *inheritable, const kernel_cap_t *permitted);
-int kfunc_def(cap_bprm_creds_from_file)(struct linux_binprm *bprm, struct file *file);
-int kfunc_def(cap_inode_setxattr)(struct dentry *dentry, const char *name, const void *value, size_t size, int flags);
-int kfunc_def(cap_inode_removexattr)(struct dentry *dentry, const char *name);
-int kfunc_def(cap_inode_need_killpriv)(struct dentry *dentry);
-int kfunc_def(cap_inode_killpriv)(struct dentry *dentry);
-int kfunc_def(cap_inode_getsecurity)(struct inode *inode, const char *name, void **buffer, bool alloc);
-int kfunc_def(cap_mmap_addr)(unsigned long addr);
-int kfunc_def(cap_mmap_file)(struct file *file, unsigned long reqprot, unsigned long prot, unsigned long flags);
-int kfunc_def(cap_task_fix_setuid)(struct cred *new, const struct cred *old, int flags);
+                          const kernel_cap_t *inheritable, const kernel_cap_t *permitted) = 0;
+int kfunc_def(cap_bprm_creds_from_file)(struct linux_binprm *bprm, struct file *file) = 0;
+int kfunc_def(cap_inode_setxattr)(struct dentry *dentry, const char *name, const void *value, size_t size,
+                                  int flags) = 0;
+int kfunc_def(cap_inode_removexattr)(struct dentry *dentry, const char *name) = 0;
+int kfunc_def(cap_inode_need_killpriv)(struct dentry *dentry) = 0;
+int kfunc_def(cap_inode_killpriv)(struct dentry *dentry) = 0;
+int kfunc_def(cap_inode_getsecurity)(struct inode *inode, const char *name, void **buffer, bool alloc) = 0;
+int kfunc_def(cap_mmap_addr)(unsigned long addr) = 0;
+int kfunc_def(cap_mmap_file)(struct file *file, unsigned long reqprot, unsigned long prot, unsigned long flags) = 0;
+int kfunc_def(cap_task_fix_setuid)(struct cred *new, const struct cred *old, int flags) = 0;
 int kfunc_def(cap_task_prctl)(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4,
-                              unsigned long arg5);
-int kfunc_def(cap_task_setscheduler)(struct task_struct *p);
-int kfunc_def(cap_task_setioprio)(struct task_struct *p, int ioprio);
-int kfunc_def(cap_task_setnice)(struct task_struct *p, int nice);
-int kfunc_def(cap_vm_enough_memory)(struct mm_struct *mm, long pages);
+                              unsigned long arg5) = 0;
+int kfunc_def(cap_task_setscheduler)(struct task_struct *p) = 0;
+int kfunc_def(cap_task_setioprio)(struct task_struct *p, int ioprio) = 0;
+int kfunc_def(cap_task_setnice)(struct task_struct *p, int nice) = 0;
+int kfunc_def(cap_vm_enough_memory)(struct mm_struct *mm, long pages) = 0;
 
 kernel_cap_t full_cap = { 0 };
 
