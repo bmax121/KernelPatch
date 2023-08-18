@@ -1,6 +1,15 @@
 #ifndef _KP_SUPERCALL_H_
 #define _KP_SUPERCALL_H_
 
+static inline long hash_key(const char *key)
+{
+    long hash = 1000000007;
+    for (int i = 0; key[i]; i++) {
+        hash = hash * 31 + key[i];
+    }
+    return hash;
+}
+
 // #define __NR_supercall __NR3264_truncate // 45
 #define __NR_supercall 45
 
@@ -12,7 +21,6 @@
 #define SUPERCALL_SU 0x1005
 #define SUPERCALL_GRANT_SU 0x1006
 #define SUPERCALL_REVOKE_SU 0x1007
-#define SUPERCALL_SECCTX_TO_SECID 0x1008
 
 #define SUPERCALL_TEST 0x10FF
 #define SUPERCALL_MAX 0x1100
@@ -21,6 +29,6 @@
 #define SUPERCALL_RES_FAILED 1
 #define SUPERCALL_RES_NOT_IMPL 2
 
-#define SUPERCALL_HELLO_ECHO 0x68656c6c6f
+#define SUPERCALL_HELLO_MAGIC 0x68656c6c6f
 
 #endif

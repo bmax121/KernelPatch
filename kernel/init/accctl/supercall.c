@@ -14,12 +14,12 @@
 #include <linux/security.h>
 #include <accctl.h>
 
-#define MAX_KEY_LEN 128
+#define MAX_KEY_LEN 127
 
 static inline long call_hello()
 {
-    logki("Kernel Supercall Hello!\n");
-    return SUPERCALL_HELLO_ECHO;
+    logki("KernelPatch Supercall Hello!\n");
+    return SUPERCALL_HELLO_MAGIC;
 }
 
 static inline long call_get_kernel_version()
@@ -67,8 +67,10 @@ static long call_test()
     return ret;
 }
 
-long supercall(const char __user *key, long cmd, long arg2, long arg3, long arg4, long arg5)
+static long supercall(long cmd, long arg1, long arg2, long arg3)
 {
+    logkd("SuperCall with cmd: %x, a1: %llx, a2: %llx, a3: %llx\n", cmd, arg1, arg2, arg3);
+
     long ret = SUPERCALL_RES_SUCCEED;
     if (cmd == SUPERCALL_HELLO) {
         ret = call_hello();
@@ -83,29 +85,43 @@ long supercall(const char __user *key, long cmd, long arg2, long arg3, long arg4
     } else if (cmd == SUPERCALL_SU) {
         ret = call_su();
     } else if (cmd == SUPERCALL_GRANT_SU) {
-        pid_t pid = (pid_t)arg2;
+        pid_t pid = (pid_t)arg1;
         ret = call_grant_su(pid);
     } else if (cmd == SUPERCALL_REVOKE_SU) {
-        pid_t pid = (pid_t)arg2;
+        pid_t pid = (pid_t)arg1;
         ret = call_revoke_su(pid);
     } else if (cmd == SUPERCALL_TEST) {
-        uid_t uid = (uid_t)arg2;
-        ret = call_test(uid);
+        ret = call_test();
     } else {
         ret = SUPERCALL_RES_NOT_IMPL;
     }
     return ret;
 }
 
-HOOK_SYSCALL_DEFINE6(__NR_supercall, const char __user *, ukey, long, cmd, long, a2, long, a3, long, a4, long, a5)
+HOOK_SYSCALL_DEFINE6(__NR_supercall, const char __user *, ukey, long, hash, long, cmd, long, a1, long, a2, long, a3)
 {
-    char key[MAX_KEY_LEN] = { '\0' };
+    char key[MAX_KEY_LEN + 1] = { '\0' };
     long len = strncpy_from_user(key, ukey, MAX_KEY_LEN);
-    if (superkey_auth(key, len)) {
-        return HOOK_SYSCALL_CALL_ORIGIN(__NR_supercall, ukey, cmd, a2, a3, a4, a5);
+    if (len <= 0) {
+        goto ori_call;
     }
-    logkd("SuperCall cmd: %x, a2: %x, a3: %x, a4: %x, a5: %x\n", cmd, a2, a3, a4, a5);
-    return supercall(key, cmd, a2, a3, a4, a5);
+
+    if (hash_key(key) != hash) {
+        goto ori_call;
+    }
+
+    if (cmd >= SUPERCALL_MAX || cmd < SUPERCALL_HELLO) {
+        goto ori_call;
+    }
+
+    if (superkey_auth(key, len)) {
+        goto ori_call;
+    }
+
+    return supercall(cmd, a1, a2, a3);
+
+ori_call:
+    return HOOK_SYSCALL_CALL_ORIGIN(__NR_supercall, ukey, hash, cmd, a1, a2, a3);
 }
 
 int supercall_install()

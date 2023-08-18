@@ -8,7 +8,6 @@
 #include "libkp.h"
 
 #define SUPER_KEY_LEN 0x20
-char key[SUPER_KEY_LEN] = { '\0' };
 
 void print_usage(char **argv)
 {
@@ -21,7 +20,7 @@ void print_usage(char **argv)
               "    Print kpatch version.\n"
               "\n"
               "SuperCall Usage:\n"
-              "./kpatch <-k your_key> <command> [args...]\n"
+              "./kpatch <super_key> <command> [args...]\n"
               "command:\n"
               "  --hello\n"
               "     Print SuperCall hello message in the kernel. Return 0 if succeed, others if failed!\n"
@@ -31,13 +30,16 @@ void print_usage(char **argv)
               "     Get KernelPatch version.\n"
               "  --su\n"
               "     Fork a default root shell.\n"
-              "  --grant_su --arg2 tid\n"
+              "  --grant_su --arg1 tid\n"
               "     Grant root privileges to the thread corresponding to the given tid.\n"
-              "  --revoke_su --arg2 tid\n"
+              "  --revoke_su --arg1 tid\n"
               "     Revoke root privileges to the thread corresponding to the given tid.\n"
-              "  --load_kpm --arg2 kpm_patch\n"
               "     (Unimplemented ...).\n"
-              "  --unload_kpm --arg2 kpm_patch\n"
+              "  --load_kpm --arg1 kpm_patch\n"
+              "     Load KernelPatch Module\n"
+              "     (Unimplemented ...).\n"
+              "  --unload_kpm --arg1 kpm_patch\n"
+              "     Unload KernelPatch Module\n"
               "     (Unimplemented ...).\n"
               "\n";
     fprintf(stdout, "%s", c);
@@ -46,40 +48,48 @@ void print_usage(char **argv)
 int main(int argc, char **argv)
 {
     int cmd = -1;
-    char *arg2 = 0, *arg3 = 0, *arg4 = 0, *arg5 = 0;
-    if (argc == 1) {
+    char *arg1 = 0, *arg2 = 0, *arg3 = 0;
+
+    if (argc == 2) {
+        if (!strcmp(argv[1], "-v") || !(strcmp(argv[1], "--version"))) {
+            fprintf(stdout, "%x\n", get_version());
+            return 0;
+        }
+    }
+
+    if (argc < 3) {
         print_usage(argv);
         return 0;
     }
 
-    struct option longopts[] = { { "help", no_argument, NULL, 'h' },
-                                 { "version", no_argument, NULL, 'v' },
-                                 { "key", required_argument, NULL, 'k' },
+    char key[SUPER_KEY_LEN] = { '\0' };
+    strncpy(key, argv[1], SUPER_KEY_LEN);
+
+    if (!strnlen(key, SUPER_KEY_LEN)) {
+        fprintf(stderr, "Super key must be specified\n");
+        return -1;
+    }
+
+    struct option longopts[] = { { "arg1", required_argument, NULL, '1' },
                                  { "arg2", required_argument, NULL, '2' },
                                  { "arg3", required_argument, NULL, '3' },
-                                 { "arg4", required_argument, NULL, '4' },
-                                 { "arg5", required_argument, NULL, '5' },
                                  { "hello", no_argument, &cmd, SUPERCALL_HELLO },
                                  { "kv", no_argument, &cmd, SUPERCALL_GET_KERNEL_VERSION },
                                  { "kpv", no_argument, &cmd, SUPERCALL_GET_KP_VERSION },
                                  { "su", no_argument, &cmd, SUPERCALL_SU },
                                  { "grant_su", no_argument, &cmd, SUPERCALL_GRANT_SU },
                                  { "revoke_su", no_argument, &cmd, SUPERCALL_REVOKE_SU },
+                                 { "load_kpm", no_argument, NULL, SUPERCALL_LOAD_KPM },
+                                 { "unload_kpm", no_argument, NULL, SUPERCALL_UNLOAD_KPM },
                                  { 0, 0, 0, 0 } };
-    char *optstr = "hvk:2:3:4:5:";
+    char *optstr = "1:2:3:";
     int opt = -1;
     int opt_index = -1;
     int verbose = 0;
     while ((opt = getopt_long(argc, argv, optstr, longopts, &opt_index)) != -1) {
         switch (opt) {
-        case 'h':
-            print_usage(argv);
-            return 0;
-        case 'v':
-            fprintf(stdout, "%x\n", get_version());
-            return 0;
-        case 'k':
-            strncpy(key, optarg, SUPER_KEY_LEN);
+        case '1':
+            arg1 = optarg;
             break;
         case '2':
             arg2 = optarg;
@@ -87,27 +97,18 @@ int main(int argc, char **argv)
         case '3':
             arg3 = optarg;
             break;
-        case '4':
-            arg4 = optarg;
-            break;
-        case '5':
-            arg5 = optarg;
-            break;
         default:
-            break;
+            continue;
         }
     }
-    if (!strnlen(key, SUPER_KEY_LEN)) {
-        fprintf(stderr, "Super key must be specified\n");
-        return -1;
-    }
 
-    // fprintf(stdout, "key: %s, command no: %x, arg2: %s, arg3:%s, arg4: %s, arg5: %s\n", key, cmd, arg2, arg3, arg4,
-    //         arg5);
+    fprintf(stdout, "key: %s, command no: %x, arg1: %s, arg2: %s, arg3:%s\n", key, cmd, arg1, arg2, arg3);
 
     long ret = 0;
     if (cmd == SUPERCALL_HELLO) {
         ret = sc_hello(key);
+        if (ret == SUPERCALL_HELLO_MAGIC)
+            ret = 0;
     } else if (cmd == SUPERCALL_GET_KERNEL_VERSION) {
         long kv = sc_get_kernel_version(key);
         fprintf(stdout, "%lx\n", kv);

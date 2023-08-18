@@ -16,7 +16,7 @@ libkp.a: ${objs}
 
 .PHONY: clean
 clean:
-	rm -rf scdefs.h
+	rm -rf uapi/*
 	rm -rf kpatch
 	rm -rf libkp.a 
 	find . -name "*.o" | xargs rm -f
