@@ -3,6 +3,7 @@
 
 #include <ktypes.h>
 #include <ksyms.h>
+#include <stddef.h>
 #include <linux/spinlock.h>
 #include <linux/rwlock.h>
 #include <linux/pid.h>

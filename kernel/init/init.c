@@ -87,6 +87,7 @@ void before_rest_init(hook_fdata0_t *fdata, void *udata)
     selinux_hook_install();
     task_observer();
     supercall_install();
+    // su_compat(); // todo: uaccess
     logki("==== KernelPatch Everything Done ====\n");
 }
 

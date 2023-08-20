@@ -42,6 +42,15 @@
 /* 64bit hashes as llseek() offset (for directories) */
 #define FMODE_64BITHASH ((__force fmode_t)0x400)
 
-// todo:
+/* fs/open.c */
+struct audit_names;
+struct filename
+{
+    const char *name; /* pointer to actual string */
+    const __user char *uptr; /* original userland pointer */
+    struct audit_names *aname;
+    int refcnt;
+    const char iname[];
+};
 
 #endif

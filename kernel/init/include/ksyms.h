@@ -63,4 +63,15 @@ int _local_strcmp(const char *s1, const char *s2);
 
 #define hook_kfunc(func) hook_kfunc_with(func, replace_##func, backup_##func)
 
+#define find_and_hook_func_with(func, replace, backup)                 \
+    unsigned long addr = kallsyms_lookup_name(#func);                  \
+    if (addr) {                                                        \
+        hook_err_t err_##func = hook(addr, replace, (void **)&backup); \
+        if (err_##func != HOOK_NO_ERR) {                               \
+            logke("hook: %s, ret: %d\n", #func, err_##func);           \
+        }                                                              \
+    } else {                                                           \
+        logkw("hook: %s not found\n", #func);                          \
+    }
+
 #endif

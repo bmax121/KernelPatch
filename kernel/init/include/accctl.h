@@ -9,8 +9,9 @@ int commit_su_nodep();
 int commit_su();
 int grant_su(pid_t vpid, bool real);
 
-int supercall_install();
+int su_compat();
 
+int supercall_install();
 int lsm_hook_install();
 int selinux_hook_install();
 

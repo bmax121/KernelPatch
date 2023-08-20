@@ -11,9 +11,7 @@
 #include <pgtable.h>
 #include <ksyms.h>
 #include <error.h>
-#include <lsmext.h>
 
-// todo: test
 int commit_su_nodep()
 {
     int rc = 0;
