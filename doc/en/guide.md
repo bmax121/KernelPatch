@@ -13,9 +13,15 @@ kptools serves the following purposes:
 
 ### [kpimg](/kernel/)
 
-kpimg is a specially designed ELF that performs further patching of the kernel after taking over the kernel startup. It relocates its own data and code, modifies page tables, allocates space, initializes kernel inline hooks, and more. This is the core of KernelPatch. If you don't need additional features or want to patch the kernel yourself, you can use the code in this part separately.  
+kpimg is a specially designed ELF
 
-After that, we enter a relatively comfortable C language world (where almost all C code can be used, except for absolute addresses determined during static linking). Here, we further patch permission management, modify system calls, export desired functionalities, and complete KPM initialization (todo), etc.
+1. kpimg takes over the kernel start-up while the kernel is still using physical addresses. At this point, kpimg writes necessary information into [map](/kernel/base/map.c) and [start](/kernel/base/start.c), then relocates them to the specified location.
+2. It replaces **paging_init** with **_paging_init**, and then restarts the kernel.
+**_paging_init** reserves space, modifies page table attributes, and jumps to **start**.
+3. In the **start** phase, further page table modifications are performed, kernel inline hooks are initialized, and then it proceeds to **init**.
+4. **init** provides a relatively comfortable C-language environment (except for statically linked absolute addresses), where we can accomplish various desired functionalities, such as modifying system calls, and more.  
+
+If you don't need extensive functionalities or want customization, you can separately utilize the code in [/kernel/base](/kernel/base).
 
 - [SuperCall](./super-syscall.md)
 
