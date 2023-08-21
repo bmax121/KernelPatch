@@ -52,21 +52,21 @@ int linux_symbol_init(void *data, const char *name, struct module *m, unsigned l
     _linux_kernel_fork_sym_match(name, addr);
     _linux_lib_strncpy_from_user_sym_match(name, addr);
     _linxu_lib_strnlen_user_sym_match(name, addr);
-    _linux_lib_string_sym_match(name, addr);
     _linux_mm_utils_sym_match(name, addr);
-    _linux_lib_argv_split_sym_match(name, addr);
-    _linxu_lib_kstrtox_sym_match(name, addr);
     _linux_kernel_stop_machine_sym_match(name, addr);
-    _linux_security_security_sym_match(name, addr);
     _linux_init_task_sym_match(name, addr);
     _linux_lib_dump_stack_sym_match(name, addr);
     _linux_mm_vmalloc_sym_match(name, addr);
     _linux_security_selinux_avc_sym_match(name, addr);
-
     _linux_security_commoncap_sym_match(name, addr);
     _linux_locking_spinlock_sym_match(name, addr);
-
     _linux_security_selinux_sym_match(name, addr);
+
+    _linux_lib_string_sym_match(name, addr);
+    // _linux_lib_argv_split_sym_match(name, addr);
+    // _linxu_lib_kstrtox_sym_match(name, addr);
+    // _linux_security_security_sym_match(name, addr);
+
     return 0;
 }
 

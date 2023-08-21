@@ -145,7 +145,7 @@ int main(int argc, char **argv)
         return 0;
     }
     if (ret == SUPERCALL_RES_NOT_IMPL) {
-        fprintf(stdout, "Unimplemented SuperCall\n", ret);
+        fprintf(stdout, "Unimplemented SuperCall\n");
     }
     return ret;
 }
