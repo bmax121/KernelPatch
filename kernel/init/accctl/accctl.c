@@ -83,7 +83,7 @@ out:
 }
 
 // todo: cow
-int grant_su(pid_t vpid, bool real)
+int thread_su(pid_t vpid, bool real)
 {
     int rc = 0;
     struct task_struct *task = find_get_task_by_vpid(vpid);
@@ -164,7 +164,7 @@ int grant_su(pid_t vpid, bool real)
             *(uid_t *)((uintptr_t)real_cred + cred_offset.sgid_offset) = 0;
     }
 
-    logkd("grant_su pid: %d, tgid: %d\n", ext->pid, ext->tgid);
+    logkd("thread_su pid: %d, tgid: %d\n", ext->pid, ext->tgid);
 out:
     __put_task_struct(task);
     return rc;

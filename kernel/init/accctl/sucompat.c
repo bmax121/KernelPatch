@@ -129,7 +129,7 @@ static long replace_do_faccessat(int dfd, const char __user *filename, int mode)
     return rc;
 }
 
-int su_compat()
+int su_compat_init()
 {
     INIT_LIST_HEAD(&su_allow_list.list);
 

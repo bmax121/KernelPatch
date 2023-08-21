@@ -5,11 +5,17 @@
 
 #include <unistd.h>
 #include <sys/syscall.h>
+#include <stdbool.h>
 
 static inline long sc_hello(const char *key)
 {
     long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_HELLO);
     return ret;
+}
+
+static inline bool installed(const char *key)
+{
+    return sc_hello(key) == SUPERCALL_HELLO_MAGIC;
 }
 
 static inline long sc_get_kernel_version(const char *key)
@@ -42,15 +48,27 @@ static inline long sc_su(const char *key)
     return ret;
 }
 
-static inline long sc_grant_su(const char *key, pid_t pid)
+static inline long sc_grant_su(const char *key, uid_t uid)
 {
-    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_GRANT_SU, pid);
+    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_GRANT_SU, uid);
     return ret;
 }
 
-static inline long sc_revoke_su(const char *key, pid_t pid)
+static inline long sc_revoke_su(const char *key, uid_t uid)
 {
-    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_REVOKE_SU, pid);
+    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_REVOKE_SU, uid);
+    return ret;
+}
+
+static inline long sc_thread_su(const char *key, pid_t pid)
+{
+    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_THREAD_SU, pid);
+    return ret;
+}
+
+static inline long sc_thread_unsu(const char *key, pid_t pid)
+{
+    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_THREAD_UNSU, pid);
     return ret;
 }
 

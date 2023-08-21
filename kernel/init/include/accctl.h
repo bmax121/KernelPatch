@@ -7,9 +7,9 @@
 
 int commit_su_nodep();
 int commit_su();
-int grant_su(pid_t vpid, bool real);
+int thread_su(pid_t vpid, bool real);
 
-int su_compat();
+int su_compat_init();
 
 int supercall_install();
 int lsm_hook_install();

@@ -44,19 +44,28 @@ static long call_unload_kpm(const char *path, long len)
 
 static inline long call_su()
 {
-    int ret = SUPERCALL_RES_SUCCEED;
-    ret = commit_su();
+    int ret = commit_su();
     return ret;
 }
 
-static long call_grant_su(pid_t pid)
+static long call_grant_su(uid_t uid)
+{
+    return SUPERCALL_RES_NOT_IMPL;
+}
+
+static long call_revoke_su(uid_t uid)
+{
+    return SUPERCALL_RES_NOT_IMPL;
+}
+
+static long call_thread_su(pid_t pid)
 {
     int ret = SUPERCALL_RES_SUCCEED;
-    ret = grant_su(pid, true);
+    ret = thread_su(pid, true);
     return ret;
 }
 
-static long call_revoke_su(pid_t pid)
+static long call_thread_unsu(pid_t pid)
 {
     return SUPERCALL_RES_NOT_IMPL;
 }
@@ -85,11 +94,17 @@ static long supercall(long cmd, long arg1, long arg2, long arg3)
     } else if (cmd == SUPERCALL_SU) {
         ret = call_su();
     } else if (cmd == SUPERCALL_GRANT_SU) {
-        pid_t pid = (pid_t)arg1;
-        ret = call_grant_su(pid);
+        uid_t uid = (uid_t)arg1;
+        ret = call_grant_su(uid);
     } else if (cmd == SUPERCALL_REVOKE_SU) {
+        uid_t uid = (uid_t)arg1;
+        ret = call_revoke_su(uid);
+    } else if (cmd == SUPERCALL_THREAD_SU) {
         pid_t pid = (pid_t)arg1;
-        ret = call_revoke_su(pid);
+        ret = call_thread_su(pid);
+    } else if (cmd == SUPERCALL_THREAD_UNSU) {
+        pid_t pid = (pid_t)arg1;
+        ret = call_thread_unsu(pid);
     } else if (cmd == SUPERCALL_TEST) {
         ret = call_test();
     } else {
@@ -102,6 +117,7 @@ HOOK_SYSCALL_DEFINE6(__NR_supercall, const char __user *, ukey, long, hash, long
 {
     char key[MAX_KEY_LEN + 1] = { '\0' };
     long len = strncpy_from_user(key, ukey, MAX_KEY_LEN);
+
     if (len <= 0) {
         goto ori_call;
     }

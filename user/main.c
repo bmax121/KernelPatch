@@ -30,16 +30,22 @@ void print_usage(char **argv)
               "     Get KernelPatch version.\n"
               "  --su\n"
               "     Fork a default root shell.\n"
-              "  --grant_su --arg1 tid\n"
-              "     Grant root privileges to the thread corresponding to the given tid.\n"
-              "  --revoke_su --arg1 tid\n"
-              "     Revoke root privileges to the thread corresponding to the given tid.\n"
-              "     (Unimplemented ...).\n"
               "  --load_kpm --arg1 kpm_patch\n"
               "     Load KernelPatch Module\n"
               "     (Unimplemented ...).\n"
               "  --unload_kpm --arg1 kpm_patch\n"
               "     Unload KernelPatch Module\n"
+              "     (Unimplemented ...).\n"
+              "  --grant_su --arg1 uid\n"
+              "     Grant root privileges to the user corresponding to the given uid.\n"
+              "     (Unimplemented ...).\n"
+              "  --revoke_su --arg1 uid\n"
+              "     Revoke root privileges to the user corresponding to the given uid.\n"
+              "     (Unimplemented ...).\n"
+              "  --thread_su --arg1 tid\n"
+              "     Grant root privileges to the thread corresponding to the given tid.\n"
+              "  --thread_unsu --arg1 tid\n"
+              "     Revoke root privileges to the thread corresponding to the given tid.\n"
               "     (Unimplemented ...).\n"
               "\n";
     fprintf(stdout, "%s", c);
@@ -76,11 +82,14 @@ int main(int argc, char **argv)
                                  { "hello", no_argument, &cmd, SUPERCALL_HELLO },
                                  { "kv", no_argument, &cmd, SUPERCALL_GET_KERNEL_VERSION },
                                  { "kpv", no_argument, &cmd, SUPERCALL_GET_KP_VERSION },
+                                 { "load_kpm", no_argument, NULL, SUPERCALL_LOAD_KPM },
+                                 { "unload_kpm", no_argument, NULL, SUPERCALL_UNLOAD_KPM },
                                  { "su", no_argument, &cmd, SUPERCALL_SU },
                                  { "grant_su", no_argument, &cmd, SUPERCALL_GRANT_SU },
                                  { "revoke_su", no_argument, &cmd, SUPERCALL_REVOKE_SU },
-                                 { "load_kpm", no_argument, NULL, SUPERCALL_LOAD_KPM },
-                                 { "unload_kpm", no_argument, NULL, SUPERCALL_UNLOAD_KPM },
+                                 { "thread_su", no_argument, &cmd, SUPERCALL_THREAD_SU },
+                                 { "thread_unsu", no_argument, &cmd, SUPERCALL_THREAD_UNSU },
+
                                  { 0, 0, 0, 0 } };
     char *optstr = "1:2:3:";
     int opt = -1;
@@ -102,7 +111,7 @@ int main(int argc, char **argv)
         }
     }
 
-    fprintf(stdout, "key: %s, command no: %x, arg1: %s, arg2: %s, arg3:%s\n", key, cmd, arg1, arg2, arg3);
+    // fprintf(stdout, "command no: %x, arg1: %s, arg2: %s, arg3:%s\n", cmd, arg1, arg2, arg3);
 
     long ret = 0;
     if (cmd == SUPERCALL_HELLO) {
@@ -117,24 +126,26 @@ int main(int argc, char **argv)
         fprintf(stdout, "%lx\n", kpv);
     } else if (cmd == SUPERCALL_SU) {
         ret = su_fork(key);
-    } else if (cmd == SUPERCALL_GRANT_SU) {
-        if (!arg2) {
+    } else if (cmd == SUPERCALL_THREAD_SU) {
+        if (!arg1) {
             fprintf(stderr, "Empty Tid!\n");
             return -1;
         }
-        int pid = atoi(arg2);
+        int pid = atoi(arg1);
         ret = sc_grant_su(key, pid);
     } else if (cmd == SUPERCALL_REVOKE_SU) {
-        if (!arg2) {
+        if (!arg1) {
             fprintf(stderr, "Empty Tid!\n");
             return -1;
         }
-        int pid = atoi(arg2);
+        int pid = atoi(arg1);
         ret = sc_revoke_su(key, pid);
     } else {
         fprintf(stderr, "Invalid SuperCall command!\n");
         return 0;
     }
-    // fprintf(stdout, "ret: %ld\n", ret);
+    if (ret == SUPERCALL_RES_NOT_IMPL) {
+        fprintf(stdout, "Unimplemented SuperCall\n", ret);
+    }
     return ret;
 }
