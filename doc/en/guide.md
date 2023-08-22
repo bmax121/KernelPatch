@@ -31,4 +31,4 @@ If you don't need extensive functionalities or want customization, you can separ
 
 ### [kpuser](/user/)
 
-kpuser is the user space header file and library for KernelPatch. You can directly embed kpatch into your program.
+kpuser is the user space header file and library for KernelPatch. You can directly embed kpuser into your program.
