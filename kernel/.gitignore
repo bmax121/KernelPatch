@@ -16,4 +16,7 @@
 *.bin
 *.elf
 
+# 
+*.kpm
+
 kpimg
