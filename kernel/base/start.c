@@ -209,6 +209,9 @@ static int start_init(uint64_t kva)
     uint64_t kallsym_addr = kva + start_preset.kallsyms_lookup_name_offset;
     kallsyms_lookup_name = (typeof(kallsyms_lookup_name))(kallsym_addr);
     printk = (typeof(printk))kallsyms_lookup_name("printk");
+    if (!printk) {
+        printk = (typeof(printk))kallsyms_lookup_name("_printk");
+    }
 
     endian = *(unsigned char *)&(uint16_t){ 1 } ? little : big;
     kver = VERSION(start_preset.kernel_version.major, start_preset.kernel_version.minor,

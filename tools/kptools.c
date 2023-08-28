@@ -204,6 +204,8 @@ int patch_image()
     preset->kallsyms_lookup_name_offset = get_symbol_offset(&kallsym, image_buf, "kallsyms_lookup_name");
 
     preset->printk_offset = get_symbol_offset(&kallsym, image_buf, "printk");
+    if (preset->printk_offset <= 0)
+        preset->printk_offset = get_symbol_offset(&kallsym, image_buf, "_printk");
 
     int32_t paging_init_offset = get_symbol_offset(&kallsym, image_buf, "paging_init");
     preset->paging_init_offset = relo_branch_func(image_buf, paging_init_offset);
