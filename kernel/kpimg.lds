@@ -4,6 +4,11 @@ _link_base = 64k - 3 * 4k;
 
 SECTIONS 
 {
+    /DISCARD/ : { *(.discard) *(.discard.*) }
+    /DISCARD/ : {
+        *(.interp .dynamic)
+        *(.dynsym .dynstr .hash .gnu.hash)
+    }
     . = _link_base;
     _link_base = .;
 
@@ -26,9 +31,9 @@ SECTIONS
     . = ALIGN(16);
     .setup.map : {
         _map_start = .;
-        base/map.o(.map.data)
-        base/map.o(.map.text)
-        base/map.o(.text)
+        base/map*.o(.map.data)
+        base/map*.o(.map.text)
+        base/map*.o(.text)
         . = ALIGN(16);
         _map_end = .;
     }
@@ -39,8 +44,9 @@ SECTIONS
     .kp.text : {
         _kp_text_start = .;
 
-        base/start.o(.start.text)
-        base/start.o(.text)
+        base/start*.o(.start.text)
+        base/start*.o(.text)
+        
         base/hook.o(.transit0.text);
         _transit0_end = .;
         base/hook.o(.transit1.text);

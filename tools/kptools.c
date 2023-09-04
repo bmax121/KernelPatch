@@ -121,9 +121,15 @@ static void target_endian_preset(setup_preset_t *preset, int32_t target_is_be)
 }
 
 // todo
-void select_map_area(int32_t *map_start, int32_t *max_size)
+void select_map_area(kallsym_t *kallsym, char *image_buf, int32_t *map_start, int32_t *max_size)
 {
-    *map_start = 0x200;
+    uint32_t kv = VERSION(kallsym->version.major, kallsym->version.minor, 0);
+    if (kv < VERSION(5, 15, 0)) {
+        *map_start = 0x200;
+    } else {
+        int32_t load_module_addr = get_symbol_offset(kallsym, image_buf, "load_module");
+        *map_start = load_module_addr;
+    }
     *max_size = 0x800;
 }
 
@@ -196,7 +202,7 @@ int patch_image()
     preset->kp_offset = align_image_len;
 
     int32_t map_start, map_max_size;
-    select_map_area(&map_start, &map_max_size);
+    select_map_area(&kallsym, image_buf, &map_start, &map_max_size);
     preset->map_offset = map_start;
     preset->map_max_size = map_max_size;
     fprintf(stdout, "[+] kptools map_start: 0x%x, max_size: 0x%x\n", map_start, map_max_size);

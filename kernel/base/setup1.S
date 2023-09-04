@@ -185,6 +185,7 @@ map_prepare:
     // map_preset.paging_init_backup = *(uint32_t *)(paging_init_pa);
     ldr w12, [x13]
     str w12, [x9, #map_paging_init_backup_offset]
+    dsb ish
     // uint64_t replace_offset = (uint64_t)(_paging_init - _map_start) + map_offset;
     adrp x11, _paging_init
     add x11, x11, :lo12:_paging_init
@@ -213,6 +214,8 @@ map_prepare:
     // Restore
     ldp x19, x20, [sp], 16
     ldp x29, x30, [sp], 16
+
+    dsb ish
     ret
 
 .text
@@ -258,6 +261,7 @@ setup:
     // I-cache = on or off,
     dsb ish
     ic iallu
+    dsb ish
     isb
 
     mov x16, x19

@@ -10,8 +10,8 @@ typedef void (*paging_init_f)(void);
 
 map_preset_t map_preset __section(.map.data) __aligned(MAP_ALIGN) = {
 #ifdef MAP_DEBUG
-    .str_fmt_px = "KP:%2d - 0x%llx\n",
-// .str_fmt_px = "KP:%2d - 0x%px\n",
+    .str_fmt_px = "KP:%x-%llx\n",
+// .str_fmt_px = "KP:%x-%px\n",
 #endif
 };
 
@@ -75,14 +75,8 @@ static inline void flush_icache_all(void)
 }
 
 // todo: 52-bits pa
-static uint64_t __noinline get_entry(uint64_t va, map_preset_t *preset, uint64_t is_kimg)
+static uint64_t __noinline get_entry(uint64_t va, map_preset_t *preset, uint64_t is_kimg, uint64_t attr_x)
 {
-    // #ifdef MAP_DEBUG
-    //     printk_f printk = (printk_f)(preset->printk_relo);
-    // #define map_debug(idx, val) printk(preset->str_fmt_px, idx, val)
-    //     map_debug(50, va);
-    // #endif
-
     uint64_t page_shift = preset->page_shift;
     uint64_t va_bits = preset->va1_bits;
     uint64_t page_level = (va_bits - 4) / (page_shift - 3);
@@ -100,6 +94,10 @@ static uint64_t __noinline get_entry(uint64_t va, map_preset_t *preset, uint64_t
         uint64_t pxd_index = (va >> pxd_shift) & (pxd_ptrs - 1);
         pxd_entry_va = pxd_va + pxd_index * 8;
         uint64_t pxd_desc = *((uint64_t *)pxd_entry_va);
+
+        if ((pxd_desc & 0x11) && (lv != 3) && attr_x) { // XNTable
+            *((uint64_t *)pxd_entry_va) &= 0xF7FFFFFFFFFFFFFF;
+        }
 
         if ((pxd_desc & 0b11) == 0b11) { // table
             pxd_pa = pxd_desc & (((1ul << (48 - page_shift)) - 1) << page_shift);
@@ -159,36 +157,31 @@ static map_preset_t *__noinline mem_proc()
     return preset;
 }
 
-// void __noinline _start_kernel()
-// {
-// }
-
+// todo: bti
 void __noinline _paging_init()
 {
     map_preset_t *preset = mem_proc();
-
 #ifdef MAP_DEBUG
-    kallsyms_f kallsyms_lookup_name = (kallsyms_f)(preset->kallsyms_lookup_name_relo);
+    // kallsyms_f kallsyms_lookup_name = (kallsyms_f)(preset->kallsyms_lookup_name_relo);
     printk_f printk = (printk_f)(preset->printk_relo);
 #define map_debug(idx, val) printk(preset->str_fmt_px, idx, val)
-    map_debug(0, kallsyms_lookup_name);
-    map_debug(1, preset->kernel_va);
-    map_debug(2, preset->tmp0);
+    for (int i = 0; i < sizeof(map_preset_t); i += 8) {
+        map_debug(i, *(uint64_t *)((uint64_t)preset + i));
+    }
 #endif
-
     // todo: May cause memory wastage
     ((memblock_reserve_f)preset->memblock_reserve_relo)(preset->start_offset + preset->kernel_pa, preset->start_size);
 
     // paging_init
     uint64_t paging_init_va = preset->paging_init_relo;
-    uint64_t paging_init_entry = get_entry(paging_init_va, preset, 1);
+    uint64_t paging_init_entry = get_entry(paging_init_va, preset, 1, 0);
     uint64_t paging_init_prot_ori = *(uint64_t *)paging_init_entry;
+    // not necessary in actually
     *(uint64_t *)paging_init_entry = (paging_init_prot_ori | 0x0008000000000000) & 0xFFFFFFFFFFFFFF7F;
     flush_tlb_all();
     *(uint32_t *)(paging_init_va) = preset->paging_init_backup;
     flush_icache_all();
     *(uint64_t *)paging_init_entry = paging_init_prot_ori;
-    flush_tlb_all();
     ((paging_init_f)(paging_init_va))();
 
     // start
@@ -202,12 +195,13 @@ void __noinline _paging_init()
     if (!(start & 0xF000000000000000)) {
         start = phys_to_virt(preset, start);
     }
-    for (int32_t i = 0; i < preset->start_size; i += 4) {
-        *(uint32_t *)(start + i) = *(uint32_t *)(old_start + i);
+    for (int32_t i = 0; i < preset->start_size; i += 8) {
+        *(uint64_t *)(start + i) = *(uint64_t *)(old_start + i);
     }
     flush_icache_all();
-    uint64_t start_entry = get_entry(start, preset, 0);
+    uint64_t start_entry = get_entry(start, preset, 0, 1);
     *(uint64_t *)start_entry &= 0xFFDFFFFFFFFFFFFF;
     flush_tlb_all();
+    // todo: restore linear memory attribute, when use kpm
     ((start_f)start)(preset->kernel_va);
 }

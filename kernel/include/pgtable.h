@@ -67,6 +67,25 @@ static inline uint64_t tlbi_vaddr(uint64_t addr, uint64_t asid)
     return x;
 }
 
+struct pgtable_walk
+{
+    uint64_t va;
+    bool valid;
+    bool section;
+    int lv;
+    union
+    {
+        volatile uint64_t entries[4];
+        struct
+        {
+            uint64_t lv0;
+            uint64_t lv1;
+            uint64_t lv2;
+            uint64_t lv3;
+        } entry;
+    } walk;
+};
+
 extern int64_t memstart_addr;
 extern uint64_t kimage_voffset;
 extern uint64_t page_offset;
@@ -140,6 +159,7 @@ static inline bool is_kimg_range(uint64_t addr)
     return addr > kernel_va && addr < (kernel_va + kernel_size);
 }
 
-uint64_t *get_pte(uint64_t va);
+__noinline int pgtable_walk_kernel(uint64_t va, uint64_t *lv1, uint64_t *lv2, uint64_t *lv3);
+uint64_t *pgtable_entry_kernel(uint64_t va);
 
 #endif

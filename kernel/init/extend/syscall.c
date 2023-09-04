@@ -29,7 +29,7 @@ void replace_syscall_with(long nr, uintptr_t *old, uintptr_t new)
 {
     uintptr_t addr = syscall_table_addr + nr * sizeof(uintptr_t);
     *old = *(uintptr_t *)addr;
-    uintptr_t *pte = get_pte(addr);
+    uintptr_t *pte = pgtable_entry_kernel(addr);
     uintptr_t ori_prot = *pte;
     *pte = (ori_prot | PTE_DBM) & ~PTE_RDONLY;
     flush_tlb_kernel_page(addr);
@@ -43,7 +43,7 @@ void replace_compat_syscall_whit(long nr, uintptr_t *old, uintptr_t new)
 {
     uintptr_t addr = compat_syscall_table_addr + nr * sizeof(uintptr_t);
     *old = *(uintptr_t *)addr;
-    uintptr_t *pte = get_pte(addr);
+    uintptr_t *pte = pgtable_entry_kernel(addr);
     uintptr_t ori_prot = *pte;
     *pte = (ori_prot | PTE_DBM) & ~PTE_RDONLY;
     flush_tlb_kernel_page(addr);

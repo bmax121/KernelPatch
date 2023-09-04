@@ -11,5 +11,7 @@
 #define ERR_NO_KFUNC -6
 #define ERR_NO_KVAR -7
 #define ERR_EXIST -8
+#define ERR_ADDR -9
+#define ERR_PGTABLE -10
 
 #endif
