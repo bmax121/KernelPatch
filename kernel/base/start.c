@@ -15,17 +15,8 @@ start_preset_t start_preset __attribute__((section(".start.data")));
 
 int (*kallsyms_on_each_symbol)(int (*fn)(void *, const char *, struct module *, unsigned long), void *data) = 0;
 unsigned long (*kallsyms_lookup_name)(const char *name) = 0;
-int (*kallsyms_lookup_size_offset)(unsigned long addr, unsigned long *symbolsize, unsigned long *offset) = 0;
-const char *(*kallsyms_lookup)(unsigned long addr, unsigned long *symbolsize, unsigned long *offset, char **modname,
-                               char *namebuf) = 0;
-int (*sprint_symbol)(char *buffer, unsigned long address) = 0;
-int (*sprint_symbol_no_offset)(char *buffer, unsigned long address) = 0;
-int (*sprint_backtrace)(char *buffer, unsigned long address) = 0;
-
-int (*lookup_symbol_name)(unsigned long addr, char *symname) = 0;
 int (*lookup_symbol_attrs)(unsigned long addr, unsigned long *size, unsigned long *offset, char *modname,
                            char *name) = 0;
-
 void (*printk)(const char *fmt, ...) = 0;
 
 uint32_t kver = 0;
@@ -274,21 +265,21 @@ static __noinline int start_init(uint64_t kva)
     logki("Version: %x, Compile Time: %s\n", kpver, start_preset.compile_time);
 
     kallsyms_on_each_symbol = (typeof(kallsyms_on_each_symbol))kallsyms_lookup_name("kallsyms_on_each_symbol");
-    kallsyms_lookup_size_offset =
-        (typeof(kallsyms_lookup_size_offset))kallsyms_lookup_name("kallsyms_lookup_size_offset");
-    kallsyms_lookup = (typeof(kallsyms_lookup))kallsyms_lookup_name("kallsyms_lookup");
-    sprint_symbol = (typeof(sprint_symbol))kallsyms_lookup_name("sprint_symbol");
-    sprint_symbol_no_offset = (typeof(sprint_symbol_no_offset))kallsyms_lookup_name("sprint_symbol_no_offset");
-    sprint_backtrace = (typeof(sprint_backtrace))kallsyms_lookup_name("sprint_backtrace");
-    lookup_symbol_name = (typeof(lookup_symbol_name))kallsyms_lookup_name("lookup_symbol_name");
     lookup_symbol_attrs = (typeof(lookup_symbol_attrs))kallsyms_lookup_name("lookup_symbol_attrs");
+
+    uint64_t scltr_el1 = 0;
+    asm volatile("mrs %[reg], sctlr_el1" : [reg] "+r"(scltr_el1));
+    logki("scltr_el1: %llx\n", scltr_el1);
+    // asm volatile("bic %[reg], %[reg], #0x8000" : [reg] "+r"(scltr_el1));
+    // asm volatile("msr sctlr_el1, %[reg]" : : [reg] "r"(scltr_el1));
     return 0;
 }
 
 static __noinline int nice_zone()
 {
     logki("==== KernelPatch Entering Nicezone ====\n");
-    return init();
+    // return init();
+    return 0;
 }
 
 int __attribute__((section(".start.text"))) __noinline start(uint64_t kva)

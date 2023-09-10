@@ -55,7 +55,12 @@ typedef struct
     int32_t is_64;
     int32_t is_be;
 
-    int32_t linux_banner_offset;
+    int32_t img_offset;
+
+    int32_t banner_num;
+    int32_t linux_banner_offset[4];
+    int32_t symbol_banner_idx;
+
     struct
     {
         uint8_t _;

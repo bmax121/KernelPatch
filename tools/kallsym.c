@@ -66,14 +66,18 @@ static int find_linux_banner(kallsym_t *info, char *img, int32_t imglen)
     char linux_banner_prefix[] = "Linux version ";
     size_t prefix_len = strlen(linux_banner_prefix);
 
+    char *imgend = img + imglen;
     char *banner = (char *)img;
-    while ((banner = (char *)memmem(banner + 1, imglen, linux_banner_prefix, prefix_len)) != NULL)
-        if (isdigit(*(banner + prefix_len)) && *(banner + prefix_len + 1) == '.')
-            break;
+    info->banner_num = 0;
+    while ((banner = (char *)memmem(banner + 1, imgend - banner, linux_banner_prefix, prefix_len)) != NULL) {
+        if (isdigit(*(banner + prefix_len)) && *(banner + prefix_len + 1) == '.') {
+            info->linux_banner_offset[info->banner_num++] = (int32_t)(banner - img);
+        }
+    }
 
-    info->linux_banner_offset = (int32_t)(banner - img);
-    printf("[+] kernel linux_banner offset: 0x%08x\n", info->linux_banner_offset);
-    printf("[+] kernel linux_banner: %s", banner);
+    banner = img + info->linux_banner_offset[info->banner_num - 1];
+    printf("[+] kernel linux_banner num: %d\n", info->banner_num);
+    printf("[+] kernel last linux_banner: %s", banner);
 
     char *uts_release_start = banner + prefix_len;
     char *space = strchr(banner + prefix_len, ' ');
@@ -431,7 +435,8 @@ static int32_t find_approx_addresses_or_offset(kallsym_t *info, char *img, int32
 static int find_num_syms(kallsym_t *info, char *img, int32_t imglen)
 {
     int32_t approx_end = info->_approx_addresses_or_offsets_end;
-    int32_t num_syms_elem_size = get_num_syms_elem_size(info);
+    // int32_t num_syms_elem_size = get_num_syms_elem_size(info);
+    int32_t num_syms_elem_size = 4;
     int32_t approx_num_syms = info->_approx_addresses_or_offsets_num;
     int32_t nsyms = 0;
     int32_t nsyms_max_offset = approx_end + 4096;
@@ -444,6 +449,7 @@ static int find_num_syms(kallsym_t *info, char *img, int32_t imglen)
         if (approx_num_syms >= nsyms && approx_num_syms - nsyms < NSYMS_MAX_GAP)
             break;
     }
+
     if (cand >= nsyms_max_offset) {
         printf("[-] kallsyms kallsyms_num_syms error\n");
         return -1;
@@ -585,19 +591,25 @@ static int correct_addresses_or_offsets(kallsym_t *info, char *img, int32_t imgl
         index++;
     }
 
+    info->symbol_banner_idx = -1;
     // find correct addresses or offsets
-    int32_t target_offset = info->linux_banner_offset;
-    int32_t elem_size = info->has_relative_base ? get_offsets_elem_size(info) : get_addresses_elem_size(info);
-    pos = info->_approx_addresses_or_offsets_offset;
-    int32_t end = pos + 4096 + elem_size;
-    for (; pos < end; pos += elem_size) {
-        uint64_t first_elem_val = uint_unpack(img + pos, elem_size, info->is_be);
-        int32_t offset = uint_unpack(img + pos + index * elem_size, elem_size, info->is_be) - first_elem_val;
-        if (offset == target_offset)
+    for (int i = 0; i < info->banner_num; i++) {
+        int32_t target_offset = info->linux_banner_offset[i] - info->img_offset;
+        int32_t elem_size = info->has_relative_base ? get_offsets_elem_size(info) : get_addresses_elem_size(info);
+        pos = info->_approx_addresses_or_offsets_offset;
+        int32_t end = pos + 4096 + elem_size;
+        for (; pos < end; pos += elem_size) {
+            uint64_t first_elem_val = uint_unpack(img + pos, elem_size, info->is_be);
+            int32_t offset = uint_unpack(img + pos + index * elem_size, elem_size, info->is_be) - first_elem_val;
+            if (offset == target_offset)
+                break;
+        }
+        if (pos < end) {
+            info->symbol_banner_idx = i;
             break;
+        }
     }
-
-    if (pos >= end) {
+    if (info->symbol_banner_idx < 0) {
         printf("[-] kallsyms correct addressed or offsets error\n");
         return -1;
     }
@@ -651,6 +663,11 @@ int analyze_kallsym_info(kallsym_t *info, char *img, int32_t imglen, enum arch_t
         info->try_relo = 1;
     if (is_64)
         info->asm_PTR_size = 8;
+
+    info->img_offset = 0;
+    if (!strncmp("UNCOMPRESSED_IMG", img, strlen("UNCOMPRESSED_IMG"))) {
+        info->img_offset = 0x14;
+    }
 
     int32_t (*funcs[])(kallsym_t *, char *, int32_t) = { find_linux_banner,
                                                          find_token_table,

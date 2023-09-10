@@ -74,19 +74,19 @@ void before_rest_init(hook_fdata0_t *fdata, void *udata)
 {
     logkd("init before rest_init\n");
 
-#ifdef USE_KALLSYMS_LOOKUP_NAME_INSTEAD
-    linux_symbol_init(0, 0, 0, 0);
-    linux_sybmol_len_init();
-#else
-    kallsyms_on_each_symbol(linux_symbol_init, 0);
-#endif
-    syscall_init();
-    build_struct();
+    // #ifdef USE_KALLSYMS_LOOKUP_NAME_INSTEAD
+    //     linux_symbol_init(0, 0, 0, 0);
+    //     linux_sybmol_len_init();
+    // #else
+    //     kallsyms_on_each_symbol(linux_symbol_init, 0);
+    // #endif
+    // syscall_init();
+    // build_struct();
     // lsm_ext_init();
     // lsm_hook_install();
-    selinux_hook_install();
-    task_observer();
-    supercall_install();
+    // selinux_hook_install();
+    // task_observer();
+    // supercall_install();
     // su_compat(); // todo: uaccess
     logki("==== KernelPatch Everything Done ====\n");
 }

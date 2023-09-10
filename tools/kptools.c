@@ -129,6 +129,7 @@ void select_map_area(kallsym_t *kallsym, char *image_buf, int32_t *map_start, in
     } else {
         int32_t load_module_addr = get_symbol_offset(kallsym, image_buf, "load_module");
         *map_start = load_module_addr;
+        *map_start = 0x20000;
     }
     *max_size = 0x800;
 }
@@ -249,6 +250,7 @@ int patch_image()
     // todo:
     // kernel_resize(&kinfo, out_buf, align_kernel_size + align_image_len);
     long text_offset = align_image_len + 4096;
+
     b((uint32_t *)(out_buf + kinfo.b_stext_insn_offset), kinfo.b_stext_insn_offset, text_offset);
 
     target_endian_preset(preset, kinfo.is_be);
@@ -266,7 +268,6 @@ int patch_image()
 
 int main(int argc, char *argv[])
 {
-    // todo: optional_argument not work
     struct option longopts[] = { { "help", no_argument, NULL, 'h' },
                                  { "patch", required_argument, NULL, 'p' },
                                  { "skey", required_argument, NULL, 's' },

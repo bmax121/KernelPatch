@@ -174,14 +174,13 @@ void __noinline _paging_init()
 
     // paging_init
     uint64_t paging_init_va = preset->paging_init_relo;
-    uint64_t paging_init_entry = get_entry(paging_init_va, preset, 1, 0);
-    uint64_t paging_init_prot_ori = *(uint64_t *)paging_init_entry;
-    // not necessary in actually
-    *(uint64_t *)paging_init_entry = (paging_init_prot_ori | 0x0008000000000000) & 0xFFFFFFFFFFFFFF7F;
-    flush_tlb_all();
+    // uint64_t paging_init_entry = get_entry(paging_init_va, preset, 1, 0);
+    // uint64_t paging_init_prot_ori = *(uint64_t *)paging_init_entry;
+    // *(uint64_t *)paging_init_entry = (paging_init_prot_ori | 0x0008000000000000) & 0xFFFFFFFFFFFFFF7F;
+    // flush_tlb_all();
     *(uint32_t *)(paging_init_va) = preset->paging_init_backup;
     flush_icache_all();
-    *(uint64_t *)paging_init_entry = paging_init_prot_ori;
+    // *(uint64_t *)paging_init_entry = paging_init_prot_ori;
     ((paging_init_f)(paging_init_va))();
 
     // start
@@ -200,8 +199,9 @@ void __noinline _paging_init()
     }
     flush_icache_all();
     uint64_t start_entry = get_entry(start, preset, 0, 1);
-    *(uint64_t *)start_entry &= 0xFFDFFFFFFFFFFFFF;
+    *(uint64_t *)start_entry = (*(uint64_t *)start_entry & 0xFFD7FFFFFFFFFFFF) | 0x80;
     flush_tlb_all();
-    // todo: restore linear memory attribute, when use kpm
+
+    // todo: restore linear memory attribute
     ((start_f)start)(preset->kernel_va);
 }

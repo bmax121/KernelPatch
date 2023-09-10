@@ -633,7 +633,6 @@ void hook_install(hook_t *hook)
     for (int32_t i = 0; i < hook->tramp_insts_len; i++) {
         *((uint32_t *)hook->origin_addr + i) = hook->tramp_insts[i];
     }
-    dsb(ishst);
     flush_icache_all();
     *entry = ori_prot;
     flush_tlb_kernel_page(va);
@@ -649,7 +648,6 @@ void hook_uninstall(hook_t *hook)
     for (int32_t i = 0; i < hook->tramp_insts_len; i++) {
         *((uint32_t *)hook->origin_addr + i) = hook->origin_insts[i];
     }
-    dsb(ishst);
     flush_icache_all();
     *entry = ori_prot;
     flush_tlb_kernel_page(va);

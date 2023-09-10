@@ -1,5 +1,6 @@
 
 CFLAGS = -std=c11 -Wall -Wextra -Wno-unused -Wno-unused-parameter
+# CFLAGS += -g
 
 objs := image.o kallsym.o kptools.o order.o
 

@@ -50,11 +50,19 @@ typedef struct
 
 int32_t get_kernel_info(kernel_info_t *kinfo, char *img, int32_t imglen)
 {
+    kinfo->img_offset = 0;
+
+    // todo: format which i dont know
+    if (!strncmp("UNCOMPRESSED_IMG", img, strlen("UNCOMPRESSED_IMG"))) {
+        kinfo->img_offset = 0x14;
+        fprintf(stdout, "[+] kernel with UNCOMPRESSED_IMG header\n");
+    }
+
     kinfo->is_be = 0;
 
-    arm64_hdr_t *khdr = (arm64_hdr_t *)img;
+    arm64_hdr_t *khdr = (arm64_hdr_t *)(img + kinfo->img_offset);
     if (strncmp(khdr->magic, KERNEL_MAGIC, strlen(KERNEL_MAGIC))) {
-        printf("[-] kernel magic error :%s\n", khdr->magic);
+        fprintf(stderr, "[-] kernel magic error :%s\n", khdr->magic);
         return -1;
     }
 
@@ -64,10 +72,10 @@ int32_t get_kernel_info(kernel_info_t *kinfo, char *img, int32_t imglen)
     uint32_t b_stext_insn_offset;
     if (kinfo->uefi) {
         b_primary_entry_insn = khdr->hdr.efi.b_insn;
-        b_stext_insn_offset = 4;
+        b_stext_insn_offset = 4 + kinfo->img_offset;
     } else {
         b_primary_entry_insn = khdr->hdr.nefi.b_insn;
-        b_stext_insn_offset = 0;
+        b_stext_insn_offset = 0 + kinfo->img_offset;
     }
     kinfo->b_stext_insn_offset = b_stext_insn_offset;
 
@@ -85,7 +93,7 @@ int32_t get_kernel_info(kernel_info_t *kinfo, char *img, int32_t imglen)
     uint8_t flag = u64le(khdr->kernel_flag_le) & 0x0f;
     kinfo->is_be = flag & 0x01;
     if (kinfo->is_be) {
-        printf("[-] kernel unexpected arm64 big endian img\n");
+        fprintf(stderr, "[-] kernel unexpected arm64 big endian img\n");
         return -1;
     }
 
@@ -101,17 +109,17 @@ int32_t get_kernel_info(kernel_info_t *kinfo, char *img, int32_t imglen)
         kinfo->page_shift = 12;
     }
 
-    printf("[+] kernel image_size: 0x%08x\n", imglen);
-    printf("[+] kernel uefi header: %s\n", kinfo->uefi ? "true" : "false");
-    printf("[+] kernel load_offset: 0x%08x\n", kinfo->load_offset);
-    printf("[+] kernel kernel_size: 0x%08x\n", kinfo->kernel_size);
-    printf("[+] kernel page_shift: %d\n", kinfo->page_shift);
+    fprintf(stdout, "[+] kernel image_size: 0x%08x\n", imglen);
+    fprintf(stdout, "[+] kernel uefi header: %s\n", kinfo->uefi ? "true" : "false");
+    fprintf(stdout, "[+] kernel load_offset: 0x%08x\n", kinfo->load_offset);
+    fprintf(stdout, "[+] kernel kernel_size: 0x%08x\n", kinfo->kernel_size);
+    fprintf(stdout, "[+] kernel page_shift: %d\n", kinfo->page_shift);
     return 0;
 }
 
 int32_t kernel_resize(kernel_info_t *kinfo, char *img, int32_t size)
 {
-    arm64_hdr_t *khdr = (arm64_hdr_t *)img;
+    arm64_hdr_t *khdr = (arm64_hdr_t *)(img + kinfo->img_offset);
     uint64_t ksize = size;
     if (is_be() ^ kinfo->is_be)
         ksize = u64swp(size);
