@@ -168,7 +168,7 @@ int patch_image()
     fseek(fimage, 0, SEEK_END);
     long kpimg_len = ftell(fimage);
     fseek(fkpimg, 0, SEEK_SET);
-    fprintf(stdout, "[-] kptools kernel patch image size: 0x%08lx\n", kpimg_len);
+    fprintf(stdout, "[+] kptools kernel patch image size: 0x%08lx\n", kpimg_len);
 
     long align_image_len = align_ceil(image_len, 4096);
     long out_len = align_image_len + kpimg_len;
