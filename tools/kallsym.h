@@ -91,6 +91,7 @@ typedef struct
     int32_t _marker_num;
 
     int32_t try_relo;
+    int32_t relo_applied;
     int32_t elf64_rela_num;
     int32_t elf64_rela_offset;
 

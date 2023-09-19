@@ -329,8 +329,8 @@ uint64_t __attribute__((section(".transit1.text"))) __attribute__((__noinline__)
     uint64_t this_va;
     asm volatile("adr %0, ." : "=r"(this_va));
     uint32_t *vptr = (uint32_t *)this_va;
-    while (*--vptr != ARM64_NOP) {
-    };
+    while (*--vptr != ARM64_NOP)
+        ;
     hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, hook_chain_t, transit);
     hook_fdata1_t fdata = { 0 };
     fdata.arg0 = arg0;
@@ -553,7 +553,6 @@ _transit12(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t 
 
 extern void _transit12_end();
 
-// todo: pac
 // todo: stop_machine
 // todo: no task has the function in its call stack
 hook_err_t hook_prepare(hook_t *hook)
@@ -572,47 +571,47 @@ hook_err_t hook_prepare(hook_t *hook)
         uint32_t inst = hook->origin_insts[i];
         uint64_t inst_addr = hook->origin_addr + i * 4;
         for (int j = 0; j < sizeof(relo_len) / sizeof(relo_len[0]); j++) {
+            if ((inst & masks[j]) != types[j])
+                continue;
             bool relo_res = true;
-            if ((inst & masks[j]) == types[j]) {
-                inst_type_t it = types[j];
-                switch (it) {
-                case INST_B:
-                case INST_BC:
-                case INST_BL:
-                    // todo: Crash on pixel 3xl android 12 when relo_b is static inline
-                    relo_res = relo_b(hook, inst_addr, inst, it);
-                    break;
-                case INST_ADR:
-                case INST_ADRP:
-                    relo_res = relo_adr(hook, inst_addr, inst, it);
-                    break;
-                case INST_LDR_32:
-                case INST_LDR_64:
-                case INST_LDRSW_LIT:
-                case INST_PRFM_LIT:
-                case INST_LDR_SIMD_32:
-                case INST_LDR_SIMD_64:
-                case INST_LDR_SIMD_128:
-                    relo_res = relo_ldr(hook, inst_addr, inst, it);
-                    break;
-                case INST_CBZ:
-                case INST_CBNZ:
-                    relo_res = relo_cb(hook, inst_addr, inst, it);
-                    break;
-                case INST_TBZ:
-                case INST_TBNZ:
-                    relo_res = relo_tb(hook, inst_addr, inst, it);
-                    break;
-                case INST_IGNORE:
-                default:
-                    relo_res = relo_ignore(hook, inst_addr, inst, it);
-                    break;
-                }
-                hook->relo_insts_len += relo_len[j];
+            inst_type_t it = types[j];
+            switch (it) {
+            case INST_B:
+            case INST_BC:
+            case INST_BL:
+                relo_res = relo_b(hook, inst_addr, inst, it);
+                break;
+            case INST_ADR:
+            case INST_ADRP:
+                relo_res = relo_adr(hook, inst_addr, inst, it);
+                break;
+            case INST_LDR_32:
+            case INST_LDR_64:
+            case INST_LDRSW_LIT:
+            case INST_PRFM_LIT:
+            case INST_LDR_SIMD_32:
+            case INST_LDR_SIMD_64:
+            case INST_LDR_SIMD_128:
+                relo_res = relo_ldr(hook, inst_addr, inst, it);
+                break;
+            case INST_CBZ:
+            case INST_CBNZ:
+                relo_res = relo_cb(hook, inst_addr, inst, it);
+                break;
+            case INST_TBZ:
+            case INST_TBNZ:
+                relo_res = relo_tb(hook, inst_addr, inst, it);
+                break;
+            case INST_IGNORE:
+            default:
+                relo_res = relo_ignore(hook, inst_addr, inst, it);
                 break;
             }
             if (!relo_res)
                 return HOOK_BAD_RELO;
+            int64_t len = hook->relo_insts_len + relo_len[j];
+            hook->relo_insts_len = len;
+            break;
         }
     }
     // jump back
@@ -655,6 +654,7 @@ void hook_uninstall(hook_t *hook)
 
 hook_err_t hook(void *func, void *replace, void **backup)
 {
+    hook_err_t err = HOOK_NO_ERR;
     hook_chain_t *chain = (hook_chain_t *)hook_mem_alloc();
     if (!chain)
         return HOOK_NO_MEM;
@@ -666,7 +666,7 @@ hook_err_t hook(void *func, void *replace, void **backup)
     *backup = (void *)hook->relo_addr;
     logkv("Hook func: %llx, origin: %llx, replace: %llx, relocate: %llx, chain: %llx\n", hook->func_addr,
           hook->origin_addr, hook->replace_addr, hook->relo_addr, chain);
-    hook_err_t err = hook_prepare(hook);
+    err = hook_prepare(hook);
     if (err)
         goto out;
     hook_install(hook);

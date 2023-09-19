@@ -146,9 +146,12 @@ map_prepare:
     // map_preset.memblock_alloc_try_nid_relo = setup_preset.memblock_alloc_try_nid_offset;
     ldr x11, [x10, #setup_memblock_alloc_try_nid_offset_offset]
     str x11, [x9, #map_memblock_alloc_try_nid_relo_offset]
-    // map_preset.vabits_actual_relo = setup_preset.vabits_actual_offset 
-    ldr x11, [x10, #setup_vabits_actual_offset_offset]
-    str x11, [x9, #map_vabits_actual_relo_offset]
+    // map_preset.memblock_mark_nomap_relo = setup_preset.memblock_mark_nomap_offset;
+    ldr x11, [x10, #setup_memblock_mark_nomap_offset]
+    str x11, [x9, #map_memblock_mark_nomap_relo_offset]
+    // map_preset.vabits_flag = setup_preset.vabits_flag 
+    ldr x11, [x10, #setup_vabits_flag_offset]
+    str x11, [x9, #map_vabits_flag_offset]
     // map_preset.memstart_addr_relo = setup_preset.memstart_addr_offset 
     ldr x11, [x10, #setup_memstart_addr_offset_offset]
     str x11, [x9, #map_memstart_addr_relo_offset]
@@ -159,11 +162,7 @@ map_prepare:
     // map_preset.printk_relo = setup_preset.printk_offset;
     ldr x11, [x10, #setup_printk_offset_offset]
     str x11, [x9, #map_printk_relo_offset]
-    // map_preset.kallsyms_lookup_name_relo = setup_preset.kallsyms_lookup_name_offset;
-    ldr x11, [x10, #setup_kallsyms_lookup_name_offset_offset]
-    str x11, [x9, #map_kallsyms_lookup_name_relo_offset]
 #endif
-
     // set start memory info
     // map_preset.start_offset = setup_preset.start_offset;
     ldr x11, [x10, #setup_start_offset_offset]

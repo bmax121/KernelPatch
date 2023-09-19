@@ -39,7 +39,7 @@ void replace_syscall_with(long nr, uintptr_t *old, uintptr_t new)
     flush_tlb_kernel_page(addr);
 }
 
-void replace_compat_syscall_whit(long nr, uintptr_t *old, uintptr_t new)
+void replace_compat_syscall_with(long nr, uintptr_t *old, uintptr_t new)
 {
     uintptr_t addr = compat_syscall_table_addr + nr * sizeof(uintptr_t);
     *old = *(uintptr_t *)addr;
@@ -173,6 +173,5 @@ int syscall_init()
     compat_syscall_table_addr = kallsyms_lookup_name("compat_sys_call_table");
     syscall_table_addr = kallsyms_lookup_name("sys_call_table");
     syscall_has_wrapper = kallsyms_lookup_name("__arm64_sys_openat") ? true : false;
-    logkd("syscall has wrapper: %d\n", syscall_has_wrapper);
     return 0;
 }

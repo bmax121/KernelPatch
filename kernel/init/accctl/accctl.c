@@ -38,12 +38,14 @@ int commit_su()
     struct task_struct *task = current;
     struct task_ext *ext = get_task_ext(task);
     if (!task_ext_valid(ext)) {
-        logkfe("dirty task_ext %llx\n", ext);
+        logkfe("dirty task_ext pid(maybe dirty): %d\n", ext->pid);
         rc = ERR_DIRTY_EXT;
         goto out;
     }
 
+    ext->super = true;
     ext->selinux_allow = true;
+
     struct cred *new = prepare_creds();
 
     if (cred_offset.cap_inheritable_offset >= 0)
@@ -77,7 +79,8 @@ int commit_su()
 
     commit_creds(new);
 
-    logkd("commit_su pid: %d, tgid: %d\n", ext->pid, ext->tgid);
+    // logkd("commit_su  pid:   %d, tgid: %d\n", ext->pid, ext->tgid);
+    logkd("commit_su pid: %d\n", ext->pid);
 out:
     return rc;
 }
@@ -94,10 +97,12 @@ int thread_su(pid_t vpid, bool real)
     struct task_ext *ext = get_task_ext(task);
 
     if (!task_ext_valid(ext)) {
-        logkfe("dirty task_ext %llx\n", ext);
+        logkfe("dirty task_ext pid(maybe dirty): %d\n", ext->pid);
         rc = ERR_DIRTY_EXT;
         goto out;
     }
+
+    ext->selinux_allow = true;
 
     // todo: COW
     struct cred *cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
@@ -163,8 +168,8 @@ int thread_su(pid_t vpid, bool real)
         if (cred_offset.sgid_offset >= 0)
             *(uid_t *)((uintptr_t)real_cred + cred_offset.sgid_offset) = 0;
     }
-
-    logkd("thread_su pid: %d, tgid: %d\n", ext->pid, ext->tgid);
+    // logkd("thread_su pid: %d, tgid: %d\n", ext->pid, ext->tgid);
+    logkd("commit_su pid: %d\n", ext->pid);
 out:
     __put_task_struct(task);
     return rc;

@@ -3,23 +3,37 @@
 
 #include <ktypes.h>
 
-/*
- * Level 3 descriptor (PTE).
- */
-#define PTE_VALID (_AT(pteval_t, 1) << 0)
-#define PTE_TYPE_MASK (_AT(pteval_t, 3) << 0)
-#define PTE_TYPE_PAGE (_AT(pteval_t, 3) << 0)
-#define PTE_TABLE_BIT (_AT(pteval_t, 1) << 1)
-#define PTE_USER (_AT(pteval_t, 1) << 6) /* AP[1] */
-#define PTE_RDONLY (_AT(pteval_t, 1) << 7) /* AP[2] */
-#define PTE_SHARED (_AT(pteval_t, 3) << 8) /* SH[1:0], inner shareable */
-#define PTE_AF (_AT(pteval_t, 1) << 10) /* Access Flag */
-#define PTE_NG (_AT(pteval_t, 1) << 11) /* nG */
-#define PTE_GP (_AT(pteval_t, 1) << 50) /* BTI guarded */
-#define PTE_DBM (_AT(pteval_t, 1) << 51) /* Dirty Bit Management */
-#define PTE_CONT (_AT(pteval_t, 1) << 52) /* Contiguous range */
-#define PTE_PXN (_AT(pteval_t, 1) << 53) /* Privileged XN */
-#define PTE_UXN (_AT(pteval_t, 1) << 54) /* User XN */
+#define PTE_VALID (1ul << 0)
+#define PTE_TYPE_MASK (3ul << 0)
+#define PTE_TYPE_PAGE (3ul << 0)
+#define PTE_TABLE_BIT (1ul << 1)
+#define PTE_ATTRINDX(t) (t << 2) /* AttrIndx[2:0] encoding (mapping attributes defined in the MAIR_EL* registers */
+#define PTE_NS (1ul << 5) /* Non-Secure access control */
+#define PTE_USER (1ul << 6) /* AP[1] */
+#define PTE_RDONLY (1ul << 7) /* AP[2] */
+#define PTE_SHARED (3ul << 8) /* SH[1:0], inner shareable */
+#define PTE_AF (1ul << 10) /* Access Flag */
+#define PTE_NG (1ul << 11) /* nG */
+#define PTE_GP (1ul << 50) /* BTI guarded */
+#define PTE_DBM (1ul << 51) /* Dirty Bit Management */
+#define PTE_CONT (1ul << 52) /* Contiguous range */
+#define PTE_PXN (1ul << 53) /* Privileged XN */
+#define PTE_UXN (1ul << 54) /* User XN */
+
+#define PTE_WRITE (PTE_DBM) /* same as DBM (51) */
+#define PTE_SWP_EXCLUSIVE (1ul << 2) /* only for swp ptes */
+#define PTE_DIRTY (1ul << 55) /* software dirty in some version */
+#define PTE_SPECIAL (1ul << 56)
+#define PTE_DEVMAP (1ul << 57)
+#define PTE_PROT_NONE (1ul << 58) /* only when !PTE_VALID */
+
+#define PMD_PRESENT_INVALID (1ul << 59) /* only when !PMD_SECT_VALID */
+
+#define PTATTR_PXN (1ul << 59)
+#define PTATTR_XN (1ul << 60)
+#define PTATTR_USER (1ul << 61) /* AP[1] read not premited in el0*/
+#define PTATTR_RDONLY (1ul << 62) /* AP[2], write note permited at any exception level*/
+#define PTATTR_NS (1ul << 63) /* Indicates whether the table identifier is located in Secure PA space */
 
 #define mask_ul(h, l) (((~0ul) << (l)) & (~0ul >> (63 - (h))))
 
@@ -67,25 +81,6 @@ static inline uint64_t tlbi_vaddr(uint64_t addr, uint64_t asid)
     return x;
 }
 
-struct pgtable_walk
-{
-    uint64_t va;
-    bool valid;
-    bool section;
-    int lv;
-    union
-    {
-        volatile uint64_t entries[4];
-        struct
-        {
-            uint64_t lv0;
-            uint64_t lv1;
-            uint64_t lv2;
-            uint64_t lv3;
-        } entry;
-    } walk;
-};
-
 extern int64_t memstart_addr;
 extern uint64_t kimage_voffset;
 extern uint64_t page_offset;
@@ -96,6 +91,7 @@ extern int64_t kernel_size;
 extern int64_t page_shift;
 extern int64_t page_size;
 extern int64_t va_bits;
+extern uint64_t kp_kimg_offset;
 // extern int64_t pa_bits;
 
 static inline uint64_t phys_to_virt(uint64_t phys)
@@ -118,21 +114,10 @@ static inline uint64_t kimg_to_phys(uint64_t addr)
     return addr - kimage_voffset;
 }
 
-// 4.9
-// static inline void flush_tlb_kernel_range(unsigned long start, unsigned long end)
-// {
-//     unsigned long addr;
-//     if ((end - start) > 1024 * page_shift) {
-//         flush_tlb_all();
-//         return;
-//     }
-//     start >>= 12;
-//     end >>= 12;
-//     dsb(ishst);
-//     for (addr = start; addr < end; addr += 1 << (PAGE_SHIFT - 12)) tlbi_1(vaae1is, addr);
-//     dsb(ish);
-//     isb();
-// }
+static inline uint64_t kp_kimg_to_phys(uint64_t addr)
+{
+    return addr - kp_kimg_offset - kimage_voffset;
+}
 
 static inline void flush_tlb_kernel_range(uint64_t start, uint64_t end)
 {
@@ -154,12 +139,11 @@ static inline void flush_tlb_kernel_page(uint64_t addr)
     isb();
 }
 
-static inline bool is_kimg_range(uint64_t addr)
+static inline int is_kimg_range(uint64_t addr)
 {
     return addr > kernel_va && addr < (kernel_va + kernel_size);
 }
 
-__noinline int pgtable_walk_kernel(uint64_t va, uint64_t *lv1, uint64_t *lv2, uint64_t *lv3);
 uint64_t *pgtable_entry_kernel(uint64_t va);
 
 #endif

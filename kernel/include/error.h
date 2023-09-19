@@ -13,5 +13,7 @@
 #define ERR_EXIST -8
 #define ERR_ADDR -9
 #define ERR_PGTABLE -10
+#define ERR_NO_SUCH_SYMBOL -11
+#define ERR_STRUCT_LAYOUT -12
 
 #endif

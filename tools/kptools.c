@@ -123,14 +123,12 @@ static void target_endian_preset(setup_preset_t *preset, int32_t target_is_be)
 // todo
 void select_map_area(kallsym_t *kallsym, char *image_buf, int32_t *map_start, int32_t *max_size)
 {
-    uint32_t kv = VERSION(kallsym->version.major, kallsym->version.minor, 0);
-    if (kv < VERSION(5, 15, 0)) {
-        *map_start = 0x200;
-    } else {
-        int32_t load_module_addr = get_symbol_offset(kallsym, image_buf, "load_module");
-        *map_start = load_module_addr;
-        *map_start = 0x20000;
-    }
+    int32_t addr = 0x200;
+    // uint32_t kv = VERSION(kallsym->version.major, kallsym->version.minor, 0);
+    // if (kv < VERSION(5, 15, 0)) {
+    // }
+    addr = get_symbol_offset(kallsym, image_buf, "tcp_init_sock");
+    *map_start = align_ceil(addr, 16);
     *max_size = 0x800;
 }
 
@@ -211,7 +209,7 @@ int patch_image()
     preset->kallsyms_lookup_name_offset = get_symbol_offset(&kallsym, image_buf, "kallsyms_lookup_name");
 
     preset->printk_offset = get_symbol_offset(&kallsym, image_buf, "printk");
-    if (preset->printk_offset <= 0)
+    if (preset->printk_offset < 0)
         preset->printk_offset = get_symbol_offset(&kallsym, image_buf, "_printk");
 
     int32_t paging_init_offset = get_symbol_offset(&kallsym, image_buf, "paging_init");
@@ -219,21 +217,23 @@ int patch_image()
 
     preset->memblock_reserve_offset = get_symbol_offset(&kallsym, image_buf, "memblock_reserve");
 
-    preset->memblock_alloc_try_nid_offset = get_symbol_offset(&kallsym, image_buf, "memblock_alloc_try_nid");
+    preset->memblock_alloc_try_nid_offset = get_symbol_offset(&kallsym, image_buf, "memblock_phys_alloc_try_nid");
+    if (preset->memblock_alloc_try_nid_offset <= 0)
+        preset->memblock_alloc_try_nid_offset = get_symbol_offset(&kallsym, image_buf, "memblock_alloc_try_nid");
 
-    if (preset->memblock_alloc_try_nid_offset <= 0)
-        preset->memblock_alloc_try_nid_offset = get_symbol_offset(&kallsym, image_buf, "memblock_virt_alloc_try_nid");
-    if (preset->memblock_alloc_try_nid_offset <= 0)
-        preset->memblock_alloc_try_nid_offset = get_symbol_offset(&kallsym, image_buf, "memblock_phys_alloc_try_nid");
+    preset->memblock_mark_nomap_offset = get_symbol_offset(&kallsym, image_buf, "memblock_mark_nomap");
+    if (preset->memblock_mark_nomap_offset < 0) {
+        preset->memblock_mark_nomap_offset = 0;
+    }
 
     preset->memstart_addr_offset = get_symbol_offset(&kallsym, image_buf, "memstart_addr");
-
     if (preset->memstart_addr_offset < 0)
         preset->memstart_addr_offset = 0;
 
-    preset->vabits_actual_offset = get_symbol_offset(&kallsym, image_buf, "vabits_actual");
-    if (preset->vabits_actual_offset < 0)
-        preset->vabits_actual_offset = 0;
+    if (kallsym.version.major >= 6)
+        preset->vabits_flag = 1;
+    if (get_symbol_offset(&kallsym, image_buf, "vabits_actual") > 0)
+        preset->vabits_flag = 1;
 
     preset->kimage_voffset_offset = get_symbol_offset(&kallsym, image_buf, "kimage_voffset");
     if (preset->kimage_voffset_offset < 0)

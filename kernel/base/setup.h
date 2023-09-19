@@ -29,12 +29,12 @@ typedef struct
     uint64_t paging_init_relo;
     uint64_t memblock_reserve_relo;
     uint64_t memblock_alloc_try_nid_relo;
-    uint64_t vabits_actual_relo;
+    uint64_t memblock_mark_nomap_relo;
+    uint64_t vabits_flag;
     int64_t memstart_addr_relo;
     uint64_t kimage_voffset_relo;
 #ifdef MAP_DEBUG
     uint64_t printk_relo;
-    uint64_t kallsyms_lookup_name_relo;
     uint64_t tmp0;
     uint64_t tmp1;
     char str_fmt_px[24];
@@ -55,12 +55,12 @@ typedef struct
 #define map_paging_init_relo_offset 0x30
 #define map_memblock_reserve_relo_offset 0x38
 #define map_memblock_alloc_try_nid_relo_offset 0x40
-#define map_vabits_actual_relo_offset 0x48
-#define map_memstart_addr_relo_offset 0x50
-#define map_kimage_voffset_relo_offset 0x58
+#define map_memblock_mark_nomap_relo_offset 0x48
+#define map_vabits_flag_offset 0x50
+#define map_memstart_addr_relo_offset 0x58
+#define map_kimage_voffset_relo_offset 0x60
 #ifdef MAP_DEBUG
-#define map_printk_relo_offset 0x60
-#define map_kallsyms_lookup_name_relo_offset 0x68
+#define map_printk_relo_offset 0x68
 #define map_tmp0_offset 0x70
 #define map_tmp1_offset 0x78
 #define map_str_fmt_px_offset 0x80
@@ -68,7 +68,7 @@ typedef struct
 #endif
 
 #ifndef __ASSEMBLY__
-typedef int (*start_f)(uint64_t kva);
+typedef int (*start_f)(uint64_t kva, uint64_t offset);
 extern void _start_kernel();
 extern void _paging_init();
 extern void _link_base();

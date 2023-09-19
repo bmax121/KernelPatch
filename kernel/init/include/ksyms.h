@@ -4,11 +4,6 @@
 #include <linux/kallsyms.h>
 #include <log.h>
 
-int _local_strcmp(const char *s1, const char *s2);
-
-// todo: Crash on Pixel3xl android 12 when call kallsyms_on_each_symbol,
-#define USE_KALLSYMS_LOOKUP_NAME_INSTEAD
-
 #define kvar(var) kv_##var
 #define kvar_def(var) (*kv_##var)
 #define kvlen(var) kvl_##var
@@ -17,25 +12,8 @@ int _local_strcmp(const char *s1, const char *s2);
 #define kfunc(func) kf_##func
 #define kfunc_def(func) (*kf_##func)
 
-#ifdef USE_KALLSYMS_LOOKUP_NAME_INSTEAD
 #define kvar_match(var, name, addr) kv_##var = (typeof(kv_##var))kallsyms_lookup_name(#var)
 #define kfunc_match(func, name, addr) kf_##func = (typeof(kf_##func))kallsyms_lookup_name(#func)
-#else
-#define kvar_match(var, name, addr)              \
-    if (!kv_##var && !_local_strcmp(#var, name)) \
-        kv_##var = (typeof(kv_##var))addr;
-#define kfunc_match(func, name, addr)              \
-    if (!kf_##func && !_local_strcmp(#func, name)) \
-    kf_##func = (typeof(kf_##func))addr
-#define kvar_match_len(var, name, addr)                         \
-    if (!kv_##var && !_local_strcmp(#var, name)) {              \
-        kv_##var = (typeof(kv_##var))addr;                      \
-        kvl_##var = 0;                                          \
-    }                                                           \
-    if (kv_##var && !kvl_##var && (uint64_t)kv_##var != addr) { \
-        kvl_##var = addr - (uint64_t)kv_##var;                  \
-    }
-#endif
 
 #define kfunc_call(func, ...) \
     if (kf_##func)            \

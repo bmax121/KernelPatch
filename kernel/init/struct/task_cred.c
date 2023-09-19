@@ -15,6 +15,7 @@
 #include <ksyms.h>
 #include <uapi/linux/magic.h>
 #include <pgtable.h>
+#include <error.h>
 
 struct task_struct_offset task_struct_offset = {
     .pid_offset = -1,
@@ -74,6 +75,8 @@ bool thread_info_is_sp_el0 = false;
 bool thread_info_is_sp = false;
 int task_in_thread_info_offset = -1;
 int stack_in_task_offset = -1;
+int stack_end_offset = 0x90;
+int thread_info_size = 0x90;
 
 struct task_struct *task = 0;
 
@@ -124,6 +127,8 @@ int build_cred_offset()
     int cred_len = kvlen(init_cred);
     int task_len = kvlen(init_task);
 
+    logkd("struct cred: \n");
+
     if (task_len <= 0 || cred_len <= 0) {
         logke("init_task or init_cred length unknown\n");
         return -1;
@@ -141,7 +146,6 @@ int build_cred_offset()
 
     const struct task_struct *backup = override_current(task);
 
-    // todo:
     unsigned long root_user_ptr = kallsyms_lookup_name("root_user");
     unsigned long init_user_ns_ptr = kallsyms_lookup_name("init_user_ns");
     unsigned long init_groups_ptr = kallsyms_lookup_name("init_groups");
@@ -166,8 +170,9 @@ int build_cred_offset()
             add_bll(i, sizeof(uintptr_t));
         }
     }
-    logkd("struct cred offsets: user: %d, user_ns: %d, group_info: %d\n", cred_offset.user_offset,
-          cred_offset.user_ns_offset, cred_offset.group_info_offset);
+    logkd("    user offset: %d\n", cred_offset.user_offset);
+    logkd("    user_ns offset: %d\n", cred_offset.user_ns_offset);
+    logkd("    group_info offset: %d\n", cred_offset.group_info_offset);
 
     for (int16_t i = 0; i < cred_len; i += sizeof(unsigned)) {
         unsigned int val = *(unsigned int *)((uintptr_t)kvar(init_cred) + i);
@@ -184,14 +189,13 @@ int build_cred_offset()
             add_bll(i, sizeof(unsigned));
         }
     }
-    logkd("struct cred offsets: usage: %d, magic: %d, subscribers: %d\n", cred_offset.usage_offset,
-          cred_offset.magic_offset, cred_offset.subscribers_offset);
+    logkd("    usage offset: %d\n", cred_offset.usage_offset);
 
     // cap_inheritable, cap_permitted, cap_effective
     kernel_cap_t effective, inheritable, permitted;
     cap_capget(task, &effective, &inheritable, &permitted);
     full_cap.val = effective.val;
-    logkd("capability full_cap: %llx\n", full_cap.val);
+    logkd("    full_cap capability: %llx\n", full_cap.val);
 
     kernel_cap_t new_cap_e = { 0xff }, new_cap_i = { 0xf }, new_cap_p = { 0xfff };
     cap_capset(cred1, cred, &new_cap_e, &new_cap_i, &new_cap_p);
@@ -228,9 +232,10 @@ int build_cred_offset()
             add_bll(i, sizeof(kernel_cap_t));
         }
     }
-    logkd("struct cred offsets: cap_effective: %d, cap_inheritable: %d, cap_permitted: %d, cap_bset: %d\n",
-          cred_offset.cap_effective_offset, cred_offset.cap_inheritable_offset, cred_offset.cap_permitted_offset,
-          cred_offset.cap_bset_offset);
+    logkd("    cap_effective offset: %d\n", cred_offset.cap_effective_offset);
+    logkd("    cap_inheritable offset: %d\n", cred_offset.cap_inheritable_offset);
+    logkd("    cap_permitted offset: %d\n", cred_offset.cap_permitted_offset);
+    logkd("    cap_bset offset: %d\n", cred_offset.cap_bset_offset);
 
     // securebits
     for (int i = 0; i < cred_len; i += sizeof(unsigned)) {
@@ -249,7 +254,7 @@ int build_cred_offset()
         add_bll(i, sizeof(unsigned));
         break;
     }
-    logkd("struct cred offsets: securebits: %d\n", cred_offset.securebits_offset);
+    logkd("    securebits offset: %d\n", cred_offset.securebits_offset);
 
     // euid, uid, egid, gid
     for (int i = 0; i < cred_len; i += sizeof(uid_t)) {
@@ -274,8 +279,10 @@ int build_cred_offset()
         *uidp = 0;
         add_bll(i, sizeof(uid_t));
     }
-    logkd("struct cred offsets: uid: %d, euid: %d, gid: %d, egid: %d\n", cred_offset.uid_offset,
-          cred_offset.euid_offset, cred_offset.gid_offset, cred_offset.egid_offset);
+    logkd("    uid offset: %d\n", cred_offset.uid_offset);
+    logkd("    euid offset: %d\n", cred_offset.euid_offset);
+    logkd("    gid offset: %d\n", cred_offset.gid_offset);
+    logkd("    egid offset: %d\n", cred_offset.egid_offset);
 
     // fsuid
     for (int i = 0; i < cred_len; i += sizeof(uid_t)) {
@@ -292,7 +299,7 @@ int build_cred_offset()
             break;
         }
     }
-    logkd("struct cred offsets: fsuid: %d\n", cred_offset.fsuid_offset);
+    logkd("    fsuid offset: %d\n", cred_offset.fsuid_offset);
 
     // fsgid
     struct cred *new_cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
@@ -310,7 +317,7 @@ int build_cred_offset()
             break;
         }
     }
-    logkd("struct cred offsets: fsgid: %d\n", cred_offset.fsgid_offset);
+    logkd("    fsgid offset: %d\n", cred_offset.fsgid_offset);
 
     // suid
     raw_syscall3(__NR_setresuid, 0, 0, 1158);
@@ -326,7 +333,7 @@ int build_cred_offset()
             break;
         }
     }
-    logkd("struct cred offsets: suid: %d\n", cred_offset.suid_offset);
+    logkd("    suid offset: %d\n", cred_offset.suid_offset);
 
     // sgid
     raw_syscall3(__NR_setresgid, 0, 0, 1158);
@@ -342,7 +349,7 @@ int build_cred_offset()
             break;
         }
     }
-    logkd("struct cred offsets: sgid: %d\n", cred_offset.sgid_offset);
+    logkd("    sgid offset: %d\n", cred_offset.sgid_offset);
 
     // cap_ambient
     new_cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
@@ -362,7 +369,7 @@ int build_cred_offset()
             add_bll(i, sizeof(kernel_cap_t));
         }
     }
-    logkd("struct cred offsets: cap_ambient: %d\n", cred_offset.cap_ambient_offset);
+    logkd("    cap_ambient offset: %d\n", cred_offset.cap_ambient_offset);
 
     // todo: put cred
     // __put_cred(new_cred);
@@ -372,9 +379,9 @@ int build_cred_offset()
     return 0;
 }
 
-// todo: tid and tgid offsets of task_struct.
 int build_task_offset()
 {
+    logkd("struct task: \n");
     int cred_len = kvlen(init_cred);
     int task_len = kvlen(init_task);
 
@@ -397,7 +404,7 @@ int build_task_offset()
         }
     }
     if (ci != 2)
-        return -2;
+        return ERR_STRUCT_LAYOUT;
     //
     struct cred *flag = (struct cred *)vmalloc(kvlen(init_cred));
     memcpy(flag, kvar(init_cred), cred_len);
@@ -413,8 +420,8 @@ int build_task_offset()
     }
     vfree(flag);
 
-    logkd("struct task_struct offsets: cred: %d, read_cred: %d\n", task_struct_offset.cred_offset,
-          task_struct_offset.real_cred_offset);
+    logkd("    cred offset: %d\n", task_struct_offset.cred_offset);
+    logkd("    read_cred offset: %d\n", task_struct_offset.real_cred_offset);
 
     // stack
     uintptr_t stack_base = (uintptr_t)kvar(init_thread_union);
@@ -426,65 +433,61 @@ int build_task_offset()
             break;
         }
     }
-    logkd("struct task_struct offsets: stack: %d\n", task_struct_offset.stack_offset);
+    logkd("    stack offset: %d\n", task_struct_offset.stack_offset);
 
     return 0;
 }
 
 int resolve_current()
 {
+    logkd("current: \n");
+
     int err = 0;
+    uintptr_t sp_el0;
+    asm("mrs %0, sp_el0" : "=r"(sp_el0));
+    uint64_t init_thread_union_addr = (uint64_t)kvar(init_thread_union);
 
     thread_info_in_task = true;
-    for (int i = 0; i < KP_THREAD_INFO_MAX_SIZE; i += 8) {
-        uintptr_t addr = (uintptr_t)kvar(init_thread_union) + i;
-        uintptr_t val = *(uintptr_t *)addr;
-        if (val && val != STACK_END_MAGIC) {
+
+    for (int i = 0; i < stack_end_offset; i += 8) {
+        uint64_t addr = init_thread_union_addr + i;
+        uint64_t val = *(uint64_t *)addr;
+        if (i > 0) {
             thread_info_in_task = false;
+        }
+        if (val == STACK_END_MAGIC) {
+            stack_end_offset = i + 8;
             break;
         }
     }
-    logkd("thread_info_in_task: %d\n", thread_info_in_task);
+    logkd("    stack end offset stack: %d\n", stack_end_offset);
+    logkd("    thread_info_in_task: %d\n", thread_info_in_task);
 
-    // task_is_sp_el0
-    unsigned long sp_el0;
-    asm("mrs %0, sp_el0" : "=r"(sp_el0));
-    if (sp_el0 == (unsigned long)kvar(init_task)) {
+    // where is task
+    if (sp_el0 == (uint64_t)kvar(init_task)) {
         task_is_sp_el0 = true;
-        logkd("current is sp_el0\n");
-        goto out;
-    }
-
-    // thread_info_is_sp_el0
-    if (is_kimg_range((uint64_t)legacy_current_thread_info_sp_el0())) {
-        thread_info_is_sp_el0 = true;
-        logkd("current_thread_info is sp_el0\n");
-    }
-    // thread_info_is_sp
-    if (is_kimg_range((uint64_t)legacy_current_thread_info_sp())) {
-        thread_info_is_sp = true;
-        logkd("current_thread_info is sp\n");
-    }
-
-    if ((!thread_info_is_sp && !thread_info_is_sp_el0) || (thread_info_is_sp && thread_info_is_sp_el0)) {
-        logke("current_thread_info error\n");
-        err = -1;
-        goto out;
-    }
-
-    // task_in_thread_info_offset
-    for (int i = 0; i < KP_THREAD_INFO_MAX_SIZE; i += sizeof(uintptr_t)) {
-        struct thread_info *thread_info = current_thread_info();
-        uintptr_t ptr = (uintptr_t)thread_info + i;
-        if (*(uintptr_t *)ptr == (uintptr_t)kvar(init_task)) {
+        logkd("    current is sp_el0\n");
+    } else {
+        if (sp_el0 == init_thread_union_addr) {
+            thread_info_is_sp_el0 = true;
+            logkd("    current_thread_info is sp_el0\n");
+        } else {
             thread_info_is_sp = true;
-            task_in_thread_info_offset = i;
-            break;
+            logkd("    current_thread_info is sp\n");
         }
-    }
-    logkd("struct thread_info offsets: task: %d\n", task_in_thread_info_offset);
 
-out:
+        // task_in_thread_info_offset
+        for (int i = 0; i < thread_info_size; i += sizeof(uint64_t)) {
+            struct thread_info *thread_info = current_thread_info();
+            uint64_t ptr = (uint64_t)thread_info + i;
+            if (*(uint64_t *)ptr == (uint64_t)kvar(init_task)) {
+                task_in_thread_info_offset = i;
+                break;
+            }
+        }
+        logkd("    task offset of thread_info: %d\n", task_in_thread_info_offset);
+    }
+
     return err;
 }
 
@@ -492,11 +495,10 @@ int build_struct()
 {
     if (kvlen(init_task) <= 0 || kvlen(init_cred) <= 0) {
         logke("init_task or init_cred length unknown\n");
-        return -1;
+        return ERR_STRUCT_LAYOUT;
     }
     if (thread_size <= 0) {
-        logke("init_thread_union length unknown\n");
-        return -1;
+        thread_size = 16384;
     }
 
     full_cap = CAP_FULL_SET;

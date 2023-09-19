@@ -9,13 +9,9 @@
 struct task_struct *kvar(init_task) = 0;
 union thread_union *kvar(init_thread_union) = 0;
 
-void _linux_init_task_sym_match(const char *name, unsigned long addr)
+void _linux_init_task_sym_match()
 {
-#ifdef USE_KALLSYMS_LOOKUP_NAME_INSTEAD
     kvar_match(init_task, name, addr);
-#else
-    kvar_match_len(init_task, name, addr);
-#endif
     kvar_match(init_thread_union, name, addr);
 }
 
@@ -42,33 +38,29 @@ int kfunc_def(cred_fscmp)(const struct cred *, const struct cred *) = 0;
 void kfunc_def(cred_init)(void) = 0;
 bool kfunc_def(creds_are_invalid)(const struct cred *cred) = 0;
 
-void _linux_kernel_cred_sym_match(const char *name, unsigned long addr)
+void _linux_kernel_cred_sym_match()
 {
-#ifdef USE_KALLSYMS_LOOKUP_NAME_INSTEAD
     kvar_match(init_cred, name, addr);
-#else
-    kvar_match_len(init_cred, name, addr);
-#endif
     kvar_match(init_groups, name, addr);
     kfunc_match(__put_cred, name, addr);
-    kfunc_match(exit_creds, name, addr);
+    // kfunc_match(exit_creds, name, addr);
     kfunc_match(copy_creds, name, addr);
     kfunc_match(get_task_cred, name, addr);
     kfunc_match(cred_alloc_blank, name, addr);
     kfunc_match(prepare_creds, name, addr);
     kfunc_match(prepare_exec_creds, name, addr);
     kfunc_match(commit_creds, name, addr);
-    kfunc_match(abort_creds, name, addr);
+    // kfunc_match(abort_creds, name, addr);
     kfunc_match(override_creds, name, addr);
-    kfunc_match(revert_creds, name, addr);
+    // kfunc_match(revert_creds, name, addr);
     kfunc_match(prepare_kernel_cred, name, addr);
-    kfunc_match(change_create_files_as, name, addr);
-    kfunc_match(set_security_override, name, addr);
-    kfunc_match(set_security_override_from_ctx, name, addr);
-    kfunc_match(set_create_files_as, name, addr);
-    kfunc_match(cred_fscmp, name, addr);
-    kfunc_match(cred_init, name, addr);
-    kfunc_match(creds_are_invalid, name, addr);
+    // kfunc_match(change_create_files_as, name, addr);
+    // kfunc_match(set_security_override, name, addr);
+    // kfunc_match(set_security_override_from_ctx, name, addr);
+    // kfunc_match(set_create_files_as, name, addr);
+    // kfunc_match(cred_fscmp, name, addr);
+    // kfunc_match(cred_init, name, addr);
+    // kfunc_match(creds_are_invalid, name, addr);
 }
 
 // kernel/locking/spinlock.c
@@ -103,36 +95,36 @@ void kfunc_def(_raw_write_unlock_irqrestore)(rwlock_t *lock, unsigned long flags
 void kfunc_def(_raw_write_unlock_irq)(rwlock_t *lock) = 0;
 void kfunc_def(_raw_write_unlock_bh)(rwlock_t *lock) = 0;
 
-void _linux_locking_spinlock_sym_match(const char *name, unsigned long addr)
+void _linux_locking_spinlock_sym_match()
 {
-    kfunc_match(_raw_spin_trylock, name, addr);
-    kfunc_match(_raw_spin_trylock_bh, name, addr);
-    kfunc_match(_raw_spin_lock, name, addr);
-    kfunc_match(_raw_spin_lock_irqsave, name, addr);
-    kfunc_match(_raw_spin_lock_irq, name, addr);
-    kfunc_match(_raw_spin_lock_bh, name, addr);
-    kfunc_match(_raw_spin_unlock, name, addr);
-    kfunc_match(_raw_spin_unlock_irqrestore, name, addr);
-    kfunc_match(_raw_spin_unlock_irq, name, addr);
-    kfunc_match(_raw_spin_unlock_bh, name, addr);
-    kfunc_match(_raw_read_trylock, name, addr);
-    kfunc_match(_raw_read_lock, name, addr);
-    kfunc_match(_raw_read_lock_irqsave, name, addr);
-    kfunc_match(_raw_read_lock_irq, name, addr);
-    kfunc_match(_raw_read_lock_bh, name, addr);
-    kfunc_match(_raw_read_unlock, name, addr);
-    kfunc_match(_raw_read_unlock_irqrestore, name, addr);
-    kfunc_match(_raw_read_unlock_irq, name, addr);
-    kfunc_match(_raw_read_unlock_bh, name, addr);
-    kfunc_match(_raw_write_trylock, name, addr);
-    kfunc_match(_raw_write_lock, name, addr);
-    kfunc_match(_raw_write_lock_irqsave, name, addr);
-    kfunc_match(_raw_write_lock_irq, name, addr);
-    kfunc_match(_raw_write_lock_bh, name, addr);
-    kfunc_match(_raw_write_unlock, name, addr);
-    kfunc_match(_raw_write_unlock_irqrestore, name, addr);
-    kfunc_match(_raw_write_unlock_irq, name, addr);
-    kfunc_match(_raw_write_unlock_bh, name, addr);
+    // kfunc_match(_raw_spin_trylock, name, addr);
+    // kfunc_match(_raw_spin_trylock_bh, name, addr);
+    // kfunc_match(_raw_spin_lock, name, addr);
+    // kfunc_match(_raw_spin_lock_irqsave, name, addr);
+    // kfunc_match(_raw_spin_lock_irq, name, addr);
+    // kfunc_match(_raw_spin_lock_bh, name, addr);
+    // kfunc_match(_raw_spin_unlock, name, addr);
+    // kfunc_match(_raw_spin_unlock_irqrestore, name, addr);
+    // kfunc_match(_raw_spin_unlock_irq, name, addr);
+    // kfunc_match(_raw_spin_unlock_bh, name, addr);
+    // kfunc_match(_raw_read_trylock, name, addr);
+    // kfunc_match(_raw_read_lock, name, addr);
+    // kfunc_match(_raw_read_lock_irqsave, name, addr);
+    // kfunc_match(_raw_read_lock_irq, name, addr);
+    // kfunc_match(_raw_read_lock_bh, name, addr);
+    // kfunc_match(_raw_read_unlock, name, addr);
+    // kfunc_match(_raw_read_unlock_irqrestore, name, addr);
+    // kfunc_match(_raw_read_unlock_irq, name, addr);
+    // kfunc_match(_raw_read_unlock_bh, name, addr);
+    // kfunc_match(_raw_write_trylock, name, addr);
+    // kfunc_match(_raw_write_lock, name, addr);
+    // kfunc_match(_raw_write_lock_irqsave, name, addr);
+    // kfunc_match(_raw_write_lock_irq, name, addr);
+    // kfunc_match(_raw_write_lock_bh, name, addr);
+    // kfunc_match(_raw_write_unlock, name, addr);
+    // kfunc_match(_raw_write_unlock_irqrestore, name, addr);
+    // kfunc_match(_raw_write_unlock_irq, name, addr);
+    // kfunc_match(_raw_write_unlock_bh, name, addr);
 }
 
 // kernel/fork.c
@@ -164,28 +156,28 @@ int kfunc_def(unshare_fd)(unsigned long unshare_flags, unsigned int max_fds, str
 int kfunc_def(ksys_unshare)(unsigned long unshare_flags) = 0;
 int kfunc_def(unshare_files)(struct files_struct **displaced) = 0;
 
-void _linux_kernel_fork_sym_match(const char *name, unsigned long addr)
+void _linux_kernel_fork_sym_match()
 {
-    kfunc_match(pidfd_pid, name, addr);
-    kfunc_match(get_mm_exe_file, name, addr);
-    kfunc_match(free_task, name, addr);
-    kfunc_match(__put_task_struct, name, addr);
-    kfunc_match(fork_init, name, addr);
-    kfunc_match(set_mm_exe_file, name, addr);
-    kfunc_match(get_mm_exe_file, name, addr);
-    kfunc_match(get_task_exe_file, name, addr);
-    kfunc_match(get_task_mm, name, addr);
-    kfunc_match(mm_access, name, addr);
-    kfunc_match(exit_mm_release, name, addr);
-    kfunc_match(exec_mm_release, name, addr);
-    kfunc_match(fork_idle, name, addr);
-    kfunc_match(copy_init_mm, name, addr);
-    kfunc_match(create_io_thread, name, addr);
-    kfunc_match(kernel_clone, name, addr);
-    kfunc_match(kernel_thread, name, addr);
-    kfunc_match(unshare_fd, name, addr);
-    kfunc_match(ksys_unshare, name, addr);
-    kfunc_match(unshare_files, name, addr);
+    // kfunc_match(pidfd_pid, name, addr);
+    // kfunc_match(get_mm_exe_file, name, addr);
+    // kfunc_match(free_task, name, addr);
+    // kfunc_match(__put_task_struct, name, addr);
+    // kfunc_match(fork_init, name, addr);
+    // kfunc_match(set_mm_exe_file, name, addr);
+    // kfunc_match(get_mm_exe_file, name, addr);
+    // kfunc_match(get_task_exe_file, name, addr);
+    // kfunc_match(get_task_mm, name, addr);
+    // kfunc_match(mm_access, name, addr);
+    // kfunc_match(exit_mm_release, name, addr);
+    // kfunc_match(exec_mm_release, name, addr);
+    // kfunc_match(fork_idle, name, addr);
+    // kfunc_match(copy_init_mm, name, addr);
+    // kfunc_match(create_io_thread, name, addr);
+    // kfunc_match(kernel_clone, name, addr);
+    // kfunc_match(kernel_thread, name, addr);
+    // kfunc_match(unshare_fd, name, addr);
+    // kfunc_match(ksys_unshare, name, addr);
+    // kfunc_match(unshare_files, name, addr);
 }
 
 // kernel/pid.c
@@ -220,28 +212,28 @@ struct task_struct *kfunc_def(find_task_by_vpid)(pid_t nr) = 0;
 struct task_struct *kfunc_def(find_task_by_pid_ns)(pid_t nr, struct pid_namespace *ns) = 0;
 struct task_struct *kfunc_def(find_get_task_by_vpid)(pid_t nr) = 0;
 
-void _linux_kernel_pid_sym_match(const char *name, unsigned long addr)
+void _linux_kernel_pid_sym_match()
 {
     kfunc_match(pidfd_get_pid, name, addr);
     kfunc_match(put_pid, name, addr);
     kfunc_match(pid_task, name, addr);
     kfunc_match(get_pid_task, name, addr);
     kfunc_match(get_task_pid, name, addr);
-    kfunc_match(attach_pid, name, addr);
-    kfunc_match(detach_pid, name, addr);
-    kfunc_match(change_pid, name, addr);
-    kfunc_match(exchange_tids, name, addr);
-    kfunc_match(transfer_pid, name, addr);
+    // kfunc_match(attach_pid, name, addr);
+    // kfunc_match(detach_pid, name, addr);
+    // kfunc_match(change_pid, name, addr);
+    // kfunc_match(exchange_tids, name, addr);
+    // kfunc_match(transfer_pid, name, addr);
 
     kfunc_match(__task_pid_nr_ns, name, addr);
     kfunc_match(task_active_pid_ns, name, addr);
     kfunc_match(find_pid_ns, name, addr);
     kfunc_match(find_vpid, name, addr);
-    kfunc_match(find_get_pid, name, addr);
-    kfunc_match(find_ge_pid, name, addr);
-    kfunc_match(alloc_pid, name, addr);
-    kfunc_match(free_pid, name, addr);
-    kfunc_match(disable_pid_allocation, name, addr);
+    // kfunc_match(find_get_pid, name, addr);
+    // kfunc_match(find_ge_pid, name, addr);
+    // kfunc_match(alloc_pid, name, addr);
+    // kfunc_match(free_pid, name, addr);
+    // kfunc_match(disable_pid_allocation, name, addr);
     kfunc_match(pid_nr_ns, name, addr);
     kfunc_match(pid_vnr, name, addr);
 
@@ -255,7 +247,7 @@ void _linux_kernel_pid_sym_match(const char *name, unsigned long addr)
 
 int kfunc_def(stop_machine)(int (*fn)(void *), void *data, const struct cpumask *cpus) = 0;
 
-void _linux_kernel_stop_machine_sym_match(const char *name, unsigned long addr)
+void _linux_kernel_stop_machine_sym_match()
 {
     kfunc_match(stop_machine, name, addr);
 }
@@ -265,10 +257,10 @@ void _linux_kernel_stop_machine_sym_match(const char *name, unsigned long addr)
 void kfunc_def(argv_free)(char **argv) = 0;
 char **kfunc_def(argv_split)(gfp_t gfp, const char *str, int *argcp) = 0;
 
-void _linux_lib_argv_split_sym_match(const char *name, unsigned long addr)
+void _linux_lib_argv_split_sym_match()
 {
-    kfunc_match(argv_free, name, addr);
-    kfunc_match(argv_split, name, addr);
+    // kfunc_match(argv_free, name, addr);
+    // kfunc_match(argv_split, name, addr);
 }
 
 // lib/kstrtox.c
@@ -283,18 +275,18 @@ int kfunc_def(kstrtos8)(const char *s, unsigned int base, s8 *res) = 0;
 int kfunc_def(kstrtobool)(const char *s, bool *res) = 0;
 int kfunc_def(kstrtobool_from_user)(const char __user *s, size_t count, bool *res) = 0;
 
-void _linxu_lib_kstrtox_sym_match(const char *name, unsigned long addr)
+void _linxu_lib_kstrtox_sym_match()
 {
-    kfunc_match(kstrtoull, name, addr);
-    kfunc_match(kstrtoll, name, addr);
-    kfunc_match(kstrtouint, name, addr);
-    kfunc_match(kstrtoint, name, addr);
-    kfunc_match(kstrtou16, name, addr);
-    kfunc_match(kstrtos16, name, addr);
-    kfunc_match(kstrtou8, name, addr);
-    kfunc_match(kstrtos8, name, addr);
-    kfunc_match(kstrtobool, name, addr);
-    kfunc_match(kstrtobool_from_user, name, addr);
+    // kfunc_match(kstrtoull, name, addr);
+    // kfunc_match(kstrtoll, name, addr);
+    // kfunc_match(kstrtouint, name, addr);
+    // kfunc_match(kstrtoint, name, addr);
+    // kfunc_match(kstrtou16, name, addr);
+    // kfunc_match(kstrtos16, name, addr);
+    // kfunc_match(kstrtou8, name, addr);
+    // kfunc_match(kstrtos8, name, addr);
+    // kfunc_match(kstrtobool, name, addr);
+    // kfunc_match(kstrtobool_from_user, name, addr);
 }
 
 // lib/string.c
@@ -345,52 +337,52 @@ void *kfunc_def(memchr_inv)(const void *start, int c, size_t bytes) = 0;
 char *kfunc_def(strreplace)(char *s, char old, char new) = 0;
 void kfunc_def(fortify_panic)(const char *name) = 0;
 
-void _linux_lib_string_sym_match(const char *name, unsigned long addr)
+void _linux_lib_string_sym_match()
 {
     kfunc_match(strncasecmp, name, addr);
     kfunc_match(strcasecmp, name, addr);
     kfunc_match(strcpy, name, addr);
     kfunc_match(strncpy, name, addr);
-    kfunc_match(strlcpy, name, addr);
-    kfunc_match(strscpy, name, addr);
-    kfunc_match(strscpy_pad, name, addr);
+    // kfunc_match(strlcpy, name, addr);
+    // kfunc_match(strscpy, name, addr);
+    // kfunc_match(strscpy_pad, name, addr);
     kfunc_match(stpcpy, name, addr);
     kfunc_match(strcat, name, addr);
     kfunc_match(strncat, name, addr);
     kfunc_match(strlcat, name, addr);
     kfunc_match(strcmp, name, addr);
     kfunc_match(strncmp, name, addr);
-    kfunc_match(strchr, name, addr);
-    kfunc_match(strchrnul, name, addr);
-    kfunc_match(strnchrnul, name, addr);
-    kfunc_match(strrchr, name, addr);
-    kfunc_match(strnchr, name, addr);
-    kfunc_match(skip_spaces, name, addr);
-    kfunc_match(strim, name, addr);
+    // kfunc_match(strchr, name, addr);
+    // kfunc_match(strchrnul, name, addr);
+    // kfunc_match(strnchrnul, name, addr);
+    // kfunc_match(strrchr, name, addr);
+    // kfunc_match(strnchr, name, addr);
+    // kfunc_match(skip_spaces, name, addr);
+    // kfunc_match(strim, name, addr);
     kfunc_match(strlen, name, addr);
     kfunc_match(strnlen, name, addr);
-    kfunc_match(strspn, name, addr);
-    kfunc_match(strcspn, name, addr);
-    kfunc_match(strpbrk, name, addr);
-    kfunc_match(strsep, name, addr);
-    kfunc_match(sysfs_streq, name, addr);
-    kfunc_match(match_string, name, addr);
-    kfunc_match(__sysfs_match_string, name, addr);
+    // kfunc_match(strspn, name, addr);
+    // kfunc_match(strcspn, name, addr);
+    // kfunc_match(strpbrk, name, addr);
+    // kfunc_match(strsep, name, addr);
+    // kfunc_match(sysfs_streq, name, addr);
+    // kfunc_match(match_string, name, addr);
+    // kfunc_match(__sysfs_match_string, name, addr);
     kfunc_match(memset, name, addr);
-    kfunc_match(memset16, name, addr);
-    kfunc_match(memset32, name, addr);
-    kfunc_match(memset64, name, addr);
+    // kfunc_match(memset16, name, addr);
+    // kfunc_match(memset32, name, addr);
+    // kfunc_match(memset64, name, addr);
     kfunc_match(memcpy, name, addr);
     kfunc_match(memmove, name, addr);
     kfunc_match(memcmp, name, addr);
-    kfunc_match(bcmp, name, addr);
-    kfunc_match(memscan, name, addr);
-    kfunc_match(strstr, name, addr);
-    kfunc_match(strnstr, name, addr);
-    kfunc_match(memchr, name, addr);
-    kfunc_match(memchr_inv, name, addr);
-    kfunc_match(strreplace, name, addr);
-    kfunc_match(fortify_panic, name, addr);
+    // kfunc_match(bcmp, name, addr);
+    // kfunc_match(memscan, name, addr);
+    // kfunc_match(strstr, name, addr);
+    // kfunc_match(strnstr, name, addr);
+    // kfunc_match(memchr, name, addr);
+    // kfunc_match(memchr_inv, name, addr);
+    // kfunc_match(strreplace, name, addr);
+    // kfunc_match(fortify_panic, name, addr);
 }
 
 // lib/strncpy_from_user.c
@@ -398,7 +390,7 @@ void _linux_lib_string_sym_match(const char *name, unsigned long addr)
 
 long kfunc_def(strncpy_from_user)(char *dst, const char __user *src, long count) = 0;
 
-void _linux_lib_strncpy_from_user_sym_match(const char *name, unsigned long addr)
+void _linux_lib_strncpy_from_user_sym_match()
 {
     kfunc_match(strncpy_from_user, name, addr);
 }
@@ -408,7 +400,7 @@ void _linux_lib_strncpy_from_user_sym_match(const char *name, unsigned long addr
 
 long kfunc_def(strnlen_user)(const char __user *str, long count) = 0;
 
-void _linxu_lib_strnlen_user_sym_match(const char *name, unsigned long addr)
+void _linxu_lib_strnlen_user_sym_match()
 {
     kfunc_match(strnlen_user, name, addr);
 }
@@ -441,11 +433,11 @@ int kfunc_def(__page_mapcount)(struct page *page) = 0;
 unsigned long kfunc_def(vm_memory_committed)(void) = 0;
 int kfunc_def(get_cmdline)(struct task_struct *task, char *buffer, int buflen) = 0; // not exported
 
-void _linux_mm_utils_sym_match(const char *name, unsigned long addr)
+void _linux_mm_utils_sym_match()
 {
-    kfunc_match(kfree_const, name, addr);
+    // kfunc_match(kfree_const, name, addr);
     kfunc_match(kstrdup, name, addr);
-    kfunc_match(kstrdup_const, name, addr);
+    // kfunc_match(kstrdup_const, name, addr);
     kfunc_match(kstrndup, name, addr);
     kfunc_match(kmemdup, name, addr);
     kfunc_match(kmemdup_nul, name, addr);
@@ -453,26 +445,26 @@ void _linux_mm_utils_sym_match(const char *name, unsigned long addr)
     kfunc_match(vmemdup_user, name, addr);
     kfunc_match(strndup_user, name, addr);
     kfunc_match(memdup_user_nul, name, addr);
-    kfunc_match(vm_mmap, name, addr);
-    kfunc_match(kvmalloc_node, name, addr);
+    // kfunc_match(vm_mmap, name, addr);
+    // kfunc_match(kvmalloc_node, name, addr);
     kfunc_match(kvfree, name, addr);
-    kfunc_match(kvfree_sensitive, name, addr);
-    kfunc_match(kvrealloc, name, addr);
-    kfunc_match(page_mapped, name, addr);
-    kfunc_match(page_mapping, name, addr);
-    kfunc_match(__page_mapcount, name, addr);
-    kfunc_match(vm_memory_committed, name, addr);
-    kfunc_match(get_cmdline, name, addr);
+    // kfunc_match(kvfree_sensitive, name, addr);
+    // kfunc_match(kvrealloc, name, addr);
+    // kfunc_match(page_mapped, name, addr);
+    // kfunc_match(page_mapping, name, addr);
+    // kfunc_match(__page_mapcount, name, addr);
+    // kfunc_match(vm_memory_committed, name, addr);
+    // kfunc_match(get_cmdline, name, addr);
 }
 
 // lib/dump_stack.c
 void kfunc_def(dump_stack_lvl)(const char *log_lvl) = 0;
 void kfunc_def(dump_stack)(void) = 0;
 
-void _linux_lib_dump_stack_sym_match(const char *name, unsigned long addr)
+void _linux_lib_dump_stack_sym_match()
 {
-    kfunc_match(dump_stack_lvl, name, addr);
-    kfunc_match(dump_stack, name, addr);
+    // kfunc_match(dump_stack_lvl, name, addr);
+    // kfunc_match(dump_stack, name, addr);
 }
 
 // mm/vmalloc.c
@@ -523,46 +515,46 @@ void kfunc_def(unmap_kernel_range)(unsigned long addr, unsigned long size) = 0;
 long kfunc_def(vread)(char *buf, char *addr, unsigned long count) = 0;
 long kfunc_def(vwrite)(char *buf, char *addr, unsigned long count) = 0;
 
-void _linux_mm_vmalloc_sym_match(const char *name, unsigned long addr)
+void _linux_mm_vmalloc_sym_match()
 {
-    kfunc_match(vm_unmap_ram, name, addr);
-    kfunc_match(vm_map_ram, name, addr);
-    kfunc_match(vm_unmap_aliases, name, addr);
+    // kfunc_match(vm_unmap_ram, name, addr);
+    // kfunc_match(vm_map_ram, name, addr);
+    // kfunc_match(vm_unmap_aliases, name, addr);
 
     kfunc_match(vmalloc, name, addr);
     kfunc_match(vzalloc, name, addr);
     kfunc_match(vmalloc_user, name, addr);
-    kfunc_match(vmalloc_node, name, addr);
-    kfunc_match(vzalloc_node, name, addr);
-    kfunc_match(vmalloc_32, name, addr);
-    kfunc_match(vmalloc_32_user, name, addr);
+    // kfunc_match(vmalloc_node, name, addr);
+    // kfunc_match(vzalloc_node, name, addr);
+    // kfunc_match(vmalloc_32, name, addr);
+    // kfunc_match(vmalloc_32_user, name, addr);
     kfunc_match(__vmalloc, name, addr);
-    kfunc_match(__vmalloc_node_range, name, addr);
-    kfunc_match(__vmalloc_node, name, addr);
+    // kfunc_match(__vmalloc_node_range, name, addr);
+    // kfunc_match(__vmalloc_node, name, addr);
 
     kfunc_match(vfree, name, addr);
     kfunc_match(vfree_atomic, name, addr);
 
-    kfunc_match(vmap, name, addr);
-    kfunc_match(vmap_pfn, name, addr);
-    kfunc_match(vunmap, name, addr);
-    kfunc_match(remap_vmalloc_range_partial, name, addr);
-    kfunc_match(remap_vmalloc_range, name, addr);
+    // kfunc_match(vmap, name, addr);
+    // kfunc_match(vmap_pfn, name, addr);
+    // kfunc_match(vunmap, name, addr);
+    // kfunc_match(remap_vmalloc_range_partial, name, addr);
+    // kfunc_match(remap_vmalloc_range, name, addr);
 
-    kfunc_match(get_vm_area, name, addr);
-    kfunc_match(get_vm_area_caller, name, addr);
-    kfunc_match(__get_vm_area_caller, name, addr);
-    kfunc_match(free_vm_area, name, addr);
-    kfunc_match(remove_vm_area, name, addr);
-    kfunc_match(find_vm_area, name, addr);
+    // kfunc_match(get_vm_area, name, addr);
+    // kfunc_match(get_vm_area_caller, name, addr);
+    // kfunc_match(__get_vm_area_caller, name, addr);
+    // kfunc_match(free_vm_area, name, addr);
+    // kfunc_match(remove_vm_area, name, addr);
+    // kfunc_match(find_vm_area, name, addr);
 
-    kfunc_match(map_kernel_range_noflush, name, addr);
-    kfunc_match(map_kernel_range, name, addr);
-    kfunc_match(unmap_kernel_range_noflush, name, addr);
-    kfunc_match(unmap_kernel_range, name, addr);
+    // kfunc_match(map_kernel_range_noflush, name, addr);
+    // kfunc_match(map_kernel_range, name, addr);
+    // kfunc_match(unmap_kernel_range_noflush, name, addr);
+    // kfunc_match(unmap_kernel_range, name, addr);
 
-    kfunc_match(vread, name, addr);
-    kfunc_match(vwrite, name, addr);
+    // kfunc_match(vread, name, addr);
+    // kfunc_match(vwrite, name, addr);
 }
 
 //

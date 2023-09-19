@@ -14,8 +14,7 @@ extern bool thread_info_is_sp_el0;
 extern bool thread_info_is_sp;
 extern int task_in_thread_info_offset;
 extern int stack_in_task_offset;
-
-#define KP_THREAD_INFO_MAX_SIZE 0x80
+extern int stack_end_offset;
 
 register unsigned long current_stack_pointer asm("sp");
 
@@ -31,7 +30,7 @@ static __always_inline struct thread_info *legacy_current_thread_info_sp_el0()
     return (struct thread_info *)sp_el0;
 }
 
-static __always_inline struct thread_info *current_thread_info()
+static inline struct thread_info *current_thread_info()
 {
     if (task_is_sp_el0) {
         unsigned long sp_el0;
@@ -48,7 +47,7 @@ static __always_inline struct thread_info *current_thread_info()
     return ti;
 }
 
-static __always_inline struct task_struct *get_current()
+static inline struct task_struct *get_current()
 {
     if (task_is_sp_el0) {
         unsigned long sp_el0;
@@ -61,28 +60,24 @@ static __always_inline struct task_struct *get_current()
 
 #define current get_current()
 
-static __always_inline void *get_stack(struct task_struct *task)
+static inline void *get_stack(struct task_struct *task)
 {
     uintptr_t addr = (uintptr_t)task + stack_in_task_offset;
     return (void *)*(uintptr_t *)addr;
 }
 
-static __always_inline void *get_current_stack()
+static inline void *get_current_stack()
 {
     return get_stack(current);
 }
 
-static __always_inline struct task_ext *get_task_ext(struct task_struct *task)
+static inline struct task_ext *get_task_ext(struct task_struct *task)
 {
     uintptr_t addr = (uintptr_t)get_stack(task);
-    addr += 0x10;
-    if (thread_info_in_task) {
-        return (void *)addr;
-    }
-    return (void *)(addr + KP_THREAD_INFO_MAX_SIZE);
+    return (struct task_ext *)(addr + stack_end_offset);
 }
 
-static __always_inline struct task_ext *get_current_task_ext()
+static inline struct task_ext *get_current_task_ext()
 {
     return get_task_ext(current);
 }

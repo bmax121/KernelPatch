@@ -1,19 +1,21 @@
 #include "hook.h"
 
 #include <stdint.h>
+#include <error.h>
 
 // todo: refactor
+// todo: SCTLR_ELx.WXN Preventing execution from Writable memory
 
 static uint64_t mem_region_start[HOOK_MEM_REGION_NUM] = { 0 };
 static uint64_t mem_region_end[HOOK_MEM_REGION_NUM] = { 0 };
 
 typedef struct
 {
-    bool using;
+    int using;
     hook_chain_t chain;
 } hook_mem_warp_t;
 
-bool hook_mem_add(uint64_t start, int32_t size)
+int hook_mem_add(uint64_t start, int32_t size)
 {
     for (uint64_t i = start; i < start + size; i += 8) {
         *(uint64_t *)i = 0;
@@ -23,10 +25,10 @@ bool hook_mem_add(uint64_t start, int32_t size)
         if (!mem_region_start[i]) {
             mem_region_start[i] = start;
             mem_region_end[i] = start + size;
-            return true;
+            return 0;
         }
     }
-    return false;
+    return ERR_CAP_FULL;
 }
 
 hook_chain_t *hook_mem_alloc()
@@ -41,7 +43,7 @@ hook_chain_t *hook_mem_alloc()
             if (wrap->using)
                 continue;
 
-            wrap->using = true;
+            wrap->using = 1;
 
             for (int j = local_offsetof(hook_mem_warp_t, chain); j < sizeof(hook_mem_warp_t); j += 8) {
                 *(uint64_t *)(addr + j) = 0;
@@ -55,7 +57,7 @@ hook_chain_t *hook_mem_alloc()
 inline void hook_mem_free(hook_chain_t *free)
 {
     hook_mem_warp_t *warp = local_container_of(free, hook_mem_warp_t, chain);
-    warp->using = false;
+    warp->using = 0;
 }
 
 hook_chain_t *hook_get_chain_from_origin(uint64_t origin_addr)

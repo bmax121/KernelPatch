@@ -13,6 +13,7 @@ struct task_ext
     struct task_struct *task;
     pid_t pid;
     pid_t tgid;
+    bool super;
     bool selinux_allow;
     // last
     uint64_t magic;

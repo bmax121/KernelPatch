@@ -78,7 +78,7 @@ static long call_test()
 
 static long supercall(long cmd, long arg1, long arg2, long arg3)
 {
-    logkd("SuperCall with cmd: %x, a1: %llx, a2: %llx, a3: %llx\n", cmd, arg1, arg2, arg3);
+    // logkd("SuperCall with cmd: %x, a1: %llx, a2: %llx, a3: %llx\n", cmd, arg1, arg2, arg3);
 
     long ret = SUPERCALL_RES_SUCCEED;
     if (cmd == SUPERCALL_HELLO) {

@@ -2,7 +2,6 @@
 #define _KP_HOOK_H_
 
 #include <stdint.h>
-#include <stdbool.h>
 #include <log.h>
 
 #define HOOK_INTO_BRANCH_FUNC
@@ -30,6 +29,8 @@ typedef enum
 #define TRANSIT_ALIGN 32
 #define ARM64_NOP 0xd503201f
 
+// #define
+
 typedef struct
 {
     // in
@@ -38,65 +39,65 @@ typedef struct
     uint64_t replace_addr;
     uint64_t relo_addr;
     // out
-    bool pac;
-    uint32_t origin_insts[TRAMPOLINE_NUM];
-    uint32_t tramp_insts_len;
-    uint32_t tramp_insts[TRAMPOLINE_NUM];
-    uint32_t relo_insts_len;
-    uint32_t relo_insts[RELOCATE_INST_NUM];
-} hook_t;
+    // must align
+    int32_t tramp_insts_len;
+    int32_t relo_insts_len;
+    uint32_t origin_insts[TRAMPOLINE_NUM] __attribute__((aligned(8)));
+    uint32_t tramp_insts[TRAMPOLINE_NUM] __attribute__((aligned(8)));
+    uint32_t relo_insts[RELOCATE_INST_NUM] __attribute__((aligned(8)));
+} hook_t __attribute__((aligned(8)));
 
 struct _hook_chain;
 
 typedef struct
 {
     struct _hook_chain *chain;
-    bool early_ret;
+    int early_ret;
     uint64_t ret;
-} hook_fdata0_t;
+} hook_fdata0_t __attribute__((aligned(8)));
 
 typedef struct
 {
     struct _hook_chain *chain;
-    bool early_ret;
+    int early_ret;
     uint64_t ret;
     uint64_t arg0;
-} hook_fdata1_t;
+} hook_fdata1_t __attribute__((aligned(8)));
 
 typedef struct
 {
     struct _hook_chain *chain;
-    bool early_ret;
+    int early_ret;
     uint64_t ret;
     uint64_t arg0;
     uint64_t arg1;
-} hook_fdata2_t;
+} hook_fdata2_t __attribute__((aligned(8)));
 
 typedef struct
 {
     struct _hook_chain *chain;
-    bool early_ret;
+    int early_ret;
     uint64_t ret;
     uint64_t arg0;
     uint64_t arg1;
     uint64_t arg2;
-} hook_fdata3_t;
+} hook_fdata3_t __attribute__((aligned(8)));
 
 typedef struct
 {
     struct _hook_chain *chain;
-    bool early_ret;
+    int early_ret;
     uint64_t ret;
     uint64_t arg0;
     uint64_t arg1;
     uint64_t arg2;
     uint64_t arg3;
-} hook_fdata4_t;
+} hook_fdata4_t __attribute__((aligned(8)));
 
 typedef struct
 {
     struct _hook_chain *chain;
-    bool early_ret;
+    int early_ret;
     uint64_t ret;
     uint64_t arg0;
     uint64_t arg1;
@@ -106,12 +107,12 @@ typedef struct
     uint64_t arg5;
     uint64_t arg6;
     uint64_t arg7;
-} hook_fdata8_t;
+} hook_fdata8_t __attribute__((aligned(8)));
 
 typedef struct
 {
     struct _hook_chain *chain;
-    bool early_ret;
+    int early_ret;
     uint64_t ret;
     uint64_t arg0;
     uint64_t arg1;
@@ -125,7 +126,7 @@ typedef struct
     uint64_t arg9;
     uint64_t arg10;
     uint64_t arg11;
-} hook_fdata12_t;
+} hook_fdata12_t __attribute__((aligned(8)));
 
 typedef void (*hook_chain0_callback)(hook_fdata0_t *fdata, void *udata);
 typedef void (*hook_chain1_callback)(hook_fdata1_t *fdata, void *udata);
@@ -142,9 +143,9 @@ typedef struct _hook_chain
     void *befores[HOOK_CHAIN_NUM];
     void *afters[HOOK_CHAIN_NUM];
     uint32_t transit[TRANSIT_ALIGN / 4 + TRANSIT_INST_NUM];
-} hook_chain_t;
+} hook_chain_t __attribute__((aligned(8)));
 
-bool hook_mem_add(uint64_t start, int32_t size);
+int hook_mem_add(uint64_t start, int32_t size);
 hook_chain_t *hook_mem_alloc();
 void hook_mem_free(hook_chain_t *free);
 hook_chain_t *hook_get_chain_from_origin(uint64_t origin_addr);

@@ -7,7 +7,7 @@
 
 #define MAGIC_LEN 0x8
 #define KP_HEADER_SIZE 0x40
-#define SUPER_KEY_LEN 0x20
+#define SUPER_KEY_LEN 0x40
 #define HDR_BACKUP_SIZE 0x8
 #define COMPILE_TIME_LEN 0x18
 #define MAP_MAX_SIZE 0xa00
@@ -49,7 +49,7 @@ typedef struct _setup_preset_t
     int64_t page_shift;
     int64_t kp_offset;
     int64_t start_offset;
-    int64_t map_offset; // must be divisibled by MAP_ALIGN
+    int64_t map_offset; // must aligned MAP_ALIGN
     int64_t map_max_size;
 
     int64_t kallsyms_lookup_name_offset;
@@ -57,9 +57,10 @@ typedef struct _setup_preset_t
     int64_t printk_offset;
     int64_t memblock_reserve_offset;
     int64_t memblock_alloc_try_nid_offset;
-    int64_t vabits_actual_offset;
+    int64_t vabits_flag;
     int64_t memstart_addr_offset;
     int64_t kimage_voffset_offset;
+    int64_t memblock_mark_nomap_offset;
 
     uint8_t header_backup[HDR_BACKUP_SIZE];
     uint8_t superkey[SUPER_KEY_LEN];
@@ -76,10 +77,11 @@ typedef struct _setup_preset_t
 #define setup_printk_offset_offset 0x40
 #define setup_memblock_reserve_offset_offset 0x48
 #define setup_memblock_alloc_try_nid_offset_offset 0x50
-#define setup_vabits_actual_offset_offset 0x58
+#define setup_vabits_flag_offset 0x58
 #define setup_memstart_addr_offset_offset 0x60
 #define setup_kimage_voffset_offset_offset 0x68
-#define setup_header_backup_offset 0x70
+#define setup_memblock_mark_nomap_offset 0x70
+#define setup_header_backup_offset 0x78
 #define setup_superkey_offset (setup_header_backup_offset + HDR_BACKUP_SIZE)
 #endif
 

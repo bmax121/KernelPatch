@@ -111,7 +111,7 @@ extern uintptr_t compat_syscall_table_addr;
 void inline_syscall_with(long nr, uintptr_t *old, uintptr_t new);
 void inline_compat_syscall_with(long nr, uintptr_t *old, uintptr_t new);
 void replace_syscall_with(long nr, uintptr_t *old, uintptr_t newsc);
-void replace_compat_syscall_whit(long nr, uintptr_t *old, uintptr_t newsc);
+void replace_compat_syscall_with(long nr, uintptr_t *old, uintptr_t newsc);
 
 long raw_syscall0(long nr);
 long raw_syscall1(long nr, long arg0);
@@ -122,36 +122,6 @@ long raw_syscall5(long nr, long arg0, long arg1, long arg2, long arg3, long arg4
 long raw_syscall6(long nr, long arg0, long arg1, long arg2, long arg3, long arg4, long arg5);
 
 #define raw_syscall(f) raw_syscall##f
-
-static inline pid_t raw_syscall(getpid)()
-{
-    return raw_syscall0(__NR_getpid);
-}
-
-static inline pid_t raw_syscall(getppid)()
-{
-    return raw_syscall0(__NR_getppid);
-}
-
-static inline pid_t raw_syscall(gettid)()
-{
-    return raw_syscall0(__NR_gettid);
-}
-
-static inline int raw_syscall(setresuid)(uid_t ruid, uid_t euid, uid_t suid)
-{
-    return raw_syscall3(__NR_getresuid, ruid, euid, suid);
-}
-
-static inline uid_t raw_syscall(getuid)()
-{
-    return raw_syscall0(__NR_getuid);
-}
-
-static inline uid_t raw_syscall(geteuid)()
-{
-    return raw_syscall0(__NR_geteuid);
-}
 
 int syscall_init();
 
