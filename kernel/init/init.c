@@ -63,31 +63,38 @@ int linux_symbol_init()
     return 0;
 }
 
-void do_init(hook_fdata0_t *fdata, void *udata)
+static inline void do_init()
 {
     linux_symbol_init();
     linux_sybmol_len_init();
 
     syscall_init();
     build_struct();
-    selinux_hook_install();
     task_observer();
+    selinux_hook_install();
     supercall_install();
     // su_compat(); // todo: uaccess
 
     logki("==== KernelPatch Everything Done ====\n");
 }
 
+static void (*backup_cgroup_init)() = 0;
+
+void replace_cgroup_init()
+{
+    backup_cgroup_init();
+    do_init();
+}
+
 int init()
 {
     int err = 0;
 
-    // rest_init not work on 4.4
     unsigned long cgroup_init_addr = kallsyms_lookup_name("cgroup_init");
     if (!cgroup_init_addr) {
         logke("Can't find symbol cgroup_init\n");
         return ERR_NO_SUCH_SYMBOL;
     }
-    hook_wrap0((void *)cgroup_init_addr, 0, do_init, 0, 0);
+    hook((void *)cgroup_init_addr, (void *)replace_cgroup_init, (void **)&backup_cgroup_init);
     return err;
 }

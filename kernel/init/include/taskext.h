@@ -13,16 +13,15 @@ struct task_ext
     struct task_struct *task;
     pid_t pid;
     pid_t tgid;
-    bool super;
-    bool selinux_allow;
+    int super;
+    int selinux_allow;
     // last
     uint64_t magic;
 };
 
-static inline bool task_ext_valid(struct task_ext *ext)
+static inline int task_ext_valid(struct task_ext *ext)
 {
-    bool rc = ext->magic == TASK_EXT_MAGIC;
-    return rc;
+    return ext->magic == TASK_EXT_MAGIC;
 }
 
 #endif
