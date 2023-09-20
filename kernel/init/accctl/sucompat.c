@@ -148,13 +148,5 @@ int su_compat_init()
         logkfe("su compat hook error\n");
     }
 
-    unsigned hook_faccessat_addr = kallsyms_lookup_name("do_faccessat");
-    if (!hook_faccessat_addr)
-        hook_faccessat_addr = kallsyms_lookup_name("sys_faccessat");
-
-    if (!hook_faccessat_addr) {
-        logkfe("su compat faccessat not found\n");
-    }
-
     return 0;
 }

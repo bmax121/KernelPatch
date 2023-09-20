@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <compiler.h>
+#include <pgtable.h>
 
 struct task_struct;
 

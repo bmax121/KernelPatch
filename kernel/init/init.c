@@ -37,6 +37,7 @@ void linux_sybmol_len_init();
 
 int build_struct();
 int task_observer();
+int su_compat_init();
 
 int linux_symbol_init()
 {
@@ -65,6 +66,8 @@ int linux_symbol_init()
 
 static inline void do_init()
 {
+    logki("==== KernelPatch Do Init ====\n");
+
     linux_symbol_init();
     linux_sybmol_len_init();
 
@@ -73,7 +76,7 @@ static inline void do_init()
     task_observer();
     selinux_hook_install();
     supercall_install();
-    // su_compat(); // todo: uaccess
+    // su_compat_init();
 
     logki("==== KernelPatch Everything Done ====\n");
 }
@@ -95,6 +98,9 @@ int init()
         logke("Can't find symbol cgroup_init\n");
         return ERR_NO_SUCH_SYMBOL;
     }
-    hook((void *)cgroup_init_addr, (void *)replace_cgroup_init, (void **)&backup_cgroup_init);
+    hook_err_t rc = hook((void *)cgroup_init_addr, (void *)replace_cgroup_init, (void **)&backup_cgroup_init);
+    if (rc) {
+        logke("hook cgroup_init error: %d\n", rc);
+    }
     return err;
 }
