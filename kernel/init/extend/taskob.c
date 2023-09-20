@@ -64,17 +64,30 @@ int task_observer()
 {
     prepare_init_ext(kvar(init_task));
 
+    hook_err_t err = HOOK_NO_ERR;
     unsigned long copy_process_addr = kallsyms_lookup_name("copy_process");
     if (copy_process_addr) {
-        hook((void *)copy_process_addr, (void *)replace_copy_process, (void **)&backup_copy_process);
-    } else {
-        logkw("Can't find local symbol copy_process, try cgroup_post_fork");
-        unsigned long cgroup_post_fork_addr = kallsyms_lookup_name("cgroup_post_fork");
-        if (!cgroup_post_fork_addr) {
-            logke("Can't find symbol cgroup_post_fork\n");
-            return ERR_NO_SUCH_SYMBOL;
+        err = hook((void *)copy_process_addr, (void *)replace_copy_process, (void **)&backup_copy_process);
+        if (err == HOOK_NO_ERR) {
+            return 0;
+        } else {
+            logke("Hook copy_process error: %d\n", err);
         }
-        hook((void *)cgroup_post_fork_addr, (void *)replace_cgroup_post_fork, (void **)&backup_cgroup_post_fork);
+    } else {
+        logkw("Can't find symbol copy_process\n");
+    }
+
+    logkw("Try hook cgroup_post_fork\n");
+
+    unsigned long cgroup_post_fork_addr = kallsyms_lookup_name("cgroup_post_fork");
+    if (!cgroup_post_fork_addr) {
+        logke("Can't find symbol cgroup_post_fork\n");
+        return ERR_NO_SUCH_SYMBOL;
+    }
+    err = hook((void *)cgroup_post_fork_addr, (void *)replace_cgroup_post_fork, (void **)&backup_cgroup_post_fork);
+    if (err != HOOK_NO_ERR) {
+        logke("Hook cgroup_post_fork error: %d\n", err);
+        return err;
     }
 
     return 0;
