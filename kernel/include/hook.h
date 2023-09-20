@@ -22,14 +22,12 @@ typedef enum
 
 #define HOOK_MEM_REGION_NUM 4
 #define TRAMPOLINE_NUM 4
-#define RELOCATE_INST_NUM (TRAMPOLINE_NUM * 7 + 4)
+#define RELOCATE_INST_NUM (TRAMPOLINE_NUM * 8 + 8)
 #define HOOK_CHAIN_NUM 4
 
 #define TRANSIT_INST_NUM 64
 #define TRANSIT_ALIGN 32
 #define ARM64_NOP 0xd503201f
-
-// #define
 
 typedef struct
 {

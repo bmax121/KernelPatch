@@ -58,7 +58,7 @@ static inst_type_t types[] = {
     INST_CBZ,    INST_CBNZ,      INST_TBZ,      INST_TBNZ,        INST_IGNORE,
 };
 
-static int32_t relo_len[] = { 5, 7, 5, 4, 4, 5, 5, 5, 7, 7, 7, 7, 6, 6, 6, 6, 1 };
+static int32_t relo_len[] = { 6, 8, 6, 4, 4, 6, 6, 6, 8, 8, 8, 8, 6, 6, 6, 6, 2 };
 
 // static uint64_t sign_extend(uint64_t x, uint32_t len)
 // {
@@ -68,13 +68,13 @@ static int32_t relo_len[] = { 5, 7, 5, 4, 4, 5, 5, 5, 7, 7, 7, 7, 6, 6, 6, 6, 1 
 //     return x;
 // }
 
-static bool is_in_tramp(hook_t *hook, uint64_t addr)
+static int is_in_tramp(hook_t *hook, uint64_t addr)
 {
     uint64_t tramp_start = hook->origin_addr;
     uint64_t tramp_end = tramp_start + hook->tramp_insts_len * 4;
     if (addr >= tramp_start && addr < tramp_end)
-        return true;
-    return false;
+        return 0;
+    return -1;
 }
 
 static uint64_t relo_in_tramp(hook_t *hook, uint64_t addr)
@@ -110,7 +110,8 @@ uint64_t relo_func(uint64_t addr)
 }
 #endif
 
-bool relo_b(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
+// b, bc, bl
+int relo_b(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
 {
     uint32_t *buf = hook->relo_insts + hook->relo_insts_len;
     uint64_t imm64;
@@ -138,10 +139,11 @@ bool relo_b(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
     } else {
         buf[idx++] = 0xD61F0220; // BR X17
     }
-    return true;
+    buf[idx++] = ARM64_NOP;
+    return 0;
 }
 
-bool relo_adr(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
+int relo_adr(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
 {
     uint32_t *buf = hook->relo_insts + hook->relo_insts_len;
 
@@ -155,16 +157,16 @@ bool relo_adr(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
     } else {
         addr = (inst_addr + sign64_extend((immhi << 14u) | (immlo << 12u), 33u)) & 0xFFFFFFFFFFFFF000;
         if (is_in_tramp(hook, addr))
-            return false;
+            return -1;
     }
     buf[0] = 0x58000040u | xd; // LDR Xd, #8
     buf[1] = 0x14000003; // B #12
     buf[2] = addr & 0xFFFFFFFF;
     buf[3] = addr >> 32u;
-    return true;
+    return 0;
 }
 
-bool relo_ldr(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
+int relo_ldr(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
 {
     uint32_t *buf = hook->relo_insts + hook->relo_insts_len;
 
@@ -174,7 +176,7 @@ bool relo_ldr(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
     uint64_t addr = inst_addr + offset;
 
     if (is_in_tramp(hook, addr) && type != INST_PRFM_LIT)
-        return false;
+        return -1;
 
     addr = relo_in_tramp(hook, addr);
 
@@ -188,9 +190,10 @@ bool relo_ldr(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
             // LDRSW_LIT
             buf[1] = 0xB9800000 | rt | (rt << 5u); // LDRSW Xt, [Xt]
         }
-        buf[2] = 0x14000003; // B #12
-        buf[3] = addr & 0xFFFFFFFF;
-        buf[4] = addr >> 32u;
+        buf[2] = 0x14000004; // B #16
+        buf[3] = ARM64_NOP;
+        buf[4] = addr & 0xFFFFFFFF;
+        buf[5] = addr >> 32u;
     } else {
         buf[0] = 0xA93F47F0; // STP X16, X17, [SP, -0x10]
         buf[1] = 0x58000091; // LDR X17, #16
@@ -205,14 +208,15 @@ bool relo_ldr(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
             buf[2] = 0x3DC00220u | rt; // LDR Qt, [X17]
         }
         buf[3] = 0xF85F83F1; // LDR X17, [SP, -0x8]
-        buf[4] = 0x14000003; // B #12
-        buf[5] = addr & 0xFFFFFFFF;
-        buf[6] = addr >> 32u;
+        buf[4] = 0x14000004; // B #16
+        buf[5] = ARM64_NOP;
+        buf[6] = addr & 0xFFFFFFFF;
+        buf[7] = addr >> 32u;
     }
-    return true;
+    return 0;
 }
 
-bool relo_cb(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
+int relo_cb(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
 {
     uint32_t *buf = hook->relo_insts + hook->relo_insts_len;
 
@@ -227,10 +231,10 @@ bool relo_cb(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
     buf[3] = 0xd61f0220; // BR X17
     buf[4] = addr & 0xFFFFFFFF;
     buf[5] = addr >> 32u;
-    return true;
+    return 0;
 }
 
-bool relo_tb(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
+int relo_tb(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
 {
     uint32_t *buf = hook->relo_insts + hook->relo_insts_len;
 
@@ -245,14 +249,15 @@ bool relo_tb(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
     buf[3] = 0xd61f0220; // BR X17
     buf[4] = addr & 0xFFFFFFFF;
     buf[5] = addr >> 32u;
-    return true;
+    return 0;
 }
 
-bool relo_ignore(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
+int relo_ignore(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
 {
     uint32_t *buf = hook->relo_insts + hook->relo_insts_len;
     buf[0] = inst;
-    return true;
+    buf[1] = ARM64_NOP;
+    return 0;
 }
 
 static uint32_t can_b_rel(uint64_t src_addr, uint64_t dst_addr)
@@ -266,7 +271,8 @@ int32_t branch_relative(uint32_t *buf, uint64_t src_addr, uint64_t dst_addr)
 {
     if (can_b_rel(src_addr, dst_addr)) {
         buf[0] = 0x14000000u | (((dst_addr - src_addr) & 0x0FFFFFFFu) >> 2u); // B <label>
-        return 1;
+        buf[1] = ARM64_NOP;
+        return 2;
     }
     return 0;
 }
@@ -553,6 +559,58 @@ _transit12(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t 
 
 extern void _transit12_end();
 
+static __noinline int relocate_inst(hook_t *hook, uint64_t inst_addr, uint32_t inst)
+{
+    int rc = 0;
+    inst_type_t it = INST_IGNORE;
+    int len = 1;
+
+    for (int j = 0; j < sizeof(relo_len) / sizeof(relo_len[0]); j++) {
+        if ((inst & masks[j]) == types[j]) {
+            it = types[j];
+            len = relo_len[j];
+            break;
+        }
+    }
+
+    switch (it) {
+    case INST_B:
+    case INST_BC:
+    case INST_BL:
+        rc = relo_b(hook, inst_addr, inst, it);
+        break;
+    case INST_ADR:
+    case INST_ADRP:
+        rc = relo_adr(hook, inst_addr, inst, it);
+        break;
+    case INST_LDR_32:
+    case INST_LDR_64:
+    case INST_LDRSW_LIT:
+    case INST_PRFM_LIT:
+    case INST_LDR_SIMD_32:
+    case INST_LDR_SIMD_64:
+    case INST_LDR_SIMD_128:
+        rc = relo_ldr(hook, inst_addr, inst, it);
+        break;
+    case INST_CBZ:
+    case INST_CBNZ:
+        rc = relo_cb(hook, inst_addr, inst, it);
+        break;
+    case INST_TBZ:
+    case INST_TBNZ:
+        rc = relo_tb(hook, inst_addr, inst, it);
+        break;
+    case INST_IGNORE:
+    default:
+        rc = relo_ignore(hook, inst_addr, inst, it);
+        break;
+    }
+
+    hook->relo_insts_len += len;
+
+    return rc;
+}
+
 // todo: stop_machine
 // todo: no task has the function in its call stack
 hook_err_t hook_prepare(hook_t *hook)
@@ -566,59 +624,24 @@ hook_err_t hook_prepare(hook_t *hook)
     }
     // trampline to replace_addr
     hook->tramp_insts_len = branch_from_to(hook->tramp_insts, hook->origin_addr, hook->replace_addr);
+
     // relocate
+    for (int i = 0; i < sizeof(hook->relo_insts) / sizeof(hook->relo_insts[0]); i++) {
+        hook->relo_insts[i] = ARM64_NOP;
+    }
+
     for (int i = 0; i < hook->tramp_insts_len; i++) {
-        uint32_t inst = hook->origin_insts[i];
         uint64_t inst_addr = hook->origin_addr + i * 4;
-        for (int j = 0; j < sizeof(relo_len) / sizeof(relo_len[0]); j++) {
-            if ((inst & masks[j]) != types[j])
-                continue;
-            bool relo_res = true;
-            inst_type_t it = types[j];
-            switch (it) {
-            case INST_B:
-            case INST_BC:
-            case INST_BL:
-                relo_res = relo_b(hook, inst_addr, inst, it);
-                break;
-            case INST_ADR:
-            case INST_ADRP:
-                relo_res = relo_adr(hook, inst_addr, inst, it);
-                break;
-            case INST_LDR_32:
-            case INST_LDR_64:
-            case INST_LDRSW_LIT:
-            case INST_PRFM_LIT:
-            case INST_LDR_SIMD_32:
-            case INST_LDR_SIMD_64:
-            case INST_LDR_SIMD_128:
-                relo_res = relo_ldr(hook, inst_addr, inst, it);
-                break;
-            case INST_CBZ:
-            case INST_CBNZ:
-                relo_res = relo_cb(hook, inst_addr, inst, it);
-                break;
-            case INST_TBZ:
-            case INST_TBNZ:
-                relo_res = relo_tb(hook, inst_addr, inst, it);
-                break;
-            case INST_IGNORE:
-            default:
-                relo_res = relo_ignore(hook, inst_addr, inst, it);
-                break;
-            }
-            if (!relo_res)
-                return HOOK_BAD_RELO;
-            int64_t len = hook->relo_insts_len + relo_len[j];
-            hook->relo_insts_len = len;
-            break;
-        }
+        uint32_t inst = hook->origin_insts[i];
+        int relo_res = relocate_inst(hook, inst_addr, inst);
+        if (relo_res)
+            return HOOK_BAD_RELO;
     }
     // jump back
     uint64_t back_src_addr = hook->relo_addr + hook->relo_insts_len * 4;
     uint64_t back_dst_addr = hook->origin_addr + hook->tramp_insts_len * 4;
-    uint32_t *back_buf = hook->relo_insts + hook->relo_insts_len;
-    hook->relo_insts_len += branch_from_to(back_buf, back_src_addr, back_dst_addr);
+    uint32_t *buf = hook->relo_insts + hook->relo_insts_len;
+    hook->relo_insts_len += branch_from_to(buf, back_src_addr, back_dst_addr);
     return HOOK_NO_ERR;
 }
 
