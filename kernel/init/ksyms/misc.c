@@ -55,8 +55,8 @@ void _linux_kernel_cred_sym_match()
     // kfunc_match(revert_creds, name, addr);
     kfunc_match(prepare_kernel_cred, name, addr);
     // kfunc_match(change_create_files_as, name, addr);
-    // kfunc_match(set_security_override, name, addr);
-    // kfunc_match(set_security_override_from_ctx, name, addr);
+    kfunc_match(set_security_override, name, addr);
+    kfunc_match(set_security_override_from_ctx, name, addr);
     // kfunc_match(set_create_files_as, name, addr);
     // kfunc_match(cred_fscmp, name, addr);
     // kfunc_match(cred_init, name, addr);
@@ -557,4 +557,25 @@ void _linux_mm_vmalloc_sym_match()
     // kfunc_match(vwrite, name, addr);
 }
 
-//
+// lib/seq_buf.c,
+
+#include <linux/seq_buf.h>
+
+int kfunc_def(seq_buf_printf)(struct seq_buf *s, const char *fmt, ...) = 0;
+int kfunc_def(seq_buf_to_user)(struct seq_buf *s, char __user *ubuf, int cnt) = 0;
+int kfunc_def(seq_buf_puts)(struct seq_buf *s, const char *str) = 0;
+int kfunc_def(seq_buf_putc)(struct seq_buf *s, unsigned char c) = 0;
+int kfunc_def(seq_buf_putmem)(struct seq_buf *s, const void *mem, unsigned int len) = 0;
+int kfunc_def(seq_buf_putmem_hex)(struct seq_buf *s, const void *mem, unsigned int len) = 0;
+int kfunc_def(seq_buf_bitmask)(struct seq_buf *s, const unsigned long *maskp, int nmaskbits) = 0;
+
+void _linux_lib_seq_buf_sym_match()
+{
+    kfunc_match(seq_buf_printf, name, addr);
+    kfunc_match(seq_buf_to_user, name, addr);
+    kfunc_match(seq_buf_puts, name, addr);
+    kfunc_match(seq_buf_putc, name, addr);
+    kfunc_match(seq_buf_putmem, name, addr);
+    kfunc_match(seq_buf_putmem_hex, name, addr);
+    kfunc_match(seq_buf_bitmask, name, addr);
+}

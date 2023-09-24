@@ -12,7 +12,7 @@
 #include <ksyms.h>
 #include <error.h>
 
-int commit_su_nodep()
+int commit_kernel_cred()
 {
     int rc = 0;
     struct task_struct *task = current;
@@ -32,61 +32,57 @@ out:
     return rc;
 }
 
-int commit_su()
+int commit_su(const char *sctx)
 {
     int rc = 0;
     struct task_struct *task = current;
     struct task_ext *ext = get_task_ext(task);
     if (!task_ext_valid(ext)) {
-        logkfe("dirty task_ext pid(maybe dirty): %d\n", ext->pid);
+        logkfe("dirty task_ext, pid(maybe dirty): %d\n", ext->pid);
         rc = ERR_DIRTY_EXT;
         goto out;
     }
 
-    ext->super = true;
-    ext->selinux_allow = true;
+    ext->super = 1;
+    ext->selinux_allow = 1;
 
     struct cred *new = prepare_creds();
 
-    if (cred_offset.cap_inheritable_offset >= 0)
-        *(kernel_cap_t *)((uintptr_t) new + cred_offset.cap_inheritable_offset) = full_cap;
-    if (cred_offset.cap_permitted_offset >= 0)
-        *(kernel_cap_t *)((uintptr_t) new + cred_offset.cap_permitted_offset) = full_cap;
-    if (cred_offset.cap_effective_offset >= 0)
-        *(kernel_cap_t *)((uintptr_t) new + cred_offset.cap_effective_offset) = full_cap;
-    if (cred_offset.cap_bset_offset >= 0)
-        *(kernel_cap_t *)((uintptr_t) new + cred_offset.cap_bset_offset) = full_cap;
-    if (cred_offset.cap_ambient_offset >= 0)
-        *(kernel_cap_t *)((uintptr_t) new + cred_offset.cap_ambient_offset) = full_cap;
+    *(kernel_cap_t *)((uintptr_t) new + cred_offset.cap_inheritable_offset) = full_cap;
+    *(kernel_cap_t *)((uintptr_t) new + cred_offset.cap_permitted_offset) = full_cap;
+    *(kernel_cap_t *)((uintptr_t) new + cred_offset.cap_effective_offset) = full_cap;
+    *(kernel_cap_t *)((uintptr_t) new + cred_offset.cap_bset_offset) = full_cap;
+    *(kernel_cap_t *)((uintptr_t) new + cred_offset.cap_ambient_offset) = full_cap;
 
-    if (cred_offset.uid_offset >= 0)
-        *(uid_t *)((uintptr_t) new + cred_offset.uid_offset) = 0;
-    if (cred_offset.euid_offset >= 0)
-        *(uid_t *)((uintptr_t) new + cred_offset.euid_offset) = 0;
-    if (cred_offset.fsuid_offset >= 0)
-        *(uid_t *)((uintptr_t) new + cred_offset.fsuid_offset) = 0;
-    if (cred_offset.suid_offset >= 0)
-        *(uid_t *)((uintptr_t) new + cred_offset.suid_offset) = 0;
+    *(uid_t *)((uintptr_t) new + cred_offset.uid_offset) = 0;
+    *(uid_t *)((uintptr_t) new + cred_offset.euid_offset) = 0;
+    *(uid_t *)((uintptr_t) new + cred_offset.fsuid_offset) = 0;
+    *(uid_t *)((uintptr_t) new + cred_offset.suid_offset) = 0;
 
-    if (cred_offset.gid_offset >= 0)
-        *(uid_t *)((uintptr_t) new + cred_offset.gid_offset) = 0;
-    if (cred_offset.egid_offset >= 0)
-        *(uid_t *)((uintptr_t) new + cred_offset.egid_offset) = 0;
-    if (cred_offset.fsgid_offset >= 0)
-        *(uid_t *)((uintptr_t) new + cred_offset.fsgid_offset) = 0;
-    if (cred_offset.sgid_offset >= 0)
-        *(uid_t *)((uintptr_t) new + cred_offset.sgid_offset) = 0;
+    *(uid_t *)((uintptr_t) new + cred_offset.gid_offset) = 0;
+    *(uid_t *)((uintptr_t) new + cred_offset.egid_offset) = 0;
+    *(uid_t *)((uintptr_t) new + cred_offset.fsgid_offset) = 0;
+    *(uid_t *)((uintptr_t) new + cred_offset.sgid_offset) = 0;
+
+    if (sctx) {
+        rc = set_security_override_from_ctx(new, sctx);
+        if (rc) {
+            logkfw("set sctx: %s error: %d\n", sctx, rc);
+            goto out;
+        }
+    }
 
     commit_creds(new);
 
-    // logkd("commit_su  pid:   %d, tgid: %d\n", ext->pid, ext->tgid);
-    logkd("commit_su pid: %d\n", ext->pid);
+    ext->selinux_allow = !sctx;
+
+    logkfd("pid: %d, tgid: %d\n", ext->pid, ext->tgid);
 out:
     return rc;
 }
 
-// todo: cow
-int thread_su(pid_t vpid, bool real)
+// todo: cow, rcu
+int thread_su(pid_t vpid, const char *sctx)
 {
     int rc = 0;
     struct task_struct *task = find_get_task_by_vpid(vpid);
@@ -97,79 +93,63 @@ int thread_su(pid_t vpid, bool real)
     struct task_ext *ext = get_task_ext(task);
 
     if (!task_ext_valid(ext)) {
-        logkfe("dirty task_ext pid(maybe dirty): %d\n", ext->pid);
+        logkfe("dirty task_ext, pid(maybe dirty): %d\n", ext->pid);
         rc = ERR_DIRTY_EXT;
         goto out;
     }
 
-    ext->selinux_allow = true;
+    ext->selinux_allow = 1;
 
-    // todo: COW
+    // cred
     struct cred *cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
 
-    if (cred_offset.cap_inheritable_offset >= 0)
-        *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_inheritable_offset) = full_cap;
-    if (cred_offset.cap_permitted_offset >= 0)
-        *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_permitted_offset) = full_cap;
-    if (cred_offset.cap_effective_offset >= 0)
-        *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_effective_offset) = full_cap;
-    if (cred_offset.cap_bset_offset >= 0)
-        *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_bset_offset) = full_cap;
-    if (cred_offset.cap_ambient_offset >= 0)
-        *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_ambient_offset) = full_cap;
+    *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_inheritable_offset) = full_cap;
+    *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_permitted_offset) = full_cap;
+    *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_effective_offset) = full_cap;
+    *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_bset_offset) = full_cap;
+    *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_ambient_offset) = full_cap;
 
-    if (cred_offset.uid_offset >= 0)
-        *(uid_t *)((uintptr_t)cred + cred_offset.uid_offset) = 0;
-    if (cred_offset.euid_offset >= 0)
-        *(uid_t *)((uintptr_t)cred + cred_offset.euid_offset) = 0;
-    if (cred_offset.fsuid_offset >= 0)
-        *(uid_t *)((uintptr_t)cred + cred_offset.fsuid_offset) = 0;
-    if (cred_offset.suid_offset >= 0)
-        *(uid_t *)((uintptr_t)cred + cred_offset.suid_offset) = 0;
+    *(uid_t *)((uintptr_t)cred + cred_offset.uid_offset) = 0;
+    *(uid_t *)((uintptr_t)cred + cred_offset.euid_offset) = 0;
+    *(uid_t *)((uintptr_t)cred + cred_offset.fsuid_offset) = 0;
+    *(uid_t *)((uintptr_t)cred + cred_offset.suid_offset) = 0;
 
-    if (cred_offset.gid_offset >= 0)
-        *(uid_t *)((uintptr_t)cred + cred_offset.gid_offset) = 0;
-    if (cred_offset.egid_offset >= 0)
-        *(uid_t *)((uintptr_t)cred + cred_offset.egid_offset) = 0;
-    if (cred_offset.fsgid_offset >= 0)
-        *(uid_t *)((uintptr_t)cred + cred_offset.fsgid_offset) = 0;
-    if (cred_offset.sgid_offset >= 0)
-        *(uid_t *)((uintptr_t)cred + cred_offset.sgid_offset) = 0;
+    *(uid_t *)((uintptr_t)cred + cred_offset.gid_offset) = 0;
+    *(uid_t *)((uintptr_t)cred + cred_offset.egid_offset) = 0;
+    *(uid_t *)((uintptr_t)cred + cred_offset.fsgid_offset) = 0;
+    *(uid_t *)((uintptr_t)cred + cred_offset.sgid_offset) = 0;
 
-    if (real) {
-        struct cred *real_cred = *(struct cred **)((uintptr_t)task + task_struct_offset.real_cred_offset);
+    // real_cred
+    struct cred *real_cred = *(struct cred **)((uintptr_t)task + task_struct_offset.real_cred_offset);
 
-        if (cred_offset.cap_inheritable_offset >= 0)
-            *(kernel_cap_t *)((uintptr_t)real_cred + cred_offset.cap_inheritable_offset) = full_cap;
-        if (cred_offset.cap_permitted_offset >= 0)
-            *(kernel_cap_t *)((uintptr_t)real_cred + cred_offset.cap_permitted_offset) = full_cap;
-        if (cred_offset.cap_effective_offset >= 0)
-            *(kernel_cap_t *)((uintptr_t)real_cred + cred_offset.cap_effective_offset) = full_cap;
-        if (cred_offset.cap_bset_offset >= 0)
-            *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_bset_offset) = full_cap;
-        if (cred_offset.cap_ambient_offset >= 0)
-            *(kernel_cap_t *)((uintptr_t)real_cred + cred_offset.cap_ambient_offset) = full_cap;
+    *(kernel_cap_t *)((uintptr_t)real_cred + cred_offset.cap_inheritable_offset) = full_cap;
+    *(kernel_cap_t *)((uintptr_t)real_cred + cred_offset.cap_permitted_offset) = full_cap;
+    *(kernel_cap_t *)((uintptr_t)real_cred + cred_offset.cap_effective_offset) = full_cap;
+    *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_bset_offset) = full_cap;
+    *(kernel_cap_t *)((uintptr_t)real_cred + cred_offset.cap_ambient_offset) = full_cap;
 
-        if (cred_offset.uid_offset >= 0)
-            *(uid_t *)((uintptr_t)real_cred + cred_offset.uid_offset) = 0;
-        if (cred_offset.euid_offset >= 0)
-            *(uid_t *)((uintptr_t)real_cred + cred_offset.euid_offset) = 0;
-        if (cred_offset.fsuid_offset >= 0)
-            *(uid_t *)((uintptr_t)real_cred + cred_offset.fsuid_offset) = 0;
-        if (cred_offset.suid_offset >= 0)
-            *(uid_t *)((uintptr_t)real_cred + cred_offset.suid_offset) = 0;
+    *(uid_t *)((uintptr_t)real_cred + cred_offset.uid_offset) = 0;
+    *(uid_t *)((uintptr_t)real_cred + cred_offset.euid_offset) = 0;
+    *(uid_t *)((uintptr_t)real_cred + cred_offset.fsuid_offset) = 0;
+    *(uid_t *)((uintptr_t)real_cred + cred_offset.suid_offset) = 0;
 
-        if (cred_offset.gid_offset >= 0)
-            *(uid_t *)((uintptr_t)real_cred + cred_offset.gid_offset) = 0;
-        if (cred_offset.egid_offset >= 0)
-            *(uid_t *)((uintptr_t)real_cred + cred_offset.egid_offset) = 0;
-        if (cred_offset.fsgid_offset >= 0)
-            *(uid_t *)((uintptr_t)real_cred + cred_offset.fsgid_offset) = 0;
-        if (cred_offset.sgid_offset >= 0)
-            *(uid_t *)((uintptr_t)real_cred + cred_offset.sgid_offset) = 0;
+    *(uid_t *)((uintptr_t)real_cred + cred_offset.gid_offset) = 0;
+    *(uid_t *)((uintptr_t)real_cred + cred_offset.egid_offset) = 0;
+    *(uid_t *)((uintptr_t)real_cred + cred_offset.fsgid_offset) = 0;
+    *(uid_t *)((uintptr_t)real_cred + cred_offset.sgid_offset) = 0;
+
+    if (sctx) {
+        rc = set_security_override_from_ctx(cred, sctx);
+        rc = set_security_override_from_ctx(real_cred, sctx);
+        if (rc) {
+            logkfw("set sctx: %s error: %d", sctx, rc);
+            goto out;
+        }
     }
-    // logkd("thread_su pid: %d, tgid: %d\n", ext->pid, ext->tgid);
-    logkd("commit_su pid: %d\n", ext->pid);
+
+    ext->selinux_allow = !sctx;
+
+    logkfd("pid: %d, tgid: %d\n", ext->pid, ext->tgid);
 out:
     __put_task_struct(task);
     return rc;

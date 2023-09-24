@@ -42,26 +42,31 @@ static long call_unload_kpm(const char *path, long len)
     return SUPERCALL_RES_NOT_IMPL;
 }
 
-static inline long call_su()
+static inline long call_su(const char *sctx)
 {
-    int ret = commit_su();
+    int ret = commit_su(sctx);
     return ret;
 }
 
 static long call_grant_su(uid_t uid)
 {
-    return SUPERCALL_RES_NOT_IMPL;
+    return add_allow_uid(uid);
 }
 
 static long call_revoke_su(uid_t uid)
 {
-    return SUPERCALL_RES_NOT_IMPL;
+    return remove_allow_uid(uid);
 }
 
-static long call_thread_su(pid_t pid)
+static long call_list_su_allow(uid_t *uids, int *size)
+{
+    return list_allow_uids(uids, size);
+}
+
+static long call_thread_su(pid_t pid, const char *sctx)
 {
     int ret = SUPERCALL_RES_SUCCEED;
-    ret = thread_su(pid, true);
+    ret = thread_su(pid, sctx);
     return ret;
 }
 
@@ -76,9 +81,9 @@ static long call_test()
     return ret;
 }
 
-static long supercall(long cmd, long arg1, long arg2, long arg3)
+static long supercall(long cmd, void *__user arg1, void *__user arg2, void *__user arg3)
 {
-    // logkd("SuperCall with cmd: %x, a1: %llx, a2: %llx, a3: %llx\n", cmd, arg1, arg2, arg3);
+    logkd("SuperCall with cmd: %x, a1: %llx, a2: %llx, a3: %llx\n", cmd, arg1, arg2, arg3);
 
     long ret = SUPERCALL_RES_SUCCEED;
     if (cmd == SUPERCALL_HELLO) {
@@ -92,18 +97,27 @@ static long supercall(long cmd, long arg1, long arg2, long arg3)
     } else if (cmd == SUPERCALL_UNLOAD_KPM) {
         ret = call_unload_kpm(0, 0);
     } else if (cmd == SUPERCALL_SU) {
-        ret = call_su();
+        char sctx[SUPERCALL_SCONTEXT_LEN] = { '\0' };
+        long len = strncpy_from_user(sctx, (const char *)arg1, SUPERCALL_SCONTEXT_LEN - 1);
+        ret = call_su(len > 0 ? sctx : 0);
     } else if (cmd == SUPERCALL_GRANT_SU) {
-        uid_t uid = (uid_t)arg1;
+        uid_t uid = (uid_t)(uintptr_t)arg1;
         ret = call_grant_su(uid);
     } else if (cmd == SUPERCALL_REVOKE_SU) {
-        uid_t uid = (uid_t)arg1;
+        uid_t uid = (uid_t)(uintptr_t)arg1;
         ret = call_revoke_su(uid);
+    } else if (cmd == SUPERCALL_LIST_SU_ALLOW) {
+        uid_t *uids = (uid_t *)arg1;
+        int *size = (int *)arg2;
+        logkd("fffffffffffff\n");
+        ret = call_list_su_allow(uids, size);
     } else if (cmd == SUPERCALL_THREAD_SU) {
-        pid_t pid = (pid_t)arg1;
-        ret = call_thread_su(pid);
+        pid_t pid = (pid_t)(uintptr_t)arg1;
+        char sctx[SUPERCALL_SCONTEXT_LEN] = { '\0' };
+        long len = strncpy_from_user(sctx, (const char *)arg2, SUPERCALL_SCONTEXT_LEN - 1);
+        ret = call_thread_su(pid, len > 0 ? sctx : 0);
     } else if (cmd == SUPERCALL_THREAD_UNSU) {
-        pid_t pid = (pid_t)arg1;
+        pid_t pid = (pid_t)(uintptr_t)arg1;
         ret = call_thread_unsu(pid);
     } else if (cmd == SUPERCALL_TEST) {
         ret = call_test();
@@ -113,7 +127,8 @@ static long supercall(long cmd, long arg1, long arg2, long arg3)
     return ret;
 }
 
-HOOK_SYSCALL_DEFINE6(__NR_supercall, const char __user *, ukey, long, hash, long, cmd, long, a1, long, a2, long, a3)
+HOOK_SYSCALL_DEFINE6(__NR_supercall, const char __user *, ukey, long, hash, long, cmd, void *, a1, void *, a2, void *,
+                     a3)
 {
     char key[MAX_KEY_LEN + 1] = { '\0' };
     long len = strncpy_from_user(key, ukey, MAX_KEY_LEN);
@@ -122,15 +137,15 @@ HOOK_SYSCALL_DEFINE6(__NR_supercall, const char __user *, ukey, long, hash, long
         goto ori_call;
     }
 
-    if (hash_key(key) != hash) {
-        goto ori_call;
-    }
-
     if (cmd >= SUPERCALL_MAX || cmd < SUPERCALL_HELLO) {
         goto ori_call;
     }
 
     if (superkey_auth(key, len)) {
+        goto ori_call;
+    }
+
+    if (hash_key(key) != hash) {
         goto ori_call;
     }
 

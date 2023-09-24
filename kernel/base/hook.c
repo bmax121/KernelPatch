@@ -680,6 +680,9 @@ void hook_uninstall(hook_t *hook)
 hook_err_t hook(void *func, void *replace, void **backup)
 {
     hook_err_t err = HOOK_NO_ERR;
+    if (!func || !replace || !backup) {
+        return HOOK_INPUT_NULL;
+    }
     hook_chain_t *chain = (hook_chain_t *)hook_mem_alloc();
     if (!chain)
         return HOOK_NO_MEM;

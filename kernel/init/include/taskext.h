@@ -10,7 +10,6 @@
 struct task_ext
 {
     // first
-    struct task_struct *task;
     pid_t pid;
     pid_t tgid;
     int super;

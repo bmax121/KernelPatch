@@ -182,6 +182,7 @@ void hook_chain_remove(hook_chain_t *chain, void *before, void *after);
 hook_err_t hook_wrap(void *func, int32_t argno, void *before, void *after, void *udata, void **backup);
 void hook_unwrap(void *func, void *before, void *after);
 
+// todo: udate, backup
 static inline hook_err_t hook_wrap0(void *func, hook_chain0_callback before, hook_chain0_callback after, void *udata,
                                     void **backup)
 {

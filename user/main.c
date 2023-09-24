@@ -28,8 +28,12 @@ void print_usage(char **argv)
               "     Get Kernel version.\n"
               "  --kpv\n"
               "     Get KernelPatch version.\n"
-              "  --su\n"
-              "     Fork a default root shell.\n"
+              "  --su [--arg1 scontext]\n"
+              "     Fork a root shell and change security context change to scontext.\n"
+              "         (todo: doc fork behavior). \n"
+              "     If scontext is not specified, "
+              "         bypass all LSM permission checks for all calls initiated by this thread using hooks, "
+              "         but the permission determined by other threads remain unchanged.\n"
               "  --load_kpm --arg1 kpm_patch\n"
               "     Load KernelPatch Module\n"
               "     (Unimplemented ...).\n"
@@ -87,6 +91,7 @@ int main(int argc, char **argv)
                                  { "su", no_argument, &cmd, SUPERCALL_SU },
                                  { "grant_su", no_argument, &cmd, SUPERCALL_GRANT_SU },
                                  { "revoke_su", no_argument, &cmd, SUPERCALL_REVOKE_SU },
+                                 { "list_su", no_argument, &cmd, SUPERCALL_LIST_SU_ALLOW },
                                  { "thread_su", no_argument, &cmd, SUPERCALL_THREAD_SU },
                                  { "thread_unsu", no_argument, &cmd, SUPERCALL_THREAD_UNSU },
 
@@ -110,9 +115,14 @@ int main(int argc, char **argv)
             continue;
         }
     }
-
-    // fprintf(stdout, "command no: %x, arg1: %s, arg2: %s, arg3:%s\n", cmd, arg1, arg2, arg3);
-
+#if 1
+    uid_t ruid, euid, suid;
+    gid_t rgid, egid, sgid;
+    getresuid(&ruid, &euid, &suid);
+    getresgid(&rgid, &egid, &sgid);
+    fprintf(stdout, "resuid: %ud, %ud, %ud, resgid: %ud, %ud, %ud\n", ruid, euid, suid, rgid, egid, sgid);
+    fprintf(stdout, "command no: %x, arg1: %s, arg2: %s, arg3:%s\n", cmd, arg1, arg2, arg3);
+#endif
     long ret = 0;
     if (cmd == SUPERCALL_HELLO) {
         ret = sc_hello(key);
@@ -125,21 +135,48 @@ int main(int argc, char **argv)
         long kpv = sc_get_kp_version(key);
         fprintf(stdout, "%lx\n", kpv);
     } else if (cmd == SUPERCALL_SU) {
-        ret = su_fork(key);
-    } else if (cmd == SUPERCALL_THREAD_SU) {
+        ret = su_fork(key, arg1);
+    } else if(cmd == SUPERCALL_GRANT_SU) {
+        if(! arg1) {
+            fprintf(stderr, "Empty uid!\n");
+            return -1;
+        }
+        uid_t uid = atoi(arg1);
+        ret = sc_grant_su(key, uid);
+    } else if(cmd == SUPERCALL_REVOKE_SU) {
+        if(!arg1) {
+            fprintf(stderr, "Empty uid!\n");
+            return -1;
+        }
+        uid_t uid = atoi(arg1);
+        ret = sc_revoke_su(key, uid);
+    } else if(cmd == SUPERCALL_LIST_SU_ALLOW) {
+        uid_t uids[SUPERCALL_SU_ALLOW_MAX];
+        int size = SUPERCALL_SU_ALLOW_MAX;
+        ret = sc_list_su_allow(key, uids, &size);
+        printf("xxxxxxxx %s\n", uids);
+//        if(!ret) {
+//            for(int i = 0; i < size; i ++) {
+//                sprintf(stdout, "su allow: %d\n", uids[i]);
+//            }
+//        } else {
+//            sprintf(stderr, "List su error: %d\n", ret);
+//        }
+    }
+    else if (cmd == SUPERCALL_THREAD_SU) {
         if (!arg1) {
-            fprintf(stderr, "Empty Tid!\n");
+            fprintf(stderr, "Empty tid!\n");
             return -1;
         }
         int pid = atoi(arg1);
-        ret = sc_grant_su(key, pid);
-    } else if (cmd == SUPERCALL_REVOKE_SU) {
+        ret = sc_thread_su(key, pid, 0);
+    } else if (cmd == SUPERCALL_THREAD_UNSU) {
         if (!arg1) {
-            fprintf(stderr, "Empty Tid!\n");
+            fprintf(stderr, "Empty tid!\n");
             return -1;
         }
         int pid = atoi(arg1);
-        ret = sc_revoke_su(key, pid);
+        ret = sc_thread_unsu(key, pid);
     } else {
         fprintf(stderr, "Invalid SuperCall command!\n");
         return 0;

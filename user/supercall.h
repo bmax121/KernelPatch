@@ -2,7 +2,6 @@
 #define _KPU_SUPERCALL_H_
 
 #include "uapi/scdefs.h"
-
 #include <unistd.h>
 #include <sys/syscall.h>
 #include <stdbool.h>
@@ -13,7 +12,7 @@ static inline long sc_hello(const char *key)
     return ret;
 }
 
-static inline bool installed(const char *key)
+static inline bool sc_ready(const char *key)
 {
     return sc_hello(key) == SUPERCALL_HELLO_MAGIC;
 }
@@ -42,9 +41,9 @@ static inline long sc_unload_kpm(const char *key, const char *path)
     return ret;
 }
 
-static inline long sc_su(const char *key)
+static inline long sc_su(const char *key, const char *sctx)
 {
-    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_SU);
+    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_SU, sctx);
     return ret;
 }
 
@@ -60,9 +59,15 @@ static inline long sc_revoke_su(const char *key, uid_t uid)
     return ret;
 }
 
-static inline long sc_thread_su(const char *key, pid_t pid)
+static inline long sc_list_su_allow(const char *key, uid_t *uids, int *size)
 {
-    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_THREAD_SU, pid);
+    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_LIST_SU_ALLOW, uids, size);
+    return ret;
+}
+
+static inline long sc_thread_su(const char *key, pid_t pid, const char *sctx)
+{
+    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_THREAD_SU, pid, sctx);
     return ret;
 }
 
