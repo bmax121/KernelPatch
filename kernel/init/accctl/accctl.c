@@ -32,7 +32,7 @@ out:
     return rc;
 }
 
-int commit_su(const char *sctx)
+int commit_su(int super, const char *sctx)
 {
     int rc = 0;
     struct task_struct *task = current;
@@ -43,7 +43,7 @@ int commit_su(const char *sctx)
         goto out;
     }
 
-    ext->super = 1;
+    ext->super = super;
     ext->selinux_allow = 1;
 
     struct cred *new = prepare_creds();

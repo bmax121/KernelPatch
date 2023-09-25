@@ -44,7 +44,7 @@ static long call_unload_kpm(const char *path, long len)
 
 static inline long call_su(const char *sctx)
 {
-    int ret = commit_su(sctx);
+    int ret = commit_su(1, sctx);
     return ret;
 }
 
@@ -58,7 +58,7 @@ static long call_revoke_su(uid_t uid)
     return remove_allow_uid(uid);
 }
 
-static long call_list_su_allow(uid_t *uids, int *size)
+static long call_list_su_allow(uid_t *__user uids, size_t *__user size)
 {
     return list_allow_uids(uids, size);
 }
@@ -108,8 +108,7 @@ static long supercall(long cmd, void *__user arg1, void *__user arg2, void *__us
         ret = call_revoke_su(uid);
     } else if (cmd == SUPERCALL_LIST_SU_ALLOW) {
         uid_t *uids = (uid_t *)arg1;
-        int *size = (int *)arg2;
-        logkd("fffffffffffff\n");
+        size_t *size = (size_t *)arg2;
         ret = call_list_su_allow(uids, size);
     } else if (cmd == SUPERCALL_THREAD_SU) {
         pid_t pid = (pid_t)(uintptr_t)arg1;

@@ -10,7 +10,7 @@
 
 #include "version"
 
-long su_fork(const char *key)
+long su_fork(const char *key, const char *sctx)
 {
     long ret = 0;
 #if 0
@@ -28,7 +28,7 @@ long su_fork(const char *key)
     fprintf(stdout, "before capabilities: ret: %ld 0x%x, 0x%x, 0x%x\n", ret, cap_data.effective, cap_data.permitted,
             cap_data.inheritable);
 #endif
-    ret = sc_su(key);
+    ret = sc_su(key, sctx);
 #if 0
     getresuid(&ruid, &euid, &suid);
     getresgid(&rgid, &egid, &sgid);

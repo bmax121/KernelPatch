@@ -10,6 +10,6 @@ static inline uint32_t get_version()
     return version_code;
 }
 
-long su_fork(const char *key);
+long su_fork(const char *key, const char *sctx);
 
 #endif

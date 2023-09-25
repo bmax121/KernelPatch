@@ -15,5 +15,6 @@
 #define ERR_PGTABLE -10
 #define ERR_NO_SUCH_SYMBOL -11
 #define ERR_STRUCT_LAYOUT -12
+#define ERR_COPY_TO_USER -13
 
 #endif

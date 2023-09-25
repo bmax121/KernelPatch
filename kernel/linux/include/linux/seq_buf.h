@@ -5,30 +5,14 @@
 #include <ktypes.h>
 #include <ksyms.h>
 #include <stdarg.h>
+#include <linux/trace_seq.h>
 
-/**
- * seq_buf - seq buffer structure
- * @buffer:	pointer to the buffer
- * @size:	size of the buffer
- * @len:	the amount of data inside the buffer
- * @readpos:	The next position to read in the buffer.
- */
 struct seq_buf
 {
     char *buffer;
     size_t size;
     size_t len;
     loff_t readpos;
-};
-
-// 3.18 and lower
-struct trace_seq
-{
-    // unsigned char buffer[PAGE_SIZE];
-    unsigned char buffer[256];
-    unsigned int len;
-    unsigned int readpos;
-    int full;
 };
 
 static inline void seq_buf_clear(struct seq_buf *s)
@@ -92,6 +76,15 @@ static inline int seq_buf_bitmask(struct seq_buf *s, const unsigned long *maskp,
     kfunc_call(seq_buf_bitmask, s, maskp, nmaskbits);
     kfunc_not_found();
     return 0;
+}
+
+static inline int seq_buf_copy_to_user(void __user *to, void *from, int n)
+{
+    struct seq_buf seq_buf;
+    seq_buf_clear(&seq_buf);
+    seq_buf.buffer = from;
+    seq_buf.len = n;
+    return seq_buf_to_user(&seq_buf, to, n);
 }
 
 #endif

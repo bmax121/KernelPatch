@@ -136,34 +136,30 @@ int main(int argc, char **argv)
         fprintf(stdout, "%lx\n", kpv);
     } else if (cmd == SUPERCALL_SU) {
         ret = su_fork(key, arg1);
-    } else if(cmd == SUPERCALL_GRANT_SU) {
-        if(! arg1) {
+    } else if (cmd == SUPERCALL_GRANT_SU) {
+        if (!arg1) {
             fprintf(stderr, "Empty uid!\n");
             return -1;
         }
         uid_t uid = atoi(arg1);
         ret = sc_grant_su(key, uid);
-    } else if(cmd == SUPERCALL_REVOKE_SU) {
-        if(!arg1) {
+    } else if (cmd == SUPERCALL_REVOKE_SU) {
+        if (!arg1) {
             fprintf(stderr, "Empty uid!\n");
             return -1;
         }
         uid_t uid = atoi(arg1);
         ret = sc_revoke_su(key, uid);
-    } else if(cmd == SUPERCALL_LIST_SU_ALLOW) {
+    } else if (cmd == SUPERCALL_LIST_SU_ALLOW) {
         uid_t uids[SUPERCALL_SU_ALLOW_MAX];
-        int size = SUPERCALL_SU_ALLOW_MAX;
+        size_t size = SUPERCALL_SU_ALLOW_MAX;
         ret = sc_list_su_allow(key, uids, &size);
-        printf("xxxxxxxx %s\n", uids);
-//        if(!ret) {
-//            for(int i = 0; i < size; i ++) {
-//                sprintf(stdout, "su allow: %d\n", uids[i]);
-//            }
-//        } else {
-//            sprintf(stderr, "List su error: %d\n", ret);
-//        }
-    }
-    else if (cmd == SUPERCALL_THREAD_SU) {
+        if (ret)
+            return ret;
+        for (int i = 0; i < size; i++) {
+            fprintf(stdout, "su allow uid: %d\n", uids[i]);
+        }
+    } else if (cmd == SUPERCALL_THREAD_SU) {
         if (!arg1) {
             fprintf(stderr, "Empty tid!\n");
             return -1;

@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <sys/syscall.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 static inline long sc_hello(const char *key)
 {
@@ -59,7 +60,7 @@ static inline long sc_revoke_su(const char *key, uid_t uid)
     return ret;
 }
 
-static inline long sc_list_su_allow(const char *key, uid_t *uids, int *size)
+static inline long sc_list_su_allow(const char *key, uid_t *uids, size_t *size)
 {
     long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_LIST_SU_ALLOW, uids, size);
     return ret;
