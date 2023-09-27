@@ -34,6 +34,7 @@ static inline unsigned long __must_check copy_to_user(void __user *to, const voi
 {
     int copy_len;
     if (!kfunc(seq_buf_to_user)) {
+        // todo: malloc
         copy_len = trace_seq_copy_to_user((void *__user)to, from, n);
     } else {
         copy_len = seq_buf_copy_to_user((void *__user)to, from, n);

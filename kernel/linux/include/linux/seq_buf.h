@@ -82,7 +82,7 @@ static inline int seq_buf_copy_to_user(void __user *to, const void *from, int n)
 {
     struct seq_buf seq_buf;
     seq_buf_clear(&seq_buf);
-    seq_buf.buffer = from;
+    seq_buf.buffer = (void *)from;
     seq_buf.len = n;
     return seq_buf_to_user(&seq_buf, to, n);
 }

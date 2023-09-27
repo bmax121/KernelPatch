@@ -8,7 +8,9 @@
 
 #define SU_ALLOW_MAX
 
+int make_cred_su(struct cred *cred, const char *sctx);
 int commit_kernel_cred();
+int effect_su_unsafe(const char *sctx);
 int commit_su(int super, const char *sctx);
 int thread_su(pid_t vpid, const char *sctx);
 

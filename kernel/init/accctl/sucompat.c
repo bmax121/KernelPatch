@@ -19,16 +19,17 @@
 #include <linux/ptrace.h>
 #include <linux/uaccess.h>
 #include <accctl.h>
+#include <linux/err.h>
 
 #define INVALID_ALLOW_UID ((uid_t)-1)
 
 // sizeof android_su_path must not bigger than sizeof android_sh_path
-static const char android_su_path[] = "/system/bin/su";
+static const char android_su_path[] = "/system/bin/sc";
 static const char android_sh_path[] = "/system/bin/sh";
 
 static uid_t su_allow_list[32];
 
-static inline int is_su_allow(uid_t uid)
+static int is_su_allow(uid_t uid)
 {
     for (int i = 0; i < SUPERCALL_SU_ALLOW_MAX; i++) {
         if (su_allow_list[i] == uid)
@@ -124,7 +125,7 @@ int list_allow_uids(uid_t __user *uids, size_t __user *size)
 static __noinline uid_t current_uid()
 {
     struct cred *cred = *(struct cred **)((uintptr_t)current + task_struct_offset.cred_offset);
-    volatile uid_t uid = *(uid_t *)((uintptr_t)cred + cred_offset.uid_offset);
+    uid_t uid = *(uid_t *)((uintptr_t)cred + cred_offset.uid_offset);
     return uid;
 }
 
@@ -170,7 +171,7 @@ static inline void log_user_string(const char *tag, const char *__user filename)
 static void *(*backup_do_execve)(void *a0, void *a1, void *a2, void *a3, void *a4, void *a5, void *a6, void *a7) = 0;
 static void *replace_do_execve(void *a0, void *a1, void *a2, void *a3, void *a4, void *a5, void *a6, void *a7)
 {
-    uid_t uid = current_uid();
+    volatile uid_t uid = current_uid();
     if (is_su_allow(uid)) {
         struct filename *filename;
         if ((((uintptr_t)a0) & 0xF000000000000000) == 0xF000000000000000) {
@@ -178,11 +179,13 @@ static void *replace_do_execve(void *a0, void *a1, void *a2, void *a3, void *a4,
         } else {
             filename = (struct filename *)a1;
         }
-        if (!min_strcmp(filename->name, android_su_path)) {
-            // todo: sctx
-            logkd("su uid: %d\n", uid);
-            commit_su(0, 0);
-            min_strcpy((char *)filename->name, android_sh_path);
+        if (!IS_ERR(filename)) {
+            if (!min_strcmp(filename->name, android_su_path)) {
+                // todo: bugs printk
+                // logkd("exec: uid: %d, filename: %s\n", uid, filename->name);
+                commit_su(0, 0);
+                min_strcpy((char *)filename->name, android_sh_path);
+            }
         }
     }
     void *rc = backup_do_execve(a0, a1, a2, a3, a4, a5, a6, a7);
@@ -195,11 +198,12 @@ static long (*backup_faccessat)(int dfd, char __user *filename, int mode, int fl
 static long replace_faccessat(int dfd, char __user *filename, int mode, int flag)
 {
     int change_flag = 0;
-    uid_t uid = current_uid();
+    volatile uid_t uid = current_uid();
     if (is_su_allow(uid)) {
         char buf[sizeof(android_su_path) + 1] = { '\0' };
         strncpy_from_user(buf, filename, sizeof(android_su_path));
         if (!min_strcmp(buf, android_su_path)) {
+            logkd("access: uid: %d, filename: %s\n", uid, buf);
             copy_to_user(filename, android_sh_path, sizeof(android_sh_path));
             change_flag = 1;
         }
@@ -219,17 +223,19 @@ static void *(*backup_vfs_stat)(int dfd, void *a1, void *a2, void *a3, void *a4,
 static void *replace_vfs_stat(int dfd, void *a1, void *a2, void *a3, void *a4, void *a5)
 {
     int change_flag = 0;
-    uid_t uid = current_uid();
+    volatile uid_t uid = current_uid();
     if (is_su_allow(uid)) {
         if ((((uintptr_t)a1) & 0xF000000000000000) == 0xF000000000000000) {
             struct filename *filename = (struct filename *)a1;
             if (!min_strcmp(filename->name, android_su_path)) {
+                logkd("stat: uid: %d, filename: %s\n", uid, filename);
                 min_strcpy((char *)filename->name, android_sh_path);
             }
         } else {
             char buf[sizeof(android_su_path) + 1] = { '\0' };
             strncpy_from_user(buf, a1, sizeof(android_su_path));
             if (!min_strcmp(buf, android_su_path)) {
+                logkd("stat: uid: %d, user filename: %s\n", uid, buf);
                 copy_to_user(a1, android_sh_path, sizeof(android_sh_path));
                 change_flag = 1;
             }

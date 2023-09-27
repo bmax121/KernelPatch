@@ -16,21 +16,8 @@
 
 #define MAX_KEY_LEN 127
 
-#include <linux/ptrace.h>
-
 static inline long call_hello()
 {
-    uint64_t stack = task_stack_page(current);
-    logkd("stack: %llx\n", stack);
-
-    uint64_t *pt = current_pt_regs();
-    logkd("pt: %llx\n", pt);
-    for (int i = 0; i < 35; i++) {
-        logkd("pt val: %d, %llx\n", i, pt[i]);
-    }
-
-    logkd("pt: %llx\n", current_user_stack_pointer());
-
     logki("KernelPatch Supercall Hello!\n");
     return SUPERCALL_HELLO_MAGIC;
 }

@@ -51,51 +51,73 @@ typedef struct
 {
     struct _hook_chain *chain;
     int early_ret;
+    uint64_t *local0;
+    uint64_t *local1;
     uint64_t ret;
-} hook_fdata0_t __attribute__((aligned(8)));
+} hook_fargs0_t __attribute__((aligned(8)));
 
 typedef struct
 {
     struct _hook_chain *chain;
     int early_ret;
+    uint64_t *local0;
+    uint64_t *local1;
+    uint64_t *local2;
+    uint64_t *local3;
     uint64_t ret;
     uint64_t arg0;
-} hook_fdata1_t __attribute__((aligned(8)));
+} hook_fargs1_t __attribute__((aligned(8)));
 
 typedef struct
 {
     struct _hook_chain *chain;
     int early_ret;
+    uint64_t *local0;
+    uint64_t *local1;
+    uint64_t *local2;
+    uint64_t *local3;
     uint64_t ret;
     uint64_t arg0;
     uint64_t arg1;
-} hook_fdata2_t __attribute__((aligned(8)));
+} hook_fargs2_t __attribute__((aligned(8)));
 
 typedef struct
 {
     struct _hook_chain *chain;
     int early_ret;
+    uint64_t *local0;
+    uint64_t *local1;
+    uint64_t *local2;
+    uint64_t *local3;
     uint64_t ret;
     uint64_t arg0;
     uint64_t arg1;
     uint64_t arg2;
-} hook_fdata3_t __attribute__((aligned(8)));
+} hook_fargs3_t __attribute__((aligned(8)));
 
 typedef struct
 {
     struct _hook_chain *chain;
     int early_ret;
+    uint64_t *local0;
+    uint64_t *local1;
+    uint64_t *local2;
+    uint64_t *local3;
     uint64_t ret;
     uint64_t arg0;
     uint64_t arg1;
     uint64_t arg2;
     uint64_t arg3;
-} hook_fdata4_t __attribute__((aligned(8)));
+} hook_fargs4_t __attribute__((aligned(8)));
 
 typedef struct
 {
     struct _hook_chain *chain;
     int early_ret;
+    uint64_t *local0;
+    uint64_t *local1;
+    uint64_t *local2;
+    uint64_t *local3;
     uint64_t ret;
     uint64_t arg0;
     uint64_t arg1;
@@ -105,12 +127,16 @@ typedef struct
     uint64_t arg5;
     uint64_t arg6;
     uint64_t arg7;
-} hook_fdata8_t __attribute__((aligned(8)));
+} hook_fargs8_t __attribute__((aligned(8)));
 
 typedef struct
 {
     struct _hook_chain *chain;
     int early_ret;
+    uint64_t *local0;
+    uint64_t *local1;
+    uint64_t *local2;
+    uint64_t *local3;
     uint64_t ret;
     uint64_t arg0;
     uint64_t arg1;
@@ -124,15 +150,15 @@ typedef struct
     uint64_t arg9;
     uint64_t arg10;
     uint64_t arg11;
-} hook_fdata12_t __attribute__((aligned(8)));
+} hook_fargs12_t __attribute__((aligned(8)));
 
-typedef void (*hook_chain0_callback)(hook_fdata0_t *fdata, void *udata);
-typedef void (*hook_chain1_callback)(hook_fdata1_t *fdata, void *udata);
-typedef void (*hook_chain2_callback)(hook_fdata2_t *fdata, void *udata);
-typedef void (*hook_chain3_callback)(hook_fdata3_t *fdata, void *udata);
-typedef void (*hook_chain4_callback)(hook_fdata4_t *fdata, void *udata);
-typedef void (*hook_chain8_callback)(hook_fdata8_t *fdata, void *udata);
-typedef void (*hook_chain12_callback)(hook_fdata12_t *fdata, void *udata);
+typedef void (*hook_chain0_callback)(hook_fargs0_t *fargs, void *udata);
+typedef void (*hook_chain1_callback)(hook_fargs1_t *fargs, void *udata);
+typedef void (*hook_chain2_callback)(hook_fargs2_t *fargs, void *udata);
+typedef void (*hook_chain3_callback)(hook_fargs3_t *fargs, void *udata);
+typedef void (*hook_chain4_callback)(hook_fargs4_t *fargs, void *udata);
+typedef void (*hook_chain8_callback)(hook_fargs8_t *fargs, void *udata);
+typedef void (*hook_chain12_callback)(hook_fargs12_t *fargs, void *udata);
 
 typedef struct _hook_chain
 {
@@ -182,7 +208,6 @@ void hook_chain_remove(hook_chain_t *chain, void *before, void *after);
 hook_err_t hook_wrap(void *func, int32_t argno, void *before, void *after, void *udata, void **backup);
 void hook_unwrap(void *func, void *before, void *after);
 
-// todo: udate, backup
 static inline hook_err_t hook_wrap0(void *func, hook_chain0_callback before, hook_chain0_callback after, void *udata,
                                     void **backup)
 {

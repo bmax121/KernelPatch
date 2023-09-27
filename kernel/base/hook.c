@@ -307,23 +307,24 @@ uint64_t __attribute__((section(".transit0.text"))) __attribute__((__noinline__)
     while (*--vptr != ARM64_NOP) {
     };
     hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, hook_chain_t, transit);
-    hook_fdata0_t fdata = { 0 };
-    fdata.chain = hook_chain;
+    hook_fargs0_t fargs;
+    fargs.early_ret = 0;
+    fargs.chain = hook_chain;
     for (int32_t i = 0; i < HOOK_CHAIN_NUM; i++) {
         hook_chain0_callback func = hook_chain->befores[i];
         if (func)
-            func(&fdata, hook_chain->udata[i]);
+            func(&fargs, hook_chain->udata[i]);
     }
-    if (!fdata.early_ret) {
+    if (!fargs.early_ret) {
         transit0_func_t origin_func = (transit0_func_t)hook_chain->hook.relo_addr;
-        fdata.ret = origin_func();
+        fargs.ret = origin_func();
     }
     for (int32_t i = HOOK_CHAIN_NUM - 1; i >= 0; i--) {
         hook_chain0_callback func = hook_chain->afters[i];
         if (func)
-            func(&fdata, hook_chain->udata[i]);
+            func(&fargs, hook_chain->udata[i]);
     }
-    return fdata.ret;
+    return fargs.ret;
 }
 extern void _transit0_end();
 
@@ -338,24 +339,25 @@ uint64_t __attribute__((section(".transit1.text"))) __attribute__((__noinline__)
     while (*--vptr != ARM64_NOP)
         ;
     hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, hook_chain_t, transit);
-    hook_fdata1_t fdata = { 0 };
-    fdata.arg0 = arg0;
-    fdata.chain = hook_chain;
+    hook_fargs1_t fargs;
+    fargs.early_ret = 0;
+    fargs.arg0 = arg0;
+    fargs.chain = hook_chain;
     for (int32_t i = 0; i < HOOK_CHAIN_NUM; i++) {
         hook_chain1_callback func = hook_chain->befores[i];
         if (func)
-            func(&fdata, hook_chain->udata[i]);
+            func(&fargs, hook_chain->udata[i]);
     }
-    if (!fdata.early_ret) {
+    if (!fargs.early_ret) {
         transit1_func_t origin_func = (transit1_func_t)hook_chain->hook.relo_addr;
-        fdata.ret = origin_func(fdata.arg0);
+        fargs.ret = origin_func(fargs.arg0);
     }
     for (int32_t i = HOOK_CHAIN_NUM - 1; i >= 0; i--) {
         hook_chain1_callback func = hook_chain->afters[i];
         if (func)
-            func(&fdata, hook_chain->udata[i]);
+            func(&fargs, hook_chain->udata[i]);
     }
-    return fdata.ret;
+    return fargs.ret;
 }
 
 extern void _transit1_end();
@@ -372,25 +374,26 @@ _transit2(uint64_t arg0, uint64_t arg1)
     while (*--vptr != ARM64_NOP) {
     };
     hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, hook_chain_t, transit);
-    hook_fdata2_t fdata = { 0 };
-    fdata.arg0 = arg0;
-    fdata.arg1 = arg1;
-    fdata.chain = hook_chain;
+    hook_fargs2_t fargs;
+    fargs.early_ret = 0;
+    fargs.arg0 = arg0;
+    fargs.arg1 = arg1;
+    fargs.chain = hook_chain;
     for (int32_t i = 0; i < HOOK_CHAIN_NUM; i++) {
         hook_chain2_callback func = hook_chain->befores[i];
         if (func)
-            func(&fdata, hook_chain->udata[i]);
+            func(&fargs, hook_chain->udata[i]);
     }
-    if (!fdata.early_ret) {
+    if (!fargs.early_ret) {
         transit2_func_t origin_func = (transit2_func_t)hook_chain->hook.relo_addr;
-        fdata.ret = origin_func(fdata.arg0, fdata.arg1);
+        fargs.ret = origin_func(fargs.arg0, fargs.arg1);
     }
     for (int32_t i = HOOK_CHAIN_NUM - 1; i >= 0; i--) {
         hook_chain2_callback func = hook_chain->afters[i];
         if (func)
-            func(&fdata, hook_chain->udata[i]);
+            func(&fargs, hook_chain->udata[i]);
     }
-    return fdata.ret;
+    return fargs.ret;
 }
 
 extern void _transit2_end();
@@ -407,26 +410,27 @@ _transit3(uint64_t arg0, uint64_t arg1, uint64_t arg2)
     while (*--vptr != ARM64_NOP) {
     };
     hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, hook_chain_t, transit);
-    hook_fdata3_t fdata = { 0 };
-    fdata.arg0 = arg0;
-    fdata.arg1 = arg1;
-    fdata.arg2 = arg2;
-    fdata.chain = hook_chain;
+    hook_fargs3_t fargs;
+    fargs.early_ret = 0;
+    fargs.arg0 = arg0;
+    fargs.arg1 = arg1;
+    fargs.arg2 = arg2;
+    fargs.chain = hook_chain;
     for (int32_t i = 0; i < HOOK_CHAIN_NUM; i++) {
         hook_chain3_callback func = hook_chain->befores[i];
         if (func)
-            func(&fdata, hook_chain->udata[i]);
+            func(&fargs, hook_chain->udata[i]);
     }
-    if (!fdata.early_ret) {
+    if (!fargs.early_ret) {
         transit3_func_t origin_func = (transit3_func_t)hook_chain->hook.relo_addr;
-        fdata.ret = origin_func(fdata.arg0, fdata.arg1, fdata.arg2);
+        fargs.ret = origin_func(fargs.arg0, fargs.arg1, fargs.arg2);
     }
     for (int32_t i = HOOK_CHAIN_NUM - 1; i >= 0; i--) {
         hook_chain3_callback func = hook_chain->afters[i];
         if (func)
-            func(&fdata, hook_chain->udata[i]);
+            func(&fargs, hook_chain->udata[i]);
     }
-    return fdata.ret;
+    return fargs.ret;
 }
 
 extern void _transit3_end();
@@ -443,27 +447,28 @@ _transit4(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3)
     while (*--vptr != ARM64_NOP) {
     };
     hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, hook_chain_t, transit);
-    hook_fdata4_t fdata = { 0 };
-    fdata.arg0 = arg0;
-    fdata.arg1 = arg1;
-    fdata.arg2 = arg2;
-    fdata.arg3 = arg3;
-    fdata.chain = hook_chain;
+    hook_fargs4_t fargs;
+    fargs.early_ret = 0;
+    fargs.arg0 = arg0;
+    fargs.arg1 = arg1;
+    fargs.arg2 = arg2;
+    fargs.arg3 = arg3;
+    fargs.chain = hook_chain;
     for (int32_t i = 0; i < HOOK_CHAIN_NUM; i++) {
         hook_chain4_callback func = hook_chain->befores[i];
         if (func)
-            func(&fdata, hook_chain->udata[i]);
+            func(&fargs, hook_chain->udata[i]);
     }
-    if (!fdata.early_ret) {
+    if (!fargs.early_ret) {
         transit4_func_t origin_func = (transit4_func_t)hook_chain->hook.relo_addr;
-        fdata.ret = origin_func(fdata.arg0, fdata.arg1, fdata.arg2, fdata.arg3);
+        fargs.ret = origin_func(fargs.arg0, fargs.arg1, fargs.arg2, fargs.arg3);
     }
     for (int32_t i = HOOK_CHAIN_NUM - 1; i >= 0; i--) {
         hook_chain4_callback func = hook_chain->afters[i];
         if (func)
-            func(&fdata, hook_chain->udata[i]);
+            func(&fargs, hook_chain->udata[i]);
     }
-    return fdata.ret;
+    return fargs.ret;
 }
 
 extern void _transit4_end();
@@ -481,32 +486,33 @@ _transit8(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t a
     while (*--vptr != ARM64_NOP) {
     };
     hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, hook_chain_t, transit);
-    hook_fdata8_t fdata = { 0 };
-    fdata.arg0 = arg0;
-    fdata.arg1 = arg1;
-    fdata.arg2 = arg2;
-    fdata.arg3 = arg3;
-    fdata.arg4 = arg4;
-    fdata.arg5 = arg5;
-    fdata.arg6 = arg6;
-    fdata.arg7 = arg7;
-    fdata.chain = hook_chain;
+    hook_fargs8_t fargs;
+    fargs.early_ret = 0;
+    fargs.arg0 = arg0;
+    fargs.arg1 = arg1;
+    fargs.arg2 = arg2;
+    fargs.arg3 = arg3;
+    fargs.arg4 = arg4;
+    fargs.arg5 = arg5;
+    fargs.arg6 = arg6;
+    fargs.arg7 = arg7;
+    fargs.chain = hook_chain;
     for (int32_t i = 0; i < HOOK_CHAIN_NUM; i++) {
         hook_chain8_callback func = hook_chain->befores[i];
         if (func)
-            func(&fdata, hook_chain->udata[i]);
+            func(&fargs, hook_chain->udata[i]);
     }
-    if (!fdata.early_ret) {
+    if (!fargs.early_ret) {
         transit8_func_t origin_func = (transit8_func_t)hook_chain->hook.relo_addr;
-        fdata.ret =
-            origin_func(fdata.arg0, fdata.arg1, fdata.arg2, fdata.arg3, fdata.arg4, fdata.arg5, fdata.arg6, fdata.arg7);
+        fargs.ret =
+            origin_func(fargs.arg0, fargs.arg1, fargs.arg2, fargs.arg3, fargs.arg4, fargs.arg5, fargs.arg6, fargs.arg7);
     }
     for (int32_t i = HOOK_CHAIN_NUM - 1; i >= 0; i--) {
         hook_chain8_callback func = hook_chain->afters[i];
         if (func)
-            func(&fdata, hook_chain->udata[i]);
+            func(&fargs, hook_chain->udata[i]);
     }
-    return fdata.ret;
+    return fargs.ret;
 }
 
 extern void _transit8_end();
@@ -525,36 +531,37 @@ _transit12(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t 
     while (*--vptr != ARM64_NOP) {
     };
     hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, hook_chain_t, transit);
-    hook_fdata12_t fdata = { 0 };
-    fdata.arg0 = arg0;
-    fdata.arg1 = arg1;
-    fdata.arg2 = arg2;
-    fdata.arg3 = arg3;
-    fdata.arg4 = arg4;
-    fdata.arg5 = arg5;
-    fdata.arg6 = arg6;
-    fdata.arg7 = arg7;
-    fdata.arg8 = arg8;
-    fdata.arg9 = arg9;
-    fdata.arg10 = arg10;
-    fdata.arg11 = arg11;
-    fdata.chain = hook_chain;
+    hook_fargs12_t fargs;
+    fargs.early_ret = 0;
+    fargs.arg0 = arg0;
+    fargs.arg1 = arg1;
+    fargs.arg2 = arg2;
+    fargs.arg3 = arg3;
+    fargs.arg4 = arg4;
+    fargs.arg5 = arg5;
+    fargs.arg6 = arg6;
+    fargs.arg7 = arg7;
+    fargs.arg8 = arg8;
+    fargs.arg9 = arg9;
+    fargs.arg10 = arg10;
+    fargs.arg11 = arg11;
+    fargs.chain = hook_chain;
     for (int32_t i = 0; i < HOOK_CHAIN_NUM; i++) {
         hook_chain12_callback func = hook_chain->befores[i];
         if (func)
-            func(&fdata, hook_chain->udata[i]);
+            func(&fargs, hook_chain->udata[i]);
     }
-    if (!fdata.early_ret) {
+    if (!fargs.early_ret) {
         transit12_func_t origin_func = (transit12_func_t)hook_chain->hook.relo_addr;
-        fdata.ret = origin_func(fdata.arg0, fdata.arg1, fdata.arg2, fdata.arg3, fdata.arg4, fdata.arg5, fdata.arg6,
-                                fdata.arg7, fdata.arg8, fdata.arg9, fdata.arg10, fdata.arg11);
+        fargs.ret = origin_func(fargs.arg0, fargs.arg1, fargs.arg2, fargs.arg3, fargs.arg4, fargs.arg5, fargs.arg6,
+                                fargs.arg7, fargs.arg8, fargs.arg9, fargs.arg10, fargs.arg11);
     }
     for (int32_t i = HOOK_CHAIN_NUM - 1; i >= 0; i--) {
         hook_chain12_callback func = hook_chain->afters[i];
         if (func)
-            func(&fdata, hook_chain->udata[i]);
+            func(&fargs, hook_chain->udata[i]);
     }
-    return fdata.ret;
+    return fargs.ret;
 }
 
 extern void _transit12_end();

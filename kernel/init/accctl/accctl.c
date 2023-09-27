@@ -12,6 +12,33 @@
 #include <ksyms.h>
 #include <error.h>
 
+int make_cred_su(struct cred *cred, const char *sctx)
+{
+    *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_inheritable_offset) = full_cap;
+    *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_permitted_offset) = full_cap;
+    *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_effective_offset) = full_cap;
+    *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_bset_offset) = full_cap;
+    *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_ambient_offset) = full_cap;
+
+    *(uid_t *)((uintptr_t)cred + cred_offset.uid_offset) = 0;
+    *(uid_t *)((uintptr_t)cred + cred_offset.euid_offset) = 0;
+    *(uid_t *)((uintptr_t)cred + cred_offset.fsuid_offset) = 0;
+    *(uid_t *)((uintptr_t)cred + cred_offset.suid_offset) = 0;
+
+    *(uid_t *)((uintptr_t)cred + cred_offset.gid_offset) = 0;
+    *(uid_t *)((uintptr_t)cred + cred_offset.egid_offset) = 0;
+    *(uid_t *)((uintptr_t)cred + cred_offset.fsgid_offset) = 0;
+    *(uid_t *)((uintptr_t)cred + cred_offset.sgid_offset) = 0;
+
+    if (sctx) {
+        int rc = set_security_override_from_ctx(cred, sctx);
+        if (rc)
+            logkw("set sctx: %s\n", sctx);
+        return rc;
+    }
+    return 0;
+}
+
 int commit_kernel_cred()
 {
     int rc = 0;
@@ -28,6 +55,7 @@ int commit_kernel_cred()
         set_security_override(new, secid);
     }
     commit_creds(new);
+
 out:
     return rc;
 }
@@ -48,35 +76,36 @@ int commit_su(int super, const char *sctx)
 
     struct cred *new = prepare_creds();
 
-    *(kernel_cap_t *)((uintptr_t) new + cred_offset.cap_inheritable_offset) = full_cap;
-    *(kernel_cap_t *)((uintptr_t) new + cred_offset.cap_permitted_offset) = full_cap;
-    *(kernel_cap_t *)((uintptr_t) new + cred_offset.cap_effective_offset) = full_cap;
-    *(kernel_cap_t *)((uintptr_t) new + cred_offset.cap_bset_offset) = full_cap;
-    *(kernel_cap_t *)((uintptr_t) new + cred_offset.cap_ambient_offset) = full_cap;
-
-    *(uid_t *)((uintptr_t) new + cred_offset.uid_offset) = 0;
-    *(uid_t *)((uintptr_t) new + cred_offset.euid_offset) = 0;
-    *(uid_t *)((uintptr_t) new + cred_offset.fsuid_offset) = 0;
-    *(uid_t *)((uintptr_t) new + cred_offset.suid_offset) = 0;
-
-    *(uid_t *)((uintptr_t) new + cred_offset.gid_offset) = 0;
-    *(uid_t *)((uintptr_t) new + cred_offset.egid_offset) = 0;
-    *(uid_t *)((uintptr_t) new + cred_offset.fsgid_offset) = 0;
-    *(uid_t *)((uintptr_t) new + cred_offset.sgid_offset) = 0;
-
-    if (sctx) {
-        rc = set_security_override_from_ctx(new, sctx);
-        if (rc) {
-            logkfw("set sctx: %s error: %d\n", sctx, rc);
-            goto out;
-        }
-    }
+    rc = make_cred_su(new, sctx);
+    if (rc)
+        goto out;
 
     commit_creds(new);
 
     ext->selinux_allow = !sctx;
-    // todo: ranchu-4.4.302, ranchu-4.14.175 BUG: recent printk recursion!
-    logkfi("pid: %d, tgid: %d\n", ext->pid, ext->tgid);
+    // todo: ranchu-4.4.302, ranchu-4.14.175, and ..., BUG: recent printk recursion!
+    // logkfi("pid: %d, tgid: %d\n", ext->pid, ext->tgid);
+out:
+    return rc;
+}
+
+int effect_su_unsafe(const char *sctx)
+{
+    int rc = 0;
+    struct task_struct *task = current;
+    struct task_ext *ext = get_task_ext(task);
+    if (!task_ext_valid(ext)) {
+        logkfe("dirty task_ext, pid(maybe dirty): %d\n", ext->pid);
+        rc = ERR_DIRTY_EXT;
+        goto out;
+    }
+    ext->selinux_allow = 1;
+    struct cred *cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
+    rc = make_cred_su(cred, sctx);
+    if (rc)
+        goto out;
+    ext->selinux_allow = !sctx;
+    // logkfi("pid: %d, tgid: %d\n", ext->pid, ext->tgid);
 out:
     return rc;
 }
@@ -98,53 +127,15 @@ int thread_su(pid_t vpid, const char *sctx)
         goto out;
     }
 
-    ext->selinux_allow = 1;
-
-    // cred
     struct cred *cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
-
-    *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_inheritable_offset) = full_cap;
-    *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_permitted_offset) = full_cap;
-    *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_effective_offset) = full_cap;
-    *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_bset_offset) = full_cap;
-    *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_ambient_offset) = full_cap;
-
-    *(uid_t *)((uintptr_t)cred + cred_offset.uid_offset) = 0;
-    *(uid_t *)((uintptr_t)cred + cred_offset.euid_offset) = 0;
-    *(uid_t *)((uintptr_t)cred + cred_offset.fsuid_offset) = 0;
-    *(uid_t *)((uintptr_t)cred + cred_offset.suid_offset) = 0;
-
-    *(uid_t *)((uintptr_t)cred + cred_offset.gid_offset) = 0;
-    *(uid_t *)((uintptr_t)cred + cred_offset.egid_offset) = 0;
-    *(uid_t *)((uintptr_t)cred + cred_offset.fsgid_offset) = 0;
-    *(uid_t *)((uintptr_t)cred + cred_offset.sgid_offset) = 0;
-
-    // real_cred
+    rc = make_cred_su(cred, sctx);
+    if (rc)
+        goto out;
     struct cred *real_cred = *(struct cred **)((uintptr_t)task + task_struct_offset.real_cred_offset);
-
-    *(kernel_cap_t *)((uintptr_t)real_cred + cred_offset.cap_inheritable_offset) = full_cap;
-    *(kernel_cap_t *)((uintptr_t)real_cred + cred_offset.cap_permitted_offset) = full_cap;
-    *(kernel_cap_t *)((uintptr_t)real_cred + cred_offset.cap_effective_offset) = full_cap;
-    *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_bset_offset) = full_cap;
-    *(kernel_cap_t *)((uintptr_t)real_cred + cred_offset.cap_ambient_offset) = full_cap;
-
-    *(uid_t *)((uintptr_t)real_cred + cred_offset.uid_offset) = 0;
-    *(uid_t *)((uintptr_t)real_cred + cred_offset.euid_offset) = 0;
-    *(uid_t *)((uintptr_t)real_cred + cred_offset.fsuid_offset) = 0;
-    *(uid_t *)((uintptr_t)real_cred + cred_offset.suid_offset) = 0;
-
-    *(uid_t *)((uintptr_t)real_cred + cred_offset.gid_offset) = 0;
-    *(uid_t *)((uintptr_t)real_cred + cred_offset.egid_offset) = 0;
-    *(uid_t *)((uintptr_t)real_cred + cred_offset.fsgid_offset) = 0;
-    *(uid_t *)((uintptr_t)real_cred + cred_offset.sgid_offset) = 0;
-
-    if (sctx) {
-        rc = set_security_override_from_ctx(cred, sctx);
-        rc = set_security_override_from_ctx(real_cred, sctx);
-        if (rc) {
-            logkfw("set sctx: %s error: %d", sctx, rc);
+    if (cred != real_cred) {
+        rc = make_cred_su(real_cred, sctx);
+        if (rc)
             goto out;
-        }
     }
 
     ext->selinux_allow = !sctx;
