@@ -78,7 +78,7 @@ static inline int seq_buf_bitmask(struct seq_buf *s, const unsigned long *maskp,
     return 0;
 }
 
-static inline int seq_buf_copy_to_user(void __user *to, void *from, int n)
+static inline int seq_buf_copy_to_user(void __user *to, const void *from, int n)
 {
     struct seq_buf seq_buf;
     seq_buf_clear(&seq_buf);

@@ -16,8 +16,21 @@
 
 #define MAX_KEY_LEN 127
 
+#include <linux/ptrace.h>
+
 static inline long call_hello()
 {
+    uint64_t stack = task_stack_page(current);
+    logkd("stack: %llx\n", stack);
+
+    uint64_t *pt = current_pt_regs();
+    logkd("pt: %llx\n", pt);
+    for (int i = 0; i < 35; i++) {
+        logkd("pt val: %d, %llx\n", i, pt[i]);
+    }
+
+    logkd("pt: %llx\n", current_user_stack_pointer());
+
     logki("KernelPatch Supercall Hello!\n");
     return SUPERCALL_HELLO_MAGIC;
 }
@@ -75,15 +88,9 @@ static long call_thread_unsu(pid_t pid)
     return SUPERCALL_RES_NOT_IMPL;
 }
 
-static long call_test()
-{
-    int ret = SUPERCALL_RES_SUCCEED;
-    return ret;
-}
-
 static long supercall(long cmd, void *__user arg1, void *__user arg2, void *__user arg3)
 {
-    logkd("SuperCall with cmd: %x, a1: %llx, a2: %llx, a3: %llx\n", cmd, arg1, arg2, arg3);
+    logkd("SuperCall with cmd: %x\n", cmd);
 
     long ret = SUPERCALL_RES_SUCCEED;
     if (cmd == SUPERCALL_HELLO) {
@@ -118,8 +125,6 @@ static long supercall(long cmd, void *__user arg1, void *__user arg2, void *__us
     } else if (cmd == SUPERCALL_THREAD_UNSU) {
         pid_t pid = (pid_t)(uintptr_t)arg1;
         ret = call_thread_unsu(pid);
-    } else if (cmd == SUPERCALL_TEST) {
-        ret = call_test();
     } else {
         ret = SUPERCALL_RES_NOT_IMPL;
     }

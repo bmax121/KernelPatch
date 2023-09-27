@@ -116,6 +116,9 @@ int main(int argc, char **argv)
         }
     }
 #if 1
+    uint64_t stack_pointer;
+    __asm__ volatile("mov %0, sp" : "=r"(stack_pointer));
+    fprintf(stdout, "Stack Pointer (SP): %p\n", stack_pointer);
     uid_t ruid, euid, suid;
     gid_t rgid, egid, sgid;
     getresuid(&ruid, &euid, &suid);

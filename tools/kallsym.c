@@ -382,7 +382,7 @@ static int find_approx_addresses(kallsym_t *info, char *img, int32_t imglen)
     //
     // todo: tmp fix relo error, some bugs
     if (info->relo_applied) {
-        fprintf(stderr, "Here are some known bug, subsequent operations is undefined\n");
+        fprintf(stderr, "[-] kallsyms Here are some known bug, subsequent operations is undefined\n");
     }
 
     return 0;

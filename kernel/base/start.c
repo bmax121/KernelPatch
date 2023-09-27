@@ -12,7 +12,8 @@
 
 start_preset_t start_preset __attribute__((section(".start.data")));
 
-int (*kallsyms_on_each_symbol)(int (*fn)(void *, const char *, struct module *, unsigned long), void *data) = 0;
+int (*kallsyms_on_each_symbol)(int (*fn)(void *data, const char *name, struct module *module, unsigned long addr),
+                               void *data) = 0;
 unsigned long (*kallsyms_lookup_name)(const char *name) = 0;
 int (*lookup_symbol_attrs)(unsigned long addr, unsigned long *size, unsigned long *offset, char *modname,
                            char *name) = 0;

@@ -25,7 +25,6 @@ static inline long hash_key(const char *key)
 #define SUPERCALL_THREAD_SU 0x1009
 #define SUPERCALL_THREAD_UNSU 0x100a
 
-#define SUPERCALL_TEST 0x10FF
 #define SUPERCALL_MAX 0x1100
 
 #define SUPERCALL_RES_SUCCEED 0

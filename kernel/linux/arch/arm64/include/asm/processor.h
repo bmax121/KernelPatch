@@ -14,4 +14,8 @@
 
 #define task_pt_regs(p) ((struct pt_regs *)(thread_size + task_stack_page(p)) - 1)
 
+// #define THREAD_SIZE 16384
+// #define THREAD_START_SP (THREAD_SIZE - 16)
+// #define task_pt_regs(p) ((struct pt_regs *)(THREAD_START_SP + task_stack_page(p)) - 1)
+
 #endif

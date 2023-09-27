@@ -75,8 +75,8 @@ int commit_su(int super, const char *sctx)
     commit_creds(new);
 
     ext->selinux_allow = !sctx;
-
-    logkfd("pid: %d, tgid: %d\n", ext->pid, ext->tgid);
+    // todo: ranchu-4.4.302, ranchu-4.14.175 BUG: recent printk recursion!
+    logkfi("pid: %d, tgid: %d\n", ext->pid, ext->tgid);
 out:
     return rc;
 }
@@ -149,7 +149,7 @@ int thread_su(pid_t vpid, const char *sctx)
 
     ext->selinux_allow = !sctx;
 
-    logkfd("pid: %d, tgid: %d\n", ext->pid, ext->tgid);
+    logkfi("pid: %d, tgid: %d\n", ext->pid, ext->tgid);
 out:
     __put_task_struct(task);
     return rc;

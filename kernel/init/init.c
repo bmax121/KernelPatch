@@ -101,7 +101,7 @@ int init()
     }
     hook_err_t rc = hook((void *)cgroup_init_addr, (void *)replace_cgroup_init, (void **)&backup_cgroup_init);
     if (rc) {
-        logke("hook cgroup_init error: %d\n", rc);
+        logke("Hook cgroup_init error: %d\n", rc);
     }
     return err;
 }

@@ -72,7 +72,7 @@ int task_observer()
             logke("Hook copy_process error: %d\n", err);
         }
     } else {
-        logkw("Can't find symbol copy_process, try cgroup_post_fork instead\n");
+        logkw("Can't find symbol copy_process, try cgroup_post_fork\n");
         unsigned long cgroup_post_fork_addr = kallsyms_lookup_name("cgroup_post_fork");
         if (!cgroup_post_fork_addr) {
             logke("Can't find symbol cgroup_post_fork\n");

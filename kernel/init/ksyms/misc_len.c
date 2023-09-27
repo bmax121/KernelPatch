@@ -20,15 +20,20 @@ void linux_sybmol_len_init()
     char mod[16] = { '\0' };
     char name[16] = { '\0' };
 
+    logkd("struct size:\n");
+
     lookup_symbol_attrs((unsigned long)kvar(init_cred), &size, &offset, mod, name);
     kvlen(init_cred) = size;
+    logkd("    init_cred: %d\n", size);
 
     lookup_symbol_attrs((unsigned long)kvar(init_task), &size, &offset, mod, name);
     kvlen(init_task) = size;
+    logkd("    init_task: %d\n", size);
 
     lookup_symbol_attrs((unsigned long)kvar(init_thread_union), &size, &offset, mod, name);
     kvlen(init_thread_union) = size;
     thread_size = size;
+    logkd("    thread_size: %d\n", size);
 }
 
 #endif
