@@ -24,7 +24,8 @@
 #define INVALID_ALLOW_UID ((uid_t)-1)
 
 // sizeof android_su_path must not bigger than sizeof android_sh_path
-static const char android_su_path[] = "/system/bin/sc";
+// static const char android_su_path[] = "/system/bin/sc";
+static const char android_su_path[] = "/system/bin/su";
 static const char android_sh_path[] = "/system/bin/sh";
 
 static uid_t su_allow_list[32];
