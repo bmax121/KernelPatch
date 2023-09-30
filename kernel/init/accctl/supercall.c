@@ -48,21 +48,6 @@ static inline long call_su(const char *sctx)
     return ret;
 }
 
-static long call_grant_su(uid_t uid)
-{
-    return add_allow_uid(uid);
-}
-
-static long call_revoke_su(uid_t uid)
-{
-    return remove_allow_uid(uid);
-}
-
-static long call_list_su_allow(uid_t *__user uids, size_t *__user size)
-{
-    return list_allow_uids(uids, size);
-}
-
 static long call_thread_su(pid_t pid, const char *sctx)
 {
     int ret = SUPERCALL_RES_SUCCEED;
@@ -79,7 +64,8 @@ static long supercall(long cmd, void *__user arg1, void *__user arg2, void *__us
 {
     logkd("SuperCall with cmd: %x\n", cmd);
 
-    long ret = SUPERCALL_RES_SUCCEED;
+    long ret = SUPERCALL_RES_NOT_IMPL;
+
     if (cmd == SUPERCALL_HELLO) {
         ret = call_hello();
     } else if (cmd == SUPERCALL_GET_KERNEL_VERSION) {
@@ -91,29 +77,23 @@ static long supercall(long cmd, void *__user arg1, void *__user arg2, void *__us
     } else if (cmd == SUPERCALL_UNLOAD_KPM) {
         ret = call_unload_kpm(0, 0);
     } else if (cmd == SUPERCALL_SU) {
-        char sctx[SUPERCALL_SCONTEXT_LEN] = { '\0' };
-        long len = strncpy_from_user(sctx, (const char *)arg1, SUPERCALL_SCONTEXT_LEN - 1);
+        char sctx[SUPERCALL_SCONTEXT_LEN + 1];
+        sctx[SUPERCALL_SCONTEXT_LEN] = 0;
+        long len = strncpy_from_user(sctx, (const char *)arg1, SUPERCALL_SCONTEXT_LEN);
         ret = call_su(len > 0 ? sctx : 0);
-    } else if (cmd == SUPERCALL_GRANT_SU) {
-        uid_t uid = (uid_t)(uintptr_t)arg1;
-        ret = call_grant_su(uid);
-    } else if (cmd == SUPERCALL_REVOKE_SU) {
-        uid_t uid = (uid_t)(uintptr_t)arg1;
-        ret = call_revoke_su(uid);
-    } else if (cmd == SUPERCALL_LIST_SU_ALLOW) {
-        uid_t *uids = (uid_t *)arg1;
-        size_t *size = (size_t *)arg2;
-        ret = call_list_su_allow(uids, size);
     } else if (cmd == SUPERCALL_THREAD_SU) {
         pid_t pid = (pid_t)(uintptr_t)arg1;
-        char sctx[SUPERCALL_SCONTEXT_LEN] = { '\0' };
-        long len = strncpy_from_user(sctx, (const char *)arg2, SUPERCALL_SCONTEXT_LEN - 1);
+        char sctx[SUPERCALL_SCONTEXT_LEN + 1];
+        sctx[SUPERCALL_SCONTEXT_LEN] = 0;
+        long len = strncpy_from_user(sctx, (const char *)arg2, SUPERCALL_SCONTEXT_LEN);
         ret = call_thread_su(pid, len > 0 ? sctx : 0);
     } else if (cmd == SUPERCALL_THREAD_UNSU) {
         pid_t pid = (pid_t)(uintptr_t)arg1;
         ret = call_thread_unsu(pid);
     } else {
-        ret = SUPERCALL_RES_NOT_IMPL;
+#ifdef ANDROID
+        ret = supercall_android(cmd, arg1, arg2, arg3);
+#endif
     }
     return ret;
 }

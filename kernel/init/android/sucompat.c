@@ -182,7 +182,7 @@ static void *replace_do_execve(void *a0, void *a1, void *a2, void *a3, void *a4,
         }
         if (!IS_ERR(filename)) {
             if (!min_strcmp(filename->name, android_su_path)) {
-                // todo: bugs printk
+                // todo: panic printk
                 // logkd("exec: uid: %d, filename: %s\n", uid, filename->name);
                 commit_su(0, 0);
                 min_strcpy((char *)filename->name, android_sh_path);
@@ -204,7 +204,7 @@ static long replace_faccessat(int dfd, char __user *filename, int mode, int flag
         char buf[sizeof(android_su_path) + 1] = { '\0' };
         strncpy_from_user(buf, filename, sizeof(android_su_path));
         if (!min_strcmp(buf, android_su_path)) {
-            logkd("access: uid: %d, filename: %s\n", uid, buf);
+            // logkd("access: uid: %d, filename: %s\n", uid, buf);
             copy_to_user(filename, android_sh_path, sizeof(android_sh_path));
             change_flag = 1;
         }
@@ -229,14 +229,14 @@ static void *replace_vfs_stat(int dfd, void *a1, void *a2, void *a3, void *a4, v
         if ((((uintptr_t)a1) & 0xF000000000000000) == 0xF000000000000000) {
             struct filename *filename = (struct filename *)a1;
             if (!min_strcmp(filename->name, android_su_path)) {
-                logkd("stat: uid: %d, filename: %s\n", uid, filename);
+                // logkd("stat: uid: %d, filename: %s\n", uid, filename);
                 min_strcpy((char *)filename->name, android_sh_path);
             }
         } else {
             char buf[sizeof(android_su_path) + 1] = { '\0' };
             strncpy_from_user(buf, a1, sizeof(android_su_path));
             if (!min_strcmp(buf, android_su_path)) {
-                logkd("stat: uid: %d, user filename: %s\n", uid, buf);
+                // logkd("stat: uid: %d, user filename: %s\n", uid, buf);
                 copy_to_user(a1, android_sh_path, sizeof(android_sh_path));
                 change_flag = 1;
             }

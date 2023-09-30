@@ -68,17 +68,16 @@ int linux_symbol_init()
 static inline void do_init()
 {
     logki("==== KernelPatch Do Init ====\n");
-
     linux_symbol_init();
     linux_sybmol_len_init();
-
     syscall_init();
     build_struct();
     task_observer();
     selinux_hook_install();
     supercall_install();
+#ifdef ANDROID
     su_compat_init();
-
+#endif
     logki("==== KernelPatch Everything Done ====\n");
 }
 

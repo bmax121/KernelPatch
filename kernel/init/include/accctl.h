@@ -22,4 +22,8 @@ int su_compat_init();
 int selinux_hook_install();
 int supercall_install();
 
+#ifdef ANDROID
+long supercall_android(long cmd, void *__user arg1, void *__user arg2, void *__user arg3);
+#endif
+
 #endif

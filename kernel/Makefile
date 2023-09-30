@@ -2,6 +2,8 @@ ifndef TARGET_COMPILE
     $(error TARGET_COMPILE is not set)
 endif
 
+TARGET=kpimg
+
 CC = $(TARGET_COMPILE)gcc
 LD = $(TARGET_COMPILE)ld
 AS = $(TARGET_COMPILE)as
@@ -39,6 +41,9 @@ BASE_SRCS += $(wildcard init/ksyms/*.c)
 BASE_SRCS += $(wildcard init/struct/*.c)
 BASE_SRCS += $(wildcard init/debug/*.c)
 
+ifdef ANDROID
+	BASE_SRCS += $(wildcard init/android/*.c)
+endif
 
 SRCS += $(BASE_SRCS)
 SRCS += $(LINUX_SRCS)
@@ -46,12 +51,13 @@ SRCS += $(LINUX_SRCS)
 OBJS := $(SRCS:.c=.o)
 OBJS := $(OBJS:.S=.o)
 
-all: kpimg hdr
 
-kpimg: kpimg.elf
+all: ${TARGET} hdr
+
+${TARGET}: ${TARGET}.elf
 	${OBJCOPY} -O binary -S $^ $@
 
-kpimg.elf: ${OBJS}
+${TARGET}.elf: ${OBJS}
 	${LD} -nostdlib -static -no-pie -Tkpimg.lds -o $@ $^
 
 %.o: %.c

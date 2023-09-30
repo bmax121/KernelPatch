@@ -112,17 +112,6 @@ int main(int argc, char **argv)
             continue;
         }
     }
-#if 1
-    uint64_t stack_pointer;
-    __asm__ volatile("mov %0, sp" : "=r"(stack_pointer));
-    fprintf(stdout, "Stack Pointer (SP): %p\n", stack_pointer);
-    uid_t ruid, euid, suid;
-    gid_t rgid, egid, sgid;
-    getresuid(&ruid, &euid, &suid);
-    getresgid(&rgid, &egid, &sgid);
-    fprintf(stdout, "resuid: %ud, %ud, %ud, resgid: %ud, %ud, %ud\n", ruid, euid, suid, rgid, egid, sgid);
-    fprintf(stdout, "command no: %x, arg1: %s, arg2: %s, arg3:%s\n", cmd, arg1, arg2, arg3);
-#endif
     long ret = 0;
     if (cmd == SUPERCALL_HELLO) {
         ret = sc_hello(key);
@@ -156,9 +145,11 @@ int main(int argc, char **argv)
         ret = sc_list_su_allow(key, uids, &size);
         if (ret)
             return ret;
+        fprintf(stdout, "su allow nums: %d\n", (int)size);
         for (int i = 0; i < size; i++) {
-            fprintf(stdout, "su allow uid: %d\n", uids[i]);
+            fprintf(stdout, "%d\t", uids[i]);
         }
+        fprintf(stdout, "\n");
     } else if (cmd == SUPERCALL_THREAD_SU) {
         if (!arg1) {
             fprintf(stderr, "Empty tid!\n");
