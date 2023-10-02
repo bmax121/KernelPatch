@@ -32,6 +32,6 @@
 build/*
 
 uapi
-
+version
 kpatch
 

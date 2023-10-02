@@ -1,9 +1,13 @@
 
 CFLAGS = -std=c11 -Wall -Wextra -Wno-unused -Wno-unused-parameter
 
+ifdef ANDROID
+	CFLAGS += -DANDROID
+endif
+
 objs := libkp.o 
 
-all: kpatch libkp.a
+all: hdr libkp.a kpatch
 
 kpatch: main.o ${objs}
 	${CC} -o $@ $^
@@ -14,9 +18,14 @@ libkp.a: ${objs}
 %.o : %.c
 	$(CC) -c $(CFLAGS) $(CPPFLAGS) $< -o $@
 
+hdr:
+	cp -r ../kernel/init/include/uapi .
+	cp ../kernel/version .
+
 .PHONY: clean
 clean:
-	rm -rf uapi/*
-	rm -rf kpatch
-	rm -rf libkp.a 
+	rm -rf build
+	rm -rf uapi
+	rm -f kpatch
+	rm -f libkp.a 
 	find . -name "*.o" | xargs rm -f

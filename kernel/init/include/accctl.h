@@ -14,15 +14,15 @@ int effect_su_unsafe(const char *sctx);
 int commit_su(int super, const char *sctx);
 int thread_su(pid_t vpid, const char *sctx);
 
-int add_allow_uid(uid_t uid);
-int remove_allow_uid(uid_t uid);
-int list_allow_uids(uid_t *uids, size_t *size);
-
-int su_compat_init();
 int selinux_hook_install();
 int supercall_install();
 
 #ifdef ANDROID
+int su_compat_init();
+int add_allow_uid(uid_t uid);
+int remove_allow_uid(uid_t uid);
+int list_allow_uids(uid_t *uids, size_t *size);
+int reset_su_path(const char *path);
 long supercall_android(long cmd, void *__user arg1, void *__user arg2, void *__user arg3);
 #endif
 

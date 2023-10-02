@@ -26,6 +26,10 @@ static inline long hash_key(const char *key)
 #define SUPERCALL_GRANT_SU 0x1020
 #define SUPERCALL_REVOKE_SU 0x1021
 #define SUPERCALL_LIST_SU_ALLOW 0x1022
+#define SUPERCALL_RESET_SU_PATH 0x1023
+
+#define SUPERCALL_SU_ALLOW_UID_MAX 32
+#define SUPERCALL_SU_PATH_LEN 14
 #endif
 
 #define SUPERCALL_MAX 0x1100
@@ -37,6 +41,5 @@ static inline long hash_key(const char *key)
 #define SUPERCALL_HELLO_MAGIC 0x1158
 
 #define SUPERCALL_SCONTEXT_LEN 64
-#define SUPERCALL_SU_ALLOW_MAX 32
 
 #endif

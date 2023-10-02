@@ -24,15 +24,14 @@
 #define INVALID_ALLOW_UID ((uid_t)-1)
 
 // sizeof android_su_path must not bigger than sizeof android_sh_path
-// static const char android_su_path[] = "/system/bin/sc";
-static const char android_su_path[] = "/system/bin/su";
+static char android_su_path[] = "/system/bin/kp";
 static const char android_sh_path[] = "/system/bin/sh";
 
 static uid_t su_allow_list[32];
 
 static int is_su_allow(uid_t uid)
 {
-    for (int i = 0; i < SUPERCALL_SU_ALLOW_MAX; i++) {
+    for (int i = 0; i < SUPERCALL_SU_ALLOW_UID_MAX; i++) {
         if (su_allow_list[i] == uid)
             return 1;
     }
@@ -41,7 +40,7 @@ static int is_su_allow(uid_t uid)
 
 int add_allow_uid(uid_t uid)
 {
-    for (int i = 0; i < SUPERCALL_SU_ALLOW_MAX; i++) {
+    for (int i = 0; i < SUPERCALL_SU_ALLOW_UID_MAX; i++) {
         if (su_allow_list[i] == INVALID_ALLOW_UID || su_allow_list[i] == uid) {
             su_allow_list[i] = uid;
             return 0;
@@ -52,22 +51,30 @@ int add_allow_uid(uid_t uid)
 
 int remove_allow_uid(uid_t uid)
 {
-    for (int i = 0; i < SUPERCALL_SU_ALLOW_MAX; i++) {
+    for (int i = 0; i < SUPERCALL_SU_ALLOW_UID_MAX; i++) {
         if (su_allow_list[i] == uid) {
             su_allow_list[i] = INVALID_ALLOW_UID;
         }
     }
-    return ERR_NO_SUCH_ID;
+    return ERR_NO_ERR;
 }
 
-// todo: PAGE_SIZE
+int reset_su_path(const char *path)
+{
+    if (min_strnlen(path, sizeof(android_sh_path)) >= sizeof(android_sh_path)) {
+        return ERR_CAP_FULL;
+    }
+    min_strncpy(android_su_path, path, SUPERCALL_SU_PATH_LEN);
+    return 0;
+}
+
 static int list_allow_uids_compat(uid_t __user *uids, size_t __user *size)
 {
     // uids
     struct trace_seq trace_seq;
     trace_seq_init(&trace_seq);
     size_t num = 0;
-    for (int i = 0; i < SUPERCALL_SU_ALLOW_MAX; i++) {
+    for (int i = 0; i < SUPERCALL_SU_ALLOW_UID_MAX; i++) {
         uid_t uid = su_allow_list[i];
         if (uid != INVALID_ALLOW_UID) {
             trace_seq_putmem(&trace_seq, &uid, sizeof(uid_t));
@@ -90,11 +97,11 @@ int list_allow_uids(uid_t __user *uids, size_t __user *size)
     // uids
     struct seq_buf seq_buf;
     seq_buf_clear(&seq_buf);
-    char buffer[SUPERCALL_SU_ALLOW_MAX * sizeof(uid_t)];
+    char buffer[SUPERCALL_SU_ALLOW_UID_MAX * sizeof(uid_t)];
     seq_buf.buffer = buffer;
     seq_buf.size = sizeof(seq_buf);
     size_t num = 0;
-    for (int i = 0; i < SUPERCALL_SU_ALLOW_MAX; i++) {
+    for (int i = 0; i < SUPERCALL_SU_ALLOW_UID_MAX; i++) {
         uid_t uid = su_allow_list[i];
         if (uid != INVALID_ALLOW_UID) {
             ((uid_t *)buffer)[num++] = uid;
@@ -265,7 +272,7 @@ static int hook_execv_compat(void *data, const char *name, struct module *, unsi
 
 int su_compat_init()
 {
-    for (int i = 0; i < SUPERCALL_SU_ALLOW_MAX; i++) {
+    for (int i = 0; i < SUPERCALL_SU_ALLOW_UID_MAX; i++) {
         su_allow_list[i] = INVALID_ALLOW_UID;
     }
     hook_err_t err = HOOK_NO_ERR;

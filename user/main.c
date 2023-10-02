@@ -11,44 +11,57 @@
 
 void print_usage(char **argv)
 {
-    char *c = "\nkpatch: KernelPatch Userspace Executable.\n"
-              "\n"
-              "Common Usage:\n"
-              "./kpatch -h, --help\n"
-              "    Print this message.\n"
-              "./kpatch -v, --version\n"
-              "    Print kpatch version.\n"
-              "\n"
-              "SuperCall Usage:\n"
-              "./kpatch <super_key> <command> [args...]\n"
-              "command:\n"
-              "  --hello\n"
-              "     Print SuperCall hello message in the kernel. Return 0 if succeed, others if failed!\n"
-              "  --kv\n"
-              "     Get Kernel version.\n"
-              "  --kpv\n"
-              "     Get KernelPatch version.\n"
-              "  --su [--arg1 scontext]\n"
-              "     Fork a root shell and change security context to scontext.\n"
-              "     If scontext is not specified, "
-              "         bypass all selinux permission checks for all calls initiated by this thread using hooks, "
-              "         but the permission determined by other threads remain unchanged.\n"
-              "  --load_kpm --arg1 kpm_patch\n"
-              "     Load KernelPatch Module\n"
-              "     (Unimplemented ...).\n"
-              "  --unload_kpm --arg1 kpm_patch\n"
-              "     Unload KernelPatch Module\n"
-              "     (Unimplemented ...).\n"
-              "  --grant_su --arg1 uid\n"
-              "     Grant root privileges to the user corresponding to the given uid.\n"
-              "  --revoke_su --arg1 uid\n"
-              "     Revoke root privileges to the user corresponding to the given uid.\n"
-              "  --thread_su --arg1 tid\n"
-              "     Grant root privileges to the thread corresponding to the given tid.\n"
-              "  --thread_unsu --arg1 tid\n"
-              "     Revoke root privileges to the thread corresponding to the given tid.\n"
-              "     (Unimplemented ...).\n"
-              "\n";
+    char *c =
+        "\nkpatch: KernelPatch Userspace Executable.\n"
+        "\n"
+        "Common Usage:\n"
+        "./kpatch -h, --help\n"
+        "    Print this message.\n"
+        "./kpatch -v, --version\n"
+        "    Print kpatch version.\n"
+        "\n"
+        "SuperCall Usage:\n"
+        "./kpatch <super_key> <command> [args...]\n"
+        "command:\n"
+        "  --hello\n"
+        "     Print SuperCall hello message in the kernel. Return 0 if succeed, others if failed!\n"
+        "  --kv\n"
+        "     Get Kernel version.\n"
+        "  --kpv\n"
+        "     Get KernelPatch version.\n"
+        "  --su [--arg1 scontext]\n"
+        "     Fork a root shell and change security context to scontext.\n"
+        "     If scontext is not specified, "
+        "         bypass all selinux permission checks for all calls initiated by this thread using hooks, "
+        "         but the permission determined by other threads remain unchanged.\n"
+        "  --load_kpm --arg1 path\n"
+        "     Load KernelPatch Module\n"
+        "     (Unimplemented ...).\n"
+        "  --unload_kpm --arg1 path\n"
+        "     Unload KernelPatch Module\n"
+        "     (Unimplemented ...).\n"
+        "  --thread_su --arg1 tid\n"
+        "     Grant root privileges to the thread corresponding to the given tid.\n"
+        "  --thread_unsu --arg1 tid\n"
+        "     Revoke root privileges to the thread corresponding to the given tid.\n"
+        "     (Unimplemented ...).\n"
+#ifdef ANDROID
+        "\n"
+        "Android Specific Usage:\n"
+        "The default command to get a root shell is 'kp', whose full path is '/system/bin/kp'.\n"
+        "This can avoid conflicts with the existing 'su' command.\n"
+        "If you want to change this path, you can use the 'reset_su' command, "
+        "but keep in mind that the command's length should not exceed two characters.\n"
+        "  --grant_su --arg1 uid\n"
+        "     Grant root privileges to the user corresponding to the given uid.\n"
+        "  --revoke_su --arg1 uid\n"
+        "     Revoke root privileges to the user corresponding to the given uid.\n"
+        "  --list_su\n"
+        "     Revoke root privileges to the user corresponding to the given uid.\n"
+        "  --reset_su --arg1 cmd\n"
+        "     Reset root shell command full path to '/system/bin/cmd'. The length of cmd must not exceed two characters.\n"
+#endif
+        "\n";
     fprintf(stdout, "%s", c);
 }
 
@@ -86,12 +99,14 @@ int main(int argc, char **argv)
                                  { "load_kpm", no_argument, NULL, SUPERCALL_LOAD_KPM },
                                  { "unload_kpm", no_argument, NULL, SUPERCALL_UNLOAD_KPM },
                                  { "su", no_argument, &cmd, SUPERCALL_SU },
+                                 { "thread_su", no_argument, &cmd, SUPERCALL_THREAD_SU },
+                                 { "thread_unsu", no_argument, &cmd, SUPERCALL_THREAD_UNSU },
+#ifdef ANDROID
                                  { "grant_su", no_argument, &cmd, SUPERCALL_GRANT_SU },
                                  { "revoke_su", no_argument, &cmd, SUPERCALL_REVOKE_SU },
                                  { "list_su", no_argument, &cmd, SUPERCALL_LIST_SU_ALLOW },
-                                 { "thread_su", no_argument, &cmd, SUPERCALL_THREAD_SU },
-                                 { "thread_unsu", no_argument, &cmd, SUPERCALL_THREAD_UNSU },
-
+                                 { "reset_su", no_argument, &cmd, SUPERCALL_RESET_SU_PATH },
+#endif
                                  { 0, 0, 0, 0 } };
     char *optstr = "1:2:3:";
     int opt = -1;
@@ -125,31 +140,6 @@ int main(int argc, char **argv)
         fprintf(stdout, "%lx\n", kpv);
     } else if (cmd == SUPERCALL_SU) {
         ret = su_fork(key, arg1);
-    } else if (cmd == SUPERCALL_GRANT_SU) {
-        if (!arg1) {
-            fprintf(stderr, "Empty uid!\n");
-            return -1;
-        }
-        uid_t uid = atoi(arg1);
-        ret = sc_grant_su(key, uid);
-    } else if (cmd == SUPERCALL_REVOKE_SU) {
-        if (!arg1) {
-            fprintf(stderr, "Empty uid!\n");
-            return -1;
-        }
-        uid_t uid = atoi(arg1);
-        ret = sc_revoke_su(key, uid);
-    } else if (cmd == SUPERCALL_LIST_SU_ALLOW) {
-        uid_t uids[SUPERCALL_SU_ALLOW_MAX];
-        size_t size = SUPERCALL_SU_ALLOW_MAX;
-        ret = sc_list_su_allow(key, uids, &size);
-        if (ret)
-            return ret;
-        fprintf(stdout, "su allow nums: %d\n", (int)size);
-        for (int i = 0; i < size; i++) {
-            fprintf(stdout, "%d\t", uids[i]);
-        }
-        fprintf(stdout, "\n");
     } else if (cmd == SUPERCALL_THREAD_SU) {
         if (!arg1) {
             fprintf(stderr, "Empty tid!\n");
@@ -164,10 +154,49 @@ int main(int argc, char **argv)
         }
         int pid = atoi(arg1);
         ret = sc_thread_unsu(key, pid);
-    } else {
+    }
+#ifdef ANDROID
+    else if (cmd == SUPERCALL_GRANT_SU) {
+        if (!arg1) {
+            fprintf(stderr, "Empty uid!\n");
+            return -1;
+        }
+        uid_t uid = atoi(arg1);
+        ret = sc_grant_su(key, uid);
+    } else if (cmd == SUPERCALL_REVOKE_SU) {
+        if (!arg1) {
+            fprintf(stderr, "Empty uid!\n");
+            return -1;
+        }
+        uid_t uid = atoi(arg1);
+        ret = sc_revoke_su(key, uid);
+    } else if (cmd == SUPERCALL_LIST_SU_ALLOW) {
+        uid_t uids[SUPERCALL_SU_ALLOW_UID_MAX];
+        size_t size = SUPERCALL_SU_ALLOW_UID_MAX;
+        ret = sc_list_su_allow(key, uids, &size);
+        if (ret)
+            return ret;
+        fprintf(stdout, "su allow nums: %d\n", (int)size);
+        for (int i = 0; i < size; i++) {
+            fprintf(stdout, "%d\t", uids[i]);
+        }
+        fprintf(stdout, "\n");
+    } else if (cmd == SUPERCALL_RESET_SU_PATH) {
+        const char *cmd = (const char *)arg1;
+        if (strnlen(cmd, 3) > 2) {
+            fprintf(stderr, "The string length of arg1 should not exceed two characters.\n");
+            return -1;
+        }
+        char path[sizeof("/system/bin/sh")] = { '\0' };
+        sprintf(path, "/system/bin/%s", cmd);
+        return sc_reset_su_path(key, path);
+    }
+#endif
+    else {
         fprintf(stderr, "Invalid SuperCall command!\n");
         return 0;
     }
+
     if (ret == SUPERCALL_RES_NOT_IMPL) {
         fprintf(stdout, "Unimplemented SuperCall\n");
     }

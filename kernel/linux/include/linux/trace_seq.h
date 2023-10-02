@@ -78,6 +78,7 @@ static inline int trace_seq_bitmask(struct trace_seq *s, const unsigned long *ma
     return 0;
 }
 
+// todo: PAGE_SIZE
 static inline int trace_seq_copy_to_user(void __user *to, const void *from, int n)
 {
     struct trace_seq trace_seq;

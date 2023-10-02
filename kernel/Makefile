@@ -51,8 +51,7 @@ SRCS += $(LINUX_SRCS)
 OBJS := $(SRCS:.c=.o)
 OBJS := $(OBJS:.S=.o)
 
-
-all: ${TARGET} hdr
+all: ${TARGET}
 
 ${TARGET}: ${TARGET}.elf
 	${OBJCOPY} -O binary -S $^ $@
@@ -65,10 +64,6 @@ ${TARGET}.elf: ${OBJS}
 
 %.o: %.S
 	${CC} $(CFLAGS) $(INCLUDE) -c -o $@ $<
-
-hdr:
-	cp base/preset.h ../tools/
-	cp -rf init/include/uapi ../user/
 
 .PHONY: clean
 clean:

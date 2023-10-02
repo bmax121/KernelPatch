@@ -10,6 +10,8 @@
 #include <unistd.h>
 #include <string.h>
 
+#include "version"
+
 #include "preset.h"
 #include "image.h"
 #include "order.h"
@@ -41,6 +43,8 @@ static int b(uint32_t *buf, uint64_t from, uint64_t to)
     return 0;
 }
 
+static uint32_t version = 0;
+
 static char image[FILENAME_MAX] = { '\0' };
 static char out[FILENAME_MAX] = { '\0' };
 static char kpimg[FILENAME_MAX] = { '\0' };
@@ -51,7 +55,8 @@ static kallsym_t kallsym;
 
 void print_usage()
 {
-    char *c = "\nkptools. Kernel Image Patch Tools.\n"
+    char *c = "\nkptools. Kernel Image Patch Tools. "
+              "version: %x\n"
               "\n"
               "Usage: ./kptools <command> [args...]\n"
               "  -h, --help\n"
@@ -59,13 +64,13 @@ void print_usage()
               "\n"
               "  -p, --patch <kernel_image> <--kpimg kpimg> <--skey super_key> [--out image_patched]\n"
               "  Patch kernel_image with kpimg.\n"
-              "    If [--out] is not specified, default ${kernel_image}__patched will be used.\n"
+              "    If --out is not specified, default ${kernel_image}__patched will be used.\n"
               "    super_key: Authentication key for supercall system call.\n"
               "\n"
               "  -d, --dump <kernel_image>\n"
               "    Analyze and dump kallsyms infomations of kernel_image to stdout.\n"
               "\n";
-    fprintf(stdout, "%s", c);
+    fprintf(stdout, c, version);
 }
 
 int dump_kallsym()
@@ -103,6 +108,15 @@ static int32_t relo_branch_func(const char *img, int32_t func_offset)
         fprintf(stdout, "[+] kptools relocate branch function 0x%x to 0x%x\n", func_offset, relo_offset);
     }
     return relo_offset;
+}
+
+static void print_kpimg_info(const char *img)
+{
+    setup_header_t *header = (setup_header_t *)img;
+    version_t ver = header->kp_version;
+    uint32_t ver_num = (ver.major << 16) + (ver.minor << 8) + ver.patch;
+    fprintf(stdout, "[+] kptools kpimg version: %x\n", ver_num);
+    fprintf(stdout, "[+] kptools kpimg compile time: %s\n", header->compile_time);
 }
 
 static void target_endian_preset(setup_preset_t *preset, int32_t target_is_be)
@@ -176,6 +190,8 @@ int patch_image()
     memcpy(out_buf, image_buf, image_len);
     fread(out_buf + align_image_len, 1, kpimg_len, fkpimg);
     fclose(fkpimg);
+
+    print_kpimg_info(out_buf + align_image_len);
 
     get_kernel_info(&kinfo, image_buf, image_len);
     long align_kernel_size = align_ceil(kinfo.kernel_size, 4096);
@@ -268,20 +284,22 @@ int patch_image()
 
 int main(int argc, char *argv[])
 {
-    struct option longopts[] = { { "help", no_argument, NULL, 'h' },
-                                 { "patch", required_argument, NULL, 'p' },
-                                 { "skey", required_argument, NULL, 's' },
-                                 { "out", required_argument, NULL, 'o' },
-                                 { "kpimg", required_argument, NULL, 'k' },
-                                 { "dump", required_argument, NULL, 'd' },
-                                 { 0, 0, 0, 0 } };
-    char *optstr = "hp:d:o:";
+    version = (MAJOR << 16) + (MINOR << 8) + PATCH;
+
+    struct option longopts[] = { { "version", no_argument, NULL, 'v' },     { "help", no_argument, NULL, 'h' },
+                                 { "patch", required_argument, NULL, 'p' }, { "skey", required_argument, NULL, 's' },
+                                 { "out", required_argument, NULL, 'o' },   { "kpimg", required_argument, NULL, 'k' },
+                                 { "dump", required_argument, NULL, 'd' },  { 0, 0, 0, 0 } };
+    char *optstr = "vhp:d:o:";
 
     int cmd = '\0';
     int opt = -1;
     int opt_index = -1;
     while ((opt = getopt_long(argc, argv, optstr, longopts, &opt_index)) != -1) {
         switch (opt) {
+        case 'v':
+            cmd = 'v';
+            break;
         case 'h':
             cmd = 'h';
             break;
@@ -310,6 +328,8 @@ int main(int argc, char *argv[])
         ret = patch_image();
     } else if (cmd == 'd') {
         ret = dump_kallsym();
+    } else if (cmd == 'v') {
+        fprintf(stdout, "%x\n", version);
     } else {
         print_usage();
     }
