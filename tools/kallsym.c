@@ -276,7 +276,7 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
 
     rela_num = (cand_end - cand_start) / 24;
     if (rela_num < ARM64_RELO_MIN_NUM) {
-        fprintf(stderr, "[-] kallsyms find arm64 relocation table error\n");
+        fprintf(stdout, "[-] kallsyms can't find arm64 relocation table\n");
         return 0;
     }
     fprintf(stdout,
