@@ -85,13 +85,13 @@ static inline long sc_list_su_allow(const char *key, uid_t *uids, size_t *size)
     return ret;
 }
 
-static inline long sc_reset_su_path(const char *key, const char *path)
+static inline long sc_reset_su_cmd(const char *key, const char *path)
 {
     // todo: error code
-    if (strlen(path) > SUPERCALL_SU_PATH_LEN) {
+    if (strlen(path) > SUPERCALL_SU_CMD_LEN) {
         return -1;
     }
-    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_RESET_SU_PATH, path);
+    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_RESET_SU_CMD, path);
     return ret;
 }
 

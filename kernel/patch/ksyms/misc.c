@@ -464,8 +464,8 @@ void kfunc_def(dump_stack)(void) = 0;
 
 void _linux_lib_dump_stack_sym_match()
 {
-    // kfunc_match(dump_stack_lvl, name, addr);
-    // kfunc_match(dump_stack, name, addr);
+    kfunc_match(dump_stack_lvl, name, addr);
+    kfunc_match(dump_stack, name, addr);
 }
 
 // mm/vmalloc.c
@@ -599,4 +599,43 @@ void _linux_lib_seq_buf_sym_match()
         // kfunc_match(trace_seq_putmem_hex, name, addr);
         // kfunc_match(trace_seq_bitmask, name, addr);
     }
+}
+
+//
+#include <linux/fs.h>
+
+void kfunc_def(inc_nlink)(struct inode *inode) = 0;
+void kfunc_def(drop_nlink)(struct inode *inode) = 0;
+void kfunc_def(clear_nlink)(struct inode *inode) = 0;
+void kfunc_def(set_nlink)(struct inode *inode, unsigned int nlink) = 0;
+
+int kfunc_def(kernel_read)(struct file *, loff_t, char *, unsigned long) = 0;
+ssize_t kfunc_def(kernel_write)(struct file *, const char *, size_t, loff_t) = 0;
+struct file *kfunc_def(open_exec)(const char *) = 0;
+
+struct file *kfunc_def(file_open_name)(struct filename *, int, umode_t) = 0;
+struct file *kfunc_def(filp_open)(const char *, int, umode_t) = 0;
+struct file *kfunc_def(file_open_root)(struct dentry *, struct vfsmount *, const char *, int, umode_t) = 0;
+struct file *kfunc_def(dentry_open)(const struct path *, int, const struct cred *) = 0;
+int kfunc_def(filp_close)(struct file *, fl_owner_t id) = 0;
+
+struct filename *kfunc_def(getname)(const char __user *) = 0;
+struct filename *kfunc_def(getname_kernel)(const char *) = 0;
+
+void _linux_fs_sym_match()
+{
+    // kfunc_match(inc_nlink, name, addr);
+    // kfunc_match(drop_nlink, name, addr);
+    // kfunc_match(clear_nlink, name, addr);
+    // kfunc_match(set_nlink, name, addr);
+    kfunc_match(kernel_read, name, addr);
+    kfunc_match(kernel_write, name, addr);
+    // kfunc_match(open_exec, name, addr);
+    kfunc_match(file_open_name, name, addr);
+    kfunc_match(filp_open, name, addr);
+    // kfunc_match(file_open_root, name, addr);
+    // kfunc_match(dentry_open, name, addr);
+    kfunc_match(filp_close, name, addr);
+    // kfunc_match(getname, name, addr);
+    // kfunc_match(getname_kernel, name, addr);
 }

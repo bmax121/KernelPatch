@@ -328,113 +328,6 @@ uint64_t __attribute__((section(".transit0.text"))) __attribute__((__noinline__)
 }
 extern void _transit0_end();
 
-// transit1
-typedef uint64_t (*transit1_func_t)(uint64_t);
-
-uint64_t __attribute__((section(".transit1.text"))) __attribute__((__noinline__)) _transit1(uint64_t arg0)
-{
-    uint64_t this_va;
-    asm volatile("adr %0, ." : "=r"(this_va));
-    uint32_t *vptr = (uint32_t *)this_va;
-    while (*--vptr != ARM64_NOP)
-        ;
-    hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, hook_chain_t, transit);
-    hook_fargs1_t fargs;
-    fargs.early_ret = 0;
-    fargs.arg0 = arg0;
-    fargs.chain = hook_chain;
-    for (int32_t i = 0; i < HOOK_CHAIN_NUM; i++) {
-        hook_chain1_callback func = hook_chain->befores[i];
-        if (func)
-            func(&fargs, hook_chain->udata[i]);
-    }
-    if (!fargs.early_ret) {
-        transit1_func_t origin_func = (transit1_func_t)hook_chain->hook.relo_addr;
-        fargs.ret = origin_func(fargs.arg0);
-    }
-    for (int32_t i = HOOK_CHAIN_NUM - 1; i >= 0; i--) {
-        hook_chain1_callback func = hook_chain->afters[i];
-        if (func)
-            func(&fargs, hook_chain->udata[i]);
-    }
-    return fargs.ret;
-}
-
-extern void _transit1_end();
-
-// transit2
-typedef uint64_t (*transit2_func_t)(uint64_t, uint64_t);
-
-uint64_t __attribute__((section(".transit2.text"))) __attribute__((__noinline__))
-_transit2(uint64_t arg0, uint64_t arg1)
-{
-    uint64_t this_va;
-    asm volatile("adr %0, ." : "=r"(this_va));
-    uint32_t *vptr = (uint32_t *)this_va;
-    while (*--vptr != ARM64_NOP) {
-    };
-    hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, hook_chain_t, transit);
-    hook_fargs2_t fargs;
-    fargs.early_ret = 0;
-    fargs.arg0 = arg0;
-    fargs.arg1 = arg1;
-    fargs.chain = hook_chain;
-    for (int32_t i = 0; i < HOOK_CHAIN_NUM; i++) {
-        hook_chain2_callback func = hook_chain->befores[i];
-        if (func)
-            func(&fargs, hook_chain->udata[i]);
-    }
-    if (!fargs.early_ret) {
-        transit2_func_t origin_func = (transit2_func_t)hook_chain->hook.relo_addr;
-        fargs.ret = origin_func(fargs.arg0, fargs.arg1);
-    }
-    for (int32_t i = HOOK_CHAIN_NUM - 1; i >= 0; i--) {
-        hook_chain2_callback func = hook_chain->afters[i];
-        if (func)
-            func(&fargs, hook_chain->udata[i]);
-    }
-    return fargs.ret;
-}
-
-extern void _transit2_end();
-
-// transit3
-typedef uint64_t (*transit3_func_t)(uint64_t, uint64_t, uint64_t);
-
-uint64_t __attribute__((section(".transit3.text"))) __attribute__((__noinline__))
-_transit3(uint64_t arg0, uint64_t arg1, uint64_t arg2)
-{
-    uint64_t this_va;
-    asm volatile("adr %0, ." : "=r"(this_va));
-    uint32_t *vptr = (uint32_t *)this_va;
-    while (*--vptr != ARM64_NOP) {
-    };
-    hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, hook_chain_t, transit);
-    hook_fargs3_t fargs;
-    fargs.early_ret = 0;
-    fargs.arg0 = arg0;
-    fargs.arg1 = arg1;
-    fargs.arg2 = arg2;
-    fargs.chain = hook_chain;
-    for (int32_t i = 0; i < HOOK_CHAIN_NUM; i++) {
-        hook_chain3_callback func = hook_chain->befores[i];
-        if (func)
-            func(&fargs, hook_chain->udata[i]);
-    }
-    if (!fargs.early_ret) {
-        transit3_func_t origin_func = (transit3_func_t)hook_chain->hook.relo_addr;
-        fargs.ret = origin_func(fargs.arg0, fargs.arg1, fargs.arg2);
-    }
-    for (int32_t i = HOOK_CHAIN_NUM - 1; i >= 0; i--) {
-        hook_chain3_callback func = hook_chain->afters[i];
-        if (func)
-            func(&fargs, hook_chain->udata[i]);
-    }
-    return fargs.ret;
-}
-
-extern void _transit3_end();
-
 // transit4
 typedef uint64_t (*transit4_func_t)(uint64_t, uint64_t, uint64_t, uint64_t);
 
@@ -738,17 +631,8 @@ hook_err_t hook_chain_prepare(hook_chain_t *chain, int32_t argno)
         transit_end = (uint64_t)_transit0_end;
         break;
     case 1:
-        transit = (uint64_t)_transit1;
-        transit_end = (uint64_t)_transit1_end;
-        break;
     case 2:
-        transit = (uint64_t)_transit2;
-        transit_end = (uint64_t)_transit2_end;
-        break;
     case 3:
-        transit = (uint64_t)_transit3;
-        transit_end = (uint64_t)_transit3_end;
-        break;
     case 4:
         transit = (uint64_t)_transit4;
         transit_end = (uint64_t)_transit4_end;
@@ -806,7 +690,7 @@ void hook_chain_remove(hook_chain_t *chain, void *before, void *after)
 }
 
 // todo: lock
-hook_err_t hook_wrap(void *func, int32_t argno, void *before, void *after, void *udata, void **backup)
+hook_err_t hook_wrap(void *func, int32_t argno, void *before, void *after, void *udata)
 {
     if (!func)
         return HOOK_INPUT_NULL;
@@ -823,8 +707,6 @@ hook_err_t hook_wrap(void *func, int32_t argno, void *before, void *after, void 
     hook->origin_addr = origin;
     hook->replace_addr = (uint64_t)chain->transit;
     hook->relo_addr = (uint64_t)hook->relo_insts;
-    if (backup)
-        *(uint64_t *)backup = chain->hook.relo_addr;
     logkv("Wrap func: %llx, origin: %llx, replace: %llx, relocate: %llx, chain: %llx\n", hook->func_addr,
           hook->origin_addr, hook->replace_addr, hook->relo_addr, chain);
     hook_err_t err = hook_chain_prepare(chain, argno);

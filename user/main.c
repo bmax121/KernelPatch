@@ -57,7 +57,7 @@ void print_usage(char **argv)
         "  --revoke_su --arg1 uid\n"
         "     Revoke root privileges to the user corresponding to the given uid.\n"
         "  --list_su\n"
-        "     List su allowed UIDs.\n"
+        "     List su allowed uids.\n"
         "  --reset_su --arg1 cmd\n"
         "     Reset root shell command full path to '/system/bin/cmd'. The length of cmd must not exceed two characters.\n"
 #endif
@@ -105,7 +105,7 @@ int main(int argc, char **argv)
                                  { "grant_su", no_argument, &cmd, SUPERCALL_GRANT_SU },
                                  { "revoke_su", no_argument, &cmd, SUPERCALL_REVOKE_SU },
                                  { "list_su", no_argument, &cmd, SUPERCALL_LIST_SU_ALLOW },
-                                 { "reset_su", no_argument, &cmd, SUPERCALL_RESET_SU_PATH },
+                                 { "reset_su", no_argument, &cmd, SUPERCALL_RESET_SU_CMD },
 #endif
                                  { 0, 0, 0, 0 } };
     char *optstr = "1:2:3:";
@@ -181,15 +181,13 @@ int main(int argc, char **argv)
             fprintf(stdout, "%d\t", uids[i]);
         }
         fprintf(stdout, "\n");
-    } else if (cmd == SUPERCALL_RESET_SU_PATH) {
+    } else if (cmd == SUPERCALL_RESET_SU_CMD) {
         const char *cmd = (const char *)arg1;
         if (strnlen(cmd, 3) > 2) {
             fprintf(stderr, "The string length of arg1 should not exceed two characters.\n");
             return -1;
         }
-        char path[sizeof("/system/bin/sh")] = { '\0' };
-        sprintf(path, "/system/bin/%s", cmd);
-        return sc_reset_su_path(key, path);
+        return sc_reset_su_cmd(key, cmd);
     }
 #endif
     else {

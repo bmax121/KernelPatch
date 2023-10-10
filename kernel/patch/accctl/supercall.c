@@ -93,6 +93,8 @@ static long supercall(long cmd, void *__user arg1, void *__user arg2, void *__us
     } else {
 #ifdef ANDROID
         ret = supercall_android(cmd, arg1, arg2, arg3);
+#else
+        ret = SUPERCALL_RES_NOT_IMPL
 #endif
     }
     return ret;

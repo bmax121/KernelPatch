@@ -11,8 +11,9 @@
 #include <pgtable.h>
 #include <ksyms.h>
 #include <error.h>
+#include <minc/string.h>
 
-int make_cred_su(struct cred *cred, const char *sctx)
+static void make_cred_su(struct cred *cred, const char *sctx)
 {
     *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_inheritable_offset) = full_cap;
     *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_permitted_offset) = full_cap;
@@ -29,14 +30,6 @@ int make_cred_su(struct cred *cred, const char *sctx)
     *(uid_t *)((uintptr_t)cred + cred_offset.egid_offset) = 0;
     *(uid_t *)((uintptr_t)cred + cred_offset.fsgid_offset) = 0;
     *(uid_t *)((uintptr_t)cred + cred_offset.sgid_offset) = 0;
-
-    if (sctx) {
-        int rc = set_security_override_from_ctx(cred, sctx);
-        if (rc)
-            logkw("set sctx: %s\n", sctx);
-        return rc;
-    }
-    return 0;
 }
 
 int commit_kernel_cred()
@@ -70,19 +63,15 @@ int commit_su(int super, const char *sctx)
         rc = ERR_DIRTY_EXT;
         goto out;
     }
-
     ext->super = super;
     ext->selinux_allow = 1;
 
     struct cred *new = prepare_creds();
-
-    rc = make_cred_su(new, sctx);
-    if (rc)
-        goto out;
-
+    make_cred_su(new, sctx);
+    if (sctx && sctx[0]) {
+        ext->selinux_allow = !!set_security_override_from_ctx(new, sctx);
+    }
     commit_creds(new);
-
-    ext->selinux_allow = !sctx;
     // todo: ranchu-4.4.302, ranchu-4.14.175, and ..., BUG: recent printk recursion!
     // logkfi("pid: %d, tgid: %d\n", ext->pid, ext->tgid);
 out:
@@ -101,10 +90,10 @@ int effect_su_unsafe(const char *sctx)
     }
     ext->selinux_allow = 1;
     struct cred *cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
-    rc = make_cred_su(cred, sctx);
-    if (rc)
-        goto out;
-    ext->selinux_allow = !sctx;
+    make_cred_su(cred, sctx);
+    if (sctx && sctx[0]) {
+        ext->selinux_allow = !!set_security_override_from_ctx(cred, sctx);
+    }
     // logkfi("pid: %d, tgid: %d\n", ext->pid, ext->tgid);
 out:
     return rc;
@@ -128,17 +117,17 @@ int thread_su(pid_t vpid, const char *sctx)
     }
 
     struct cred *cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
-    rc = make_cred_su(cred, sctx);
-    if (rc)
-        goto out;
+    make_cred_su(cred, sctx);
+    if (sctx && sctx[0]) {
+        ext->selinux_allow = set_security_override_from_ctx(cred, sctx);
+    }
     struct cred *real_cred = *(struct cred **)((uintptr_t)task + task_struct_offset.real_cred_offset);
     if (cred != real_cred) {
-        rc = make_cred_su(real_cred, sctx);
-        if (rc)
-            goto out;
+        make_cred_su(real_cred, sctx);
+        if (sctx && sctx[0]) {
+            ext->selinux_allow = set_security_override_from_ctx(real_cred, sctx);
+        }
     }
-
-    ext->selinux_allow = !sctx;
     // logkfi("pid: %d, tgid: %d\n", ext->pid, ext->tgid);
 out:
     __put_task_struct(task);

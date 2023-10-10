@@ -35,3 +35,5 @@ uapi
 version
 kpatch
 
+build_android.sh
+

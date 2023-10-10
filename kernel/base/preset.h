@@ -14,6 +14,8 @@
 #define HOOK_ALLOC_SIZE (256 * 1024)
 #define MAP_ALIGN 16
 
+#define PATCH_CONFIG_DIR_LEN 128
+
 #define VERSION(major, minor, patch) (((major) << 16) + ((minor) << 8) + (patch))
 
 #ifndef __ASSEMBLY__
@@ -43,6 +45,15 @@ typedef struct _setup_header_t // 64-bytes
 #endif
 
 #ifndef __ASSEMBLY__
+typedef struct
+{
+    char default_dir[PATCH_CONFIG_DIR_LEN];
+} patch_config_t;
+#else
+#define patch_config_size (PATCH_CONFIG_DIR_LEN)
+#endif
+
+#ifndef __ASSEMBLY__
 typedef struct _setup_preset_t
 {
     int64_t kernel_size;
@@ -64,6 +75,9 @@ typedef struct _setup_preset_t
 
     uint8_t header_backup[HDR_BACKUP_SIZE];
     uint8_t superkey[SUPER_KEY_LEN];
+
+    patch_config_t patch_config;
+
 } setup_preset_t;
 #else
 #define setup_kernel_size_offset 0
@@ -83,12 +97,7 @@ typedef struct _setup_preset_t
 #define setup_memblock_mark_nomap_offset 0x70
 #define setup_header_backup_offset 0x78
 #define setup_superkey_offset (setup_header_backup_offset + HDR_BACKUP_SIZE)
-#endif
-
-#ifndef __ASSEMBLY__
-typedef struct
-{
-} setup_config_t;
+#define setup_patch_config_offset (setup_superkey_offset + SUPER_KEY_LEN)
 #endif
 
 #endif // _KP_PRESET_H_

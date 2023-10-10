@@ -23,9 +23,9 @@
 
 #define INVALID_ALLOW_UID ((uid_t)-1)
 
-// sizeof android_su_path must not bigger than sizeof android_sh_path
 static char android_su_path[] = "/system/bin/kp";
 static const char android_sh_path[] = "/system/bin/sh";
+static const char android_sh_dir[] = "/system/bin/";
 
 static uid_t su_allow_list[32];
 
@@ -59,12 +59,14 @@ int remove_allow_uid(uid_t uid)
     return ERR_NO_ERR;
 }
 
-int reset_su_path(const char *path)
+int reset_su_cmd(const char cmd[3])
 {
-    if (min_strnlen(path, sizeof(android_sh_path)) >= sizeof(android_sh_path)) {
+    if (cmd[2]) {
         return ERR_CAP_FULL;
     }
-    min_strncpy(android_su_path, path, SUPERCALL_SU_PATH_LEN);
+    android_su_path[sizeof(android_sh_dir) - 1] = cmd[0];
+    android_su_path[sizeof(android_sh_dir)] = cmd[1];
+    logkd("reset su to: %s\n", android_su_path);
     return 0;
 }
 
@@ -144,7 +146,7 @@ static void *__user copy_to_user_stack(void *data, size_t len)
     addr -= len;
     addr &= 0xFFFFFFFFFFFFFFF0;
     // sometimes, to avoid userspace -fstack-protector
-    addr -= 0x10;
+    addr -= 10;
     copy_to_user((void *)addr, data, len);
     return (void *)addr;
 }
@@ -152,6 +154,11 @@ static void *__user copy_to_user_stack(void *data, size_t len)
 static inline char *__user android_sh_user_path()
 {
     return (char *__user)copy_to_user_stack((void *)android_sh_path, sizeof(android_sh_path));
+}
+
+static inline char *__user android_su_user_path()
+{
+    return (char *__user)copy_to_user_stack((void *)android_su_path, min_strlen(android_su_path) + 1);
 }
 
 struct file;
@@ -176,84 +183,87 @@ static inline void log_user_string(const char *tag, const char *__user filename)
 // int __do_execve_file(int fd, struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp, int flags,
 //                      struct file *file);
 // 3.18: static int do_execve(struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp);
-static void *(*backup_do_execve)(void *a0, void *a1, void *a2, void *a3, void *a4, void *a5, void *a6, void *a7) = 0;
-static void *replace_do_execve(void *a0, void *a1, void *a2, void *a3, void *a4, void *a5, void *a6, void *a7)
+void before_do_execve(hook_fargs8_t *args, void *udata)
 {
-    volatile uid_t uid = current_uid();
-    if (is_su_allow(uid)) {
-        struct filename *filename;
-        if ((((uintptr_t)a0) & 0xF000000000000000) == 0xF000000000000000) {
-            filename = (struct filename *)a0;
-        } else {
-            filename = (struct filename *)a1;
-        }
-        if (!IS_ERR(filename)) {
-            if (!min_strcmp(filename->name, android_su_path)) {
-                // todo: panic printk
-                // logkd("exec: uid: %d, filename: %s\n", uid, filename->name);
-                commit_su(0, 0);
-                min_strcpy((char *)filename->name, android_sh_path);
-            }
+    uid_t uid = current_uid();
+    if (!is_su_allow(uid))
+        return;
+
+    struct filename *filename;
+    if ((((uintptr_t)args->arg0) & 0xF000000000000000) == 0xF000000000000000) {
+        filename = (struct filename *)args->arg0;
+    } else {
+        filename = (struct filename *)args->arg1;
+    }
+    // logkd("exec su uid: %d, %s\n", uid, filename->name);
+    dsb(ishst); // todo
+    if (!IS_ERR(filename)) {
+        if (!min_strcmp(filename->name, android_su_path)) {
+            logkd("exec su uid: %d\n", uid);
+            commit_su(0, 0);
+            min_strcpy((char *)filename->name, android_sh_path);
         }
     }
-    void *rc = backup_do_execve(a0, a1, a2, a3, a4, a5, a6, a7);
-    return rc;
 }
 
 // long do_faccessat(int dfd, const char __user *filename, int mode, int flags)
 // SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
-static long (*backup_faccessat)(int dfd, char __user *filename, int mode, int flag) = 0;
-static long replace_faccessat(int dfd, char __user *filename, int mode, int flag)
+void before_faccessat(hook_fargs4_t *args, void *udata)
 {
-    int change_flag = 0;
-    volatile uid_t uid = current_uid();
-    if (is_su_allow(uid)) {
-        char buf[sizeof(android_su_path) + 1] = { '\0' };
-        strncpy_from_user(buf, filename, sizeof(android_su_path));
-        if (!min_strcmp(buf, android_su_path)) {
-            // logkd("access: uid: %d, filename: %s\n", uid, buf);
-            copy_to_user(filename, android_sh_path, sizeof(android_sh_path));
-            change_flag = 1;
-        }
+    uid_t uid = current_uid();
+    if (!is_su_allow(uid))
+        return;
+
+    char __user *filename = (char __user *)args->arg1;
+    char buf[sizeof(android_su_path) + 1] = { '\0' };
+    strncpy_from_user(buf, filename, sizeof(android_su_path));
+
+    if (!min_strcmp(buf, android_su_path)) {
+        logkd("access: uid: %d\n", uid);
+        args->ret = 0;
+        args->early_ret = 1;
     }
-    int rc = backup_faccessat(dfd, filename, mode, flag);
-    if (change_flag) {
-        copy_to_user(filename, (void *)android_su_path, sizeof(android_su_path));
-    }
-    return rc;
 }
 
 // int vfs_statx(int dfd, struct filename *filename, int flags, struct kstat *stat, u32 request_mask)
 // int vfs_fstatat(int dfd, const char __user *filename, struct kstat *stat, int flags)
 // int do_statx(int dfd, struct filename *filename, unsigned int flags, unsigned int mask, struct statx __user *buffer)
+// int do_statx(int dfd, const char __user *filename, unsigned flags, unsigned int mask, struct statx __user *buffer)
 // int vfs_statx(int dfd, const char __user *filename, int flags, struct kstat *stat, u32 request_mask)
-static void *(*backup_vfs_stat)(int dfd, void *a1, void *a2, void *a3, void *a4, void *a5) = 0;
-static void *replace_vfs_stat(int dfd, void *a1, void *a2, void *a3, void *a4, void *a5)
+void before_stat(hook_fargs8_t *args, void *udata)
 {
     int change_flag = 0;
-    volatile uid_t uid = current_uid();
-    if (is_su_allow(uid)) {
-        if ((((uintptr_t)a1) & 0xF000000000000000) == 0xF000000000000000) {
-            struct filename *filename = (struct filename *)a1;
-            if (!min_strcmp(filename->name, android_su_path)) {
-                // logkd("stat: uid: %d, filename: %s\n", uid, filename);
-                min_strcpy((char *)filename->name, android_sh_path);
-            }
-        } else {
-            char buf[sizeof(android_su_path) + 1] = { '\0' };
-            strncpy_from_user(buf, a1, sizeof(android_su_path));
-            if (!min_strcmp(buf, android_su_path)) {
-                // logkd("stat: uid: %d, user filename: %s\n", uid, buf);
-                copy_to_user(a1, android_sh_path, sizeof(android_sh_path));
-                change_flag = 1;
-            }
+    args->local.data[0] = change_flag;
+
+    uid_t uid = current_uid();
+    if (!is_su_allow(uid))
+        return;
+
+    if ((((uintptr_t)args->arg1) & 0xF000000000000000) == 0xF000000000000000) {
+        struct filename *filename = (struct filename *)args->arg1;
+        if (!min_strcmp(filename->name, android_su_path)) {
+            logkd("stat0: uid: %d\n", uid);
+            min_strcpy((char *)filename->name, android_sh_path);
+        }
+    } else {
+        char buf[sizeof(android_su_path) + 1] = { '\0' };
+        strncpy_from_user(buf, (char *)args->arg1, sizeof(android_su_path));
+        if (!min_strcmp(buf, android_su_path)) {
+            logkd("stat1: uid: %d\n", uid);
+            copy_to_user((void *)args->arg1 + sizeof(android_sh_dir) - 1, android_sh_path + sizeof(android_sh_dir) - 1,
+                         3);
+            change_flag = 1;
         }
     }
-    void *ret = backup_vfs_stat(dfd, a1, a2, a3, a4, a5);
+    args->local.data[0] = change_flag;
+}
+
+void after_stat(hook_fargs8_t *args, void *udata)
+{
+    int change_flag = args->local.data[0];
     if (change_flag) {
-        copy_to_user(a1, (void *)android_su_path, sizeof(android_su_path));
+        copy_to_user((void *)args->arg1 + sizeof(android_sh_dir) - 1, android_su_path + sizeof(android_sh_dir) - 1, 3);
     }
-    return ret;
 }
 
 static int hook_execv_compat(void *data, const char *name, struct module *, unsigned long addr)
@@ -262,7 +272,7 @@ static int hook_execv_compat(void *data, const char *name, struct module *, unsi
         return 0;
     }
     logkd("Find do_execve_common symbol: %s\n", name);
-    hook_err_t err = hook((void *)addr, (void *)replace_do_execve, (void **)&backup_do_execve);
+    hook_err_t err = hook_wrap8((void *)addr, before_do_execve, 0, 0);
     if (err) {
         logke("Hook %s error: %d\n", name, err);
         return err;
@@ -275,6 +285,9 @@ int su_compat_init()
     for (int i = 0; i < SUPERCALL_SU_ALLOW_UID_MAX; i++) {
         su_allow_list[i] = INVALID_ALLOW_UID;
     }
+    // todo:
+    su_allow_list[0] = 2000;
+
     hook_err_t err = HOOK_NO_ERR;
 
     // state
@@ -289,7 +302,8 @@ int su_compat_init()
         logke("Can't find symbol vfs_fstatat, do_statx or vfs_statx\n");
         return ERR_NO_SUCH_SYMBOL;
     }
-    err = hook((void *)vfs_stat_addr, (void *)replace_vfs_stat, (void **)&backup_vfs_stat);
+
+    err = hook_wrap8((void *)vfs_stat_addr, before_stat, after_stat, 0);
     if (err) {
         logke("Hook vfs_fstatat error: %d\n", err);
         return err;
@@ -304,7 +318,7 @@ int su_compat_init()
         logke("Can't find symbol do_faccessat or sys_faccessat\n");
         return ERR_NO_SUCH_SYMBOL;
     }
-    err = hook((void *)faccessat_addr, (void *)replace_faccessat, (void **)&backup_faccessat);
+    err = hook_wrap4((void *)faccessat_addr, before_faccessat, 0, 0);
     if (err) {
         logke("Hook do_faccessat error: %d\n", err);
         return err;
@@ -317,7 +331,7 @@ int su_compat_init()
     if (!execve_addr) {
         kallsyms_on_each_symbol(hook_execv_compat, 0);
     } else {
-        err = hook((void *)execve_addr, (void *)replace_do_execve, (void **)&backup_do_execve);
+        err = hook_wrap8((void *)execve_addr, before_do_execve, 0, 0);
         if (err) {
             logke("Hook __do_execve_file or do_execveat_common error: %d\n", err);
             return err;

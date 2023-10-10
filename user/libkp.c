@@ -46,7 +46,7 @@ long su_fork(const char *key, const char *sctx)
     fprintf(stdout, "after capabilities: ret: %ld, 0x%x, %x, %x\n", ret, cap_data.effective, cap_data.permitted,
             cap_data.inheritable);
 #endif
-    /* Default exec shell. */
+    // todo: shell path
     if (!ret)
         execlp("/system/bin/sh", "sh", NULL);
     return ret;

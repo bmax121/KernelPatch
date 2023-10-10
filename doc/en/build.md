@@ -8,13 +8,13 @@ Need to use a bare-metal cross-compiler.
 ```shell
 export TARGET_COMPILE=aarch64-none-elf-
 cd kernel
+# export ANDROID=1 # Android version, including support for the 'su' command
 make
 ```
 
 ## Build kptools
 
 kptools can run anywhere, just compile it.  
-If you haven't compiled kpimg, you need to copy [/kernel/base/preset.h](/kernel/base/preset.h) to the `tool` directory.  
 
 - Using Makefile
 
@@ -38,8 +38,6 @@ make
 kpatch runs in the user space of the target system, so you can build it as usual.  
 If you are using it for Android, you can use AndroidKernelPatch.
 
-If you haven't compiled kpimg, you need to copy [/kernel/init/include/uapi](/kernel/init/include/uapi) to the `user` directory.  
-
 - Using Makefile
 
 ```shell
@@ -55,4 +53,18 @@ mkdir build
 cd build
 cmake ..
 make
+```
+
+- Compile for Android
+
+```shell
+export ANDROID_NDK=/path/to/ndk
+export ANDROID=1
+cd user
+mkdir -p build/android && cd build/android
+cmake -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DANDROID_PLATFORM=android-33 \
+    -DANDROID_ABI=arm64-v8a ../..
+cmake --build .
 ```

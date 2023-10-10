@@ -6,4 +6,6 @@
 
 int superkey_auth(const char *key, int32_t len);
 
+int predata_init();
+
 #endif

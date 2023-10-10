@@ -306,7 +306,8 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
         *(uint64_t *)(img + offset) = value + r_addend;
         apply_num++;
     }
-    apply_num--;
+    if (apply_num)
+        apply_num--;
     fprintf(stdout, "[+] kallsyms apply 0x%08x relocation entries\n", apply_num);
 
     if (apply_num)

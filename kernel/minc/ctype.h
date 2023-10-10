@@ -1,64 +1,64 @@
 #ifndef _KP_CTYPE_H_
 #define _KP_CTYPE_H_
 
-inline int min_isupper(int __c)
+inline int min_isupper(int c)
 {
-    return __c >= 'A' && __c <= 'Z';
+    return c >= 'A' && c <= 'Z';
 }
 
-inline int min_islower(int __c)
+inline int min_islower(int c)
 {
-    return __c >= 'a' && __c <= 'z';
+    return c >= 'a' && c <= 'z';
 }
 
-inline int min_isalpha(int __c)
+inline int min_isalpha(int c)
 {
-    return min_islower(__c) || min_isupper(__c);
+    return min_islower(c) || min_isupper(c);
 }
 
-inline int min_isdigit(int __c)
+inline int min_isdigit(int c)
 {
-    return ((unsigned)__c - '0') <= 9;
+    return ((unsigned)c - '0') <= 9;
 }
 
-inline int min_isalnum(int __c)
+inline int min_isalnum(int c)
 {
-    return min_isalpha(__c) || min_isdigit(__c);
+    return min_isalpha(c) || min_isdigit(c);
 }
 
-inline int min_isascii(int __c)
+inline int min_isascii(int c)
 {
-    return !(__c & ~0x7f);
+    return !(c & ~0x7f);
 }
 
-inline int min_isblank(int __c)
+inline int min_isblank(int c)
 {
-    return (__c == '\t') || (__c == ' ');
+    return (c == '\t') || (c == ' ');
 }
 
-inline int min_iscntrl(int __c)
+inline int min_iscntrl(int c)
 {
-    return __c < 0x20;
+    return c < 0x20;
 }
 
-inline int min_isspace(int __c)
+inline int min_isspace(int c)
 {
-    return __c == ' ' || __c == '\n' || __c == '\t' || __c == '\r';
+    return c == ' ' || c == '\n' || c == '\t' || c == '\r';
 }
 
-inline int min_isxdigit(int __c)
+inline int min_isxdigit(int c)
 {
-    return min_isdigit(__c) || (__c >= 'a' && __c <= 'f') || (__c >= 'A' && __c <= 'F');
+    return min_isdigit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
 }
 
-inline int min_toupper(int __c)
+inline int min_toupper(int c)
 {
-    return min_islower(__c) ? (__c & ~32) : __c;
+    return min_islower(c) ? (c & ~32) : c;
 }
 
-inline int min_tolower(int __c)
+inline int min_tolower(int c)
 {
-    return min_isupper(__c) ? (__c | 32) : __c;
+    return min_isupper(c) ? (c | 32) : c;
 }
 
 #endif

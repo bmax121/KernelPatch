@@ -1,4 +1,4 @@
-#include "init.h"
+#include "patch.h"
 
 #include <log.h>
 #include <ksyms.h>
@@ -33,6 +33,7 @@ void _linux_security_commoncap_sym_match();
 void _linux_locking_spinlock_sym_match();
 void _linux_security_selinux_sym_match();
 void _linux_lib_seq_buf_sym_match();
+void _linux_fs_sym_match();
 
 void linux_sybmol_len_init();
 
@@ -57,6 +58,7 @@ int linux_symbol_init()
     _linux_security_selinux_sym_match();
     _linux_lib_string_sym_match();
     _linux_lib_seq_buf_sym_match();
+    _linux_fs_sym_match();
 
     // _linux_lib_argv_split_sym_match();
     // _linxu_lib_kstrtox_sym_match();
@@ -89,7 +91,7 @@ void replace_cgroup_init()
     do_init();
 }
 
-int init()
+int patch()
 {
     int err = 0;
 

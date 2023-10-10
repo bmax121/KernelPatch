@@ -204,7 +204,10 @@ int patch_image()
     }
 
     setup_header_t *sdata = (setup_header_t *)(out_buf + align_image_len);
-    setup_preset_t *preset = (setup_preset_t *)(out_buf + align_image_len + 64);
+    setup_preset_t *preset = (setup_preset_t *)(out_buf + align_image_len + KP_HEADER_SIZE);
+    patch_config_t *config = &preset->patch_config;
+    // todo
+    strncpy(config->default_dir, "/todo/dir/", PATCH_CONFIG_DIR_LEN);
 
     preset->kernel_size = kinfo.kernel_size;
     preset->start_offset = align_kernel_size;

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.5)
 project("kpatch")
 
 # hdr
-file(COPY "../kernel/init/include/uapi" DESTINATION ".")
+file(COPY "../kernel/patch/include/uapi" DESTINATION ".")
 file(COPY "../kernel/version" DESTINATION ".")
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})

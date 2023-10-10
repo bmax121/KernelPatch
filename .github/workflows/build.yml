@@ -154,7 +154,6 @@ jobs:
         run: |
           cd tools
           mkdir -p build && cd build
-          echo ${{ steps.setup-ndk.outputs.ndk-path }}
           cmake ..
           make
           mv kptools kptools-linux-${{ steps.parse_version.outputs.TOOLS_VERSION }}
@@ -195,7 +194,6 @@ jobs:
         run: |
           cd tools
           mkdir -p build && cd build
-          echo ${{ steps.setup-ndk.outputs.ndk-path }}
           cmake ..
           make
           mv kptools kptools-mac-${{ steps.parse_version.outputs.TOOLS_VERSION }}

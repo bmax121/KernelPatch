@@ -20,29 +20,30 @@ ifdef ANDROID
 	CFLAGS += -DANDROID
 endif
 
-INCLUDE := -I. -Iinclude -Ilibc -Iinit/include -Ilinux -Ilinux/include -Ilinux/arch/arm64/include -Ilinux/tools/arch/arm64/include
+INCLUDE := -I. -Iinclude -Ipatch/include -Ilinux -Ilinux/include -Ilinux/arch/arm64/include -Ilinux/tools/arch/arm64/include
 
-BASE_SRCS += base/hook.c 
-BASE_SRCS += base/map.c 
-BASE_SRCS += base/hmem.c 
 BASE_SRCS += base/setup.c 
 BASE_SRCS += base/setup1.S
 BASE_SRCS += base/start.c 
+BASE_SRCS += base/map.c 
+BASE_SRCS += base/hook.c 
+BASE_SRCS += base/hmem.c 
 BASE_SRCS += base/predata.c 
+BASE_SRCS += base/symbol.c 
 
 BASE_SRCS += $(wildcard minc/*.c)
 
 BASE_SRCS += $(wildcard module/*.c)
 
-BASE_SRCS += $(wildcard init/*.c)
-BASE_SRCS += $(wildcard init/accctl/*.c)
-BASE_SRCS += $(wildcard init/extend/*.c)
-BASE_SRCS += $(wildcard init/ksyms/*.c)
-BASE_SRCS += $(wildcard init/struct/*.c)
-BASE_SRCS += $(wildcard init/debug/*.c)
+BASE_SRCS += $(wildcard patch/*.c)
+BASE_SRCS += $(wildcard patch/accctl/*.c)
+BASE_SRCS += $(wildcard patch/extend/*.c)
+BASE_SRCS += $(wildcard patch/ksyms/*.c)
+BASE_SRCS += $(wildcard patch/struct/*.c)
+BASE_SRCS += $(wildcard patch/debug/*.c)
 
 ifdef ANDROID
-	BASE_SRCS += $(wildcard init/android/*.c)
+	BASE_SRCS += $(wildcard patch/android/*.c)
 endif
 
 SRCS += $(BASE_SRCS)

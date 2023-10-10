@@ -33,11 +33,11 @@ static inline __must_check long strnlen_user(const char __user *str, long n)
 static inline unsigned long __must_check copy_to_user(void __user *to, const void *from, unsigned long n)
 {
     int copy_len;
-    if (!kfunc(seq_buf_to_user)) {
+    if (kfunc(seq_buf_to_user)) {
+        copy_len = seq_buf_copy_to_user((void *__user)to, from, n);
+    } else {
         // todo: malloc
         copy_len = trace_seq_copy_to_user((void *__user)to, from, n);
-    } else {
-        copy_len = seq_buf_copy_to_user((void *__user)to, from, n);
     }
     return copy_len;
 }

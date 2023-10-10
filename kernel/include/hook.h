@@ -25,6 +25,8 @@ typedef enum
 #define RELOCATE_INST_NUM (TRAMPOLINE_NUM * 8 + 8)
 #define HOOK_CHAIN_NUM 4
 
+#define HOOK_LOCAL_DATA_NUM 8
+
 #define TRANSIT_INST_NUM 64
 #define TRANSIT_ALIGN 32
 #define ARM64_NOP 0xd503201f
@@ -49,10 +51,14 @@ struct _hook_chain;
 
 typedef struct
 {
+    uint64_t data[HOOK_LOCAL_DATA_NUM];
+} hook_local_t;
+
+typedef struct
+{
     struct _hook_chain *chain;
     int early_ret;
-    uint64_t *local0;
-    uint64_t *local1;
+    hook_local_t local;
     uint64_t ret;
 } hook_fargs0_t __attribute__((aligned(8)));
 
@@ -60,49 +66,7 @@ typedef struct
 {
     struct _hook_chain *chain;
     int early_ret;
-    uint64_t *local0;
-    uint64_t *local1;
-    uint64_t *local2;
-    uint64_t *local3;
-    uint64_t ret;
-    uint64_t arg0;
-} hook_fargs1_t __attribute__((aligned(8)));
-
-typedef struct
-{
-    struct _hook_chain *chain;
-    int early_ret;
-    uint64_t *local0;
-    uint64_t *local1;
-    uint64_t *local2;
-    uint64_t *local3;
-    uint64_t ret;
-    uint64_t arg0;
-    uint64_t arg1;
-} hook_fargs2_t __attribute__((aligned(8)));
-
-typedef struct
-{
-    struct _hook_chain *chain;
-    int early_ret;
-    uint64_t *local0;
-    uint64_t *local1;
-    uint64_t *local2;
-    uint64_t *local3;
-    uint64_t ret;
-    uint64_t arg0;
-    uint64_t arg1;
-    uint64_t arg2;
-} hook_fargs3_t __attribute__((aligned(8)));
-
-typedef struct
-{
-    struct _hook_chain *chain;
-    int early_ret;
-    uint64_t *local0;
-    uint64_t *local1;
-    uint64_t *local2;
-    uint64_t *local3;
+    hook_local_t local;
     uint64_t ret;
     uint64_t arg0;
     uint64_t arg1;
@@ -110,14 +74,15 @@ typedef struct
     uint64_t arg3;
 } hook_fargs4_t __attribute__((aligned(8)));
 
+typedef hook_fargs4_t hook_fargs1_t;
+typedef hook_fargs4_t hook_fargs2_t;
+typedef hook_fargs4_t hook_fargs3_t;
+
 typedef struct
 {
     struct _hook_chain *chain;
     int early_ret;
-    uint64_t *local0;
-    uint64_t *local1;
-    uint64_t *local2;
-    uint64_t *local3;
+    hook_local_t local;
     uint64_t ret;
     uint64_t arg0;
     uint64_t arg1;
@@ -129,14 +94,15 @@ typedef struct
     uint64_t arg7;
 } hook_fargs8_t __attribute__((aligned(8)));
 
+typedef hook_fargs8_t hook_fargs5_t;
+typedef hook_fargs8_t hook_fargs6_t;
+typedef hook_fargs8_t hook_fargs7_t;
+
 typedef struct
 {
     struct _hook_chain *chain;
     int early_ret;
-    uint64_t *local0;
-    uint64_t *local1;
-    uint64_t *local2;
-    uint64_t *local3;
+    hook_local_t local;
     uint64_t ret;
     uint64_t arg0;
     uint64_t arg1;
@@ -152,12 +118,22 @@ typedef struct
     uint64_t arg11;
 } hook_fargs12_t __attribute__((aligned(8)));
 
+typedef hook_fargs12_t hook_fargs9_t;
+typedef hook_fargs12_t hook_fargs10_t;
+typedef hook_fargs12_t hook_fargs11_t;
+
 typedef void (*hook_chain0_callback)(hook_fargs0_t *fargs, void *udata);
 typedef void (*hook_chain1_callback)(hook_fargs1_t *fargs, void *udata);
 typedef void (*hook_chain2_callback)(hook_fargs2_t *fargs, void *udata);
 typedef void (*hook_chain3_callback)(hook_fargs3_t *fargs, void *udata);
 typedef void (*hook_chain4_callback)(hook_fargs4_t *fargs, void *udata);
+typedef void (*hook_chain5_callback)(hook_fargs5_t *fargs, void *udata);
+typedef void (*hook_chain6_callback)(hook_fargs6_t *fargs, void *udata);
+typedef void (*hook_chain7_callback)(hook_fargs7_t *fargs, void *udata);
 typedef void (*hook_chain8_callback)(hook_fargs8_t *fargs, void *udata);
+typedef void (*hook_chain9_callback)(hook_fargs9_t *fargs, void *udata);
+typedef void (*hook_chain10_callback)(hook_fargs10_t *fargs, void *udata);
+typedef void (*hook_chain11_callback)(hook_fargs11_t *fargs, void *udata);
 typedef void (*hook_chain12_callback)(hook_fargs12_t *fargs, void *udata);
 
 typedef struct _hook_chain
@@ -205,49 +181,72 @@ static inline void hook_chain_uninstall(hook_chain_t *chain)
 }
 hook_err_t hook_chain_add(hook_chain_t *chain, void *before, void *after, void *udata);
 void hook_chain_remove(hook_chain_t *chain, void *before, void *after);
-hook_err_t hook_wrap(void *func, int32_t argno, void *before, void *after, void *udata, void **backup);
+hook_err_t hook_wrap(void *func, int32_t argno, void *before, void *after, void *udata);
 void hook_unwrap(void *func, void *before, void *after);
 
-static inline hook_err_t hook_wrap0(void *func, hook_chain0_callback before, hook_chain0_callback after, void *udata,
-                                    void **backup)
+static inline hook_err_t hook_wrap0(void *func, hook_chain0_callback before, hook_chain0_callback after, void *udata)
 {
-    return hook_wrap(func, 0, before, after, udata, backup);
+    return hook_wrap(func, 0, before, after, udata);
 }
 
-static inline hook_err_t hook_wrap1(void *func, hook_chain1_callback before, hook_chain1_callback after, void *udata,
-                                    void **backup)
+static inline hook_err_t hook_wrap1(void *func, hook_chain1_callback before, hook_chain1_callback after, void *udata)
 {
-    return hook_wrap(func, 1, before, after, udata, backup);
+    return hook_wrap(func, 1, before, after, udata);
 }
 
-static inline hook_err_t hook_wrap2(void *func, hook_chain2_callback before, hook_chain2_callback after, void *udata,
-                                    void **backup)
+static inline hook_err_t hook_wrap2(void *func, hook_chain2_callback before, hook_chain2_callback after, void *udata)
 {
-    return hook_wrap(func, 2, before, after, udata, backup);
+    return hook_wrap(func, 2, before, after, udata);
 }
 
-static inline hook_err_t hook_wrap3(void *func, hook_chain3_callback before, hook_chain3_callback after, void *udata,
-                                    void **backup)
+static inline hook_err_t hook_wrap3(void *func, hook_chain3_callback before, hook_chain3_callback after, void *udata)
 {
-    return hook_wrap(func, 3, before, after, udata, backup);
+    return hook_wrap(func, 3, before, after, udata);
 }
 
-static inline hook_err_t hook_wrap4(void *func, hook_chain4_callback before, hook_chain4_callback after, void *udata,
-                                    void **backup)
+static inline hook_err_t hook_wrap4(void *func, hook_chain4_callback before, hook_chain4_callback after, void *udata)
 {
-    return hook_wrap(func, 4, before, after, udata, backup);
+    return hook_wrap(func, 4, before, after, udata);
 }
 
-static inline hook_err_t hook_wrap8(void *func, hook_chain8_callback before, hook_chain8_callback after, void *udata,
-                                    void **backup)
+static inline hook_err_t hook_wrap5(void *func, hook_chain5_callback before, hook_chain5_callback after, void *udata)
 {
-    return hook_wrap(func, 8, before, after, udata, backup);
+    return hook_wrap(func, 5, before, after, udata);
 }
 
-static inline hook_err_t hook_wrap12(void *func, hook_chain12_callback before, hook_chain12_callback after, void *udata,
-                                     void **backup)
+static inline hook_err_t hook_wrap6(void *func, hook_chain6_callback before, hook_chain6_callback after, void *udata)
 {
-    return hook_wrap(func, 12, before, after, udata, backup);
+    return hook_wrap(func, 6, before, after, udata);
+}
+
+static inline hook_err_t hook_wrap7(void *func, hook_chain7_callback before, hook_chain7_callback after, void *udata)
+{
+    return hook_wrap(func, 7, before, after, udata);
+}
+
+static inline hook_err_t hook_wrap8(void *func, hook_chain8_callback before, hook_chain8_callback after, void *udata)
+{
+    return hook_wrap(func, 8, before, after, udata);
+}
+
+static inline hook_err_t hook_wrap9(void *func, hook_chain9_callback before, hook_chain9_callback after, void *udata)
+{
+    return hook_wrap(func, 9, before, after, udata);
+}
+
+static inline hook_err_t hook_wrap10(void *func, hook_chain10_callback before, hook_chain10_callback after, void *udata)
+{
+    return hook_wrap(func, 10, before, after, udata);
+}
+
+static inline hook_err_t hook_wrap11(void *func, hook_chain11_callback before, hook_chain11_callback after, void *udata)
+{
+    return hook_wrap(func, 11, before, after, udata);
+}
+
+static inline hook_err_t hook_wrap12(void *func, hook_chain12_callback before, hook_chain12_callback after, void *udata)
+{
+    return hook_wrap(func, 12, before, after, udata);
 }
 
 static inline void hook_unwrapn(void *func, void *before, void *after)

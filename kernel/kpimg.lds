@@ -49,12 +49,6 @@ SECTIONS
         
         base/hook.o(.transit0.text);
         _transit0_end = .;
-        base/hook.o(.transit1.text);
-        _transit1_end = .;
-        base/hook.o(.transit2.text);
-        _transit2_end = .;
-        base/hook.o(.transit3.text);
-        _transit3_end = .;
         base/hook.o(.transit4.text);
         _transit4_end = .;
         base/hook.o(.transit8.text);
@@ -77,15 +71,17 @@ SECTIONS
     .kp.data : {
         _kp_data_start = .;
         base/start.o(.start.data)
-        base/*(data)
+        base/*(.data)
         base/*(.bss)
         *(.data)
         *(.bss)
+        _kp_symbol_start = .;
+        *(.kp.symbol)
+        _kp_symbol_end = .;
         _kp_data_end = .;
     }
 
     .got.plt : { *(.got.plt) }
-    /* ASSERT(SIZEOF(.got.plt) == 0 || SIZEOF(.got.plt) == 0x18, "Unexpected GOT/PLT entries detected!") */
     ASSERT(SIZEOF(.got.plt) == 0, "Unexpected GOT/PLT entries detected!")
 
     . = ALIGN(64k);

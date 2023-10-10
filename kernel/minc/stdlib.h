@@ -11,7 +11,6 @@ inline int abs(int n)
 
 int atoi(const char *);
 long atol(const char *);
-long long atoll(const char *);
 
 inline long labs(long n)
 {

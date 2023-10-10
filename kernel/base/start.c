@@ -3,9 +3,11 @@
 #include <ktypes.h>
 #include <kallsyms.h>
 #include <compiler.h>
-#include <init/init.h>
 #include <cache.h>
 #include <error.h>
+#include <symbol.h>
+#include <predata.h>
+#include <patch/patch.h>
 
 #include "start.h"
 #include "hook.h"
@@ -35,8 +37,13 @@ static struct vm_struct
 } kp_vm = { 0 };
 
 uint32_t kver = 0;
+KP_EXPORT_SYMBOL(kver);
+
 uint32_t kpver = 0;
+KP_EXPORT_SYMBOL(kpver);
+
 endian_t endian = little;
+KP_EXPORT_SYMBOL(endian);
 
 uint64_t kernel_va = 0;
 uint64_t kernel_stext_va = 0;
@@ -315,6 +322,8 @@ static __noinline int start_init(uint64_t kva, uint64_t offset)
         return ERR_NO_SUCH_SYMBOL;
     }
 
+    printk("KP ==== KernelPatch Starting ====\n");
+
     endian = *(unsigned char *)&(uint16_t){ 1 } ? little : big;
     kver = VERSION(start_preset.kernel_version.major, start_preset.kernel_version.minor,
                    start_preset.kernel_version.patch);
@@ -333,8 +342,12 @@ static __noinline int start_init(uint64_t kva, uint64_t offset)
 
 static __noinline int nice_zone()
 {
+    int err = 0;
     printk("KP ==== KernelPatch Entering Nicezone ====\n");
-    return init();
+
+    err = patch();
+
+    return err;
 }
 
 int __attribute__((section(".start.text"))) __noinline start(uint64_t kva, uint64_t offset)
@@ -349,7 +362,10 @@ int __attribute__((section(".start.text"))) __noinline start(uint64_t kva, uint6
         goto out;
     if ((err = restore_map()))
         goto out;
+
     if ((err = predata_init()))
+        goto out;
+    if ((err = symbol_init()))
         goto out;
 
     if ((err = nice_zone()))

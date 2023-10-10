@@ -28,6 +28,5 @@ int predata_init()
         }
         superkey[i] = c;
     }
-    // logki("Preset super key: %s\n", superkey);
     return 0;
 }

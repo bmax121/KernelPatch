@@ -21,6 +21,7 @@ typedef struct
     char compile_time[COMPILE_TIME_LEN];
     uint8_t superkey[SUPER_KEY_LEN];
     uint8_t map_backup[MAP_MAX_SIZE];
+    patch_config_t patch_config;
 } start_preset_t;
 #else
 #define start_kernel_version_offset 0
@@ -34,6 +35,7 @@ typedef struct
 #define start_compile_time_offset 0x38
 #define start_superkey_offset (start_compile_time_offset + COMPILE_TIME_LEN)
 #define start_map_backup_offset (start_superkey_offset + SUPER_KEY_LEN)
+#define start_patch_config_offset (start_map_backup_offset + MAP_MAX_SIZE)
 #endif
 
 #ifndef __ASSEMBLY__

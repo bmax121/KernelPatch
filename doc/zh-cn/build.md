@@ -8,14 +8,13 @@
 ```shell
 export TARGET_COMPILE=aarch64-none-elf-
 cd kernel
+# export ANDROID=1 # 适用于 Android 的版本，包含 su 命令支持
 make
 ```
 
 ## 编译 kptools
 
 kptools 可以运行在任何地方，编译就好了  
-
-假如你并未编译 kpimg，你需要把 [/kernel/base/preset.h](/kernel/base/preset.h) 复制到 `tool` 目录下
 
 - 使用 Makefile
 
@@ -37,9 +36,6 @@ make
 ## 编译 kpatch
 
 kpatch 运行在目标系统的用户空间，像往常一样构建就好了。  
-如果你是用于 Android，你可以使用 AndroidKernelPatch。  
-
-如果你并未编译 kpimg，你需要把 [/kernel/init/include/uapi](/kernel/init/include/uapi) 复制到 `user` 目录下
 
 - 使用 Makefile
 
@@ -56,4 +52,18 @@ mkdir build
 cd build
 cmake ..
 make
+```
+
+- 编译 Android 版本
+
+```shell
+export ANDROID_NDK=/path/to/ndk
+export ANDROID=1
+cd user
+mkdir -p build/android && cd build/android
+cmake -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DANDROID_PLATFORM=android-33 \
+    -DANDROID_ABI=arm64-v8a ../..
+cmake --build .
 ```

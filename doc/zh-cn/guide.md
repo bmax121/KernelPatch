@@ -13,16 +13,9 @@ kptools 主要有以下几个作用：
 
 ### [kpimg](/kernel/)
 
-kpimg 是一个经过特殊设计的 ELF
-
-1. kpimg 接管内核启动，此时内核还在使用物理地址，kpimg 会在这时将必要的信息写入到 [map](/kernel/base/map.c) 和 [start](/kernel/base/start.c)，
-然后将其都重定位到指定的位置
-2. 替换 **paging_init** 为 **_paging_init**，然后重新启动内核
-3. **_paging_init** 预留空间，修改页表属性，然后跳转到 **start**
-4. **start** 阶段会进一步修改页表，初始化内核内联钩子等，然后进入到 **init**
-5. **init** 是一个相对舒服的C语言世界（除了静态链接的绝对地址），在这里我们可以完成任意我们想要的功能，例如修改系统调用，等。  
-
-如果你不需要太多的功能，或者想要定制的话，[/kernel/base](/kernel/base) 代码可以单独拿出来使用。  
+- kpimg 是一个经过特殊设计的 ELF。  
+- kpimg 会接管内核启动，并完成所有的内核动态修补工作，并将功能以系统的调用的形式倒出供用户使用。  
+- 如果你不需要太多的功能，或者想要定制的话，[kernel/base](/kernel/base) 代码可以单独拿出来使用。  
 
 - [SuperCall](./super-syscall.md)
 
