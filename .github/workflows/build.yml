@@ -54,6 +54,40 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
 
+  Release-lib:
+    runs-on:  ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@v3
+      - name: Generate version
+        id: parse_version
+        run: |
+          MAJOR=$(grep '#define MAJOR' kernel/version | awk '{print $3}')
+          MINOR=$(grep '#define MINOR' kernel/version | awk '{print $3}')
+          PATCH=$(grep '#define PATCH' kernel/version | awk '{print $3}')
+          VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "Generated Version: $VERSION"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+      - name: Zip-lib
+        run: |
+          cd user
+          make hdr
+          cd ..
+          zip -r kpuser.zip user
+          mv kpuser.zip kpuser-src-${{ steps.parse_version.outputs.VERSION }}.zip
+          
+      - name: Release
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ steps.parse_version.outputs.VERSION }}
+          artifacts: |
+            kpuser-src-${{ steps.parse_version.outputs.VERSION }}.zip
+          allowUpdates: true
+          replacesArtifacts: true
+
   Build-android:
     runs-on:  ubuntu-latest
     permissions:
