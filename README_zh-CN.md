@@ -35,4 +35,4 @@ Linux 6.3+ (暂未适配)
 
 ## 许可证
 
-KernelPatch 发布许可：**GNU General Public License v3 (GPL-3)** (<http://www.gnu.org/copyleft/gpl.html>).
+KernelPatch 发布许可：**GNU General Public License (GPL) 2.0** (<https://www.gnu.org/licenses/old-licenses/gpl-2.0.html>).

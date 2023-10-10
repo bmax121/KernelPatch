@@ -37,4 +37,4 @@ Linux 6.3+ (not yet adapted)
 
 ## License
 
-KernelPatch is licensed under the **GNU General Public License v3 (GPL-3)** (<http://www.gnu.org/copyleft/gpl.html>).
+KernelPatch is licensed under the **GNU General Public License (GPL) 2.0** (<https://www.gnu.org/licenses/old-licenses/gpl-2.0.html>).
