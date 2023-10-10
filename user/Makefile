@@ -19,7 +19,7 @@ libkp.a: ${objs}
 	$(CC) -c $(CFLAGS) $(CPPFLAGS) $< -o $@
 
 hdr:
-	cp -r ../kernel/init/include/uapi .
+	cp -r ../kernel/patch/include/uapi .
 	cp ../kernel/version .
 
 .PHONY: clean
