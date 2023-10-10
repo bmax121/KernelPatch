@@ -25,7 +25,6 @@ jobs:
           PATCH=$(grep '#define PATCH' kernel/version | awk '{print $3}')
           VERSION="$MAJOR.$MINOR.$PATCH"
           echo "Generated Version: $VERSION"
-          # echo $VERSION > version.txt
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
       - name: Install Compiler
         run: |
