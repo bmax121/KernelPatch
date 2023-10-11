@@ -18,10 +18,6 @@ libkpatch.a: ${objs}
 %.o : %.c
 	$(CC) -c $(CFLAGS) $(CPPFLAGS) $< -o $@
 
-hdr:
-	cp -r ../kernel/patch/include/uapi .
-	cp ../kernel/version .
-
 .PHONY: clean
 clean:
 	rm -rf build
