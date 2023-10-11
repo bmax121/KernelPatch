@@ -70,12 +70,13 @@ jobs:
           VERSION="$MAJOR.$MINOR.$PATCH"
           echo "Generated Version: $VERSION"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Zip-lib
         run: |
           export TARGET_COMPILE=placeholder
           cd kernel
           make hdr
-          cd ../user
+          cd ..
           zip -r kpuser.zip user
           mv kpuser.zip kpuser-src-${{ steps.parse_version.outputs.VERSION }}.zip
           
@@ -190,6 +191,13 @@ jobs:
           TOOLS_VERSION="$TOOLS_MAJOR.$TOOLS_MINOR.$TOOLS_PATCH"
           echo "Generated Tools Version: $TOOLS_VERSION"
           echo "TOOLS_VERSION=$TOOLS_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Make hdr
+        run: |
+          export TARGET_COMPILE=placeholder
+          cd kernel
+          make hdr
+
       - name: Build kptools
         run: |
           cd tools
@@ -197,6 +205,7 @@ jobs:
           cmake ..
           make
           mv kptools kptools-linux-${{ steps.parse_version.outputs.TOOLS_VERSION }}
+
       - name: Release 
         uses: ncipollo/release-action@v1.12.0
         with:
@@ -230,6 +239,13 @@ jobs:
           TOOLS_VERSION="$TOOLS_MAJOR.$TOOLS_MINOR.$TOOLS_PATCH"
           echo "Generated Tools Version: $TOOLS_VERSION"
           echo "TOOLS_VERSION=$TOOLS_VERSION" >> $GITHUB_OUTPUT
+          
+      - name: Make hdr
+        run: |
+          export TARGET_COMPILE=placeholder
+          cd kernel
+          make hdr
+
       - name: Build kptools
         run: |
           cd tools
