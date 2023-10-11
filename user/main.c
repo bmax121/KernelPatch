@@ -183,11 +183,15 @@ int main(int argc, char **argv)
         fprintf(stdout, "\n");
     } else if (cmd == SUPERCALL_RESET_SU_CMD) {
         const char *cmd = (const char *)arg1;
+        if (!cmd) {
+            fprintf(stderr, "Empty su cmd!\n");
+            return -1;
+        }
         if (strnlen(cmd, 3) > 2) {
             fprintf(stderr, "The string length of arg1 should not exceed two characters.\n");
             return -1;
         }
-        return sc_reset_su_cmd(key, cmd);
+        ret = sc_reset_su_cmd(key, cmd);
     }
 #endif
     else {

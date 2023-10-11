@@ -1,5 +1,5 @@
-#ifndef _KPU_LIBKP_H_
-#define _KPU_LIBKP_H_
+#ifndef _KPU_KPATCH_H_
+#define _KPU_KPATCH_H_
 
 #include "supercall.h"
 #include "version"

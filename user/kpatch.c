@@ -1,4 +1,4 @@
-#include "libkp.h"
+#include "kpatch.h"
 
 #include <getopt.h>
 #include <stdio.h>
