@@ -5,14 +5,14 @@ ifdef ANDROID
 	CFLAGS += -DANDROID
 endif
 
-objs := libkp.o 
+objs := kpatch.o 
 
-all: hdr libkp.a kpatch
+all: hdr libkpatch.a kpatch
 
 kpatch: main.o ${objs}
 	${CC} -o $@ $^
 
-libkp.a: ${objs}
+libkpatch.a: ${objs}
 	${AR} rcs $@ $^
 
 %.o : %.c
@@ -27,5 +27,5 @@ clean:
 	rm -rf build
 	rm -rf uapi
 	rm -f kpatch
-	rm -f libkp.a 
+	rm -f libkpatch.a 
 	find . -name "*.o" | xargs rm -f

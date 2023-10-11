@@ -5,7 +5,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include "libkp.h"
+#include "kpatch.h"
 
 #define SUPER_KEY_LEN 0x20
 

@@ -16,11 +16,11 @@ if(ANDROID)
 endif()
 
 set(SRCS
-        libkp.c
+        kpatch.c
         )
 
 add_library(
-        kp
+        libkpatch
         STATIC
         ${SRCS}
         )
