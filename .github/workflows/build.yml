@@ -72,9 +72,10 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
       - name: Zip-lib
         run: |
-          cd user
+          export TARGET_COMPILE=placeholder
+          cd kernel
           make hdr
-          cd ..
+          cd ../user
           zip -r kpuser.zip user
           mv kpuser.zip kpuser-src-${{ steps.parse_version.outputs.VERSION }}.zip
           
@@ -120,6 +121,12 @@ jobs:
         with:
           ndk-version: r25b
           add-to-path: true
+
+      - name: Make hdr
+        run: |
+          export TARGET_COMPILE=placeholder
+          cd kernel
+          make hdr
           
       - name: Build kpatch-android
         run: |

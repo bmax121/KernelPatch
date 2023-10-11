@@ -52,7 +52,7 @@ SRCS += $(LINUX_SRCS)
 OBJS := $(SRCS:.c=.o)
 OBJS := $(OBJS:.S=.o)
 
-all: ${TARGET}
+all: hdr ${TARGET}
 
 ${TARGET}: ${TARGET}.elf
 	${OBJCOPY} -O binary -S $^ $@
@@ -65,6 +65,11 @@ ${TARGET}.elf: ${OBJS}
 
 %.o: %.S
 	${CC} $(CFLAGS) $(INCLUDE) -c -o $@ $<
+
+hdr:
+	cp -r patch/include/uapi ../user
+	cp version ../user
+	cp base/preset.h ../tools
 
 .PHONY: clean
 clean:

@@ -1,8 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 project (kptools)
 
-file(COPY "../kernel/base/preset.h" DESTINATION ".")
-
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 set(SOURCES
