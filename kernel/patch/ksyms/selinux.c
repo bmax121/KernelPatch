@@ -134,3 +134,8 @@ void _linux_security_selinux_sym_match(const char *name, unsigned long addr)
     // kfunc_match(hashtab_cache_init, name, addr);
     // kfunc_match(security_sidtab_hash_stats, name, addr);
 }
+
+
+// hashtab
+
+extern int kfunc_def(__hashtab_insert)(struct hashtab *h, struct hashtab_node **dst, void *key, void *datum);

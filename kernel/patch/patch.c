@@ -34,6 +34,7 @@ void _linux_locking_spinlock_sym_match();
 void _linux_security_selinux_sym_match();
 void _linux_lib_seq_buf_sym_match();
 void _linux_fs_sym_match();
+void _linux_slab_sym_match();
 
 void linux_sybmol_len_init();
 
@@ -52,6 +53,7 @@ int linux_symbol_init()
     _linux_init_task_sym_match();
     _linux_lib_dump_stack_sym_match();
     _linux_mm_vmalloc_sym_match();
+    _linux_slab_sym_match();
     _linux_security_selinux_avc_sym_match();
     _linux_security_commoncap_sym_match();
     _linux_locking_spinlock_sym_match();

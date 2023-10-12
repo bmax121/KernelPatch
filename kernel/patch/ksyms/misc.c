@@ -47,9 +47,9 @@ void _linux_kernel_cred_sym_match()
     // kfunc_match(exit_creds, name, addr);
     kfunc_match(copy_creds, name, addr);
     kfunc_match(get_task_cred, name, addr);
-    kfunc_match(cred_alloc_blank, name, addr);
+    // kfunc_match(cred_alloc_blank, name, addr);
     kfunc_match(prepare_creds, name, addr);
-    kfunc_match(prepare_exec_creds, name, addr);
+    // kfunc_match(prepare_exec_creds, name, addr);
     kfunc_match(commit_creds, name, addr);
     // kfunc_match(abort_creds, name, addr);
     kfunc_match(override_creds, name, addr);
@@ -253,18 +253,9 @@ void _linux_kernel_stop_machine_sym_match()
     kfunc_match(stop_machine, name, addr);
 }
 
-// lib/argv_split.c
-
 void kfunc_def(argv_free)(char **argv) = 0;
 char **kfunc_def(argv_split)(gfp_t gfp, const char *str, int *argcp) = 0;
 
-void _linux_lib_argv_split_sym_match()
-{
-    // kfunc_match(argv_free, name, addr);
-    // kfunc_match(argv_split, name, addr);
-}
-
-// lib/kstrtox.c
 int kfunc_def(kstrtoull)(const char *s, unsigned int base, unsigned long long *res) = 0;
 int kfunc_def(kstrtoll)(const char *s, unsigned int base, long long *res) = 0;
 int kfunc_def(kstrtouint)(const char *s, unsigned int base, unsigned int *res) = 0;
@@ -276,8 +267,17 @@ int kfunc_def(kstrtos8)(const char *s, unsigned int base, s8 *res) = 0;
 int kfunc_def(kstrtobool)(const char *s, bool *res) = 0;
 int kfunc_def(kstrtobool_from_user)(const char __user *s, size_t count, bool *res) = 0;
 
+int kfunc_def(sscanf)(const char *buf, const char *fmt, ...) = 0;
+int kfunc_def(vsscanf)(const char *buf, const char *fmt, va_list args) = 0;
+
+long kfunc_def(strncpy_from_user)(char *dst, const char __user *src, long count) = 0;
+long kfunc_def(strnlen_user)(const char __user *str, long count) = 0;
+
 void _linxu_lib_kstrtox_sym_match()
 {
+    // kfunc_match(argv_free, name, addr);
+    // kfunc_match(argv_split, name, addr);
+
     // kfunc_match(kstrtoull, name, addr);
     // kfunc_match(kstrtoll, name, addr);
     // kfunc_match(kstrtouint, name, addr);
@@ -288,121 +288,10 @@ void _linxu_lib_kstrtox_sym_match()
     // kfunc_match(kstrtos8, name, addr);
     // kfunc_match(kstrtobool, name, addr);
     // kfunc_match(kstrtobool_from_user, name, addr);
-}
 
-// lib/string.c
-#include <linux/string.h>
-
-int kfunc_def(strncasecmp)(const char *s1, const char *s2, size_t len) = 0;
-int kfunc_def(strcasecmp)(const char *s1, const char *s2) = 0;
-char *kfunc_def(strcpy)(char *dest, const char *src) = 0;
-char *kfunc_def(strncpy)(char *dest, const char *src, size_t count) = 0;
-size_t kfunc_def(strlcpy)(char *dest, const char *src, size_t size) = 0;
-ssize_t kfunc_def(strscpy)(char *dest, const char *src, size_t count) = 0;
-ssize_t kfunc_def(strscpy_pad)(char *dest, const char *src, size_t count) = 0;
-char *kfunc_def(stpcpy)(char *__restrict__ dest, const char *__restrict__ src) = 0;
-char *kfunc_def(strcat)(char *dest, const char *src) = 0;
-char *kfunc_def(strncat)(char *dest, const char *src, size_t count) = 0;
-size_t kfunc_def(strlcat)(char *dest, const char *src, size_t count) = 0;
-int kfunc_def(strcmp)(const char *cs, const char *ct) = 0;
-int kfunc_def(strncmp)(const char *cs, const char *ct, size_t count) = 0;
-char *kfunc_def(strchr)(const char *s, int c) = 0;
-char *kfunc_def(strchrnul)(const char *s, int c) = 0;
-char *kfunc_def(strnchrnul)(const char *s, size_t count, int c) = 0;
-char *kfunc_def(strrchr)(const char *s, int c) = 0;
-char *kfunc_def(strnchr)(const char *s, size_t count, int c) = 0;
-char *kfunc_def(skip_spaces)(const char *str) = 0;
-char *kfunc_def(strim)(char *s) = 0;
-size_t kfunc_def(strlen)(const char *s) = 0;
-size_t kfunc_def(strnlen)(const char *s, size_t count) = 0;
-size_t kfunc_def(strspn)(const char *s, const char *accept) = 0;
-size_t kfunc_def(strcspn)(const char *s, const char *reject) = 0;
-char *kfunc_def(strpbrk)(const char *cs, const char *ct) = 0;
-char *kfunc_def(strsep)(char **s, const char *ct) = 0;
-bool kfunc_def(sysfs_streq)(const char *s1, const char *s2) = 0;
-int kfunc_def(match_string)(const char *const *array, size_t n, const char *string) = 0;
-int kfunc_def(__sysfs_match_string)(const char *const *array, size_t n, const char *str) = 0;
-void *kfunc_def(memset)(void *s, int c, size_t count) = 0;
-void *kfunc_def(memset16)(uint16_t *s, uint16_t v, size_t count) = 0;
-void *kfunc_def(memset32)(uint32_t *s, uint32_t v, size_t count) = 0;
-void *kfunc_def(memset64)(uint64_t *s, uint64_t v, size_t count) = 0;
-void *kfunc_def(memcpy)(void *dest, const void *src, size_t count) = 0;
-void *kfunc_def(memmove)(void *dest, const void *src, size_t count) = 0;
-int kfunc_def(memcmp)(const void *cs, const void *ct, size_t count) = 0;
-int kfunc_def(bcmp)(const void *a, const void *b, size_t len) = 0;
-void *kfunc_def(memscan)(void *addr, int c, size_t size) = 0;
-char *kfunc_def(strstr)(const char *s1, const char *s2) = 0;
-char *kfunc_def(strnstr)(const char *s1, const char *s2, size_t len) = 0;
-void *kfunc_def(memchr)(const void *s, int c, size_t n) = 0;
-void *kfunc_def(memchr_inv)(const void *start, int c, size_t bytes) = 0;
-char *kfunc_def(strreplace)(char *s, char old, char new) = 0;
-void kfunc_def(fortify_panic)(const char *name) = 0;
-
-void _linux_lib_string_sym_match()
-{
-    kfunc_match(strncasecmp, name, addr);
-    kfunc_match(strcasecmp, name, addr);
-    kfunc_match(strcpy, name, addr);
-    kfunc_match(strncpy, name, addr);
-    // kfunc_match(strlcpy, name, addr);
-    // kfunc_match(strscpy, name, addr);
-    // kfunc_match(strscpy_pad, name, addr);
-    kfunc_match(stpcpy, name, addr);
-    kfunc_match(strcat, name, addr);
-    kfunc_match(strncat, name, addr);
-    kfunc_match(strlcat, name, addr);
-    kfunc_match(strcmp, name, addr);
-    kfunc_match(strncmp, name, addr);
-    // kfunc_match(strchr, name, addr);
-    // kfunc_match(strchrnul, name, addr);
-    // kfunc_match(strnchrnul, name, addr);
-    // kfunc_match(strrchr, name, addr);
-    // kfunc_match(strnchr, name, addr);
-    // kfunc_match(skip_spaces, name, addr);
-    // kfunc_match(strim, name, addr);
-    kfunc_match(strlen, name, addr);
-    kfunc_match(strnlen, name, addr);
-    // kfunc_match(strspn, name, addr);
-    // kfunc_match(strcspn, name, addr);
-    // kfunc_match(strpbrk, name, addr);
-    // kfunc_match(strsep, name, addr);
-    // kfunc_match(sysfs_streq, name, addr);
-    // kfunc_match(match_string, name, addr);
-    // kfunc_match(__sysfs_match_string, name, addr);
-    kfunc_match(memset, name, addr);
-    // kfunc_match(memset16, name, addr);
-    // kfunc_match(memset32, name, addr);
-    // kfunc_match(memset64, name, addr);
-    kfunc_match(memcpy, name, addr);
-    kfunc_match(memmove, name, addr);
-    kfunc_match(memcmp, name, addr);
-    // kfunc_match(bcmp, name, addr);
-    // kfunc_match(memscan, name, addr);
-    // kfunc_match(strstr, name, addr);
-    // kfunc_match(strnstr, name, addr);
-    // kfunc_match(memchr, name, addr);
-    // kfunc_match(memchr_inv, name, addr);
-    // kfunc_match(strreplace, name, addr);
-    // kfunc_match(fortify_panic, name, addr);
-}
-
-// lib/strncpy_from_user.c
-#include <linux/uaccess.h>
-
-long kfunc_def(strncpy_from_user)(char *dst, const char __user *src, long count) = 0;
-
-void _linux_lib_strncpy_from_user_sym_match()
-{
+    kfunc_match(sscanf, name, addr);
+    kfunc_match(vsscanf, name, addr);
     kfunc_match(strncpy_from_user, name, addr);
-}
-
-// lib/strnlen_user.c
-#include <linux/uaccess.h>
-
-long kfunc_def(strnlen_user)(const char __user *str, long count) = 0;
-
-void _linxu_lib_strnlen_user_sym_match()
-{
     kfunc_match(strnlen_user, name, addr);
 }
 
@@ -516,6 +405,8 @@ void kfunc_def(unmap_kernel_range)(unsigned long addr, unsigned long size) = 0;
 long kfunc_def(vread)(char *buf, char *addr, unsigned long count) = 0;
 long kfunc_def(vwrite)(char *buf, char *addr, unsigned long count) = 0;
 
+void *kfunc_def(__kmalloc)(size_t size, gfp_t flags) = 0;
+
 void _linux_mm_vmalloc_sym_match()
 {
     // kfunc_match(vm_unmap_ram, name, addr);
@@ -524,7 +415,7 @@ void _linux_mm_vmalloc_sym_match()
 
     kfunc_match(vmalloc, name, addr);
     kfunc_match(vzalloc, name, addr);
-    kfunc_match(vmalloc_user, name, addr);
+    // kfunc_match(vmalloc_user, name, addr);
     // kfunc_match(vmalloc_node, name, addr);
     // kfunc_match(vzalloc_node, name, addr);
     // kfunc_match(vmalloc_32, name, addr);
@@ -534,7 +425,7 @@ void _linux_mm_vmalloc_sym_match()
     // kfunc_match(__vmalloc_node, name, addr);
 
     kfunc_match(vfree, name, addr);
-    kfunc_match(vfree_atomic, name, addr);
+    // kfunc_match(vfree_atomic, name, addr);
 
     // kfunc_match(vmap, name, addr);
     // kfunc_match(vmap_pfn, name, addr);
@@ -556,6 +447,8 @@ void _linux_mm_vmalloc_sym_match()
 
     // kfunc_match(vread, name, addr);
     // kfunc_match(vwrite, name, addr);
+
+    kfunc_match(__kmalloc, name, addr);
 }
 
 // lib/seq_buf.c,
