@@ -505,7 +505,7 @@ static bool add_filename_trans(struct policydb *db, const char *s, const char *t
                 .hash = filenametr_hash,
                 .cmp = filenametr_cmp,
             };
-            hashtab_insert(policydb_p_filename_trans_p(db), new_key, trans, filenametr_key_params);
+            hashtab_insert(policydb_p_filename_trans_key_p(db), new_key, trans, filenametr_key_params);
         }
 
         set_compat_filename_trans_count(db, get_compat_filename_trans_count(db) + 1);
@@ -555,7 +555,7 @@ static bool add_type(struct policydb *db, const char *type_name, bool attr)
         return true;
     }
 
-    u32 value = ++db->p_types.nprim; // todo
+    u32 value = ++policydb_p_types_p(db)->nprim; // todo
     type = (struct type_datum *)kzalloc(sizeof(struct type_datum), GFP_ATOMIC);
     if (!type) {
         logke("add_type: alloc type_datum failed.\n");
@@ -578,11 +578,11 @@ static bool add_type(struct policydb *db, const char *type_name, bool attr)
     }
 
     if (kver >= VERSION(5, 1, 0)) {
-        size_t new_size = sizeof(struct ebitmap) * db->p_types.nprim;
+        size_t new_size = sizeof(struct ebitmap) * policydb_p_types_p(db)->nprim;
         struct ebitmap *new_type_attr_map_array = (krealloc(db->type_attr_map_array, new_size, GFP_ATOMIC));
 
-        struct type_datum **new_type_val_to_struct =
-            krealloc(db->type_val_to_struct, sizeof(*db->type_val_to_struct) * db->p_types.nprim, GFP_ATOMIC);
+        struct type_datum **new_type_val_to_struct = krealloc(
+            db->type_val_to_struct, sizeof(*db->type_val_to_struct) * policydb_p_types_p(db)->nprim, GFP_ATOMIC);
 
         if (!new_type_attr_map_array) {
             logke("add_type: alloc type_attr_map_array failed\n");
@@ -615,18 +615,17 @@ static bool add_type(struct policydb *db, const char *type_name, bool attr)
         for (i = 0; i < db->p_roles.nprim; ++i) {
             ebitmap_set_bit(&db->role_val_to_struct[i]->types, value - 1, 1);
         }
-
         return true;
-    } else if (false) { // CONFIG_IS_HW_HISI
-        /*
-   * Huawei use type_attr_map and type_val_to_struct.
-   * And use ebitmap not flex_array.
-   */
-        size_t new_size = sizeof(struct ebitmap) * db->p_types.nprim;
+    }
+#if 0
+    else if (false) { // CONFIG_IS_HW_HISI
+
+        /* Huawei use type_attr_map and type_val_to_struct. And use ebitmap not flex_array.*/
+        size_t new_size = sizeof(struct ebitmap) * policydb_p_types_p(db)->nprim;
         struct ebitmap *new_type_attr_map = (krealloc(db->type_attr_map, new_size, GFP_ATOMIC));
 
-        struct type_datum **new_type_val_to_struct =
-            krealloc(db->type_val_to_struct, sizeof(*db->type_val_to_struct) * db->p_types.nprim, GFP_ATOMIC);
+        struct type_datum **new_type_val_to_struct = krealloc(
+            db->type_val_to_struct, sizeof(*db->type_val_to_struct) * policydb_p_types_p(db)->nprim, GFP_ATOMIC);
 
         if (!new_type_attr_map) {
             logke("add_type: alloc type_attr_map failed\n");
@@ -661,13 +660,15 @@ static bool add_type(struct policydb *db, const char *type_name, bool attr)
         }
 
         return true;
-    } else {
+    }
+#endif
+    else {
         // flex_array is not extensible, we need to create a new bigger one instead
         struct flex_array *new_type_attr_map_array =
-            flex_array_alloc(sizeof(struct ebitmap), db->p_types.nprim, GFP_ATOMIC | __GFP_ZERO);
+            flex_array_alloc(sizeof(struct ebitmap), policydb_p_types_p(db)->nprim, GFP_ATOMIC | __GFP_ZERO);
 
         struct flex_array *new_type_val_to_struct =
-            flex_array_alloc(sizeof(struct type_datum *), db->p_types.nprim, GFP_ATOMIC | __GFP_ZERO);
+            flex_array_alloc(sizeof(struct type_datum *), policydb_p_types_p(db)->nprim, GFP_ATOMIC | __GFP_ZERO);
 
         struct flex_array *new_val_to_name_types =
             flex_array_alloc(sizeof(char *), db->symtab[SYM_TYPES].nprim, GFP_ATOMIC | __GFP_ZERO);
@@ -688,12 +689,12 @@ static bool add_type(struct policydb *db, const char *type_name, bool attr)
         }
 
         // preallocate so we don't have to worry about the put ever failing
-        if (flex_array_prealloc(new_type_attr_map_array, 0, db->p_types.nprim, GFP_ATOMIC | __GFP_ZERO)) {
+        if (flex_array_prealloc(new_type_attr_map_array, 0, policydb_p_types_p(db)->nprim, GFP_ATOMIC | __GFP_ZERO)) {
             logke("add_type: prealloc type_attr_map_array failed\n");
             return false;
         }
 
-        if (flex_array_prealloc(new_type_val_to_struct, 0, db->p_types.nprim, GFP_ATOMIC | __GFP_ZERO)) {
+        if (flex_array_prealloc(new_type_val_to_struct, 0, policydb_p_types_p(db)->nprim, GFP_ATOMIC | __GFP_ZERO)) {
             logke("add_type: prealloc type_val_to_struct_array failed\n");
             return false;
         }

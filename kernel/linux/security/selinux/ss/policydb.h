@@ -425,6 +425,7 @@ struct policydb_offset
     int16_t p_types_offset;
     int16_t p_classes_offset;
     int16_t u32_compat_filename_trans_count_offset;
+    int16_t filename_trans_key_offset;
     int16_t filename_trans_offset;
 };
 
@@ -455,10 +456,12 @@ static inline void set_compat_filename_trans_count(struct policydb *db, u32 val)
     return *(u32 *)((uintptr_t)db + policydb_offset.u32_compat_filename_trans_count_offset) = val;
 }
 
-static inline struct hashtab *policydb_p_filename_trans_p(struct policydb *db)
+static inline struct hashtab *policydb_filename_trans_p(struct policydb *db)
 {
-    // if (kver )
-    // todo:
+}
+
+static inline struct hashtab *policydb_filename_trans_key_p(struct policydb *db)
+{
 }
 
 #define POLICYDB_CONFIG_MLS 1

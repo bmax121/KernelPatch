@@ -532,3 +532,58 @@ void _linux_fs_sym_match()
     // kfunc_match(getname, name, addr);
     // kfunc_match(getname_kernel, name, addr);
 }
+
+#include <linux/flex_array.h>
+
+struct flex_array *kfunc_def(flex_array_alloc)(int element_size, unsigned int total, gfp_t flags) = 0;
+int kfunc_def(flex_array_prealloc)(struct flex_array *fa, unsigned int start, unsigned int nr_elements,
+                                   gfp_t flags) = 0;
+void kfunc_def(flex_array_free)(struct flex_array *fa) = 0;
+void kfunc_def(flex_array_free_parts)(struct flex_array *fa) = 0;
+int kfunc_def(flex_array_put)(struct flex_array *fa, unsigned int element_nr, void *src, gfp_t flags) = 0;
+int kfunc_def(flex_array_clear)(struct flex_array *fa, unsigned int element_nr) = 0;
+void *kfunc_def(flex_array_get)(struct flex_array *fa, unsigned int element_nr) = 0;
+int kfunc_def(flex_array_shrink)(struct flex_array *fa) = 0;
+void *kfunc_def(flex_array_get_ptr)(struct flex_array *fa, unsigned int element_nr) = 0;
+
+void _linux_flex_array_match()
+{
+    kfunc_match(flex_array_alloc, name, addr);
+    // kfunc_match(flex_array_prealloc, name, addr);
+    kfunc_match(flex_array_free, name, addr);
+    // kfunc_match(flex_array_free_parts, name, addr);
+    // kfunc_match(flex_array_put, name, addr);
+    // kfunc_match(flex_array_clear, name, addr);
+    // kfunc_match(flex_array_get, name, addr);
+    // kfunc_match(flex_array_shrink, name, addr);
+    // kfunc_match(flex_array_get_ptr, name, addr);
+}
+
+int linux_symbol_init()
+{
+    _linux_kernel_cred_sym_match();
+    _linux_kernel_pid_sym_match();
+    _linux_kernel_fork_sym_match();
+    _linux_lib_strncpy_from_user_sym_match();
+    _linxu_lib_strnlen_user_sym_match();
+    _linux_mm_utils_sym_match();
+    _linux_kernel_stop_machine_sym_match();
+    _linux_init_task_sym_match();
+    _linux_lib_dump_stack_sym_match();
+    _linux_mm_vmalloc_sym_match();
+    _linux_slab_sym_match();
+    _linux_security_selinux_avc_sym_match();
+    _linux_security_commoncap_sym_match();
+    _linux_locking_spinlock_sym_match();
+    _linux_security_selinux_sym_match();
+    _linux_lib_string_sym_match();
+    _linux_lib_seq_buf_sym_match();
+    _linux_fs_sym_match();
+    _linux_flex_array_match();
+
+    // _linux_lib_argv_split_sym_match();
+    // _linxu_lib_kstrtox_sym_match();
+    // _linux_security_security_sym_match();
+
+    return 0;
+}
