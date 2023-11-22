@@ -207,9 +207,9 @@ int patch_image()
     memset(config, 0, sizeof(patch_config_t));
     // todo:
 #ifdef ANDROID
-    strlcpy(config->config_ini_path, "/data/adb/kernelpatch/kpinit.ini", sizeof(config->config_ini_path));
+    strncpy(config->config_ini_path, "/data/adb/kernelpatch/kpinit.ini", sizeof(config->config_ini_path) - 1);
 #else
-    strlcpy(config->config_ini_path, "/etc/kernelpatch/kpinit.ini", sizeof(config->config_ini_path));
+    strncpy(config->config_ini_path, "/etc/kernelpatch/kpinit.ini", sizeof(config->config_ini_path) - 1);
 #endif
     preset->kernel_size = kinfo.kernel_size;
     preset->start_offset = align_kernel_size;
