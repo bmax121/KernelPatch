@@ -1,5 +1,5 @@
 ifndef TARGET_COMPILE
-    $(error TARGET_COMPILE is not set)
+    $(error TARGET_COMPILE not set)
 endif
 
 TARGET=kpimg
@@ -24,23 +24,23 @@ INCLUDE := -I. -Iinclude -Ipatch/include -Ilinux -Ilinux/include -Ilinux/arch/ar
 
 BASE_SRCS += base/setup.c 
 BASE_SRCS += base/setup1.S
+BASE_SRCS += base/cache.S
+BASE_SRCS += base/tlsf.c
 BASE_SRCS += base/start.c 
 BASE_SRCS += base/map.c 
+BASE_SRCS += base/map1.S 
 BASE_SRCS += base/hook.c 
+BASE_SRCS += base/fphook.c 
 BASE_SRCS += base/hmem.c 
 BASE_SRCS += base/predata.c 
 BASE_SRCS += base/symbol.c 
 
 BASE_SRCS += $(wildcard minc/*.c)
 
-BASE_SRCS += $(wildcard module/*.c)
-
 BASE_SRCS += $(wildcard patch/*.c)
-BASE_SRCS += $(wildcard patch/accctl/*.c)
-BASE_SRCS += $(wildcard patch/extend/*.c)
+BASE_SRCS += $(wildcard patch/common/*.c)
+BASE_SRCS += $(wildcard patch/module/*.c)
 BASE_SRCS += $(wildcard patch/ksyms/*.c)
-BASE_SRCS += $(wildcard patch/struct/*.c)
-BASE_SRCS += $(wildcard patch/debug/*.c)
 
 ifdef ANDROID
 	BASE_SRCS += $(wildcard patch/android/*.c)
@@ -66,10 +66,11 @@ ${TARGET}.elf: ${OBJS}
 %.o: %.S
 	${CC} $(CFLAGS) $(INCLUDE) -c -o $@ $<
 
+.PHONY: hdr
 hdr:
 	cp -r patch/include/uapi ../user
 	cp version ../user
-	cp base/preset.h ../tools
+	cp include/preset.h ../tools
 
 .PHONY: clean
 clean:

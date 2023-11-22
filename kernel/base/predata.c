@@ -5,28 +5,32 @@
 #include "start.h"
 
 static char superkey[SUPER_KEY_LEN] = { '\0' };
-static int32_t superkey_len = 0;
+static int superkey_len = 0;
+static struct patch_config *patch_config = 0;
 
-int superkey_auth(const char *key, int32_t len)
+int superkey_auth(const char *key, int len)
 {
-    if (!key || len <= 0 || superkey_len != len)
-        return -1;
+    if (!key || len <= 0 || superkey_len != len) return -1;
     for (int i = 0; i < len; i++) {
-        if (superkey[i] != key[i])
-            return -1;
+        if (superkey[i] != key[i]) return -1;
     }
     return 0;
 }
 
-int predata_init()
+struct patch_config *get_preset_patch_cfg()
 {
-    for (int32_t i = 0; i < SUPER_KEY_LEN; i++) {
-        char c = start_preset.superkey[i];
+    return patch_config;
+}
+
+void predata_init(const char *skey, struct patch_config *config)
+{
+    for (int i = 0; i < SUPER_KEY_LEN; i++) {
+        char c = skey[i];
         if (!c) {
             superkey_len = i;
             break;
         }
         superkey[i] = c;
     }
-    return 0;
+    patch_config = config;
 }

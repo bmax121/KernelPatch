@@ -60,8 +60,7 @@ uintmax_t strntoumax(const char *nptr, char **endptr, int base, size_t n)
         n--;
         nptr++;
     }
-    if (endptr)
-        *endptr = (char *)nptr;
+    if (endptr) *endptr = (char *)nptr;
     return minus ? -v : v;
 }
 
@@ -87,8 +86,7 @@ void *bsearch(const void *key, const void *base, size_t nmemb, size_t size, min_
         const void *midobj = (const char *)base + mididx * size;
         int diff = cmp(key, midobj);
 
-        if (diff == 0)
-            return (void *)midobj;
+        if (diff == 0) return (void *)midobj;
 
         if (diff > 0) {
             base = (const char *)midobj + size;
@@ -103,11 +101,9 @@ void *bsearch(const void *key, const void *base, size_t nmemb, size_t size, min_
 static inline size_t newgap(size_t gap)
 {
     gap = (gap * 10) / 13;
-    if (gap == 9 || gap == 10)
-        gap = 11;
+    if (gap == 9 || gap == 10) gap = 11;
 
-    if (gap < 1)
-        gap = 1;
+    if (gap < 1) gap = 1;
     return gap;
 }
 
@@ -118,8 +114,7 @@ void qsort(void *base, size_t nmemb, size_t size, min_comparefunc_t cmp)
     char *p1, *p2;
     int swapped;
 
-    if (!nmemb)
-        return;
+    if (!nmemb) return;
 
     do {
         gap = newgap(gap);

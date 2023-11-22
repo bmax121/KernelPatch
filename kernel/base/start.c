@@ -4,22 +4,45 @@
 #include <kallsyms.h>
 #include <compiler.h>
 #include <cache.h>
-#include <error.h>
 #include <symbol.h>
 #include <predata.h>
 #include <patch/patch.h>
+#include <barrier.h>
+#include <stdarg.h>
 
 #include "start.h"
 #include "hook.h"
+#include "tlsf.h"
+
+#define bits(n, high, low) (((n) << (63u - (high))) >> (63u - (high) + (low)))
+#define align_floor(x, align) ((uint64_t)(x) & ~((uint64_t)(align)-1))
+#define align_ceil(x, align) (((uint64_t)(x) + (uint64_t)(align)-1) & ~((uint64_t)(align)-1))
 
 start_preset_t start_preset __attribute__((section(".start.data")));
 
 int (*kallsyms_on_each_symbol)(int (*fn)(void *data, const char *name, struct module *module, unsigned long addr),
                                void *data) = 0;
+KP_EXPORT_SYMBOL(kallsyms_on_each_symbol);
+
 unsigned long (*kallsyms_lookup_name)(const char *name) = 0;
+KP_EXPORT_SYMBOL(kallsyms_lookup_name);
+
 int (*lookup_symbol_attrs)(unsigned long addr, unsigned long *size, unsigned long *offset, char *modname,
                            char *name) = 0;
+KP_EXPORT_SYMBOL(lookup_symbol_attrs);
+
 void (*printk)(const char *fmt, ...) = 0;
+KP_EXPORT_SYMBOL(printk);
+
+int (*vsprintf)(char *buf, const char *fmt, va_list args) = 0;
+
+const char kernel_patch_logo[] = "\n"
+                                 " _  __                    _ ____       _       _     \n"
+                                 "| |/ /___ _ __ _ __   ___| |  _ \\ __ _| |_ ___| |__  \n"
+                                 "| ' // _ \\ '__| '_ \\ / _ \\ | |_) / _` | __/ __| '_ \\ \n"
+                                 "| . \\  __/ |  | | | |  __/ |  __/ (_| | || (__| | | |\n"
+                                 "|_|\\_\\___|_|  |_| |_|\\___|_|_|   \\__,_|\\__\\___|_| |_|\n";
+KP_EXPORT_SYMBOL(kernel_patch_logo);
 
 static struct vm_struct
 {
@@ -45,11 +68,19 @@ KP_EXPORT_SYMBOL(kpver);
 endian_t endian = little;
 KP_EXPORT_SYMBOL(endian);
 
+uint64_t _kp_hook_start = 0;
+uint64_t _kp_hook_end = 0;
+uint64_t _kp_rox_start = 0;
+uint64_t _kp_rox_end = 0;
+uint64_t _kp_rw_start = 0;
+uint64_t _kp_rw_end = 0;
+uint64_t _kp_region_start = 0;
+uint64_t _kp_region_end = 0;
+
 uint64_t kernel_va = 0;
 uint64_t kernel_stext_va = 0;
 uint64_t kernel_pa = 0;
 int64_t kernel_size = 0;
-int64_t vabits_flag = 0;
 int64_t memstart_addr = 0;
 uint64_t kimage_voffset = 0;
 uint64_t page_offset = 0;
@@ -59,6 +90,35 @@ int64_t va_bits = 0;
 uint64_t kp_kimg_offset = 0;
 // int64_t pa_bits = 0;
 
+tlsf_t kp_rw_mem = 0;
+tlsf_t kp_rox_mem = 0;
+
+#define BOOT_LOG_SIZE 4096
+static char boot_log[BOOT_LOG_SIZE] = { 0 };
+static int boot_log_offset = 0;
+
+static inline bool hw_dirty()
+{
+    uint64_t tcr_el1;
+    asm volatile("mrs %0, tcr_el1" : "=r"(tcr_el1));
+    return tcr_el1 & 0x10000000000;
+}
+
+const char *get_boot_log()
+{
+    return boot_log;
+}
+
+void log_boot(const char *fmt, ...)
+{
+    va_list va;
+    va_start(va, fmt);
+    int ret = vsprintf(boot_log + boot_log_offset, fmt, va);
+    va_end(va);
+    printk("KP %s", boot_log + boot_log_offset);
+    boot_log_offset += ret;
+}
+
 uint64_t *pgtable_entry_kernel(uint64_t va)
 {
     uint64_t page_level = (va_bits - 4) / (page_shift - 3);
@@ -66,10 +126,10 @@ uint64_t *pgtable_entry_kernel(uint64_t va)
     uint64_t pxd_ptrs = 1u << pxd_bits;
     uint64_t ttbr1_el1;
     asm volatile("mrs %0, ttbr1_el1" : "=r"(ttbr1_el1));
+    uint64_t baddr = ttbr1_el1 & 0xFFFFFFFFFFFE;
     uint64_t page_size = 1 << page_shift;
     uint64_t page_size_mask = ~(page_size - 1);
-    uint64_t pxd_pa = ttbr1_el1 & page_size_mask;
-
+    uint64_t pxd_pa = baddr & page_size_mask;
     uint64_t pxd_va = phys_to_virt(pxd_pa);
     uint64_t pxd_entry_va = 0;
     uint64_t block_lv = 0;
@@ -78,12 +138,8 @@ uint64_t *pgtable_entry_kernel(uint64_t va)
         uint64_t pxd_shift = (page_shift - 3) * (4 - lv) + 3;
         uint64_t pxd_index = (va >> pxd_shift) & (pxd_ptrs - 1);
         pxd_entry_va = pxd_va + pxd_index * 8;
-
-        if (!pxd_entry_va) {
-            return 0;
-        }
+        if (!pxd_entry_va) return 0;
         uint64_t pxd_desc = *((uint64_t *)pxd_entry_va);
-
         if ((pxd_desc & 0b11) == 0b11) { // table
             pxd_pa = pxd_desc & (((1ul << (48 - page_shift)) - 1) << page_shift);
         } else if ((pxd_desc & 0b11) == 0b01) { // block
@@ -110,25 +166,29 @@ uint64_t *pgtable_entry_kernel(uint64_t va)
         return 0;
     }
 #endif
-    // todo: some cache ???????????
-    // printk("pgtable va: %llx, entry: %llx, desc: %llx\n", va, pxd_entry_va, *(uint64_t *)pxd_entry_va);
-    printk("");
+    // todo:
+    __flush_dcache_all();
     return (uint64_t *)pxd_entry_va;
 }
+KP_EXPORT_SYMBOL(pgtable_entry_kernel);
 
-static __noinline int prot_myself()
+static __noinline void prot_myself()
 {
+    uint64_t *kpte = pgtable_entry_kernel(kernel_stext_va);
+    log_boot("Kernel stext prot: %llx\n", *kpte);
+
+    _kp_region_start = (uint64_t)_kp_text_start;
+    _kp_region_end = (uint64_t)_kp_end + HOOK_ALLOC_SIZE + MEMORY_ROX_SIZE + MEMORY_RW_SIZE;
+    log_boot("Region: %llx, %llx\n", _kp_region_start, _kp_region_end);
+
     // text, rodata
     uint64_t text_start = (uint64_t)_kp_text_start;
     uint64_t text_end = (uint64_t)_kp_text_end;
     uint64_t align_text_end = align_ceil(text_end, page_size);
-    printk("KP Text start: %llx\n", text_start);
-    printk("KP Text end: %llx\n", text_end);
+    log_boot("Text: %llx, %llx\n", text_start, text_end);
 
     for (uint64_t i = text_start; i < align_text_end; i += page_size) {
         uint64_t *pte = pgtable_entry_kernel(i);
-        if (!pte)
-            return ERR_PGTABLE;
         *pte |= PTE_SHARED;
         *pte = *pte & ~PTE_PXN;
         if (kimage_voffset) {
@@ -142,13 +202,10 @@ static __noinline int prot_myself()
     uint64_t data_start = (uint64_t)_kp_data_start;
     uint64_t data_end = (uint64_t)_kp_data_end;
     uint64_t align_data_end = align_ceil(data_end, page_size);
-    printk("KP Data start: %llx\n", data_start);
-    printk("KP Data end: %llx\n", data_end);
+    log_boot("Data: %llx, %llx\n", data_start, data_end);
 
     for (uint64_t i = data_start; i < align_data_end; i += page_size) {
         uint64_t *pte = pgtable_entry_kernel(i);
-        if (!pte)
-            return ERR_PGTABLE;
         *pte = (*pte | PTE_DBM | PTE_SHARED) & ~PTE_RDONLY;
         if (kimage_voffset) {
             *pte |= PTE_PXN;
@@ -157,45 +214,77 @@ static __noinline int prot_myself()
     flush_tlb_kernel_range(data_start, align_data_end);
 
     // rwx for hook
-    // todo: w when needed
-    uint64_t hook_start = (uint64_t)_kp_end;
-    uint64_t hook_end = hook_start + HOOK_ALLOC_SIZE;
-    printk("KP Hook start: %llx\n", hook_start);
-    printk("KP Hook end: %llx\n", hook_end);
+    // todo: remove
+    _kp_hook_start = (uint64_t)_kp_end;
+    _kp_hook_end = _kp_hook_start + HOOK_ALLOC_SIZE;
+    log_boot("Hook: %llx, %llx\n", _kp_hook_start, _kp_hook_end);
 
-    for (uint64_t i = hook_start; i < hook_end; i += page_size) {
+    for (uint64_t i = _kp_hook_start; i < _kp_hook_end; i += page_size) {
         uint64_t *pte = pgtable_entry_kernel(i);
         *pte = (*pte & ~PTE_PXN & ~PTE_RDONLY) | PTE_DBM | PTE_SHARED;
     }
-    flush_tlb_kernel_range(hook_start, hook_end);
-    hook_mem_add(hook_start, HOOK_ALLOC_SIZE);
+    flush_tlb_kernel_range(_kp_hook_start, _kp_hook_end);
+    hook_mem_add(_kp_hook_start, HOOK_ALLOC_SIZE);
+
+    // rw memory
+    _kp_rw_start = _kp_hook_end;
+    _kp_rw_end = _kp_rw_start + MEMORY_RW_SIZE;
+    log_boot("RW: %llx, %llx\n", _kp_rw_start, _kp_rw_end);
+
+    for (uint64_t i = _kp_rw_start; i < _kp_rw_end; i += page_size) {
+        uint64_t *pte = pgtable_entry_kernel(i);
+        *pte = (*pte | PTE_DBM | PTE_SHARED) & ~PTE_RDONLY;
+        if (kimage_voffset) {
+            *pte |= PTE_PXN;
+        }
+    }
+    flush_tlb_kernel_range(_kp_rw_start, _kp_rw_end);
+    kp_rw_mem = tlsf_create_with_pool((void *)_kp_rw_start, MEMORY_RW_SIZE);
+
+    // rox memory
+    kp_rox_mem = tlsf_malloc(kp_rw_mem, tlsf_size());
+    tlsf_create(kp_rox_mem);
+
+    _kp_rox_start = _kp_rw_end;
+    _kp_rox_end = _kp_rox_start + MEMORY_ROX_SIZE;
+    log_boot("ROX: %llx, %llx\n", _kp_rox_start, _kp_rox_end);
+
+    tlsf_add_pool(kp_rox_mem, (void *)_kp_rox_start, MEMORY_ROX_SIZE);
+
+    for (uint64_t i = _kp_rox_start; i < _kp_rox_end; i += page_size) {
+        uint64_t *pte = pgtable_entry_kernel(i);
+        *pte |= PTE_SHARED;
+        *pte = *pte & ~PTE_PXN;
+        // todo: tlsf malloc block_split will write to alloced memory
+        // if (kimage_voffset) {
+        // *pte |= PTE_RDONLY;
+        // *pte &= ~PTE_DBM;
+        // }
+    }
+    flush_tlb_kernel_range(_kp_rox_start, _kp_rox_end);
 
     // add to vmalloc area
     if (kimage_voffset) {
-        printk("KP Add to vmalloc area\n");
+        // log_boot("Add to vmalloc area", 0, 0);
         void (*vm_area_add_early)(struct vm_struct *vm) =
             (typeof(vm_area_add_early))kallsyms_lookup_name("vm_area_add_early");
-        kp_vm.addr = (void *)text_start;
-        kp_vm.phys_addr = kp_kimg_to_phys(text_start);
-        kp_vm.size = hook_end - text_start;
+        kp_vm.addr = (void *)_kp_region_start;
+        kp_vm.phys_addr = kp_kimg_to_phys(_kp_region_start);
+        kp_vm.size = _kp_region_end - _kp_region_start;
         kp_vm.flags = 0x00000044;
-        kp_vm.caller = (void *)text_start;
+        kp_vm.caller = (void *)_kp_region_start;
         vm_area_add_early(&kp_vm);
     }
-    return 0;
 }
 
-static __noinline int restore_map()
+static __noinline void restore_map()
 {
     uint64_t start = kernel_va + start_preset.map_offset;
     uint64_t end = start + start_preset.map_backup_len;
-    printk("KP Restore start: %llx\n", start);
-    printk("KP Restore end: %llx\n", end);
+    log_boot("Restore: %llx, %llx\n", start, end);
 
     for (uint64_t i = start; i < align_ceil(end, page_size); i += page_size) {
         uint64_t *pte = pgtable_entry_kernel(i);
-        if (!pte)
-            return ERR_PGTABLE;
         uint64_t orig = *pte;
         *pte = (orig | PTE_DBM) & ~PTE_RDONLY;
         flush_tlb_kernel_page(i);
@@ -206,25 +295,18 @@ static __noinline int restore_map()
         flush_tlb_kernel_page(i);
     }
     flush_icache_all();
-    return 0;
 }
 
-static __noinline int pgtable_init()
+static __noinline void pgtable_init()
 {
     uint64_t addr = kallsyms_lookup_name("memstart_addr");
     if (addr) {
         memstart_addr = *(int64_t *)addr;
     }
+
     addr = kallsyms_lookup_name("kimage_voffset");
     if (addr) {
         kimage_voffset = *(uint64_t *)addr;
-    }
-    addr = kallsyms_lookup_name("vabits_actual");
-    if (addr) {
-        vabits_flag = 1;
-    }
-    if (kver >= VERSION(6, 0, 0)) {
-        vabits_flag = 1;
     }
 
     uint64_t tcr_el1;
@@ -239,18 +321,17 @@ static __noinline int pgtable_init()
     } else if (tg1 == 3) {
         page_shift = 16;
     }
-
     page_size = 1 << page_shift;
-    page_offset = vabits_flag ? -(1ul << va_bits) : (0xffffffffffffffff << (va_bits - 1));
-
-    return 0;
+    uint64_t vabits_actual_addr = kallsyms_lookup_name("vabits_actual");
+    page_offset = (vabits_actual_addr || kver >= VERSION(6, 0, 0)) ? -(1ul << va_bits) :
+                                                                     (0xffffffffffffffff << (va_bits - 1));
 }
 
 #define log_reg(regname)                                                   \
     do {                                                                   \
         uint64_t regname##_val = 0;                                        \
         asm volatile("mrs %[val], " #regname : [val] "+r"(regname##_val)); \
-        printk("KP " #regname ": %llx\n", regname##_val);                  \
+        log_boot("" #regname ": %llx\n", regname##_val);                   \
     } while (0)
 
 static __noinline void log_regs()
@@ -305,7 +386,7 @@ static __noinline void log_regs()
     // log_reg(PMSIDR_EL1); //       | R   [4] | Sampling Profiling ID Register
 }
 
-static __noinline int start_init(uint64_t kva, uint64_t offset)
+static __noinline void start_init(uint64_t kva, uint64_t offset)
 {
     kernel_va = kva;
     kp_kimg_offset = offset;
@@ -318,32 +399,27 @@ static __noinline int start_init(uint64_t kva, uint64_t offset)
     if (!printk) {
         printk = (typeof(printk))kallsyms_lookup_name("_printk");
     }
-    if (!printk) {
-        return ERR_NO_SUCH_SYMBOL;
-    }
+    vsprintf = (typeof(vsprintf))kallsyms_lookup_name("vsprintf");
 
-    printk("KP ==== KernelPatch Starting ====\n");
+    log_boot(kernel_patch_logo);
 
     endian = *(unsigned char *)&(uint16_t){ 1 } ? little : big;
     kver = VERSION(start_preset.kernel_version.major, start_preset.kernel_version.minor,
                    start_preset.kernel_version.patch);
     kpver = VERSION(start_preset.kp_version.major, start_preset.kp_version.minor, start_preset.kp_version.patch);
-    // todo: ?? In some case, (ranchu, api28, 4.4.302, api29, 4.14.175), sometimes, format string (%xx) cause "BUG: recent printk recursion!"
-    printk("KP Kernel pa: %llx\n", kernel_pa);
-    printk("KP Kernel va: %llx\n", kernel_va);
-    printk("KP Kernel Patch Version: %x\n", kpver);
-    printk("KP Kernel Patch Compile Time: %s\n", start_preset.compile_time);
+
+    log_boot("Kernel pa: %llx\n", kernel_pa);
+    log_boot("Kernel va: %llx\n", kernel_va);
+    log_boot("Kernel Patch Version: %x\n", kpver);
+    log_boot("Kernel Patch Compile Time: %s\n", (uint64_t)start_preset.compile_time);
 
     kallsyms_on_each_symbol = (typeof(kallsyms_on_each_symbol))kallsyms_lookup_name("kallsyms_on_each_symbol");
     lookup_symbol_attrs = (typeof(lookup_symbol_attrs))kallsyms_lookup_name("lookup_symbol_attrs");
-
-    return 0;
 }
 
-static __noinline int nice_zone()
+static int nice_zone()
 {
     int err = 0;
-    printk("KP ==== KernelPatch Entering Nicezone ====\n");
 
     err = patch();
 
@@ -352,24 +428,14 @@ static __noinline int nice_zone()
 
 int __attribute__((section(".start.text"))) __noinline start(uint64_t kva, uint64_t offset)
 {
-    int err = 0;
-    if ((err = start_init(kva, offset)))
-        goto out;
+    int rc = 0;
+    start_init(kva, offset);
+    pgtable_init();
+    prot_myself();
+    restore_map();
     log_regs();
-    if ((err = pgtable_init()))
-        goto out;
-    if ((err = prot_myself()))
-        goto out;
-    if ((err = restore_map()))
-        goto out;
-
-    if ((err = predata_init()))
-        goto out;
-    if ((err = symbol_init()))
-        goto out;
-
-    if ((err = nice_zone()))
-        goto out;
-out:
-    return err;
+    predata_init((const char *)start_preset.superkey, &start_preset.patch_config);
+    symbol_init();
+    rc = nice_zone();
+    return rc;
 }

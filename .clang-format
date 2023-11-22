@@ -19,7 +19,7 @@ AllowAllParametersOfDeclarationOnNextLine: false
 AllowShortBlocksOnASingleLine: false
 AllowShortCaseLabelsOnASingleLine: false
 AllowShortFunctionsOnASingleLine: false
-AllowShortIfStatementsOnASingleLine: false
+AllowShortIfStatementsOnASingleLine: true
 AllowShortLoopsOnASingleLine: false
 AlwaysBreakAfterDefinitionReturnType: None
 AlwaysBreakAfterReturnType: None
@@ -53,7 +53,7 @@ BreakAfterJavaFieldAnnotations: false
 BreakStringLiterals: false
 BreakBeforeSemicolons: None
 ColumnLimit: 120
-CommentPragmas: '^ IWYU pragma:'
+CommentPragmas: "^ IWYU pragma:"
 CompactNamespaces: false
 ConstructorInitializerAllOnOneLineOrOnePerLine: false
 ConstructorInitializerIndentWidth: 4
@@ -66,9 +66,9 @@ FixNamespaceComments: false
 
 IncludeBlocks: Preserve
 IncludeCategories:
-  - Regex: '.*'
+  - Regex: ".*"
     Priority: 1
-IncludeIsMainRegex: '(Test)?$'
+IncludeIsMainRegex: "(Test)?$"
 IndentCaseLabels: false
 IndentPPDirectives: None
 IndentWidth: 4
@@ -76,8 +76,8 @@ IndentWrappedFunctionNames: false
 JavaScriptQuotes: Leave
 JavaScriptWrapImports: true
 KeepEmptyLinesAtTheStartOfBlocks: false
-MacroBlockBegin: ''
-MacroBlockEnd: ''
+MacroBlockBegin: ""
+MacroBlockEnd: ""
 MaxEmptyLinesToKeep: 1
 NamespaceIndentation: None
 ObjCBinPackProtocolList: Auto
@@ -116,4 +116,3 @@ Standard: Cpp11
 TabWidth: 4
 UseTab: Never
 UseCRLF: false
-...

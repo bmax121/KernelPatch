@@ -1,4 +1,3 @@
-
 #include <fcntl.h>
 #include <getopt.h>
 #include <stdint.h>
@@ -20,7 +19,7 @@
 #define align_floor(x, align) ((uint64_t)(x) & ~((uint64_t)(align)-1))
 #define align_ceil(x, align) (((uint64_t)(x) + (uint64_t)(align)-1) & ~((uint64_t)(align)-1))
 
-#define INSN_IS_B(inst) (((inst)&0xFC000000) == 0x14000000)
+#define INSN_IS_B(inst) (((inst) & 0xFC000000) == 0x14000000)
 
 #define bits32(n, high, low) ((uint32_t)((n) << (31u - (high))) >> (31u - (high) + (low)))
 
@@ -121,8 +120,7 @@ static void print_kpimg_info(const char *img)
 
 static void target_endian_preset(setup_preset_t *preset, int32_t target_is_be)
 {
-    if (!(is_be() ^ target_is_be))
-        return;
+    if (!(is_be() ^ target_is_be)) return;
     preset->kernel_size = i64swp(preset->kernel_size);
     preset->page_shift = i64swp(preset->page_shift);
     preset->kp_offset = i64swp(preset->kp_offset);
@@ -206,8 +204,10 @@ int patch_image()
     setup_header_t *sdata = (setup_header_t *)(out_buf + align_image_len);
     setup_preset_t *preset = (setup_preset_t *)(out_buf + align_image_len + KP_HEADER_SIZE);
     patch_config_t *config = &preset->patch_config;
+    memset(config, 0, sizeof(patch_config_t));
     // todo
-    strncpy(config->default_dir, "/todo/dir/", PATCH_CONFIG_DIR_LEN);
+    strlcpy(config->su_config_file, "/data/adb/kernelpatch/su.conf", 128);
+    strlcpy(config->test_kpm_file, "/data/local/tmp/hello.kpm", 128);
 
     preset->kernel_size = kinfo.kernel_size;
     preset->start_offset = align_kernel_size;
@@ -228,8 +228,7 @@ int patch_image()
     preset->kallsyms_lookup_name_offset = get_symbol_offset(&kallsym, image_buf, "kallsyms_lookup_name");
 
     preset->printk_offset = get_symbol_offset(&kallsym, image_buf, "printk");
-    if (preset->printk_offset < 0)
-        preset->printk_offset = get_symbol_offset(&kallsym, image_buf, "_printk");
+    if (preset->printk_offset < 0) preset->printk_offset = get_symbol_offset(&kallsym, image_buf, "_printk");
 
     int32_t paging_init_offset = get_symbol_offset(&kallsym, image_buf, "paging_init");
     preset->paging_init_offset = relo_branch_func(image_buf, paging_init_offset);
@@ -246,17 +245,13 @@ int patch_image()
     }
 
     preset->memstart_addr_offset = get_symbol_offset(&kallsym, image_buf, "memstart_addr");
-    if (preset->memstart_addr_offset < 0)
-        preset->memstart_addr_offset = 0;
+    if (preset->memstart_addr_offset < 0) preset->memstart_addr_offset = 0;
 
-    if (kallsym.version.major >= 6)
-        preset->vabits_flag = 1;
-    if (get_symbol_offset(&kallsym, image_buf, "vabits_actual") > 0)
-        preset->vabits_flag = 1;
+    if (kallsym.version.major >= 6) preset->vabits_flag = 1;
+    if (get_symbol_offset(&kallsym, image_buf, "vabits_actual") > 0) preset->vabits_flag = 1;
 
     preset->kimage_voffset_offset = get_symbol_offset(&kallsym, image_buf, "kimage_voffset");
-    if (preset->kimage_voffset_offset < 0)
-        preset->kimage_voffset_offset = 0;
+    if (preset->kimage_voffset_offset < 0) preset->kimage_voffset_offset = 0;
 
     if (strlen(superkey) > 0) {
         strncpy((char *)preset->superkey, superkey, SUPER_KEY_LEN);

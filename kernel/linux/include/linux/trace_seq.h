@@ -5,21 +5,30 @@
 #include <ksyms.h>
 #include <stdarg.h>
 
-struct trace_seq
-{
-    // unsigned char buffer[PAGE_SIZE];
-    unsigned char buffer[4096];
-    unsigned int len;
-    unsigned int readpos;
-    int full;
-};
+// 3.18
+// struct trace_seq
+// {
+//     unsigned char buffer[PAGE_SIZE];
+//     unsigned int len;
+//     unsigned int readpos;
+//     int full;
+// };
 
-static inline void trace_seq_init(struct trace_seq *s)
-{
-    s->len = 0;
-    s->readpos = 0;
-    s->full = 0;
-}
+// 4.4
+// struct trace_seq {
+// 	char			buffer[PAGE_SIZE];
+// 	struct seq_buf		seq;
+// 	int			full;
+// };
+
+// static inline void trace_seq_init(struct trace_seq *s)
+// {
+//     s->len = 0;
+//     s->readpos = 0;
+//     s->full = 0;
+// }
+
+struct trace_seq;
 
 extern int kfunc_def(trace_seq_printf)(struct trace_seq *s, const char *fmt, ...);
 extern int kfunc_def(trace_seq_to_user)(struct trace_seq *s, char __user *ubuf, int cnt);
@@ -76,15 +85,6 @@ static inline int trace_seq_bitmask(struct trace_seq *s, const unsigned long *ma
     kfunc_call(trace_seq_bitmask, s, maskp, nmaskbits);
     kfunc_not_found();
     return 0;
-}
-
-// todo: PAGE_SIZE
-static inline int trace_seq_copy_to_user(void __user *to, const void *from, int n)
-{
-    struct trace_seq trace_seq;
-    trace_seq_init(&trace_seq);
-    trace_seq_putmem(&trace_seq, from, n);
-    return trace_seq_to_user(&trace_seq, to, n);
 }
 
 #endif

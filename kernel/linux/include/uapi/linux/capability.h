@@ -392,6 +392,6 @@ struct vfs_ns_cap_data
  */
 
 #define CAP_TO_INDEX(x) ((x) >> 5) /* 1 << 5 == bits in __u32 */
-#define CAP_TO_MASK(x) (1U << ((x)&31)) /* mask for indexed __u32 */
+#define CAP_TO_MASK(x) (1U << ((x) & 31)) /* mask for indexed __u32 */
 
 #endif

@@ -4,7 +4,6 @@
 #include <ksyms.h>
 #include <pgtable.h>
 #include <stdbool.h>
-#include <uapi/asm-generic/unistd.h>
 #include <uapi/asm/ptrace.h>
 
 /* Current Exception Level values, as contained in CurrentEL */
@@ -33,15 +32,14 @@
 #define __GIC_PRIO_IRQOFF_NS 0xa0
 #define GIC_PRIO_PSR_I_SET (1 << 4)
 
-#define GIC_PRIO_IRQOFF                                          \
-    ({                                                           \
-        extern struct static_key_false gic_nonsecure_priorities; \
-        u8 __prio = __GIC_PRIO_IRQOFF;                           \
-                                                                 \
-        if (static_branch_unlikely(&gic_nonsecure_priorities))   \
-            __prio = __GIC_PRIO_IRQOFF_NS;                       \
-                                                                 \
-        __prio;                                                  \
+#define GIC_PRIO_IRQOFF                                                                       \
+    ({                                                                                        \
+        extern struct static_key_false gic_nonsecure_priorities;                              \
+        u8 __prio = __GIC_PRIO_IRQOFF;                                                        \
+                                                                                              \
+        if (static_branch_unlikely(&gic_nonsecure_priorities)) __prio = __GIC_PRIO_IRQOFF_NS; \
+                                                                                              \
+        __prio;                                                                               \
     })
 
 /* Additional SPSR bits not exposed in the UABI */
@@ -141,8 +139,7 @@ static inline unsigned long compat_psr_to_pstate(const unsigned long psr)
 
     pstate = psr & ~COMPAT_PSR_DIT_BIT;
 
-    if (psr & COMPAT_PSR_DIT_BIT)
-        pstate |= PSR_AA32_DIT_BIT;
+    if (psr & COMPAT_PSR_DIT_BIT) pstate |= PSR_AA32_DIT_BIT;
 
     return pstate;
 }
@@ -153,8 +150,7 @@ static inline unsigned long pstate_to_compat_psr(const unsigned long pstate)
 
     psr = pstate & ~PSR_AA32_DIT_BIT;
 
-    if (pstate & PSR_AA32_DIT_BIT)
-        psr |= COMPAT_PSR_DIT_BIT;
+    if (pstate & PSR_AA32_DIT_BIT) psr |= COMPAT_PSR_DIT_BIT;
 
     return psr;
 }

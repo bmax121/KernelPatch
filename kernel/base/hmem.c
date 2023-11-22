@@ -1,76 +1,72 @@
 #include "hook.h"
 
 #include <stdint.h>
-#include <error.h>
 
-// todo: refactor
-// todo: SCTLR_ELx.WXN Preventing execution from Writable memory
-
-static uint64_t mem_region_start[HOOK_MEM_REGION_NUM] = { 0 };
-static uint64_t mem_region_end[HOOK_MEM_REGION_NUM] = { 0 };
+static uint64_t mem_region_start = 0;
+static uint64_t mem_region_end = 0;
 
 typedef struct
 {
     int using;
-    hook_chain_t chain;
-} hook_mem_warp_t;
+    enum hook_type type;
+    uintptr_t addr;
+    // must align 8
+    union
+    {
+        hook_t inl;
+        hook_chain_t inl_chain;
+        fp_hook_chain_t fp_chain;
+    } chain __attribute__((aligned(8)));
+} hook_mem_warp_t __attribute__((aligned(16)));
 
 int hook_mem_add(uint64_t start, int32_t size)
 {
     for (uint64_t i = start; i < start + size; i += 8) {
         *(uint64_t *)i = 0;
     }
-
-    for (int i = 0; i < HOOK_MEM_REGION_NUM; i++) {
-        if (!mem_region_start[i]) {
-            mem_region_start[i] = start;
-            mem_region_end[i] = start + size;
-            return 0;
-        }
-    }
-    return ERR_CAP_FULL;
+    mem_region_start = start;
+    mem_region_end = start + size;
+    return 0;
 }
 
-hook_chain_t *hook_mem_alloc()
+void *hook_mem_zalloc(uintptr_t origin_addr, enum hook_type type)
 {
-    for (int i = 0; i < HOOK_MEM_REGION_NUM; i++) {
-        uint64_t start = mem_region_start[i];
-        if (!start)
-            continue;
-        for (uint64_t addr = start; addr < mem_region_end[i]; addr += sizeof(hook_mem_warp_t)) {
-            hook_mem_warp_t *wrap = (hook_mem_warp_t *)addr;
-            // todo: lock
-            if (wrap->using)
-                continue;
+    uint64_t start = mem_region_start;
+    for (uint64_t addr = start; addr < mem_region_end; addr += sizeof(hook_mem_warp_t)) {
+        hook_mem_warp_t *wrap = (hook_mem_warp_t *)addr;
+        if (wrap->using) continue;
 
-            wrap->using = 1;
+        wrap->using = 1;
+        wrap->addr = origin_addr;
+        wrap->type = type;
 
-            for (int j = local_offsetof(hook_mem_warp_t, chain); j < sizeof(hook_mem_warp_t); j += 8) {
-                *(uint64_t *)(addr + j) = 0;
-            }
-            return &wrap->chain;
+        for (uintptr_t i = (uintptr_t)&wrap->chain; i < (uintptr_t)&wrap->chain + sizeof(wrap->chain); i += 8) {
+            *(uint64_t *)i = 0;
         }
+
+        // todo: assert
+        if (((uintptr_t)&wrap->chain) & 0b111) {
+            return 0;
+        }
+        return &wrap->chain;
     }
     return 0;
 }
 
-inline void hook_mem_free(hook_chain_t *free)
+void hook_mem_free(void *hook_mem)
 {
-    hook_mem_warp_t *warp = local_container_of(free, hook_mem_warp_t, chain);
+    hook_mem_warp_t *warp = local_container_of(hook_mem, hook_mem_warp_t, chain);
     warp->using = 0;
 }
 
-hook_chain_t *hook_get_chain_from_origin(uint64_t origin_addr)
+void *hook_get_mem_from_origin(uint64_t origin_addr)
 {
-    for (int i = 0; i < HOOK_MEM_REGION_NUM; i++) {
-        uint64_t start = mem_region_start[i];
-        if (!start)
-            continue;
-        for (uint64_t addr = start; addr < mem_region_end[i]; addr += sizeof(hook_mem_warp_t)) {
-            hook_mem_warp_t *wrap = (hook_mem_warp_t *)addr;
-            if (wrap->using && wrap->chain.hook.origin_addr == origin_addr) {
-                return &wrap->chain;
-            }
+    uint64_t start = mem_region_start;
+
+    for (uint64_t addr = start; addr < mem_region_end; addr += sizeof(hook_mem_warp_t)) {
+        hook_mem_warp_t *wrap = (hook_mem_warp_t *)addr;
+        if (wrap->using && wrap->addr == origin_addr) {
+            return &wrap->chain;
         }
     }
     return 0;

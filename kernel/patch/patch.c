@@ -10,99 +10,106 @@
 #include <linux/cred.h>
 #include <linux/capability.h>
 #include <syscall.h>
-#include <lsmext.h>
-#include <error.h>
-#include <security/selinux/include/security.h>
+#include <module.h>
 
-void _linux_kernel_cred_sym_match();
-void _linux_kernel_pid_sym_match();
-void _linux_kernel_fork_sym_match();
-void _linux_lib_strncpy_from_user_sym_match();
-void _linxu_lib_strnlen_user_sym_match();
-void _linux_lib_string_sym_match();
-void _linux_mm_utils_sym_match();
-void _linux_lib_argv_split_sym_match();
-void _linxu_lib_kstrtox_sym_match();
-void _linux_kernel_stop_machine_sym_match();
-void _linux_init_task_sym_match();
-void _linux_lib_dump_stack_sym_match();
-void _linux_mm_vmalloc_sym_match();
-void _linux_security_security_sym_match();
-void _linux_security_selinux_avc_sym_match();
-void _linux_security_commoncap_sym_match();
-void _linux_locking_spinlock_sym_match();
-void _linux_security_selinux_sym_match();
-void _linux_lib_seq_buf_sym_match();
-void _linux_fs_sym_match();
+int linux_sybmol_len_init();
+int linux_misc_symbol_init();
+int linux_libs_symbol_init();
 
-void linux_sybmol_len_init();
-
-int build_struct();
+int resolve_struct();
 int task_observer();
+int bypass_kcfi();
 
-int linux_symbol_init()
+void before_panic(hook_fargs12_t *args, void *udata)
 {
-    _linux_kernel_cred_sym_match();
-    _linux_kernel_pid_sym_match();
-    _linux_kernel_fork_sym_match();
-    _linux_lib_strncpy_from_user_sym_match();
-    _linxu_lib_strnlen_user_sym_match();
-    _linux_mm_utils_sym_match();
-    _linux_kernel_stop_machine_sym_match();
-    _linux_init_task_sym_match();
-    _linux_lib_dump_stack_sym_match();
-    _linux_mm_vmalloc_sym_match();
-    _linux_security_selinux_avc_sym_match();
-    _linux_security_commoncap_sym_match();
-    _linux_locking_spinlock_sym_match();
-    _linux_security_selinux_sym_match();
-    _linux_lib_string_sym_match();
-    _linux_lib_seq_buf_sym_match();
-    _linux_fs_sym_match();
+    printk("==== Start KernelPatch for Kernel panic ====\n");
 
-    // _linux_lib_argv_split_sym_match();
-    // _linxu_lib_kstrtox_sym_match();
-    // _linux_security_security_sym_match();
+    const char *log = get_boot_log();
+    char buf[1024];
+    int off = 0;
+    char c;
+    for (int i = 0; (c = log[i]); i++) {
+        if (c == '\n') {
+            buf[off++] = c;
+            buf[off] = '\0';
 
-    return 0;
+            printk("KP %s", buf);
+            off = 0;
+        } else {
+            buf[off++] = log[i];
+        }
+    }
+
+    printk("==== End KernelPatch for Kernel panic ====\n");
 }
 
-static inline void do_init()
+static void before_kernel_init(hook_fargs4_t *args, void *udata)
 {
-    logki("==== KernelPatch Do Init ====\n");
-    linux_symbol_init();
-    linux_sybmol_len_init();
-    syscall_init();
-    build_struct();
-    task_observer();
-    selinux_hook_install();
-    supercall_install();
+    int err = 0;
+    log_boot("entering kernel init ...\n");
+
+    if ((err = linux_sybmol_len_init())) goto out;
+    if ((err = linux_libs_symbol_init())) goto out;
+    if ((err = linux_misc_symbol_init())) goto out;
+
+    if ((err = syscall_init())) goto out;
+    if ((err = resolve_struct())) goto out;
+    if ((err = bypass_kcfi())) goto out;
+    if ((err = task_observer())) goto out;
+    if ((err = selinux_hook_install())) goto out;
+    if ((err = module_init())) goto out;
+    if ((err = supercall_install())) goto out;
+
 #ifdef ANDROID
-    su_compat_init();
+    if ((err = kpuserd_init())) goto out;
+    if ((err = su_compat_init())) goto out;
 #endif
-    logki("==== KernelPatch Everything Done ====\n");
+
+out:
+    return;
 }
 
-static void (*backup_cgroup_init)() = 0;
-
-void replace_cgroup_init()
+static void after_kernel_init(hook_fargs4_t *args, void *udata)
 {
-    backup_cgroup_init();
-    do_init();
+    log_boot("exiting kernel init ...\n");
 }
 
 int patch()
 {
-    int err = 0;
+    int rc = 0;
 
-    unsigned long cgroup_init_addr = kallsyms_lookup_name("cgroup_init");
-    if (!cgroup_init_addr) {
-        logke("Can't find symbol cgroup_init\n");
-        return ERR_NO_SUCH_SYMBOL;
+    unsigned long panic_addr = kallsyms_lookup_name("panic");
+    if (!panic_addr) {
+        log_boot("no symbol panic\n");
+        rc = -ENOENT;
+        goto out;
+    } else {
+        hook_err_t err = hook_wrap12((void *)panic_addr, before_panic, 0, 0);
+        if (err) {
+            log_boot("hook panic: %llx, error: %d\n", panic_addr, rc);
+            rc = err;
+            goto out;
+        }
     }
-    hook_err_t rc = hook((void *)cgroup_init_addr, (void *)replace_cgroup_init, (void **)&backup_cgroup_init);
-    if (rc) {
-        logke("Hook cgroup_init error: %d\n", rc);
+
+    // kernel_init or rest_init
+    unsigned long init_addr = kallsyms_lookup_name("rest_init");
+    if (!init_addr) {
+        init_addr = kallsyms_lookup_name("kernel_init");
     }
-    return err;
+    if (!init_addr) {
+        log_boot("no symbol rest_init or kernel_init\n");
+        rc = -ENOENT;
+        goto out;
+    } else {
+        hook_err_t err = hook_wrap4((void *)init_addr, before_kernel_init, after_kernel_init, 0);
+        if (err) {
+            log_boot("hook kernel init: %llx, error: %d\n", init_addr, err);
+            rc = err;
+            goto out;
+        }
+    }
+
+out:
+    return rc;
 }

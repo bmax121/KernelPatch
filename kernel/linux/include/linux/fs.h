@@ -3,6 +3,8 @@
 
 #include <ktypes.h>
 #include <ksyms.h>
+#include <common.h>
+#include <uapi/asm-generic/fcntl.h>
 
 #define MAY_EXEC 0x00000001
 #define MAY_WRITE 0x00000002
@@ -224,8 +226,8 @@ extern void kfunc_def(drop_nlink)(struct inode *inode);
 extern void kfunc_def(clear_nlink)(struct inode *inode);
 extern void kfunc_def(set_nlink)(struct inode *inode, unsigned int nlink);
 
-extern int kfunc_def(kernel_read)(struct file *, loff_t, char *, unsigned long);
-extern ssize_t kfunc_def(kernel_write)(struct file *, const char *, size_t, loff_t);
+extern ssize_t kfunc_def(kernel_read)(struct file *file, void *buf, size_t count, loff_t *pos);
+extern ssize_t kfunc_def(kernel_write)(struct file *file, const void *buf, size_t count, loff_t *pos);
 extern ssize_t kfunc_def(__kernel_write)(struct file *, const char *, size_t, loff_t *);
 extern struct file *kfunc_def(open_exec)(const char *);
 
@@ -237,6 +239,8 @@ extern int kfunc_def(filp_close)(struct file *, fl_owner_t id);
 
 extern struct filename *kfunc_def(getname)(const char __user *);
 extern struct filename *kfunc_def(getname_kernel)(const char *);
+
+extern loff_t kfunc_def(vfs_llseek)(struct file *file, loff_t offset, int whence);
 
 //
 
@@ -264,18 +268,48 @@ static inline void set_nlink(struct inode *inode, unsigned int nlink)
     kfunc_not_found();
 }
 
-static inline int kernel_read(struct file *file, loff_t offset, char *addr, unsigned long count)
+static inline ssize_t kernel_read(struct file *file, void *buf, size_t count, loff_t *pos)
 {
-    kfunc_call(kernel_read, file, offset, addr, count);
-    kfunc_not_found();
-    return 0;
+    ssize_t ret = 0;
+    if (kfunc(kernel_read)) {
+        if (kver < VERSION(4, 14, 0)) {
+            loff_t offset = pos ? *pos : 0;
+            int (*kernel_read_legacy)(struct file *file, loff_t offset, char *addr, unsigned long count) =
+                (typeof(kernel_read_legacy))kfunc(kernel_read);
+            int rc = kernel_read_legacy(file, offset, (char *)buf, count);
+            if (pos && rc > 0) {
+                *pos = offset + rc;
+            }
+            ret = rc;
+        } else {
+            ret = kfunc(kernel_read)(file, buf, count, pos);
+        }
+    } else {
+        kfunc_not_found();
+    }
+    return ret;
 }
 
-static inline ssize_t kernel_write(struct file *file, const char *buf, size_t count, loff_t pos)
+static inline ssize_t kernel_write(struct file *file, const void *buf, size_t count, loff_t *pos)
 {
-    kfunc_call(kernel_write, file, buf, count, pos);
-    kfunc_not_found();
-    return 0;
+    ssize_t ret = 0;
+    if (kfunc(kernel_write)) {
+        if (kver < VERSION(4, 14, 0)) {
+            ssize_t (*kernel_write_legacy)(struct file *file, const char *buf, size_t count, loff_t pos) =
+                (typeof(kernel_write_legacy))kfunc(kernel_write);
+            loff_t offset = pos ? *pos : 0;
+            ssize_t result = kernel_write_legacy(file, buf, count, offset);
+            if (pos && result > 0) {
+                *pos = offset + result;
+            }
+            ret = result;
+        } else {
+            kfunc(kernel_write)(file, buf, count, pos);
+        }
+    } else {
+        kfunc_not_found();
+    }
+    return ret;
 }
 
 static inline struct file *open_exec(const char *name)
@@ -331,6 +365,13 @@ static inline struct filename *getname(const char __user *filename)
 static inline struct filename *getname_kernel(const char *filename)
 {
     kfunc_call(getname_kernel, filename);
+    kfunc_not_found();
+    return 0;
+}
+
+static inline loff_t vfs_llseek(struct file *file, loff_t offset, int whence)
+{
+    kfunc_call(vfs_llseek, file, offset, whence);
     kfunc_not_found();
     return 0;
 }

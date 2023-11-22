@@ -31,9 +31,10 @@ SECTIONS
     . = ALIGN(16);
     .setup.map : {
         _map_start = .;
-        base/map*.o(.map.data)
-        base/map*.o(.map.text)
-        base/map*.o(.text)
+        base/map.o(.map.data)
+        base/map.o(.map.text)
+        base/map.o(.text)
+        base/map1.o(.text)
         . = ALIGN(16);
         _map_end = .;
     }
@@ -44,8 +45,8 @@ SECTIONS
     .kp.text : {
         _kp_text_start = .;
 
-        base/start*.o(.start.text)
-        base/start*.o(.text)
+        base/start.o(.start.text)
+        base/start.o(.text)
         
         base/hook.o(.transit0.text);
         _transit0_end = .;
@@ -55,6 +56,15 @@ SECTIONS
         _transit8_end = .;
         base/hook.o(.transit12.text);
         _transit12_end = .;
+
+        base/fphook.o(.fp.transit0.text);
+        _fp_transit0_end = .;
+        base/fphook.o(.fp.transit4.text);
+        _fp_transit4_end = .;
+        base/fphook.o(.fp.transit8.text);
+        _fp_transit8_end = .;
+        base/fphook.o(.fp.transit12.text);
+        _fp_transit12_end = .;
 
         base/*(.text)
         base/*(.rodata*)

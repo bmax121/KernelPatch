@@ -3,6 +3,13 @@
 
 #include <ktypes.h>
 
+#define MT_DEVICE_nGnRnE
+#define MT_DEVICE_nGnRE
+#define MT_DEVICE_GRE
+#define MT_NORMAL_NC
+#define MT_NORMAL
+#define MT_NORMAL_WT
+
 #define PTE_VALID (1ul << 0)
 #define PTE_TYPE_MASK (3ul << 0)
 #define PTE_TYPE_PAGE (3ul << 0)
@@ -73,6 +80,7 @@ static inline void flush_tlb_all(void)
     isb();
 }
 
+// __TLBI_VADDR
 static inline uint64_t tlbi_vaddr(uint64_t addr, uint64_t asid)
 {
     uint64_t x = addr >> 12;

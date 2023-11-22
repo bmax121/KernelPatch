@@ -477,8 +477,7 @@ static int _vsnprintf(out_fct_type out, char *buffer, const size_t maxlen, const
 #if defined(PRINTF_SUPPORT_FLOAT)
         case 'f':
         case 'F':
-            if (*format == 'F')
-                flags |= FLAGS_UPPERCASE;
+            if (*format == 'F') flags |= FLAGS_UPPERCASE;
             idx = _ftoa(out, buffer, idx, maxlen, va_arg(va, double), precision, width, flags);
             format++;
             break;
@@ -487,10 +486,8 @@ static int _vsnprintf(out_fct_type out, char *buffer, const size_t maxlen, const
         case 'E':
         case 'g':
         case 'G':
-            if ((*format == 'g') || (*format == 'G'))
-                flags |= FLAGS_ADAPT_EXP;
-            if ((*format == 'E') || (*format == 'G'))
-                flags |= FLAGS_UPPERCASE;
+            if ((*format == 'g') || (*format == 'G')) flags |= FLAGS_ADAPT_EXP;
+            if ((*format == 'E') || (*format == 'G')) flags |= FLAGS_UPPERCASE;
             idx = _etoa(out, buffer, idx, maxlen, va_arg(va, double), precision, width, flags);
             format++;
             break;

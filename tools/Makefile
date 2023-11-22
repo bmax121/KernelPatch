@@ -2,10 +2,16 @@
 CFLAGS = -std=c11 -Wall -Wextra -Wno-unused -Wno-unused-parameter
 # CFLAGS += -g
 
+ifdef ANDROID
+	CFLAGS += -DANDROID
+endif
+
 objs := image.o kallsym.o kptools.o order.o
 
+.PHONY: all
 all: kptools
 
+.PHONY: kptools
 kptools: ${objs}
 	${CC} -o $@ $^
 

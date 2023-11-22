@@ -22,7 +22,6 @@ void get_completed_synchronize_rcu_full(struct rcu_gp_oldstate *rgosp);
 
 void __rcu_read_lock(void);
 void __rcu_read_unlock(void);
-
 void rcu_read_unlock_strict(void);
 
 /* Internal to kernel */
@@ -47,32 +46,15 @@ void exit_tasks_rcu_start(void);
 void exit_tasks_rcu_stop(void);
 void exit_tasks_rcu_finish(void);
 
-/*
- * Helper functions for rcu_dereference_check(), rcu_dereference_protected()
- * and rcu_assign_pointer().  Some of these could be folded into their
- * callers, but they are left separate in order to ease introduction of
- * multiple pointers markings to match different RCU implementations
- * (e.g., __srcu), should this make sense in the future.
- */
-
-#ifdef __CHECKER__
 #define rcu_check_sparse(p, space) ((void)(((typeof(*p) space *)p) == p))
-#else /* #ifdef __CHECKER__ */
-#define rcu_check_sparse(p, space)
-#endif /* #else #ifdef __CHECKER__ */
+
 #define __unrcu_pointer(p, local)                     \
     ({                                                \
         typeof(*p) *local = (typeof(*p) *__force)(p); \
         rcu_check_sparse(p, __rcu);                   \
         ((typeof(*p) __force __kernel *)(local));     \
     })
-/**
- * unrcu_pointer - mark a pointer as not being RCU protected
- * @p: pointer needing to lose its __rcu property
- *
- * Converts @p from an __rcu pointer to a __kernel pointer.
- * This allows an __rcu pointer to be used with xchg() and friends.
- */
+
 #define unrcu_pointer(p) __unrcu_pointer(p, __UNIQUE_ID(rcu))
 
 #define __rcu_access_pointer(p, local, space)                  \
@@ -233,8 +215,7 @@ static inline bool rcu_head_after_call_rcu(struct rcu_head *rhp, rcu_callback_t 
 {
     rcu_callback_t func = READ_ONCE(rhp->func);
 
-    if (func == f)
-        return true;
+    if (func == f) return true;
     WARN_ON_ONCE(func != (rcu_callback_t)~0L);
     return false;
 }

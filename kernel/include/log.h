@@ -1,10 +1,15 @@
 #ifndef _KP_LOG_H_
 #define _KP_LOG_H_
 
+#include <stdint.h>
+
+#define PREFIX_MAX 48
+#define LOG_LINE_MAX (1024 - PREFIX_MAX)
+
 extern void (*printk)(const char *fmt, ...);
 
-// #define logkv(fmt, ...) printk("[+] KP V " fmt, ##__VA_ARGS__)
-#define logkv(fmt, ...)
+#define logkv(fmt, ...) printk("[+] KP V " fmt, ##__VA_ARGS__)
+// #define logkv(fmt, ...)
 
 // #define logkfv(fmt, ...) printk("[+] KP V %s: " fmt, __func__, ##__VA_ARGS__)
 #define logkfv(fmt, ...)
@@ -20,5 +25,8 @@ extern void (*printk)(const char *fmt, ...);
 
 #define logke(fmt, ...) printk("[-] KP E " fmt, ##__VA_ARGS__)
 #define logkfe(fmt, ...) printk("[-] KP E %s: " fmt, __func__, ##__VA_ARGS__)
+
+void log_boot(const char *fmt, ...);
+const char *get_boot_log();
 
 #endif

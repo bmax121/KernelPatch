@@ -9,46 +9,32 @@
 #include <linux/sched.h>
 #include <linux/security.h>
 #include <accctl.h>
+#include <uapi/asm-generic/errno.h>
 
-static long call_grant_su(uid_t uid)
-{
-    return add_allow_uid(uid);
-}
-
-static long call_revoke_su(uid_t uid)
-{
-    return remove_allow_uid(uid);
-}
-
-static long call_list_su_allow(uid_t *__user uids, size_t *__user size)
-{
-    return list_allow_uids(uids, size);
-}
-
-static long call_reset_su_cmd(const char cmd[3])
-{
-    return reset_su_cmd(cmd);
-}
-
-long supercall_android(long cmd, void *__user arg1, void *__user arg2, void *__user arg3)
+long supercall_android(long cmd, long arg1, long arg2, long arg3)
 {
     long ret;
     if (cmd == SUPERCALL_GRANT_SU) {
         uid_t uid = (uid_t)(uintptr_t)arg1;
-        ret = call_grant_su(uid);
+        ret = su_add_allow_uid(uid);
     } else if (cmd == SUPERCALL_REVOKE_SU) {
         uid_t uid = (uid_t)(uintptr_t)arg1;
-        ret = call_revoke_su(uid);
+        ret = su_remove_allow_uid(uid);
+    } else if (cmd == SUPERCALL_SU_ALLOW_NUM) {
+        ret = su_allow_uid_nums();
     } else if (cmd == SUPERCALL_LIST_SU_ALLOW) {
         uid_t *uids = (uid_t *)arg1;
-        size_t *size = (size_t *)arg2;
-        ret = call_list_su_allow(uids, size);
-    } else if (cmd == SUPERCALL_RESET_SU_CMD) {
-        char cmd[3] = { '\0' };
-        strncpy_from_user(cmd, (char *__user)arg1, 2);
-        ret = call_reset_su_cmd(cmd);
+        int num = (int)arg2;
+        ret = su_list_allow_uids(uids, num);
+    } else if (cmd == SUPERCALL_SU_RESET_PATH) {
+        char cmd[SUPERCALL_SU_PATH_LEN] = { '\0' };
+        strncpy_from_user_nofault(cmd, (char *__user)arg1, sizeof(cmd));
+        ret = su_reset_path(cmd);
+    } else if (cmd == SUPERCALL_SU_GET_PATH) {
+        int size = (int)arg2;
+        ret = su_get_path((char *)arg1, size);
     } else {
-        ret = SUPERCALL_RES_NOT_IMPL;
+        ret = -ENOSYS;
     }
     return ret;
 }

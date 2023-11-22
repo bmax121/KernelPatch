@@ -11,65 +11,75 @@
 
 void print_usage(char **argv)
 {
-    char *c =
-        "\nkpatch: KernelPatch Userspace Executable.\n"
-        "\n"
-        "Common Usage:\n"
-        "./kpatch -h, --help\n"
-        "    Print this message.\n"
-        "./kpatch -v, --version\n"
-        "    Print kpatch version.\n"
-        "\n"
-        "SuperCall Usage:\n"
-        "./kpatch <super_key> <command> [args...]\n"
-        "command:\n"
-        "  --hello\n"
-        "     Print SuperCall hello message in the kernel. Return 0 if succeed, others if failed!\n"
-        "  --kv\n"
-        "     Get Kernel version.\n"
-        "  --kpv\n"
-        "     Get KernelPatch version.\n"
-        "  --su [--arg1 scontext]\n"
-        "     Fork a root shell and change security context to scontext.\n"
-        "     If scontext is not specified, \n"
-        "         bypass all selinux permission checks for all calls initiated by this thread using hooks, \n"
-        "         but the permission determined by other threads remain unchanged.\n"
-        "  --load_kpm --arg1 path\n"
-        "     Load KernelPatch Module\n"
-        "     (Unimplemented ...).\n"
-        "  --unload_kpm --arg1 path\n"
-        "     Unload KernelPatch Module\n"
-        "     (Unimplemented ...).\n"
-        "  --thread_su --arg1 tid\n"
-        "     Grant root privileges to the thread corresponding to the given tid.\n"
-        "  --thread_unsu --arg1 tid\n"
-        "     Revoke root privileges to the thread corresponding to the given tid.\n"
-        "     (Unimplemented ...).\n"
+    char *c = "\n"
+              " _  __                    _ ____       _       _     \n"
+              "| |/ /___ _ __ _ __   ___| |  _ \\ __ _| |_ ___| |__  \n"
+              "| ' // _ \\ '__| '_ \\ / _ \\ | |_) / _` | __/ __| '_ \\ \n"
+              "| . \\  __/ |  | | | |  __/ |  __/ (_| | || (__| | | |\n"
+              "|_|\\_\\___|_|  |_| |_|\\___|_|_|   \\__,_|\\__\\___|_| |_|\n"
+              "\n"
+              "KernelPatch Userspace Executable.\n"
+              "Common Usage:\n"
+              "./kpatch -h, --help\n"
+              "    Print this message.\n"
+              "./kpatch -v, --version\n"
+              "    Print kpatch version.\n"
+              "\n"
+              "SuperCall Usage:\n"
+              "./kpatch <super_key> <command> [args...]\n"
+              "\n"
+              "Command:\n"
+              "  --hello\n"
+              "     Print SuperCall hello message in the kernel. 'hello' will echoed\n"
+              "     if KernelPatch installed successfully.\n"
+              "  --kv\n"
+              "     Get Kernel version.\n"
+              "  --kpv\n"
+              "     Get KernelPatch version.\n"
+              "  --su [scontext]\n"
+              "     Fork a root shell and change security context to 'scontext'.\n"
+              "     If scontext is not specified or fails to be set, \n"
+              "     bypass all selinux permission checks for all calls initiated by this thread using hooks,\n"
+              "     but the permission determined by other threads remain unchanged.\n"
+              "  --load_kpm path [args]\n"
+              "     Load KernelPatch Module\n"
+              "  --unload_kpm name\n"
+              "     Unload KernelPatch Module\n"
+              "  --kpm_num\n"
+              "     Get the number of KernelPatch Modules\n"
+              "  --kpm_info index\n"
+              "     Get information of the module at 'index'.\n"
+              "  --thread_su tid\n"
+              "     Grant root privileges to the thread corresponding to the given 'tid'.\n"
+              "  --thread_unsu tid\n"
+              "     Revoke root privileges to the thread corresponding to the given 'tid'.\n"
+              "     (Unimplemented ...).\n"
 #ifdef ANDROID
-        "\n"
-        "Android Specific Usage:\n"
-        "The default command to get a root shell is 'kp', whose full path is '/system/bin/kp'.\n"
-        "This can avoid conflicts with the existing 'su' command.\n"
-        "If you want to change this path, you can use the 'reset_su' command, "
-        "but keep in mind that the command's length should not exceed two characters.\n"
-        "  --grant_su --arg1 uid\n"
-        "     Grant root privileges to the user corresponding to the given uid.\n"
-        "  --revoke_su --arg1 uid\n"
-        "     Revoke root privileges to the user corresponding to the given uid.\n"
-        "  --list_su\n"
-        "     List su allowed uids.\n"
-        "  --reset_su --arg1 cmd\n"
-        "     Reset root shell command full path to '/system/bin/cmd'. The length of cmd must not exceed two characters.\n"
+              "\n"
+              "Android Specific Command:\n"
+              "     The default command to get a root shell is 'kp', whose full path is '/system/bin/kp'.\n"
+              "     This can avoid conflicts with the existing 'su' command.\n"
+              "     If you want to change this path, you can use the 'reset_su' command.\n"
+              "  --grant_su uid\n"
+              "     Grant root privileges to the user corresponding to the given 'uid'.\n"
+              "  --revoke_su uid\n"
+              "     Revoke root privileges to the user corresponding to the given 'uid'.\n"
+              "  --num_su\n"
+              "     Get the number of su allowed uids\n"
+              "  --list_su\n"
+              "     List su allowed uids.\n"
+              "  --reset_su path\n"
+              "     Reset root shell command full path to 'path'. The length of 'path' must not exceed 14 characters.\n"
+              "  --get_su\n"
+              "     Get full path of current root shell command.\n"
 #endif
-        "\n";
+              "\n";
     fprintf(stdout, "%s", c);
 }
 
 int main(int argc, char **argv)
 {
     int cmd = -1;
-    char *arg1 = 0, *arg2 = 0, *arg3 = 0;
-
     if (argc == 2) {
         if (!strcmp(argv[1], "-v") || !(strcmp(argv[1], "--version"))) {
             fprintf(stdout, "%x\n", get_version());
@@ -82,116 +92,151 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    char key[SUPER_KEY_LEN] = { '\0' };
-    strncpy(key, argv[1], SUPER_KEY_LEN);
-
-    if (!strnlen(key, SUPER_KEY_LEN)) {
+    if (!strnlen(argv[1], SUPER_KEY_LEN)) {
         fprintf(stderr, "Super key must be specified\n");
         return -1;
     }
+    const char *key = argv[1];
 
-    struct option longopts[] = { { "arg1", required_argument, NULL, '1' },
-                                 { "arg2", required_argument, NULL, '2' },
-                                 { "arg3", required_argument, NULL, '3' },
-                                 { "hello", no_argument, &cmd, SUPERCALL_HELLO },
+    struct option longopts[] = { { "hello", no_argument, &cmd, SUPERCALL_HELLO },
                                  { "kv", no_argument, &cmd, SUPERCALL_GET_KERNEL_VERSION },
                                  { "kpv", no_argument, &cmd, SUPERCALL_GET_KP_VERSION },
-                                 { "load_kpm", no_argument, NULL, SUPERCALL_LOAD_KPM },
-                                 { "unload_kpm", no_argument, NULL, SUPERCALL_UNLOAD_KPM },
+                                 { "load_kpm", no_argument, &cmd, SUPERCALL_LOAD_KPM },
+                                 { "unload_kpm", no_argument, &cmd, SUPERCALL_UNLOAD_KPM },
+                                 { "kpm_num", no_argument, &cmd, SUPERCALL_KPM_NUMS },
+                                 { "kpm_info", no_argument, &cmd, SUPERCALL_KPM_INFO },
                                  { "su", no_argument, &cmd, SUPERCALL_SU },
                                  { "thread_su", no_argument, &cmd, SUPERCALL_THREAD_SU },
                                  { "thread_unsu", no_argument, &cmd, SUPERCALL_THREAD_UNSU },
 #ifdef ANDROID
                                  { "grant_su", no_argument, &cmd, SUPERCALL_GRANT_SU },
                                  { "revoke_su", no_argument, &cmd, SUPERCALL_REVOKE_SU },
+                                 { "num_su", no_argument, &cmd, SUPERCALL_SU_ALLOW_NUM },
                                  { "list_su", no_argument, &cmd, SUPERCALL_LIST_SU_ALLOW },
-                                 { "reset_su", no_argument, &cmd, SUPERCALL_RESET_SU_CMD },
+                                 { "reset_su", no_argument, &cmd, SUPERCALL_SU_RESET_PATH },
+                                 { "get_su", no_argument, &cmd, SUPERCALL_SU_GET_PATH },
 #endif
                                  { 0, 0, 0, 0 } };
-    char *optstr = "1:2:3:";
+    char *optstr = "";
     int opt = -1;
     int opt_index = -1;
     int verbose = 0;
     while ((opt = getopt_long(argc, argv, optstr, longopts, &opt_index)) != -1) {
         switch (opt) {
-        case '1':
-            arg1 = optarg;
-            break;
-        case '2':
-            arg2 = optarg;
-            break;
-        case '3':
-            arg3 = optarg;
-            break;
-        default:
-            continue;
         }
     }
+
     long ret = 0;
     if (cmd == SUPERCALL_HELLO) {
         ret = sc_hello(key);
-        if (ret == SUPERCALL_HELLO_MAGIC)
+        if (ret == SUPERCALL_HELLO_MAGIC) {
+            fprintf(stdout, "hello\n");
             ret = 0;
+        }
     } else if (cmd == SUPERCALL_GET_KERNEL_VERSION) {
         long kv = sc_get_kernel_version(key);
         fprintf(stdout, "%lx\n", kv);
     } else if (cmd == SUPERCALL_GET_KP_VERSION) {
         long kpv = sc_get_kp_version(key);
         fprintf(stdout, "%lx\n", kpv);
+    } else if (cmd == SUPERCALL_LOAD_KPM) {
+        if (argc < 4) {
+            fprintf(stderr, "Empty path!\n");
+            return -1;
+        }
+        const char *path = argv[3];
+        const char *args = argc < 5 ? NULL : argv[4];
+        ret = sc_load_kpm(key, path, args);
+    } else if (cmd == SUPERCALL_UNLOAD_KPM) {
+        if (argc < 4) {
+            fprintf(stderr, "Empty name!\n");
+            return -1;
+        }
+        const char *name = argv[3];
+        ret = sc_unload_kpm(key, name);
+    } else if (cmd == SUPERCALL_KPM_NUMS) {
+        int num = sc_kpm_nums(key);
+        fprintf(stdout, "%d\n", num);
+        ret = 0;
+    } else if (cmd == SUPERCALL_KPM_INFO) {
+        if (argc < 4) {
+            fprintf(stderr, "Empty index!\n");
+            return -1;
+        }
+        const char *si = argv[3];
+        int index = atoi(si);
+        char buf[1024];
+        long ret = sc_kpm_info(key, index, buf, sizeof(buf));
+        if (ret > 0) {
+            fprintf(stdout, "index: %d\n", index);
+            fprintf(stdout, "%s", buf);
+            ret = 0;
+        }
     } else if (cmd == SUPERCALL_SU) {
-        ret = su_fork(key, arg1);
+        const char *scontext = argc < 4 ? NULL : argv[3];
+        ret = su_fork(key, scontext);
     } else if (cmd == SUPERCALL_THREAD_SU) {
-        if (!arg1) {
+        if (argc < 4) {
             fprintf(stderr, "Empty tid!\n");
             return -1;
         }
-        int pid = atoi(arg1);
+        const char *stid = argv[3];
+        int pid = atoi(stid);
         ret = sc_thread_su(key, pid, 0);
     } else if (cmd == SUPERCALL_THREAD_UNSU) {
-        if (!arg1) {
+        if (argc < 4) {
             fprintf(stderr, "Empty tid!\n");
             return -1;
         }
-        int pid = atoi(arg1);
+        const char *stid = argv[3];
+        int pid = atoi(stid);
         ret = sc_thread_unsu(key, pid);
     }
 #ifdef ANDROID
     else if (cmd == SUPERCALL_GRANT_SU) {
-        if (!arg1) {
+        if (argc < 4) {
             fprintf(stderr, "Empty uid!\n");
             return -1;
         }
-        uid_t uid = atoi(arg1);
+        const char *suid = argv[3];
+        uid_t uid = atoi(suid);
         ret = sc_grant_su(key, uid);
     } else if (cmd == SUPERCALL_REVOKE_SU) {
-        if (!arg1) {
+        if (argc < 4) {
             fprintf(stderr, "Empty uid!\n");
             return -1;
         }
-        uid_t uid = atoi(arg1);
+        const char *suid = argv[3];
+        uid_t uid = atoi(suid);
         ret = sc_revoke_su(key, uid);
+    } else if (cmd == SUPERCALL_SU_ALLOW_NUM) {
+        int num = sc_num_su(key);
+        fprintf(stdout, "%d\n", num);
+        ret = 0;
     } else if (cmd == SUPERCALL_LIST_SU_ALLOW) {
         uid_t uids[SUPERCALL_SU_ALLOW_UID_MAX];
-        size_t size = SUPERCALL_SU_ALLOW_UID_MAX;
-        ret = sc_list_su_allow(key, uids, &size);
-        if (ret)
-            return ret;
-        fprintf(stdout, "su allow nums: %d\n", (int)size);
-        for (int i = 0; i < size; i++) {
+        ret = sc_list_su_allow(key, uids, SUPERCALL_SU_ALLOW_UID_MAX);
+        for (int i = 0; i < ret; i++) {
             fprintf(stdout, "%d\t", uids[i]);
         }
         fprintf(stdout, "\n");
-    } else if (cmd == SUPERCALL_RESET_SU_CMD) {
-        const char *cmd = (const char *)arg1;
-        if (!cmd) {
-            fprintf(stderr, "Empty su cmd!\n");
+        ret = 0;
+    } else if (cmd == SUPERCALL_SU_RESET_PATH) {
+        if (argc < 4) {
+            fprintf(stderr, "Empty path!\n");
             return -1;
         }
-        if (strnlen(cmd, 3) > 2) {
-            fprintf(stderr, "The string length of arg1 should not exceed two characters.\n");
+        const char *path = argv[3];
+        if (strnlen(path, SUPERCALL_SU_PATH_LEN) >= SUPERCALL_SU_PATH_LEN) {
+            fprintf(stderr, "The length of the 'path' should not exceed the length of /system/bin/sh.\n");
             return -1;
         }
-        ret = sc_reset_su_cmd(key, cmd);
+        ret = sc_su_reset_path(key, path);
+    } else if (cmd == SUPERCALL_SU_GET_PATH) {
+        char path[32] = { '\0' };
+        ret = sc_su_get_path(key, path, 32);
+        fprintf(stdout, "%s\n", path);
+        if (ret > 0) ret = 0;
     }
 #endif
     else {
@@ -199,8 +244,5 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    if (ret == SUPERCALL_RES_NOT_IMPL) {
-        fprintf(stdout, "Unimplemented SuperCall\n");
-    }
     return ret;
 }

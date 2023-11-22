@@ -152,8 +152,7 @@ static inline struct cmsghdr *__cmsg_nxthdr(void *__ctl, __kernel_size_t __size,
     struct cmsghdr *__ptr;
 
     __ptr = (struct cmsghdr *)(((unsigned char *)__cmsg) + CMSG_ALIGN(__cmsg->cmsg_len));
-    if ((unsigned long)((char *)(__ptr + 1) - (char *)__ctl) > __size)
-        return (struct cmsghdr *)0;
+    if ((unsigned long)((char *)(__ptr + 1) - (char *)__ctl) > __size) return (struct cmsghdr *)0;
 
     return __ptr;
 }

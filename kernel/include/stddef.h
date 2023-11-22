@@ -5,4 +5,6 @@
 
 #define RET_VOID ((void)0)
 
+#define offsetof(TYPE, MEMBER) ((size_t) & ((TYPE *)0)->MEMBER)
+
 #endif

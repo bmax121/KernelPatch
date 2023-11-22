@@ -10,8 +10,7 @@ void *min_memccpy(void *dst, const void *src, int c, size_t n)
     char ch;
     while (n--) {
         *q++ = ch = *p++;
-        if (ch == (char)c)
-            return q;
+        if (ch == (char)c) return q;
     }
     return 0;
 }
@@ -20,8 +19,7 @@ void *min_memchr(const void *s, int c, size_t n)
 {
     const unsigned char *sp = s;
     while (n--) {
-        if (*sp == (unsigned char)c)
-            return (void *)sp;
+        if (*sp == (unsigned char)c) return (void *)sp;
         sp++;
     }
     return 0;
@@ -33,13 +31,12 @@ int min_memcmp(const void *s1, const void *s2, size_t n)
     int d = 0;
     while (n--) {
         d = (int)*c1++ - (int)*c2++;
-        if (d)
-            break;
+        if (d) break;
     }
     return d;
 }
 
-void *min_memcpy(void *dst, const void *src, size_t n)
+void *memcpy(void *dst, const void *src, size_t n)
 {
     const char *p = src;
     char *q = dst;
@@ -56,8 +53,7 @@ void *min_memmem(const void *haystack, size_t n, const void *needle, size_t m)
 
     size_t j, k, l;
 
-    if (m > n || !m || !n)
-        return 0;
+    if (m > n || !m || !n) return 0;
 
     if (1 != m) {
         if (x[0] == x[1]) {
@@ -73,15 +69,13 @@ void *min_memmem(const void *haystack, size_t n, const void *needle, size_t m)
             if (x[1] != y[j + 1]) {
                 j += k;
             } else {
-                if (!min_memcmp(x + 2, y + j + 2, m - 2) && x[0] == y[j])
-                    return (void *)&y[j];
+                if (!min_memcmp(x + 2, y + j + 2, m - 2) && x[0] == y[j]) return (void *)&y[j];
                 j += l;
             }
         }
     } else
         do {
-            if (*y == *x)
-                return (void *)y;
+            if (*y == *x) return (void *)y;
             y++;
         } while (--n);
     return 0;
@@ -111,8 +105,7 @@ void *min_memrchr(const void *s, int c, size_t n)
     const unsigned char *sp = (const unsigned char *)s + n - 1;
 
     while (n--) {
-        if (*sp == (unsigned char)c)
-            return (void *)sp;
+        if (*sp == (unsigned char)c) return (void *)sp;
         sp--;
     }
 
@@ -152,8 +145,7 @@ int min_strcasecmp(const char *s1, const char *s2)
     int d = 0;
     while (1) {
         d = min_toupper(ch = *c1++) - min_toupper(*c2++);
-        if (d || !ch)
-            break;
+        if (d || !ch) break;
     }
     return d;
 }
@@ -167,8 +159,7 @@ char *min_strcat(char *dst, const char *src)
 char *min_strchr(const char *s, int c)
 {
     while (*s != (char)c) {
-        if (!*s)
-            return 0;
+        if (!*s) return 0;
         s++;
     }
     return (char *)s;
@@ -182,8 +173,7 @@ int min_strcmp(const char *s1, const char *s2)
     int d = 0;
     while (1) {
         d = (int)(ch = *c1++) - (int)*c2++;
-        if (d || !ch)
-            break;
+        if (d || !ch) break;
     }
     return d;
 }
@@ -210,12 +200,10 @@ size_t min_strlcat(char *dst, const char *src, size_t size)
         q++;
         bytes++;
     }
-    if (bytes == size)
-        return (bytes + min_strlen(src));
+    if (bytes == size) return (bytes + min_strlen(src));
 
     while ((ch = *p++)) {
-        if (bytes + 1 < size)
-            *q++ = ch;
+        if (bytes + 1 < size) *q++ = ch;
 
         bytes++;
     }
@@ -231,13 +219,11 @@ size_t min_strlcpy(char *dst, const char *src, size_t size)
     char ch;
 
     while ((ch = *p++)) {
-        if (bytes + 1 < size)
-            *q++ = ch;
+        if (bytes + 1 < size) *q++ = ch;
 
         bytes++;
     }
-    if (size)
-        *q = '\0';
+    if (size) *q = '\0';
     return bytes;
 }
 
@@ -257,8 +243,7 @@ int min_strncasecmp(const char *s1, const char *s2, size_t n)
     int d = 0;
     while (n--) {
         d = min_toupper(ch = *c1++) - min_toupper(*c2++);
-        if (d || !ch)
-            break;
+        if (d || !ch) break;
     }
     return d;
 }
@@ -270,8 +255,7 @@ char *min_strncat(char *dst, const char *src, size_t n)
     char ch;
     while (n--) {
         *q++ = ch = *p++;
-        if (!ch)
-            return dst;
+        if (!ch) return dst;
     }
     *q = '\0';
     return dst;
@@ -285,8 +269,7 @@ int min_strncmp(const char *s1, const char *s2, size_t n)
     int d = 0;
     while (n--) {
         d = (int)(ch = *c1++) - (int)*c2++;
-        if (d || !ch)
-            break;
+        if (d || !ch) break;
     }
     return d;
 }
@@ -299,8 +282,7 @@ char *min_strncpy(char *dst, const char *src, size_t n)
     while (n) {
         n--;
         *q++ = ch = *p++;
-        if (!ch)
-            break;
+        if (!ch) break;
     }
     min_memset(q, 0, n);
     return dst;
@@ -319,19 +301,15 @@ size_t min_strnlen(const char *s, size_t maxlen)
 char *min_strpbrk(const char *s1, const char *s2)
 {
     const char *c = s2;
-    if (!*s1)
-        return (char *)0;
+    if (!*s1) return (char *)0;
     while (*s1) {
         for (c = s2; *c; c++) {
-            if (*s1 == *c)
-                break;
+            if (*s1 == *c) break;
         }
-        if (*c)
-            break;
+        if (*c) break;
         s1++;
     }
-    if (*c == '\0')
-        s1 = 0;
+    if (*c == '\0') s1 = 0;
     return (char *)s1;
 }
 
@@ -339,8 +317,7 @@ char *min_strrchr(const char *s, int c)
 {
     const char *found = 0;
     while (*s) {
-        if (*s == (char)c)
-            found = s;
+        if (*s == (char)c) found = s;
         s++;
     }
     return (char *)found;
@@ -350,11 +327,9 @@ char *min_strsep(char **stringp, const char *delim)
 {
     char *s = *stringp;
     char *e;
-    if (!s)
-        return 0;
+    if (!s) return 0;
     e = min_strpbrk(s, delim);
-    if (e)
-        *e++ = '\0';
+    if (e) *e++ = '\0';
     *stringp = e;
     return s;
 }
@@ -365,11 +340,9 @@ size_t min_strspn(const char *s1, const char *s2)
     const char *c;
     while (*s1) {
         for (c = s2; *c; c++) {
-            if (*s1 == *c)
-                break;
+            if (*s1 == *c) break;
         }
-        if (*c == '\0')
-            break;
+        if (*c == '\0') break;
         s1++;
     }
     return s1 - s;
@@ -388,8 +361,7 @@ char *min_strtok(char *s, const char *delim)
 
 char *min_strtok_r(char *s, const char *delim, char **holder)
 {
-    if (s)
-        *holder = s;
+    if (s) *holder = s;
     do {
         s = min_strsep(holder, delim);
     } while (s && !*s);

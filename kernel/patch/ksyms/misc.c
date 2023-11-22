@@ -1,24 +1,14 @@
 #include <ksyms.h>
 #include <ktypes.h>
+#include <symbol.h>
+#include <common.h>
+#include <stdarg.h>
 
 #include <linux/sched.h>
 #include <linux/cred.h>
 #include <linux/sched/task.h>
-#include <common.h>
 
 // init/init_task.c  kernel/cred.c
-struct task_struct *kvar(init_task) = 0;
-union thread_union *kvar(init_thread_union) = 0;
-
-void _linux_init_task_sym_match()
-{
-    kvar_match(init_task, name, addr);
-    kvar_match(init_thread_union, name, addr);
-}
-
-struct cred *kvar(init_cred) = 0;
-struct group_info *kvar(init_groups) = 0;
-
 void kfunc_def(__put_cred)(struct cred *) = 0;
 void kfunc_def(exit_creds)(struct task_struct *) = 0;
 int kfunc_def(copy_creds)(struct task_struct *, unsigned long) = 0;
@@ -41,8 +31,6 @@ bool kfunc_def(creds_are_invalid)(const struct cred *cred) = 0;
 
 void _linux_kernel_cred_sym_match()
 {
-    kvar_match(init_cred, name, addr);
-    kvar_match(init_groups, name, addr);
     kfunc_match(__put_cred, name, addr);
     // kfunc_match(exit_creds, name, addr);
     kfunc_match(copy_creds, name, addr);
@@ -157,7 +145,7 @@ int kfunc_def(unshare_fd)(unsigned long unshare_flags, unsigned int max_fds, str
 int kfunc_def(ksys_unshare)(unsigned long unshare_flags) = 0;
 int kfunc_def(unshare_files)(struct files_struct **displaced) = 0;
 
-void _linux_kernel_fork_sym_match()
+static void _linux_kernel_fork_sym_match()
 {
     // kfunc_match(pidfd_pid, name, addr);
     // kfunc_match(get_mm_exe_file, name, addr);
@@ -246,164 +234,15 @@ void _linux_kernel_pid_sym_match()
 // kernel/stop_machine.c
 #include <linux/stop_machine.h>
 
+bool kvar_def(stop_machine_initialized) = 0;
+const struct cpumask *kvar_def(cpu_online_mask) = 0;
 int kfunc_def(stop_machine)(int (*fn)(void *), void *data, const struct cpumask *cpus) = 0;
 
-void _linux_kernel_stop_machine_sym_match()
+static void _linux_kernel_stop_machine_sym_match()
 {
+    kvar_match(stop_machine_initialized, name, addr);
+    kvar_match(cpu_online_mask, name, addr);
     kfunc_match(stop_machine, name, addr);
-}
-
-// lib/argv_split.c
-
-void kfunc_def(argv_free)(char **argv) = 0;
-char **kfunc_def(argv_split)(gfp_t gfp, const char *str, int *argcp) = 0;
-
-void _linux_lib_argv_split_sym_match()
-{
-    // kfunc_match(argv_free, name, addr);
-    // kfunc_match(argv_split, name, addr);
-}
-
-// lib/kstrtox.c
-int kfunc_def(kstrtoull)(const char *s, unsigned int base, unsigned long long *res) = 0;
-int kfunc_def(kstrtoll)(const char *s, unsigned int base, long long *res) = 0;
-int kfunc_def(kstrtouint)(const char *s, unsigned int base, unsigned int *res) = 0;
-int kfunc_def(kstrtoint)(const char *s, unsigned int base, int *res) = 0;
-int kfunc_def(kstrtou16)(const char *s, unsigned int base, u16 *res) = 0;
-int kfunc_def(kstrtos16)(const char *s, unsigned int base, s16 *res) = 0;
-int kfunc_def(kstrtou8)(const char *s, unsigned int base, u8 *res) = 0;
-int kfunc_def(kstrtos8)(const char *s, unsigned int base, s8 *res) = 0;
-int kfunc_def(kstrtobool)(const char *s, bool *res) = 0;
-int kfunc_def(kstrtobool_from_user)(const char __user *s, size_t count, bool *res) = 0;
-
-void _linxu_lib_kstrtox_sym_match()
-{
-    // kfunc_match(kstrtoull, name, addr);
-    // kfunc_match(kstrtoll, name, addr);
-    // kfunc_match(kstrtouint, name, addr);
-    // kfunc_match(kstrtoint, name, addr);
-    // kfunc_match(kstrtou16, name, addr);
-    // kfunc_match(kstrtos16, name, addr);
-    // kfunc_match(kstrtou8, name, addr);
-    // kfunc_match(kstrtos8, name, addr);
-    // kfunc_match(kstrtobool, name, addr);
-    // kfunc_match(kstrtobool_from_user, name, addr);
-}
-
-// lib/string.c
-#include <linux/string.h>
-
-int kfunc_def(strncasecmp)(const char *s1, const char *s2, size_t len) = 0;
-int kfunc_def(strcasecmp)(const char *s1, const char *s2) = 0;
-char *kfunc_def(strcpy)(char *dest, const char *src) = 0;
-char *kfunc_def(strncpy)(char *dest, const char *src, size_t count) = 0;
-size_t kfunc_def(strlcpy)(char *dest, const char *src, size_t size) = 0;
-ssize_t kfunc_def(strscpy)(char *dest, const char *src, size_t count) = 0;
-ssize_t kfunc_def(strscpy_pad)(char *dest, const char *src, size_t count) = 0;
-char *kfunc_def(stpcpy)(char *__restrict__ dest, const char *__restrict__ src) = 0;
-char *kfunc_def(strcat)(char *dest, const char *src) = 0;
-char *kfunc_def(strncat)(char *dest, const char *src, size_t count) = 0;
-size_t kfunc_def(strlcat)(char *dest, const char *src, size_t count) = 0;
-int kfunc_def(strcmp)(const char *cs, const char *ct) = 0;
-int kfunc_def(strncmp)(const char *cs, const char *ct, size_t count) = 0;
-char *kfunc_def(strchr)(const char *s, int c) = 0;
-char *kfunc_def(strchrnul)(const char *s, int c) = 0;
-char *kfunc_def(strnchrnul)(const char *s, size_t count, int c) = 0;
-char *kfunc_def(strrchr)(const char *s, int c) = 0;
-char *kfunc_def(strnchr)(const char *s, size_t count, int c) = 0;
-char *kfunc_def(skip_spaces)(const char *str) = 0;
-char *kfunc_def(strim)(char *s) = 0;
-size_t kfunc_def(strlen)(const char *s) = 0;
-size_t kfunc_def(strnlen)(const char *s, size_t count) = 0;
-size_t kfunc_def(strspn)(const char *s, const char *accept) = 0;
-size_t kfunc_def(strcspn)(const char *s, const char *reject) = 0;
-char *kfunc_def(strpbrk)(const char *cs, const char *ct) = 0;
-char *kfunc_def(strsep)(char **s, const char *ct) = 0;
-bool kfunc_def(sysfs_streq)(const char *s1, const char *s2) = 0;
-int kfunc_def(match_string)(const char *const *array, size_t n, const char *string) = 0;
-int kfunc_def(__sysfs_match_string)(const char *const *array, size_t n, const char *str) = 0;
-void *kfunc_def(memset)(void *s, int c, size_t count) = 0;
-void *kfunc_def(memset16)(uint16_t *s, uint16_t v, size_t count) = 0;
-void *kfunc_def(memset32)(uint32_t *s, uint32_t v, size_t count) = 0;
-void *kfunc_def(memset64)(uint64_t *s, uint64_t v, size_t count) = 0;
-void *kfunc_def(memcpy)(void *dest, const void *src, size_t count) = 0;
-void *kfunc_def(memmove)(void *dest, const void *src, size_t count) = 0;
-int kfunc_def(memcmp)(const void *cs, const void *ct, size_t count) = 0;
-int kfunc_def(bcmp)(const void *a, const void *b, size_t len) = 0;
-void *kfunc_def(memscan)(void *addr, int c, size_t size) = 0;
-char *kfunc_def(strstr)(const char *s1, const char *s2) = 0;
-char *kfunc_def(strnstr)(const char *s1, const char *s2, size_t len) = 0;
-void *kfunc_def(memchr)(const void *s, int c, size_t n) = 0;
-void *kfunc_def(memchr_inv)(const void *start, int c, size_t bytes) = 0;
-char *kfunc_def(strreplace)(char *s, char old, char new) = 0;
-void kfunc_def(fortify_panic)(const char *name) = 0;
-
-void _linux_lib_string_sym_match()
-{
-    kfunc_match(strncasecmp, name, addr);
-    kfunc_match(strcasecmp, name, addr);
-    kfunc_match(strcpy, name, addr);
-    kfunc_match(strncpy, name, addr);
-    // kfunc_match(strlcpy, name, addr);
-    // kfunc_match(strscpy, name, addr);
-    // kfunc_match(strscpy_pad, name, addr);
-    kfunc_match(stpcpy, name, addr);
-    kfunc_match(strcat, name, addr);
-    kfunc_match(strncat, name, addr);
-    kfunc_match(strlcat, name, addr);
-    kfunc_match(strcmp, name, addr);
-    kfunc_match(strncmp, name, addr);
-    // kfunc_match(strchr, name, addr);
-    // kfunc_match(strchrnul, name, addr);
-    // kfunc_match(strnchrnul, name, addr);
-    // kfunc_match(strrchr, name, addr);
-    // kfunc_match(strnchr, name, addr);
-    // kfunc_match(skip_spaces, name, addr);
-    // kfunc_match(strim, name, addr);
-    kfunc_match(strlen, name, addr);
-    kfunc_match(strnlen, name, addr);
-    // kfunc_match(strspn, name, addr);
-    // kfunc_match(strcspn, name, addr);
-    // kfunc_match(strpbrk, name, addr);
-    // kfunc_match(strsep, name, addr);
-    // kfunc_match(sysfs_streq, name, addr);
-    // kfunc_match(match_string, name, addr);
-    // kfunc_match(__sysfs_match_string, name, addr);
-    kfunc_match(memset, name, addr);
-    // kfunc_match(memset16, name, addr);
-    // kfunc_match(memset32, name, addr);
-    // kfunc_match(memset64, name, addr);
-    kfunc_match(memcpy, name, addr);
-    kfunc_match(memmove, name, addr);
-    kfunc_match(memcmp, name, addr);
-    // kfunc_match(bcmp, name, addr);
-    // kfunc_match(memscan, name, addr);
-    // kfunc_match(strstr, name, addr);
-    // kfunc_match(strnstr, name, addr);
-    // kfunc_match(memchr, name, addr);
-    // kfunc_match(memchr_inv, name, addr);
-    // kfunc_match(strreplace, name, addr);
-    // kfunc_match(fortify_panic, name, addr);
-}
-
-// lib/strncpy_from_user.c
-#include <linux/uaccess.h>
-
-long kfunc_def(strncpy_from_user)(char *dst, const char __user *src, long count) = 0;
-
-void _linux_lib_strncpy_from_user_sym_match()
-{
-    kfunc_match(strncpy_from_user, name, addr);
-}
-
-// lib/strnlen_user.c
-#include <linux/uaccess.h>
-
-long kfunc_def(strnlen_user)(const char __user *str, long count) = 0;
-
-void _linxu_lib_strnlen_user_sym_match()
-{
-    kfunc_match(strnlen_user, name, addr);
 }
 
 // mm/util.c
@@ -434,11 +273,15 @@ int kfunc_def(__page_mapcount)(struct page *page) = 0;
 unsigned long kfunc_def(vm_memory_committed)(void) = 0;
 int kfunc_def(get_cmdline)(struct task_struct *task, char *buffer, int buflen) = 0; // not exported
 
-void _linux_mm_utils_sym_match()
+void *kfunc_def(__kmalloc)(size_t size, gfp_t flags) = 0;
+void *kfunc_def(kmalloc)(size_t size, gfp_t flags) = 0;
+void kfunc_def(kfree)(const void *) = 0;
+
+static void _linux_mm_utils_sym_match()
 {
-    // kfunc_match(kfree_const, name, addr);
+    kfunc_match(kfree_const, name, addr);
     kfunc_match(kstrdup, name, addr);
-    // kfunc_match(kstrdup_const, name, addr);
+    kfunc_match(kstrdup_const, name, addr);
     kfunc_match(kstrndup, name, addr);
     kfunc_match(kmemdup, name, addr);
     kfunc_match(kmemdup_nul, name, addr);
@@ -456,16 +299,10 @@ void _linux_mm_utils_sym_match()
     // kfunc_match(__page_mapcount, name, addr);
     // kfunc_match(vm_memory_committed, name, addr);
     // kfunc_match(get_cmdline, name, addr);
-}
 
-// lib/dump_stack.c
-void kfunc_def(dump_stack_lvl)(const char *log_lvl) = 0;
-void kfunc_def(dump_stack)(void) = 0;
-
-void _linux_lib_dump_stack_sym_match()
-{
-    kfunc_match(dump_stack_lvl, name, addr);
-    kfunc_match(dump_stack, name, addr);
+    kfunc_match(__kmalloc, name, addr);
+    kfunc_match(kmalloc, name, addr);
+    kfunc_match(kfree, name, addr);
 }
 
 // mm/vmalloc.c
@@ -516,7 +353,7 @@ void kfunc_def(unmap_kernel_range)(unsigned long addr, unsigned long size) = 0;
 long kfunc_def(vread)(char *buf, char *addr, unsigned long count) = 0;
 long kfunc_def(vwrite)(char *buf, char *addr, unsigned long count) = 0;
 
-void _linux_mm_vmalloc_sym_match()
+static void _linux_mm_vmalloc_sym_match()
 {
     // kfunc_match(vm_unmap_ram, name, addr);
     // kfunc_match(vm_map_ram, name, addr);
@@ -530,7 +367,7 @@ void _linux_mm_vmalloc_sym_match()
     // kfunc_match(vmalloc_32, name, addr);
     // kfunc_match(vmalloc_32_user, name, addr);
     kfunc_match(__vmalloc, name, addr);
-    // kfunc_match(__vmalloc_node_range, name, addr);
+    kfunc_match(__vmalloc_node_range, name, addr);
     // kfunc_match(__vmalloc_node, name, addr);
 
     kfunc_match(vfree, name, addr);
@@ -558,50 +395,6 @@ void _linux_mm_vmalloc_sym_match()
     // kfunc_match(vwrite, name, addr);
 }
 
-// lib/seq_buf.c,
-
-#include <linux/seq_buf.h>
-#include <linux/trace_seq.h>
-
-int kfunc_def(seq_buf_printf)(struct seq_buf *s, const char *fmt, ...) = 0;
-int kfunc_def(seq_buf_to_user)(struct seq_buf *s, char __user *ubuf, int cnt) = 0;
-int kfunc_def(seq_buf_puts)(struct seq_buf *s, const char *str) = 0;
-int kfunc_def(seq_buf_putc)(struct seq_buf *s, unsigned char c) = 0;
-int kfunc_def(seq_buf_putmem)(struct seq_buf *s, const void *mem, unsigned int len) = 0;
-int kfunc_def(seq_buf_putmem_hex)(struct seq_buf *s, const void *mem, unsigned int len) = 0;
-int kfunc_def(seq_buf_bitmask)(struct seq_buf *s, const unsigned long *maskp, int nmaskbits) = 0;
-
-int kfunc_def(trace_seq_printf)(struct trace_seq *s, const char *fmt, ...) = 0;
-int kfunc_def(trace_seq_to_user)(struct trace_seq *s, char __user *ubuf, int cnt) = 0;
-int kfunc_def(trace_seq_puts)(struct trace_seq *s, const char *str) = 0;
-int kfunc_def(trace_seq_putc)(struct trace_seq *s, unsigned char c) = 0;
-int kfunc_def(trace_seq_putmem)(struct trace_seq *s, const void *mem, unsigned int len) = 0;
-int kfunc_def(trace_seq_putmem_hex)(struct trace_seq *s, const void *mem, unsigned int len) = 0;
-int kfunc_def(trace_seq_bitmask)(struct trace_seq *s, const unsigned long *maskp, int nmaskbits) = 0;
-
-void _linux_lib_seq_buf_sym_match()
-{
-    kfunc_match(seq_buf_to_user, name, addr);
-    if (kfunc(seq_buf_to_user)) {
-        kfunc_match(seq_buf_printf, name, addr);
-        // kfunc_match(seq_buf_to_user, name, addr);
-        kfunc_match(seq_buf_puts, name, addr);
-        // kfunc_match(seq_buf_putc, name, addr);
-        kfunc_match(seq_buf_putmem, name, addr);
-        // kfunc_match(seq_buf_putmem_hex, name, addr);
-        // kfunc_match(seq_buf_bitmask, name, addr);
-    } else {
-        kfunc_match(trace_seq_printf, name, addr);
-        kfunc_match(trace_seq_to_user, name, addr);
-        kfunc_match(trace_seq_puts, name, addr);
-        // kfunc_match(trace_seq_putc, name, addr);
-        kfunc_match(trace_seq_putmem, name, addr);
-        // kfunc_match(trace_seq_putmem_hex, name, addr);
-        // kfunc_match(trace_seq_bitmask, name, addr);
-    }
-}
-
-//
 #include <linux/fs.h>
 
 void kfunc_def(inc_nlink)(struct inode *inode) = 0;
@@ -609,8 +402,8 @@ void kfunc_def(drop_nlink)(struct inode *inode) = 0;
 void kfunc_def(clear_nlink)(struct inode *inode) = 0;
 void kfunc_def(set_nlink)(struct inode *inode, unsigned int nlink) = 0;
 
-int kfunc_def(kernel_read)(struct file *, loff_t, char *, unsigned long) = 0;
-ssize_t kfunc_def(kernel_write)(struct file *, const char *, size_t, loff_t) = 0;
+ssize_t kfunc_def(kernel_read)(struct file *file, void *buf, size_t count, loff_t *pos) = 0;
+ssize_t kfunc_def(kernel_write)(struct file *file, const void *buf, size_t count, loff_t *pos) = 0;
 struct file *kfunc_def(open_exec)(const char *) = 0;
 
 struct file *kfunc_def(file_open_name)(struct filename *, int, umode_t) = 0;
@@ -622,7 +415,9 @@ int kfunc_def(filp_close)(struct file *, fl_owner_t id) = 0;
 struct filename *kfunc_def(getname)(const char __user *) = 0;
 struct filename *kfunc_def(getname_kernel)(const char *) = 0;
 
-void _linux_fs_sym_match()
+loff_t kfunc_def(vfs_llseek)(struct file *file, loff_t offset, int whence) = 0;
+
+static void _linux_fs_sym_match()
 {
     // kfunc_match(inc_nlink, name, addr);
     // kfunc_match(drop_nlink, name, addr);
@@ -638,4 +433,253 @@ void _linux_fs_sym_match()
     kfunc_match(filp_close, name, addr);
     // kfunc_match(getname, name, addr);
     // kfunc_match(getname_kernel, name, addr);
+    kfunc_match(vfs_llseek, name, addr);
+}
+
+#include <linux/stacktrace.h>
+
+void kfunc_def(save_stack_trace)(struct stack_trace *trace) = 0;
+void kfunc_def(save_stack_trace_regs)(struct pt_regs *regs, struct stack_trace *trace) = 0;
+void kfunc_def(save_stack_trace_tsk)(struct task_struct *tsk, struct stack_trace *trace) = 0;
+void kfunc_def(print_stack_trace)(struct stack_trace *trace, int spaces) = 0;
+void kfunc_def(save_stack_trace_user)(struct stack_trace *trace) = 0;
+
+static void _linux_stacktrace_sym_match()
+{
+    // kfunc_match(save_stack_trace, name, addr);
+    // kfunc_match(save_stack_trace_regs, name, addr);
+    kfunc_match(save_stack_trace_tsk, name, addr);
+    // kfunc_match(print_stack_trace, name, addr);
+    // kfunc_match(save_stack_trace_user, name, addr);
+}
+
+#include <security/selinux/include/avc.h>
+
+int kfunc_def(avc_denied)(u32 ssid, u32 tsid, u16 tclass, u32 requested, u8 driver, u8 xperm, unsigned int flags,
+                          struct av_decision *avd) = 0;
+int kfunc_def(avc_has_perm_noaudit)(u32 ssid, u32 tsid, u16 tclass, u32 requested, unsigned flags,
+                                    struct av_decision *avd) = 0;
+int kfunc_def(avc_has_perm)(u32 ssid, u32 tsid, u16 tclass, u32 requested, struct common_audit_data *auditdata) = 0;
+int kfunc_def(avc_has_perm_flags)(u32 ssid, u32 tsid, u16 tclass, u32 requested, struct common_audit_data *auditdata,
+                                  int flags) = 0;
+int kfunc_def(avc_has_extended_perms)(u32 ssid, u32 tsid, u16 tclass, u32 requested, u8 driver, u8 perm,
+                                      struct common_audit_data *ad) = 0;
+
+static void _linux_security_selinux_avc_sym_match()
+{
+    kfunc_match(avc_denied, name, addr);
+    kfunc_match(avc_has_perm_noaudit, name, addr);
+    kfunc_match(avc_has_perm, name, addr);
+    kfunc_match(avc_has_perm_flags, name, addr);
+    kfunc_match(avc_has_extended_perms, name, addr);
+}
+
+#include <security/selinux/include/security.h>
+#include <security/selinux/include/classmap.h>
+
+int kvar_def(selinux_enabled_boot) = 0;
+int kvar_def(selinux_enabled) = 0;
+struct selinux_state kvar_def(selinux_state) = 0;
+struct security_class_mapping kvar_def(secclass_map)[] = 0;
+
+int kfunc_def(security_mls_enabled)(void) = 0;
+int kfunc_def(security_load_policy)(void *data, size_t len, struct selinux_load_state *load_state) = 0;
+void kfunc_def(selinux_policy_commit)(struct selinux_load_state *load_state) = 0;
+void kfunc_def(selinux_policy_cancel)(struct selinux_load_state *load_state) = 0;
+int kfunc_def(security_read_policy)(void **data, size_t *len) = 0;
+int kfunc_def(security_read_state_kernel)(void **data, size_t *len) = 0;
+int kfunc_def(security_policycap_supported)(unsigned int req_cap) = 0;
+void kfunc_def(security_compute_av)(u32 ssid, u32 tsid, u16 tclass, struct av_decision *avd,
+                                    struct extended_perms *xperms) = 0;
+void kfunc_def(security_compute_xperms_decision)(u32 ssid, u32 tsid, u16 tclass, u8 driver,
+                                                 struct extended_perms_decision *xpermd) = 0;
+void kfunc_def(security_compute_av_user)(u32 ssid, u32 tsid, u16 tclass, struct av_decision *avd) = 0;
+int kfunc_def(security_transition_sid)(u32 ssid, u32 tsid, u16 tclass, const struct qstr *qstr, u32 *out_sid) = 0;
+int kfunc_def(security_transition_sid_user)(u32 ssid, u32 tsid, u16 tclass, const char *objname, u32 *out_sid) = 0;
+int kfunc_def(security_member_sid)(u32 ssid, u32 tsid, u16 tclass, u32 *out_sid) = 0;
+int kfunc_def(security_change_sid)(u32 ssid, u32 tsid, u16 tclass, u32 *out_sid) = 0;
+int kfunc_def(security_sid_to_context)(u32 sid, char **scontext, u32 *scontext_len) = 0;
+int kfunc_def(security_sid_to_context_force)(u32 sid, char **scontext, u32 *scontext_len) = 0;
+int kfunc_def(security_sid_to_context_inval)(u32 sid, char **scontext, u32 *scontext_len) = 0;
+int kfunc_def(security_context_to_sid)(const char *scontext, u32 scontext_len, u32 *out_sid, gfp_t gfp) = 0;
+int kfunc_def(security_context_str_to_sid)(const char *scontext, u32 *out_sid, gfp_t gfp) = 0;
+int kfunc_def(security_context_to_sid_default)(const char *scontext, u32 scontext_len, u32 *out_sid, u32 def_sid,
+                                               gfp_t gfp_flags) = 0;
+int kfunc_def(security_context_to_sid_force)(const char *scontext, u32 scontext_len, u32 *sid) = 0;
+int kfunc_def(security_get_user_sids)(u32 callsid, char *username, u32 **sids, u32 *nel) = 0;
+int kfunc_def(security_port_sid)(u8 protocol, u16 port, u32 *out_sid) = 0;
+int kfunc_def(security_ib_pkey_sid)(u64 subnet_prefix, u16 pkey_num, u32 *out_sid) = 0;
+int kfunc_def(security_ib_endport_sid)(const char *dev_name, u8 port_num, u32 *out_sid) = 0;
+int kfunc_def(security_netif_sid)(char *name, u32 *if_sid) = 0;
+int kfunc_def(security_node_sid)(u16 domain, void *addr, u32 addrlen, u32 *out_sid) = 0;
+int kfunc_def(security_validate_transition)(u32 oldsid, u32 newsid, u32 tasksid, u16 tclass) = 0;
+int kfunc_def(security_validate_transition_user)(u32 oldsid, u32 newsid, u32 tasksid, u16 tclass) = 0;
+int kfunc_def(security_bounded_transition)(u32 oldsid, u32 newsid) = 0;
+int kfunc_def(security_sid_mls_copy)(u32 sid, u32 mls_sid, u32 *new_sid) = 0;
+int kfunc_def(security_net_peersid_resolve)(u32 nlbl_sid, u32 nlbl_type, u32 xfrm_sid, u32 *peer_sid) = 0;
+int kfunc_def(security_get_classes)(struct selinux_policy *policy, char ***classes, int *nclasses) = 0;
+int kfunc_def(security_get_permissions)(struct selinux_policy *policy, char *class, char ***perms, int *nperms) = 0;
+int kfunc_def(security_get_reject_unknown)(void) = 0;
+int kfunc_def(security_get_allow_unknown)(void) = 0;
+
+int kfunc_def(security_fs_use)(struct super_block *sb) = 0;
+int kfunc_def(security_genfs_sid)(const char *fstype, const char *path, u16 sclass, u32 *sid) = 0;
+int kfunc_def(selinux_policy_genfs_sid)(struct selinux_policy *policy, const char *fstype, const char *path, u16 sclass,
+                                        u32 *sid) = 0;
+int kfunc_def(security_netlbl_secattr_to_sid)(struct netlbl_lsm_secattr *secattr, u32 *sid) = 0;
+int kfunc_def(security_netlbl_sid_to_secattr)(u32 sid, struct netlbl_lsm_secattr *secattr) = 0;
+const char *kfunc_def(security_get_initial_sid_context)(u32 sid) = 0;
+
+void kfunc_def(selinux_status_update_setenforce)(int enforcing) = 0;
+void kfunc_def(selinux_status_update_policyload)(int seqno) = 0;
+void kfunc_def(selinux_complete_init)(void) = 0;
+void kfunc_def(exit_sel_fs)(void) = 0;
+void kfunc_def(selnl_notify_setenforce)(int val) = 0;
+void kfunc_def(selnl_notify_policyload)(u32 seqno) = 0;
+int kfunc_def(selinux_nlmsg_lookup)(u16 sclass, u16 nlmsg_type, u32 *perm) = 0;
+
+void kfunc_def(avtab_cache_init)(void) = 0;
+void kfunc_def(ebitmap_cache_init)(void) = 0;
+void kfunc_def(hashtab_cache_init)(void) = 0;
+int kfunc_def(security_sidtab_hash_stats)(char *page) = 0;
+
+static void _linux_security_selinux_sym_match()
+{
+    // kvar_match(selinux_enabled_boot, name, addr);
+    kvar_match(selinux_enabled, name, addr);
+    kvar_match(selinux_state, name, addr);
+    // kvar_match(secclass_map, name, addr);
+    // kfunc_match(security_mls_enabled, name, addr);
+    // kfunc_match(security_load_policy, name, addr);
+    // kfunc_match(selinux_policy_commit, name, addr);
+    // kfunc_match(selinux_policy_cancel, name, addr);
+    // kfunc_match(security_read_policy, name, addr);
+    // kfunc_match(security_read_state_kernel, name, addr);
+    // kfunc_match(security_policycap_supported, name, addr);
+    kfunc_match(security_compute_av, name, addr);
+    kfunc_match(security_compute_xperms_decision, name, addr);
+    kfunc_match(security_compute_av_user, name, addr);
+    // kfunc_match(security_transition_sid, name, addr);
+    // kfunc_match(security_transition_sid_user, name, addr);
+    // kfunc_match(security_member_sid, name, addr);
+    // kfunc_match(security_change_sid, name, addr);
+    // kfunc_match(security_sid_to_context, name, addr);
+    // kfunc_match(security_sid_to_context_force, name, addr);
+    // kfunc_match(security_sid_to_context_inval, name, addr);
+    // kfunc_match(security_context_to_sid, name, addr);
+    // kfunc_match(security_context_str_to_sid, name, addr);
+    // kfunc_match(security_context_to_sid_default, name, addr);
+    // kfunc_match(security_context_to_sid_force, name, addr);
+    // kfunc_match(security_get_user_sids, name, addr);
+    // kfunc_match(security_port_sid, name, addr);
+    // kfunc_match(security_ib_pkey_sid, name, addr);
+    // kfunc_match(security_ib_endport_sid, name, addr);
+    // kfunc_match(security_netif_sid, name, addr);
+    // kfunc_match(security_node_sid, name, addr);
+    // kfunc_match(security_validate_transition, name, addr);
+    // kfunc_match(security_validate_transition_user, name, addr);
+    // kfunc_match(security_bounded_transition, name, addr);
+    // kfunc_match(security_sid_mls_copy, name, addr);
+    // kfunc_match(security_net_peersid_resolve, name, addr);
+    // kfunc_match(security_get_classes, name, addr);
+    // kfunc_match(security_get_permissions, name, addr);
+    // kfunc_match(security_get_reject_unknown, name, addr);
+    // kfunc_match(security_get_allow_unknown, name, addr);
+
+    // kfunc_match(security_fs_use, name, addr);
+    // kfunc_match(security_genfs_sid, name, addr);
+    // kfunc_match(selinux_policy_genfs_sid, name, addr);
+    // kfunc_match(security_netlbl_secattr_to_sid, name, addr);
+    // kfunc_match(security_netlbl_sid_to_secattr, name, addr);
+    // kfunc_match(security_get_initial_sid_context, name, addr);
+
+    // kfunc_match(selinux_status_update_setenforce, name, addr);
+    // kfunc_match(selinux_status_update_policyload, name, addr);
+    // kfunc_match(selinux_complete_init, name, addr);
+    // kfunc_match(exit_sel_fs, name, addr);
+    // kfunc_match(selnl_notify_setenforce, name, addr);
+    // kfunc_match(selnl_notify_policyload, name, addr);
+    // kfunc_match(selinux_nlmsg_lookup, name, addr);
+
+    // kfunc_match(avtab_cache_init, name, addr);
+    // kfunc_match(ebitmap_cache_init, name, addr);
+    // kfunc_match(hashtab_cache_init, name, addr);
+    // kfunc_match(security_sidtab_hash_stats, name, addr);
+}
+
+#include <linux/security.h>
+
+int kfunc_def(cap_capable)(const struct cred *cred, struct user_namespace *ns, int cap, unsigned int opts) = 0;
+int kfunc_def(cap_settime)(const struct timespec64 *ts, const struct timezone *tz) = 0;
+int kfunc_def(cap_ptrace_access_check)(struct task_struct *child, unsigned int mode) = 0;
+int kfunc_def(cap_ptrace_traceme)(struct task_struct *parent) = 0;
+int kfunc_def(cap_capget)(struct task_struct *target, kernel_cap_t *effective, kernel_cap_t *inheritable,
+                          kernel_cap_t *permitted) = 0;
+int kfunc_def(cap_capset)(struct cred *new, const struct cred *old, const kernel_cap_t *effective,
+                          const kernel_cap_t *inheritable, const kernel_cap_t *permitted) = 0;
+int kfunc_def(cap_bprm_creds_from_file)(struct linux_binprm *bprm, struct file *file) = 0;
+int kfunc_def(cap_inode_setxattr)(struct dentry *dentry, const char *name, const void *value, size_t size,
+                                  int flags) = 0;
+int kfunc_def(cap_inode_removexattr)(struct dentry *dentry, const char *name) = 0;
+int kfunc_def(cap_inode_need_killpriv)(struct dentry *dentry) = 0;
+int kfunc_def(cap_inode_killpriv)(struct dentry *dentry) = 0;
+int kfunc_def(cap_inode_getsecurity)(struct inode *inode, const char *name, void **buffer, bool alloc) = 0;
+int kfunc_def(cap_mmap_addr)(unsigned long addr) = 0;
+int kfunc_def(cap_mmap_file)(struct file *file, unsigned long reqprot, unsigned long prot, unsigned long flags) = 0;
+int kfunc_def(cap_task_fix_setuid)(struct cred *new, const struct cred *old, int flags) = 0;
+int kfunc_def(cap_task_prctl)(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4,
+                              unsigned long arg5) = 0;
+int kfunc_def(cap_task_setscheduler)(struct task_struct *p) = 0;
+int kfunc_def(cap_task_setioprio)(struct task_struct *p, int ioprio) = 0;
+int kfunc_def(cap_task_setnice)(struct task_struct *p, int nice) = 0;
+int kfunc_def(cap_vm_enough_memory)(struct mm_struct *mm, long pages) = 0;
+
+kernel_cap_t full_cap = { 0 };
+
+static void _linux_security_commoncap_sym_match()
+{
+    kfunc_match(cap_capable, name, addr);
+    // kfunc_match(cap_settime, name, addr);
+    // kfunc_match(cap_ptrace_access_check, name, addr);
+    // kfunc_match(cap_ptrace_traceme, name, addr);
+    kfunc_match(cap_capget, name, addr);
+    kfunc_match(cap_capset, name, addr);
+    // kfunc_match(cap_bprm_creds_from_file, name, addr);
+    // kfunc_match(cap_inode_setxattr, name, addr);
+    // kfunc_match(cap_inode_removexattr, name, addr);
+    // kfunc_match(cap_inode_need_killpriv, name, addr);
+    // kfunc_match(cap_inode_killpriv, name, addr);
+    // kfunc_match(cap_inode_getsecurity, name, addr);
+    // kfunc_match(cap_mmap_addr, name, addr);
+    // kfunc_match(cap_mmap_file, name, addr);
+    // kfunc_match(cap_task_fix_setuid, name, addr);
+    kfunc_match(cap_task_prctl, name, addr);
+    // kfunc_match(cap_task_setscheduler, name, addr);
+    // kfunc_match(cap_task_setioprio, name, addr);
+    // kfunc_match(cap_task_setnice, name, addr);
+    // kfunc_match(cap_vm_enough_memory, name, addr);
+}
+
+void kfunc_def(panic)(const char *fmt, ...) __noreturn __cold = 0;
+
+static void _linux_include_linux_panic_sym_match()
+{
+    kfunc_match(panic, name, addr);
+}
+
+int linux_misc_symbol_init()
+{
+    _linux_kernel_cred_sym_match();
+    _linux_kernel_pid_sym_match();
+    _linux_kernel_stop_machine_sym_match();
+    _linux_mm_utils_sym_match();
+    _linux_mm_vmalloc_sym_match();
+    _linux_fs_sym_match();
+    _linux_stacktrace_sym_match();
+    _linux_security_selinux_sym_match();
+    _linux_security_commoncap_sym_match();
+    _linux_include_linux_panic_sym_match();
+    _linux_security_selinux_avc_sym_match();
+    _linux_kernel_fork_sym_match();
+    return 0;
 }

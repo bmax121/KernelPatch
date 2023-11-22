@@ -51,4 +51,35 @@
 #define __used __attribute__((__unused__))
 #define __maybe_unused __attribute__((unused))
 
+// #define static_assert _Static_assert
+
+#define __compiler_offsetof(a, b) __builtin_offsetof(a, b)
+
+#define __compiletime_object_size(obj) -1
+#define __compiletime_warning(message)
+#define __compiletime_error(message)
+
+#define __compiletime_error_fallback(condition)  \
+    do {                                         \
+        ((void)sizeof(char[1 - 2 * condition])); \
+    } while (0)
+
+#define __native_word(t) \
+    (sizeof(t) == sizeof(char) || sizeof(t) == sizeof(short) || sizeof(t) == sizeof(int) || sizeof(t) == sizeof(long))
+
+#define __compiletime_assert(condition, msg, prefix, suffix)       \
+    do {                                                           \
+        bool __cond = !(condition);                                \
+        extern void prefix##suffix(void) __compiletime_error(msg); \
+        if (__cond) prefix##suffix();                              \
+        __compiletime_error_fallback(__cond);                      \
+    } while (0)
+
+#define _compiletime_assert(condition, msg, prefix, suffix) __compiletime_assert(condition, msg, prefix, suffix)
+
+#define compiletime_assert(condition, msg) _compiletime_assert(condition, msg, __compiletime_assert_, __COUNTER__)
+
+#define compiletime_assert_atomic_type(t) \
+    compiletime_assert(__native_word(t), "Need native word sized stores/loads for atomicity.")
+
 #endif

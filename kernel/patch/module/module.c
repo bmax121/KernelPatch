@@ -1,0 +1,585 @@
+#include <uapi/asm-generic/errno.h>
+#include <pgtable.h>
+#include <kpmalloc.h>
+#include <linux/err.h>
+#include <linux/string.h>
+#include <symbol.h>
+#include <kallsyms.h>
+#include <cache.h>
+#include <common.h>
+#include <linux/fs.h>
+#include <uapi/linux/fs.h>
+#include <hotpatch.h>
+#include <linux/list.h>
+#include <linux/kernel.h>
+
+#include "module.h"
+#include "relo.h"
+
+#define SZ_128M 0x08000000
+
+#define ALIGN_MASK(x, mask) (((x) + (mask)) & ~(mask))
+#define ALIGN(x, a) ALIGN_MASK(x, (typeof(x))(a)-1)
+
+#define align(X) ALIGN(X, page_size)
+
+#define elf_check_arch(x) ((x)->e_machine == EM_AARCH64)
+
+#define ARCH_SHF_SMALL 0
+
+static inline bool strstarts(const char *str, const char *prefix)
+{
+    return strncmp(str, prefix, strlen(prefix)) == 0;
+}
+
+static char *next_string(char *string, unsigned long *secsize)
+{
+    while (string[0]) {
+        string++;
+        if ((*secsize)-- <= 1) return 0;
+    }
+    while (!string[0]) {
+        string++;
+        if ((*secsize)-- <= 1) return 0;
+    }
+    return string;
+}
+
+/* Update size with this section: return offset. */
+static long get_offset(struct module *mod, unsigned int *size, Elf_Shdr *sechdr, unsigned int section)
+{
+    long ret;
+    /* Additional bytes needed by arch in front of individual sections */
+    int arm64_mod_section_prepend = 0;
+    *size += arm64_mod_section_prepend;
+    ret = ALIGN(*size, sechdr->sh_addralign ?: 1);
+    ret = *size;
+    *size = ret + sechdr->sh_size;
+    return ret;
+}
+
+static char *get_next_modinfo(const struct load_info *info, const char *tag, char *prev)
+{
+    char *p;
+    unsigned int taglen = strlen(tag);
+    Elf_Shdr *infosec = &info->sechdrs[info->index.info];
+    unsigned long size = infosec->sh_size;
+    char *modinfo = (char *)info->hdr + infosec->sh_offset;
+    if (prev) {
+        size -= prev - modinfo;
+        modinfo = next_string(prev, &size);
+    }
+    for (p = modinfo; p; p = next_string(p, &size)) {
+        if (strncmp(p, tag, taglen) == 0 && p[taglen] == '=') return p + taglen + 1;
+    }
+    return 0;
+}
+
+static char *get_modinfo(const struct load_info *info, const char *tag)
+{
+    return get_next_modinfo(info, tag, 0);
+}
+
+static int find_sec(const struct load_info *info, const char *name)
+{
+    for (int i = 1; i < info->hdr->e_shnum; i++) {
+        Elf_Shdr *shdr = &info->sechdrs[i];
+        if ((shdr->sh_flags & SHF_ALLOC) && strcmp(info->secstrings + shdr->sh_name, name) == 0) return i;
+    }
+    return 0;
+}
+
+static void *get_sh_base(struct load_info *info, const char *secname)
+{
+    int idx = find_sec(info, secname);
+    if (!idx) return 0;
+    Elf_Shdr *infosec = &info->sechdrs[idx];
+    void *addr = (void *)info->hdr + infosec->sh_offset;
+    return addr;
+}
+
+static unsigned long get_sh_size(struct load_info *info, const char *secname)
+{
+    int idx = find_sec(info, secname);
+    if (!idx) return 0;
+    Elf_Shdr *infosec = &info->sechdrs[idx];
+    return infosec->sh_entsize;
+}
+
+static void layout_sections(struct module *mod, struct load_info *info)
+{
+    static unsigned long const masks[][2] = {
+        /* NOTE: all executable code must be the first section in this array; otherwise modify the text_size finder in the two loops below */
+        { SHF_EXECINSTR | SHF_ALLOC, ARCH_SHF_SMALL },
+        { SHF_ALLOC, SHF_WRITE | ARCH_SHF_SMALL },
+        { SHF_WRITE | SHF_ALLOC, ARCH_SHF_SMALL },
+        { ARCH_SHF_SMALL | SHF_ALLOC, 0 }
+    };
+
+    for (int i = 0; i < info->hdr->e_shnum; i++)
+        info->sechdrs[i].sh_entsize = ~0UL;
+
+    // todo: tslf alloc all rwx and not page aligned
+    for (int m = 0; m < sizeof(masks) / sizeof(masks[0]); ++m) {
+        for (int i = 0; i < info->hdr->e_shnum; ++i) {
+            Elf_Shdr *s = &info->sechdrs[i];
+            if ((s->sh_flags & masks[m][0]) != masks[m][0] || (s->sh_flags & masks[m][1]) || s->sh_entsize != ~0UL)
+                continue;
+            s->sh_entsize = get_offset(mod, &mod->size, s, i);
+            // const char *sname = info->secstrings + s->sh_name;
+        }
+        switch (m) {
+        case 0: /* executable */
+            mod->size = align(mod->size);
+            mod->text_size = mod->size;
+            break;
+        case 1: /* RO: text and ro-data */
+            mod->size = align(mod->size);
+            mod->ro_size = mod->size;
+            break;
+        case 2:
+            break;
+        case 3: /* whole */
+            mod->size = align(mod->size);
+            break;
+        }
+    }
+}
+
+static bool is_core_symbol(const Elf_Sym *src, const Elf_Shdr *sechdrs, unsigned int shnum)
+{
+    const Elf_Shdr *sec;
+    if (src->st_shndx == SHN_UNDEF || src->st_shndx >= shnum || !src->st_name) return false;
+    sec = sechdrs + src->st_shndx;
+    if (!(sec->sh_flags & SHF_ALLOC) || !(sec->sh_flags & SHF_EXECINSTR)) return false;
+    return true;
+}
+
+/* Change all symbols so that st_value encodes the pointer directly. */
+static int simplify_symbols(struct module *mod, const struct load_info *info)
+{
+    Elf_Shdr *symsec = &info->sechdrs[info->index.sym];
+    Elf_Sym *sym = (void *)symsec->sh_addr;
+    unsigned long secbase;
+    unsigned int i;
+    int ret = 0;
+
+    for (i = 1; i < symsec->sh_size / sizeof(Elf_Sym); i++) {
+        const char *name = info->strtab + sym[i].st_name;
+        switch (sym[i].st_shndx) {
+        case SHN_COMMON:
+            if (!strncmp(name, "__gnu_lto", 9)) {
+                logkd("Please compile with -fno-common\n");
+                ret = -ENOEXEC;
+            }
+            break;
+        case SHN_ABS:
+            break;
+        case SHN_UNDEF:
+            unsigned long addr = symbol_lookup_name(name);
+            // cause overflow in relocation
+            // if (!addr) addr = kallsyms_lookup_name(name);
+            if (!addr) {
+                logke("Unknown symbol: %s\n", name);
+                ret = -ENOENT;
+                break;
+            }
+            sym[i].st_value = addr;
+            break;
+        default:
+            secbase = info->sechdrs[sym[i].st_shndx].sh_addr;
+            sym[i].st_value += secbase;
+            break;
+        }
+    }
+    return ret;
+}
+
+static int apply_relocations(struct module *mod, const struct load_info *info)
+{
+    int err = 0;
+    unsigned int i;
+    for (i = 1; i < info->hdr->e_shnum; i++) {
+        unsigned int infosec = info->sechdrs[i].sh_info;
+        if (infosec >= info->hdr->e_shnum) continue;
+        if (!(info->sechdrs[infosec].sh_flags & SHF_ALLOC)) continue;
+        if (info->sechdrs[i].sh_type == SHT_REL) {
+            err = apply_relocate(info->sechdrs, info->strtab, info->index.sym, i, mod);
+        } else if (info->sechdrs[i].sh_type == SHT_RELA) {
+            err = apply_relocate_add(info->sechdrs, info->strtab, info->index.sym, i, mod);
+        }
+        if (err < 0) break;
+    }
+    return err;
+}
+
+// todo: free .strtab and .symtab after relocation
+static void layout_symtab(struct module *mod, struct load_info *info)
+{
+    Elf_Shdr *symsect = info->sechdrs + info->index.sym;
+    Elf_Shdr *strsect = info->sechdrs + info->index.str;
+    const Elf_Sym *src;
+    unsigned int i, nsrc, ndst, strtab_size = 0;
+
+    /* Put symbol section at end of module. */
+    symsect->sh_flags |= SHF_ALLOC;
+    symsect->sh_entsize = get_offset(mod, &mod->size, symsect, info->index.sym);
+
+    src = (void *)info->hdr + symsect->sh_offset;
+    nsrc = symsect->sh_size / sizeof(*src);
+
+    /* strtab always starts with a nul, so offset 0 is the empty string. */
+    strtab_size = 1;
+    /* Compute total space required for the core symbols' strtab. */
+    for (ndst = i = 0; i < nsrc; i++) {
+        if (i == 0 || is_core_symbol(src + i, info->sechdrs, info->hdr->e_shnum)) {
+            strtab_size += strlen(&info->strtab[src[i].st_name]) + 1;
+            ndst++;
+        }
+    }
+
+    /* Append room for core symbols at end. */
+    info->symoffs = ALIGN(mod->size, symsect->sh_addralign ?: 1);
+    info->stroffs = mod->size = info->symoffs + ndst * sizeof(Elf_Sym);
+    mod->size += strtab_size;
+
+    /* Put string table section at end of module. */
+    strsect->sh_flags |= SHF_ALLOC;
+    strsect->sh_entsize = get_offset(mod, &mod->size, strsect, info->index.str);
+}
+
+static int license_is_gpl_compatible(const char *license)
+{
+    return (strcmp(license, "GPL") == 0 || strcmp(license, "GPL v2") == 0 ||
+            strcmp(license, "GPL and additional rights") == 0 || strcmp(license, "Dual BSD/GPL") == 0 ||
+            strcmp(license, "Dual MIT/GPL") == 0 || strcmp(license, "Dual MPL/GPL") == 0);
+}
+
+static int rewrite_section_headers(struct load_info *info)
+{
+    info->sechdrs[0].sh_addr = 0;
+    for (int i = 1; i < info->hdr->e_shnum; i++) {
+        Elf_Shdr *shdr = &info->sechdrs[i];
+        if (shdr->sh_type != SHT_NOBITS && info->len < shdr->sh_offset + shdr->sh_size) {
+            return -ENOEXEC;
+        }
+        /* Mark all sections sh_addr with their address in the temporary image. */
+        shdr->sh_addr = (size_t)info->hdr + shdr->sh_offset;
+    }
+    return 0;
+}
+
+static int move_module(struct module *mod, struct load_info *info)
+{
+    // todo:
+    logki("alloc module size: %llx\n", mod->size);
+    mod->start = kp_malloc_exec(mod->size);
+    if (!mod->start) {
+        return -ENOMEM;
+    }
+    memset(mod->start, 0, mod->size);
+
+    /* Transfer each section which specifies SHF_ALLOC */
+    logkd("final section addresses:\n");
+
+    for (int i = 1; i < info->hdr->e_shnum; i++) {
+        void *dest;
+        Elf_Shdr *shdr = &info->sechdrs[i];
+        if (!(shdr->sh_flags & SHF_ALLOC)) continue;
+
+        dest = mod->start + shdr->sh_entsize;
+        const char *sname = info->secstrings + shdr->sh_name;
+
+        logkd("    %s %llx %llx\n", sname, dest, shdr->sh_size);
+
+        if (shdr->sh_type != SHT_NOBITS) {
+            memcpy(dest, (void *)shdr->sh_addr, shdr->sh_size);
+        }
+
+        shdr->sh_addr = (unsigned long)dest;
+
+        if (!mod->init && !strcmp(".kpm.init", sname)) {
+            mod->init = (initcall_t *)dest;
+        }
+        if (!mod->exit && !strcmp(".kpm.exit", sname)) {
+            mod->exit = (exitcall_t *)dest;
+        }
+        if (!mod->info.base && !strcmp(".kpm.info", sname)) {
+            mod->info.base = (const char *)dest;
+        }
+    }
+    mod->info.name = info->info.name - info->info.base + mod->info.base;
+    mod->info.version = info->info.version - info->info.base + mod->info.base;
+    mod->info.license = info->info.license - info->info.base + mod->info.base;
+    if (info->info.author) mod->info.author = info->info.author - info->info.base + mod->info.base;
+    if (info->info.description) mod->info.description = info->info.description - info->info.base + mod->info.base;
+
+    return 0;
+}
+
+static int setup_load_info(struct load_info *info)
+{
+    int err = 0;
+    info->sechdrs = (void *)info->hdr + info->hdr->e_shoff;
+    info->secstrings = (void *)info->hdr + info->sechdrs[info->hdr->e_shstrndx].sh_offset;
+
+    if ((err = rewrite_section_headers(info))) {
+        logke("rewrite section error\n");
+        return err;
+    }
+
+    if (!find_sec(info, ".kpm.init") || !find_sec(info, ".kpm.exit")) {
+        logke("no .kpm.init or .kpm.exit section\n");
+        return -ENOEXEC;
+    }
+
+    info->index.info = find_sec(info, ".kpm.info");
+    if (!info->index.info) {
+        logke("no .kpm.info section\n");
+        return -ENOEXEC;
+    }
+    info->info.base = get_sh_base(info, ".kpm.info");
+    info->info.size = get_sh_size(info, ".kpm.info");
+
+    const char *name = get_modinfo(info, "name");
+    if (!name) {
+        logke("module name not found\n");
+        return -ENOEXEC;
+    }
+    info->info.name = name;
+    logkd("loading module: \n");
+    logkd("    name: %s\n", name);
+
+    const char *version = get_modinfo(info, "version");
+    if (!version) {
+        logkd("module version not found\n");
+        return -ENOEXEC;
+    }
+    info->info.version = version;
+    logkd("    version: %s\n", version);
+
+    const char *license = get_modinfo(info, "license");
+    if (!license || !license_is_gpl_compatible(license)) {
+        logkd("module license incompatible\n");
+        return -ENOEXEC;
+    }
+    info->info.license = license;
+    logkd("    license: %s\n", license);
+
+    const char *author = get_modinfo(info, "author");
+    info->info.author = author;
+    logkd("    author: %s\n", author);
+    const char *description = get_modinfo(info, "description");
+    info->info.description = description;
+    logkd("    description: %s\n", description);
+
+    for (int i = 1; i < info->hdr->e_shnum; i++) {
+        if (info->sechdrs[i].sh_type == SHT_SYMTAB) {
+            info->index.sym = i;
+            info->index.str = info->sechdrs[i].sh_link;
+            info->strtab = (char *)info->hdr + info->sechdrs[info->index.str].sh_offset;
+            break;
+        }
+    }
+
+    if (info->index.sym == 0) {
+        logkd("module has no symbols (stripped?)\n");
+        return -ENOEXEC;
+    }
+    return 0;
+}
+
+static int elf_header_check(struct load_info *info)
+{
+    if (info->len <= sizeof(*(info->hdr))) return -ENOEXEC;
+    if (memcmp(info->hdr->e_ident, ELFMAG, SELFMAG) || info->hdr->e_type != ET_REL || !elf_check_arch(info->hdr) ||
+        info->hdr->e_shentsize != sizeof(Elf_Shdr))
+        return -ENOEXEC;
+    if (info->hdr->e_shoff >= info->len || (info->hdr->e_shnum * sizeof(Elf_Shdr) > info->len - info->hdr->e_shoff))
+        return -ENOEXEC;
+    return 0;
+}
+
+struct module modules = { 0 };
+
+int load_module(void *data, int len, const char *args)
+{
+    struct load_info load_info = { .len = len, .hdr = data };
+    struct load_info *info = &load_info;
+
+    int err = 0;
+    if ((err = elf_header_check(info))) {
+        goto out;
+    }
+    if ((err = setup_load_info(info))) {
+        goto out;
+    }
+
+    if (find_module(info->info.name)) {
+        logkd("module: %s exist\n", info->info.name);
+        err = -EEXIST;
+        goto out;
+    }
+
+    struct module *mod = (struct module *)kp_malloc(sizeof(struct module));
+    if (!mod) return -ENOMEM;
+    memset(mod, 0, sizeof(struct module));
+
+    if (args) {
+        mod->args = kp_malloc(strlen(args) + 1);
+        if (!mod->args) {
+            err = -ENOMEM;
+            goto free1;
+        }
+        strcpy(mod->args, args);
+    }
+
+    layout_sections(mod, info);
+    layout_symtab(mod, info);
+
+    if ((err = move_module(mod, info))) {
+        goto free;
+    }
+
+    if ((err = simplify_symbols(mod, info))) {
+        goto free;
+    }
+
+    if ((err = apply_relocations(mod, info))) {
+        goto free;
+    }
+
+    flush_icache_all();
+
+    err = (*mod->init)(mod->args);
+
+    if (!err) {
+        logki("module: [%s] init succeed\n", mod->info.name);
+        list_add_tail(&mod->list, &modules.list);
+        goto out;
+    } else {
+        logki("module: [%s] init failed: %d, try exit ...\n", mod->info.name, err);
+        (*mod->exit)();
+    }
+
+free:
+    if (mod->args) kp_free(mod->args);
+    kp_free_exec(mod->start);
+free1:
+    kp_free(mod);
+out:
+    return err;
+}
+
+int unload_module(const char *name)
+{
+    int err = 0;
+    struct module *mod = find_module(name);
+    if (!mod) {
+        err = -ENOENT;
+        goto out;
+    }
+    list_del(&mod->list);
+    (*mod->exit)();
+
+    if (mod->args) kp_free(mod->args);
+    kp_free_exec(mod->start);
+    kp_free(mod);
+out:
+    return err;
+}
+
+int load_module_path(const char *path, const char *args)
+{
+    long err = 0;
+    logkd("loading module with path: %s, args: %s\n", path, args);
+
+    struct file *filp = filp_open(path, O_RDONLY, 0);
+    if (unlikely(IS_ERR(filp))) {
+        logke("open module error\n");
+        err = PTR_ERR(filp);
+        goto out;
+    }
+    loff_t len = vfs_llseek(filp, 0, SEEK_END);
+    logkd("module size: %llx\n", len);
+    vfs_llseek(filp, 0, SEEK_SET);
+
+    void *data = kp_malloc(len);
+    if (!data) {
+        err = -ENOMEM;
+        goto out;
+    }
+    memset(data, 0, len);
+
+    loff_t pos = 0;
+    kernel_read(filp, data, len, &pos);
+    filp_close(filp, 0);
+
+    if (pos != len) {
+        logke("read module error\n");
+        err = -EIO;
+        goto free;
+    }
+
+    err = load_module(data, len, args);
+
+free:
+    kp_free(data);
+out:
+    return err;
+}
+
+struct module *find_module(const char *name)
+{
+    struct module *pos;
+    list_for_each_entry(pos, &modules.list, list)
+    {
+        if (!strcmp(name, pos->info.name)) {
+            return pos;
+        }
+    }
+    return 0;
+}
+
+int get_module_nums()
+{
+    struct module *pos;
+    int n = 0;
+    list_for_each_entry(pos, &modules.list, list)
+    {
+        n++;
+    }
+    return n;
+}
+
+int get_module_info(int index, char *info, int size)
+{
+    if (size <= 0) return 0;
+
+    struct module *pos = 0, *mod = 0;
+    int n = 0;
+    list_for_each_entry(pos, &modules.list, list)
+    {
+        if (n == index) {
+            mod = pos;
+            break;
+        }
+        n++;
+    }
+    if (!mod) return -ENOENT;
+
+    int sz = snprintf(info, size - 1,
+                      "name=%s\n"
+                      "version=%s\n"
+                      "license=%s\n"
+                      "author=%s\n"
+                      "description=%s\n",
+                      mod->info.name, mod->info.version, mod->info.license, mod->info.author, mod->info.description);
+    return sz;
+}
+
+int module_init()
+{
+    INIT_LIST_HEAD(&modules.list);
+    return 0;
+}

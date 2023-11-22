@@ -1,11 +1,7 @@
 #ifndef _KP_START_H_
 #define _KP_START_H_
 
-#include "preset.h"
-
-#define bits(n, high, low) (((n) << (63u - (high))) >> (63u - (high) + (low)))
-#define align_floor(x, align) ((uint64_t)(x) & ~((uint64_t)(align)-1))
-#define align_ceil(x, align) (((uint64_t)(x) + (uint64_t)(align)-1) & ~((uint64_t)(align)-1))
+#include <preset.h>
 
 #ifndef __ASSEMBLY__
 typedef struct
@@ -36,21 +32,6 @@ typedef struct
 #define start_superkey_offset (start_compile_time_offset + COMPILE_TIME_LEN)
 #define start_map_backup_offset (start_superkey_offset + SUPER_KEY_LEN)
 #define start_patch_config_offset (start_map_backup_offset + MAP_MAX_SIZE)
-#endif
-
-#ifndef __ASSEMBLY__
-
-extern start_preset_t start_preset;
-
-int predata_init();
-
-void _kp_start();
-void _kp_text_start();
-void _kp_text_end();
-void _kp_data_start();
-void _kp_data_end();
-void _kp_end();
-
 #endif
 
 #endif // _KP_START_H_

@@ -9,13 +9,28 @@
 typedef enum
 {
     HOOK_NO_ERR = 0,
-    HOOK_INPUT_NULL,
-    HOOK_NO_MEM,
-    HOOK_BAD_RELO,
-    HOOK_TRANSIT_NO_MEM,
-    HOOK_CHAIN_FULL,
-    HOOK_NOT_HOOK,
+    HOOK_INPUT_NULL = 4089,
+    HOOK_NO_MEM = 4090,
+    HOOK_BAD_RELO = 4091,
+    HOOK_TRANSIT_NO_MEM = 4092,
+    HOOK_CHAIN_FULL = 4093,
+    HOOK_NOT_HOOK = 4094,
+    HOOK_INST_BUSY = 4095,
 } hook_err_t;
+
+enum hook_type
+{
+    NONE = 0,
+    INLINE,
+    INLINE_CHAIN,
+    FUNCTION_POINTER_CHAIN,
+};
+
+typedef int8_t chain_item_state;
+
+#define CHAIN_ITEM_STATE_EMPTY 0
+#define CHAIN_ITEM_STATE_READY 1
+#define CHAIN_ITEM_STATE_BUSY 2
 
 #define local_offsetof(TYPE, MEMBER) ((size_t) & ((TYPE *)0)->MEMBER)
 #define local_container_of(ptr, type, member) ({ (type *)((char *)(ptr)-local_offsetof(type, member)); })
@@ -23,12 +38,12 @@ typedef enum
 #define HOOK_MEM_REGION_NUM 4
 #define TRAMPOLINE_NUM 4
 #define RELOCATE_INST_NUM (TRAMPOLINE_NUM * 8 + 8)
-#define HOOK_CHAIN_NUM 4
 
-#define HOOK_LOCAL_DATA_NUM 8
+#define HOOK_CHAIN_NUM 0x10
+#define TRANSIT_INST_NUM 0x60
 
-#define TRANSIT_INST_NUM 64
-#define TRANSIT_ALIGN 32
+#define FP_HOOK_CHAIN_NUM 0x20
+
 #define ARM64_NOP 0xd503201f
 
 typedef struct
@@ -39,7 +54,6 @@ typedef struct
     uint64_t replace_addr;
     uint64_t relo_addr;
     // out
-    // must align
     int32_t tramp_insts_len;
     int32_t relo_insts_len;
     uint32_t origin_insts[TRAMPOLINE_NUM] __attribute__((aligned(8)));
@@ -49,29 +63,59 @@ typedef struct
 
 struct _hook_chain;
 
+#define HOOK_LOCAL_DATA_NUM 8
+
 typedef struct
 {
-    uint64_t data[HOOK_LOCAL_DATA_NUM];
+    union
+    {
+        struct
+        {
+            uint64_t data0;
+            uint64_t data1;
+            uint64_t data2;
+            uint64_t data3;
+            uint64_t data4;
+            uint64_t data5;
+            uint64_t data6;
+            uint64_t data7;
+        };
+        uint64_t data[HOOK_LOCAL_DATA_NUM];
+    };
 } hook_local_t;
 
 typedef struct
 {
-    struct _hook_chain *chain;
+    void *chain;
     int early_ret;
     hook_local_t local;
     uint64_t ret;
+    union
+    {
+        struct
+        {
+        };
+        uint64_t args[0];
+    };
 } hook_fargs0_t __attribute__((aligned(8)));
 
 typedef struct
 {
-    struct _hook_chain *chain;
+    void *chain;
     int early_ret;
     hook_local_t local;
     uint64_t ret;
-    uint64_t arg0;
-    uint64_t arg1;
-    uint64_t arg2;
-    uint64_t arg3;
+    union
+    {
+        struct
+        {
+            uint64_t arg0;
+            uint64_t arg1;
+            uint64_t arg2;
+            uint64_t arg3;
+        };
+        uint64_t args[4];
+    };
 } hook_fargs4_t __attribute__((aligned(8)));
 
 typedef hook_fargs4_t hook_fargs1_t;
@@ -80,18 +124,25 @@ typedef hook_fargs4_t hook_fargs3_t;
 
 typedef struct
 {
-    struct _hook_chain *chain;
+    void *chain;
     int early_ret;
     hook_local_t local;
     uint64_t ret;
-    uint64_t arg0;
-    uint64_t arg1;
-    uint64_t arg2;
-    uint64_t arg3;
-    uint64_t arg4;
-    uint64_t arg5;
-    uint64_t arg6;
-    uint64_t arg7;
+    union
+    {
+        struct
+        {
+            uint64_t arg0;
+            uint64_t arg1;
+            uint64_t arg2;
+            uint64_t arg3;
+            uint64_t arg4;
+            uint64_t arg5;
+            uint64_t arg6;
+            uint64_t arg7;
+        };
+        uint64_t args[8];
+    };
 } hook_fargs8_t __attribute__((aligned(8)));
 
 typedef hook_fargs8_t hook_fargs5_t;
@@ -100,22 +151,29 @@ typedef hook_fargs8_t hook_fargs7_t;
 
 typedef struct
 {
-    struct _hook_chain *chain;
+    void *chain;
     int early_ret;
     hook_local_t local;
     uint64_t ret;
-    uint64_t arg0;
-    uint64_t arg1;
-    uint64_t arg2;
-    uint64_t arg3;
-    uint64_t arg4;
-    uint64_t arg5;
-    uint64_t arg6;
-    uint64_t arg7;
-    uint64_t arg8;
-    uint64_t arg9;
-    uint64_t arg10;
-    uint64_t arg11;
+    union
+    {
+        struct
+        {
+            uint64_t arg0;
+            uint64_t arg1;
+            uint64_t arg2;
+            uint64_t arg3;
+            uint64_t arg4;
+            uint64_t arg5;
+            uint64_t arg6;
+            uint64_t arg7;
+            uint64_t arg8;
+            uint64_t arg9;
+            uint64_t arg10;
+            uint64_t arg11;
+        };
+        uint64_t args[12];
+    };
 } hook_fargs12_t __attribute__((aligned(8)));
 
 typedef hook_fargs12_t hook_fargs9_t;
@@ -138,26 +196,47 @@ typedef void (*hook_chain12_callback)(hook_fargs12_t *fargs, void *udata);
 
 typedef struct _hook_chain
 {
+    // must be the first element
     hook_t hook;
+    int32_t chain_items_max;
+    chain_item_state states[HOOK_CHAIN_NUM];
     void *udata[HOOK_CHAIN_NUM];
     void *befores[HOOK_CHAIN_NUM];
     void *afters[HOOK_CHAIN_NUM];
-    uint32_t transit[TRANSIT_ALIGN / 4 + TRANSIT_INST_NUM];
+    uint32_t transit[TRANSIT_INST_NUM];
 } hook_chain_t __attribute__((aligned(8)));
 
+typedef struct
+{
+    uintptr_t fp_addr;
+    uint64_t replace_addr;
+    uint64_t origin_fp;
+} fp_hook_t __attribute__((aligned(8)));
+
+typedef struct _fphook_chain
+{
+    fp_hook_t hook;
+    int32_t chain_items_max;
+    chain_item_state states[FP_HOOK_CHAIN_NUM];
+    void *udata[FP_HOOK_CHAIN_NUM];
+    void *befores[FP_HOOK_CHAIN_NUM];
+    void *afters[FP_HOOK_CHAIN_NUM];
+    uint32_t transit[TRANSIT_INST_NUM];
+} fp_hook_chain_t __attribute__((aligned(8)));
+
 int hook_mem_add(uint64_t start, int32_t size);
-hook_chain_t *hook_mem_alloc();
-void hook_mem_free(hook_chain_t *free);
-hook_chain_t *hook_get_chain_from_origin(uint64_t origin_addr);
+void *hook_mem_zalloc(uintptr_t origin_addr, enum hook_type type);
+void hook_mem_free(void *hook_mem);
+void *hook_get_mem_from_origin(uint64_t origin_addr);
 
 int32_t branch_from_to(uint32_t *tramp_buf, uint64_t src_addr, uint64_t dst_addr);
 int32_t branch_relative(uint32_t *buf, uint64_t src_addr, uint64_t dst_addr);
 int32_t branch_absolute(uint32_t *buf, uint64_t addr);
 
 #ifdef HOOK_INTO_BRANCH_FUNC
-uint64_t relo_func(uint64_t addr);
+uint64_t branch_func_addr(uint64_t addr);
 #else
-static inline uint64_t relo_func(uint64_t addr)
+static inline uint64_t branch_func_addr(uint64_t addr)
 {
     return addr;
 }
@@ -170,7 +249,16 @@ hook_err_t hook(void *func, void *replace, void **backup);
 void unhook(void *func);
 
 // todo: hook priority
-hook_err_t hook_chain_prepare(hook_chain_t *chain, int32_t argno);
+hook_err_t hook_chain_add(hook_chain_t *chain, void *before, void *after, void *udata);
+void hook_chain_remove(hook_chain_t *chain, void *before, void *after);
+hook_err_t hook_wrap(void *func, int32_t argno, void *before, void *after, void *udata);
+void hook_unwrap(void *func, void *before, void *after);
+
+void fp_hook(uintptr_t fp_addr, void *replace, void **backup);
+void fp_unhook(uintptr_t fp_addr, void *backup);
+hook_err_t fp_hook_wrap(uintptr_t fp_addr, int32_t argno, void *before, void *after, void *udata);
+void fp_hook_unwrap(uintptr_t fp_addr, void *before, void *after);
+
 static inline void hook_chain_install(hook_chain_t *chain)
 {
     hook_install(&chain->hook);
@@ -179,11 +267,8 @@ static inline void hook_chain_uninstall(hook_chain_t *chain)
 {
     hook_uninstall(&chain->hook);
 }
-hook_err_t hook_chain_add(hook_chain_t *chain, void *before, void *after, void *udata);
-void hook_chain_remove(hook_chain_t *chain, void *before, void *after);
-hook_err_t hook_wrap(void *func, int32_t argno, void *before, void *after, void *udata);
-void hook_unwrap(void *func, void *before, void *after);
 
+//
 static inline hook_err_t hook_wrap0(void *func, hook_chain0_callback before, hook_chain0_callback after, void *udata)
 {
     return hook_wrap(func, 0, before, after, udata);
@@ -249,9 +334,82 @@ static inline hook_err_t hook_wrap12(void *func, hook_chain12_callback before, h
     return hook_wrap(func, 12, before, after, udata);
 }
 
-static inline void hook_unwrapn(void *func, void *before, void *after)
+static inline hook_err_t fp_hook_wrap0(uintptr_t fp_addr, hook_chain0_callback before, hook_chain0_callback after,
+                                       void *udata)
 {
-    return hook_unwrap(func, before, after);
+    return fp_hook_wrap(fp_addr, 0, before, after, udata);
+}
+
+static inline hook_err_t fp_hook_wrap1(uintptr_t fp_addr, hook_chain1_callback before, hook_chain1_callback after,
+                                       void *udata)
+{
+    return fp_hook_wrap(fp_addr, 1, before, after, udata);
+}
+
+static inline hook_err_t fp_hook_wrap2(uintptr_t fp_addr, hook_chain2_callback before, hook_chain2_callback after,
+                                       void *udata)
+{
+    return fp_hook_wrap(fp_addr, 2, before, after, udata);
+}
+
+static inline hook_err_t fp_hook_wrap3(uintptr_t fp_addr, hook_chain3_callback before, hook_chain3_callback after,
+                                       void *udata)
+{
+    return fp_hook_wrap(fp_addr, 3, before, after, udata);
+}
+
+static inline hook_err_t fp_hook_wrap4(uintptr_t fp_addr, hook_chain4_callback before, hook_chain4_callback after,
+                                       void *udata)
+{
+    return fp_hook_wrap(fp_addr, 4, before, after, udata);
+}
+
+static inline hook_err_t fp_hook_wrap5(uintptr_t fp_addr, hook_chain5_callback before, hook_chain5_callback after,
+                                       void *udata)
+{
+    return fp_hook_wrap(fp_addr, 5, before, after, udata);
+}
+
+static inline hook_err_t fp_hook_wrap6(uintptr_t fp_addr, hook_chain6_callback before, hook_chain6_callback after,
+                                       void *udata)
+{
+    return fp_hook_wrap(fp_addr, 6, before, after, udata);
+}
+
+static inline hook_err_t fp_hook_wrap7(uintptr_t fp_addr, hook_chain7_callback before, hook_chain7_callback after,
+                                       void *udata)
+{
+    return fp_hook_wrap(fp_addr, 7, before, after, udata);
+}
+
+static inline hook_err_t fp_hook_wrap8(uintptr_t fp_addr, hook_chain8_callback before, hook_chain8_callback after,
+                                       void *udata)
+{
+    return fp_hook_wrap(fp_addr, 8, before, after, udata);
+}
+
+static inline hook_err_t fp_hook_wrap9(uintptr_t fp_addr, hook_chain9_callback before, hook_chain9_callback after,
+                                       void *udata)
+{
+    return fp_hook_wrap(fp_addr, 9, before, after, udata);
+}
+
+static inline hook_err_t fp_hook_wrap10(uintptr_t fp_addr, hook_chain10_callback before, hook_chain10_callback after,
+                                        void *udata)
+{
+    return fp_hook_wrap(fp_addr, 10, before, after, udata);
+}
+
+static inline hook_err_t fp_hook_wrap11(uintptr_t fp_addr, hook_chain11_callback before, hook_chain11_callback after,
+                                        void *udata)
+{
+    return fp_hook_wrap(fp_addr, 11, before, after, udata);
+}
+
+static inline hook_err_t fp_hook_wrap12(uintptr_t fp_addr, hook_chain12_callback before, hook_chain12_callback after,
+                                        void *udata)
+{
+    return fp_hook_wrap(fp_addr, 12, before, after, udata);
 }
 
 #endif

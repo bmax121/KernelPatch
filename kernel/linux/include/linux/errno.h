@@ -1,6 +1,8 @@
 #ifndef _LINUX_ERRNO_H
 #define _LINUX_ERRNO_H
 
+#include <uapi/asm-generic/errno.h>
+
 #define ERESTARTSYS 512
 #define ERESTARTNOINTR 513
 #define ERESTARTNOHAND 514 /* restart if no handler.. */

@@ -20,7 +20,7 @@ struct task_ext
 
 static inline int task_ext_valid(struct task_ext *ext)
 {
-    return ext->magic == TASK_EXT_MAGIC;
+    return ext && (ext->magic == TASK_EXT_MAGIC);
 }
 
 #endif

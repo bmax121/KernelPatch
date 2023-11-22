@@ -2,19 +2,26 @@
 
 **Patching and hooking the Linux kernel with only stripped Linux kernel image.**
 
+``` shell
+ _  __                    _ ____       _       _     
+| |/ /___ _ __ _ __   ___| |  _ \ __ _| |_ ___| |__  
+| ' // _ \ '__| '_ \ / _ \ | |_) / _` | __/ __| '_ \ 
+| . \  __/ |  | | | |  __/ |  __/ (_| | || (__| | | |
+|_|\_\___|_|  |_| |_|\___|_|_|   \__,_|\__\___|_| |_|
+
+```
+
 如果你在使用 Android，[AndroidKernelPatch](https://github.com/bmax121/AndroidKernelPatch) 会是更好的选择。
 
 KernelPatch 提供可以在无源码无符号情况下解析Linux内核镜像，获取任意符号偏移，并向内核中注入任意代码的基础能力。  
 在此基础上，KernelPatch 还提供了系统调用 hook，内核 inline-hook 等基础功能。  
 你可以完全的掌控内核，实现你想要的功能，比如提权，隐藏，监控等等。  
 
-**KernelPatch 仅供学习交流。严禁用于任何非法用途。**
-
 ## 支持情况
 
 当前只支持 arm64
 
-Linux 3.8 - 6.2 (理论上)  
+Linux 3.18 - 6.2 (理论上)  
 Linux 6.3+ (暂未适配)  
 
 ## 获取帮助
@@ -31,7 +38,6 @@ Linux 6.3+ (暂未适配)
 
 - [vmlinux-to-elf](https://github.com/marin-m/vmlinux-to-elf): 参考学习了解析内核符号的思路
 - [android-inline-hook](https://github.com/bytedance/android-inline-hook): 用了 arm64 inline hook 指令修复的代码
-- [linux source code online](https://elixir.bootlin.com/linux/v6.2.16/C/ident/): 内核源码在线
 
 ## 许可证
 

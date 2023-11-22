@@ -7,6 +7,7 @@
 #include <linux/spinlock.h>
 #include <linux/rwlock.h>
 #include <linux/pid.h>
+#include <linux/list.h>
 #include <linux/init_task.h>
 
 struct task_struct; // __randomize_layout
@@ -48,6 +49,7 @@ struct task_struct_offset
     int16_t ptracer_cred_offset;
     int16_t real_cred_offset;
     int16_t cred_offset;
+    int16_t comm_offset;
     int16_t fs_offset;
     int16_t files_offset;
     int16_t loginuid_offset;
@@ -55,12 +57,55 @@ struct task_struct_offset
     int16_t seccomp_offset;
     int16_t security_offset;
     int16_t stack_offset;
+    int16_t tasks_offset;
 };
 
 extern struct task_struct_offset task_struct_offset;
 
+static inline struct list_head *get_task_tasks_p(struct task_struct *task)
+{
+    struct list_head *head = (struct list_head *)(((uintptr_t)task) + task_struct_offset.tasks_offset);
+    return head;
+}
+
+static inline const char *get_task_comm(struct task_struct *task)
+{
+    return (const char *)(((uintptr_t)task) + task_struct_offset.comm_offset);
+}
+
 extern struct mm_struct *kvar(init_mm);
 extern struct pid_namespace *kvar(init_pid_ns);
+
+#define tasklist_empty() list_empty(get_task_tasks_p(kvar(init_task)))
+
+// todo: list_entry_rcu
+static inline struct task_struct *next_task(struct task_struct *task)
+{
+    struct list_head *head = get_task_tasks_p(task);
+    struct list_head *next = head->next;
+    struct task_struct *next_task = (struct task_struct *)(next - task_struct_offset.tasks_offset);
+    return next_task;
+}
+
+#define for_each_process(p) for (p = kvar(init_task); (p = next_task(p)) != kvar(init_task);)
+
+/*
+ * Careful: do_each_thread/while_each_thread is a double loop so
+ *          'break' will not work as expected - use goto instead.
+ */
+#define do_each_thread(g, t)                                          \
+    struct task_struct *__init_task = kvar(init_task);                \
+    for (g = t = __init_task; (g = t = next_task(g)) != __init_task;) \
+        do
+
+#define while_each_thread(g, t) while ((t = next_thread(t)) != g)
+
+#define __for_each_thread(signal, t) list_for_each_entry_rcu(t, &(signal)->thread_head, thread_node)
+
+#define for_each_thread(p, t) __for_each_thread((p)->signal, t)
+
+/* Careful: this is a double loop, 'break' won't work as expected. */
+#define for_each_process_thread(p, t) for_each_process(p) for_each_thread(p, t)
 
 extern int cpuset_cpumask_can_shrink(const struct cpumask *cur, const struct cpumask *trial);
 extern int task_can_attach(struct task_struct *p, const struct cpumask *cs_effective_cpus);

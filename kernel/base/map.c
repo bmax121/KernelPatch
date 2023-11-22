@@ -106,12 +106,12 @@ static map_preset_t *__noinline mem_proc()
         page_shift = 16;
     }
     preset->page_shift = page_shift;
-    preset->page_offset = preset->vabits_flag ? -(1ul << va1_bits) : (0xffffffffffffffff << (va1_bits - 1));
+    preset->page_offset = preset->vabits_flag ? -(1ul << va1_bits) : (0xFFFFFFFFFFFFFFFF << (va1_bits - 1));
     return preset;
 }
 
 // todo: 52-bits pa
-static uint64_t __noinline get_or_create_pte(map_preset_t *preset, uint64_t va, uint64_t pa)
+static uint64_t __noinline get_or_create_pte(map_preset_t *preset, uint64_t va, uint64_t pa, uint64_t attr_indx)
 {
 #ifdef MAP_DEBUG
     printk_f printk = (printk_f)(preset->printk_relo);
@@ -129,18 +129,23 @@ static uint64_t __noinline get_or_create_pte(map_preset_t *preset, uint64_t va, 
     uint64_t pxd_ptrs = 1u << pxd_bits;
     uint64_t ttbr1_el1;
     asm volatile("mrs %0, ttbr1_el1" : "=r"(ttbr1_el1));
+    uint64_t baddr = ttbr1_el1 & 0xFFFFFFFFFFFE;
     uint64_t page_size = 1 << page_shift;
     uint64_t page_size_mask = ~(page_size - 1);
-    uint64_t pxd_pa = ttbr1_el1 & page_size_mask;
+    uint64_t attr_prot = 0xC0000000000703 | attr_indx;
+
+    uint64_t pxd_pa = baddr & page_size_mask;
     uint64_t pxd_va = phys_to_lm(preset, pxd_pa);
     uint64_t pxd_entry_va = 0;
-    uint64_t block_flag = 0;
-    uint64_t alloc_flag = 0;
 
-    for (int64_t lv = 4 - page_level; lv < 4; lv++) {
+    for (uint64_t lv = 4 - page_level; lv < 4; lv++) {
         uint64_t pxd_shift = (page_shift - 3) * (4 - lv) + 3;
         uint64_t pxd_index = (va >> pxd_shift) & (pxd_ptrs - 1);
+        uint64_t alloc_flag = 0;
+        uint64_t block_flag = 0;
+
         pxd_entry_va = pxd_va + pxd_index * 8;
+
         uint64_t pxd_desc = *((uint64_t *)pxd_entry_va);
 
         if ((pxd_desc & 0b11) == 0b11) { // table
@@ -156,10 +161,8 @@ static uint64_t __noinline get_or_create_pte(map_preset_t *preset, uint64_t va, 
                 alloc_flag = 1;
             } else {
                 pxd_pa = pa;
-                alloc_flag = 0;
             }
-            uint64_t attr_prot = lv == 3 ? 0xC8000000000700 : 0x1000000000000000;
-            pxd_desc = (pxd_pa) | 0b11 | attr_prot;
+            pxd_desc = (pxd_pa) | attr_prot;
             *((uint64_t *)pxd_entry_va) = pxd_desc;
         }
         pxd_va = phys_to_lm(preset, pxd_pa);
@@ -182,12 +185,13 @@ void __noinline _paging_init()
 #ifdef MAP_DEBUG
     printk_f printk = (printk_f)(preset->printk_relo);
 #define map_debug(idx, val) printk(preset->str_fmt_px, idx, val)
-#else
-#define map_debug(idx, val)
-#endif
     for (int i = 0; i < sizeof(map_preset_t); i += 8) {
         map_debug(i, *(uint64_t *)((uint64_t)preset + i));
     }
+#else
+#define map_debug(idx, val)
+#endif
+
     // todo: memblock_free
     uint64_t old_start_pa = preset->start_offset + preset->kernel_pa;
     ((memblock_reserve_f)preset->memblock_reserve_relo)(old_start_pa, preset->start_size);
@@ -208,26 +212,33 @@ void __noinline _paging_init()
     flush_icache_all();
     ((paging_init_f)(paging_init_va))();
 
+    // AttrIndx[2:0] encoding
+    uint64_t ktext_pte = get_or_create_pte(preset, preset->memblock_reserve_relo, 0, 0);
+    uint64_t attrs = *(uint64_t *)ktext_pte;
+    map_debug(0x100, attrs);
+    uint64_t attr_indx = attrs & 0b11100;
+
     // clear wxn
     // todo: restore wxn later
     uint64_t sctlr_el1 = 0;
     asm volatile("mrs %[reg], sctlr_el1" : [reg] "+r"(sctlr_el1));
     sctlr_el1 &= 0xFFFFFFFFFFF7FFFF;
     asm volatile("msr sctlr_el1, %[reg]" : : [reg] "r"(sctlr_el1));
-    asm volatile("isb");
 
     // start
     uint64_t old_start_va = phys_to_lm(preset, old_start_pa);
-    // todo: random address
     // uint64_t vm_gurad_enough = page_size << 3;
     uint64_t offset = 0;
     uint64_t start_va = preset->kimage_voffset_relo ? phys_to_kimg(preset, start_pa) + offset :
                                                       phys_to_lm(preset, start_pa);
     for (uint64_t off = 0; off < alloc_size; off += page_size) {
-        uint64_t entry = get_or_create_pte(preset, start_va + off, start_pa + off);
+        uint64_t entry = get_or_create_pte(preset, start_va + off, start_pa + off, attr_indx);
         *(uint64_t *)entry = (*(uint64_t *)entry | 0x8000000000000) & 0xFFDFFFFFFFFFFF7F;
     }
     flush_tlb_all();
+    for (uint64_t i = start_va; i < start_va + alloc_size; i += 8) {
+        *(uint64_t *)i = 0;
+    }
     for (uint64_t i = 0; i < preset->start_size; i += 8) {
         *(uint64_t *)(start_va + i) = *(uint64_t *)(old_start_va + i);
     }

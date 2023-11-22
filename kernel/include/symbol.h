@@ -3,6 +3,7 @@
 
 #define KP_SYMBOL_LEN 31
 
+// todo: name len
 typedef struct
 {
     const char name[KP_SYMBOL_LEN + 1];
@@ -10,9 +11,11 @@ typedef struct
     unsigned long hash;
 } kp_symbol_t;
 
-#define KP_EXPORT_SYMBOL(sym)                                  \
+#define _KP_EXPORT_SYMBOL(sym)                                 \
     static kp_symbol_t __kp_symbol_##sym __attribute__((used)) \
-    __attribute__((section(".kp.symbol"))) = { .name = #sym, .addr = (unsigned long)&sym, .hash = 0 };
+    __attribute__((section(".kp.symbol"))) = { .name = #sym, .addr = (unsigned long)&sym, .hash = 0 }
+
+#define KP_EXPORT_SYMBOL(sym) _KP_EXPORT_SYMBOL(sym)
 
 unsigned long symbol_lookup_name(const char *name);
 

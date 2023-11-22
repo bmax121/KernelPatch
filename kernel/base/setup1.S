@@ -179,8 +179,10 @@ map_prepare:
     add x12, x12, :lo12:_kp_start
     sub x11, x11, x12
     str x11, [x9, #map_start_size_offset]
-    // map_preset.alloc_size = HOOK_ALLOC_SIZE;
+    // map_preset.alloc_size = HOOK_ALLOC_SIZE + MEMORY_ROX_SIZE + MEMORY_RW_SIZE;
     mov x11, #HOOK_ALLOC_SIZE
+    add x11, x11, #MEMORY_ROX_SIZE
+    add x11, x11, #MEMORY_RW_SIZE
     str x11, [x9, #map_alloc_size_offset]
 
     // backup and hook paging_init

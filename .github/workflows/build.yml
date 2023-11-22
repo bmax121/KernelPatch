@@ -2,13 +2,13 @@ name: Build CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   Build-kpimg:
-    runs-on:  ubuntu-latest
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
@@ -28,20 +28,30 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
       - name: Install Compiler
         run: |
-            curl -o arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-elf.tar.xz https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu/12.2.rel1/binrel/arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-elf.tar.xz
-            tar -Jxf arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-elf.tar.xz
+          curl -o arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-elf.tar.xz https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu/12.2.rel1/binrel/arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-elf.tar.xz
+          tar -Jxf arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-elf.tar.xz
       - name: Build kpimg
         run: |
           export TARGET_COMPILE=`pwd`/arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-elf/bin/aarch64-none-elf-
           cd kernel
           make
           mv kpimg kpimg-${{ steps.parse_version.outputs.VERSION }}
+          mv kpimg.elf kpimg.elf-${{ steps.parse_version.outputs.VERSION }}
           make clean
           export ANDROID=1
           make
-          unset ANDROID
           mv kpimg kpimg-android-${{ steps.parse_version.outputs.VERSION }}
-          
+          mv kpimg.elf kpimg.elf-android-${{ steps.parse_version.outputs.VERSION }}
+          unset ANDROID
+
+      - name: Upload elf
+        uses: actions/upload-artifact@v3
+        with:
+          path: |
+            kernel/kpimg.elf-${{ steps.parse_version.outputs.VERSION }}
+            kernel/kpimg.elf-android-${{ steps.parse_version.outputs.VERSION }}
+          name: kpimg.elf
+
       - name: Release
         uses: ncipollo/release-action@v1.12.0
         with:
@@ -55,7 +65,7 @@ jobs:
           replacesArtifacts: true
 
   Release-lib:
-    runs-on:  ubuntu-latest
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
@@ -79,7 +89,7 @@ jobs:
           cd ..
           zip -r kpuser.zip user
           mv kpuser.zip kpuser-src-${{ steps.parse_version.outputs.VERSION }}.zip
-          
+
       - name: Release
         uses: ncipollo/release-action@v1.12.0
         with:
@@ -91,7 +101,7 @@ jobs:
           replacesArtifacts: true
 
   Build-android:
-    runs-on:  ubuntu-latest
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
@@ -109,7 +119,7 @@ jobs:
           VERSION="$MAJOR.$MINOR.$PATCH"
           echo "Generated Version: $VERSION"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          
+
           TOOLS_MAJOR=$(grep '#define MAJOR' tools/version | awk '{print $3}')
           TOOLS_MINOR=$(grep '#define MINOR' tools/version | awk '{print $3}')
           TOOLS_PATCH=$(grep '#define PATCH' tools/version | awk '{print $3}')
@@ -128,7 +138,7 @@ jobs:
           export TARGET_COMPILE=placeholder
           cd kernel
           make hdr
-          
+
       - name: Build kpatch-android
         run: |
           cd user
@@ -156,7 +166,7 @@ jobs:
             -DANDROID_ABI=arm64-v8a ../..
           cmake --build .
           mv kptools kptools-android-${{ steps.parse_version.outputs.TOOLS_VERSION }}
-          
+
       - name: Release
         uses: ncipollo/release-action@v1.12.0
         with:
@@ -184,7 +194,7 @@ jobs:
           VERSION="$MAJOR.$MINOR.$PATCH"
           echo "Generated Version: $VERSION"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          
+
           TOOLS_MAJOR=$(grep '#define MAJOR' tools/version | awk '{print $3}')
           TOOLS_MINOR=$(grep '#define MINOR' tools/version | awk '{print $3}')
           TOOLS_PATCH=$(grep '#define PATCH' tools/version | awk '{print $3}')
@@ -206,7 +216,7 @@ jobs:
           make
           mv kptools kptools-linux-${{ steps.parse_version.outputs.TOOLS_VERSION }}
 
-      - name: Release 
+      - name: Release
         uses: ncipollo/release-action@v1.12.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -232,14 +242,14 @@ jobs:
           VERSION="$MAJOR.$MINOR.$PATCH"
           echo "Generated Version: $VERSION"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          
+
           TOOLS_MAJOR=$(grep '#define MAJOR' tools/version | awk '{print $3}')
           TOOLS_MINOR=$(grep '#define MINOR' tools/version | awk '{print $3}')
           TOOLS_PATCH=$(grep '#define PATCH' tools/version | awk '{print $3}')
           TOOLS_VERSION="$TOOLS_MAJOR.$TOOLS_MINOR.$TOOLS_PATCH"
           echo "Generated Tools Version: $TOOLS_VERSION"
           echo "TOOLS_VERSION=$TOOLS_VERSION" >> $GITHUB_OUTPUT
-          
+
       - name: Make hdr
         run: |
           export TARGET_COMPILE=placeholder
@@ -253,7 +263,7 @@ jobs:
           cmake ..
           make
           mv kptools kptools-mac-${{ steps.parse_version.outputs.TOOLS_VERSION }}
-      - name: Release 
+      - name: Release
         uses: ncipollo/release-action@v1.12.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}

@@ -43,8 +43,7 @@ static inline struct thread_info *current_thread_info()
         }
     }
     struct thread_info *ti = legacy_current_thread_info_sp_el0();
-    if (thread_info_is_sp)
-        ti = legacy_current_thread_info_sp();
+    if (thread_info_is_sp) ti = legacy_current_thread_info_sp();
     return ti;
 }
 
@@ -76,7 +75,6 @@ static inline struct task_ext *get_task_ext(struct task_struct *task)
 {
     uint64_t addr = (uint64_t)get_stack(task);
     addr += stack_end_offset;
-    addr = (addr + 15) & ~0xf;
     return (struct task_ext *)(addr);
 }
 

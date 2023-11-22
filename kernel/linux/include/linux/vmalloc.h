@@ -3,6 +3,8 @@
 
 #include <ktypes.h>
 #include <ksyms.h>
+#include <compiler.h>
+#include <common.h>
 
 typedef size_t pgprot_t;
 
@@ -28,6 +30,9 @@ struct vm_struct
     unsigned long size;
     unsigned long flags;
     struct page **pages;
+#ifdef CONFIG_HAVE_ARCH_HUGE_VMALLOC
+    unsigned int page_order;
+#endif
     unsigned int nr_pages;
     phys_addr_t phys_addr;
     const void *caller;
@@ -66,9 +71,11 @@ extern void *kfunc_def(vzalloc_node)(unsigned long size, int node);
 extern void *kfunc_def(vmalloc_32)(unsigned long size);
 extern void *kfunc_def(vmalloc_32_user)(unsigned long size);
 extern void *kfunc_def(__vmalloc)(unsigned long size, gfp_t gfp_mask);
+
 extern void *kfunc_def(__vmalloc_node_range)(unsigned long size, unsigned long align, unsigned long start,
                                              unsigned long end, gfp_t gfp_mask, pgprot_t prot, unsigned long vm_flags,
                                              int node, const void *caller);
+
 extern void *kfunc_def(__vmalloc_node)(unsigned long size, unsigned long align, gfp_t gfp_mask, int node,
                                        const void *caller);
 
@@ -89,12 +96,6 @@ extern struct vm_struct *kfunc_def(__get_vm_area_caller)(unsigned long size, uns
 extern void kfunc_def(free_vm_area)(struct vm_struct *area);
 extern struct vm_struct *kfunc_def(remove_vm_area)(const void *addr);
 extern struct vm_struct *kfunc_def(find_vm_area)(const void *addr);
-
-extern int kfunc_def(map_kernel_range_noflush)(unsigned long start, unsigned long size, pgprot_t prot,
-                                               struct page **pages);
-extern int kfunc_def(map_kernel_range)(unsigned long start, unsigned long size, pgprot_t prot, struct page **pages);
-extern void kfunc_def(unmap_kernel_range_noflush)(unsigned long addr, unsigned long size);
-extern void kfunc_def(unmap_kernel_range)(unsigned long addr, unsigned long size);
 
 /* for /dev/kmem */
 extern long kfunc_def(vread)(char *buf, char *addr, unsigned long count);
@@ -159,20 +160,33 @@ static inline void *vmalloc_32_user(unsigned long size)
     kfunc_not_found();
     return 0;
 }
+
 static inline void *__vmalloc(unsigned long size, gfp_t gfp_mask)
 {
     kfunc_call(__vmalloc, size, gfp_mask);
     kfunc_not_found();
     return 0;
 }
+
 static inline void *__vmalloc_node_range(unsigned long size, unsigned long align, unsigned long start,
                                          unsigned long end, gfp_t gfp_mask, pgprot_t prot, unsigned long vm_flags,
                                          int node, const void *caller)
 {
-    kfunc_call(__vmalloc_node_range, size, align, start, end, gfp_mask, prot, vm_flags, node, caller);
+    if (likely(kver >= VERSION(4, 0, 0))) {
+        kfunc_call(__vmalloc_node_range, size, align, start, end, gfp_mask, prot, vm_flags, node, caller);
+    } else {
+        void *(*__vmalloc_node_range_legacy)(unsigned long size, unsigned long align, unsigned long start,
+                                             unsigned long end, gfp_t gfp_mask, pgprot_t prot, int node,
+                                             const void *caller) =
+            (typeof(__vmalloc_node_range_legacy))kfunc(__vmalloc_node_range);
+        if (__vmalloc_node_range_legacy)
+            return __vmalloc_node_range_legacy(size, align, start, end, gfp_mask, prot, node, caller);
+    }
+
     kfunc_not_found();
     return 0;
 }
+
 static inline void *__vmalloc_node(unsigned long size, unsigned long align, gfp_t gfp_mask, int node,
                                    const void *caller)
 
@@ -187,6 +201,7 @@ static inline void vfree(const void *addr)
     kfunc_call(vfree, addr);
     kfunc_not_found();
 }
+
 static inline void vfree_atomic(const void *addr)
 {
     kfunc_call(vfree_atomic, addr);
@@ -259,29 +274,6 @@ static inline struct vm_struct *find_vm_area(const void *addr)
     kfunc_call(find_vm_area, addr);
     kfunc_not_found();
     return 0;
-}
-
-static inline int map_kernel_range_noflush(unsigned long start, unsigned long size, pgprot_t prot, struct page **pages)
-{
-    kfunc_call(map_kernel_range_noflush, start, size, prot, pages);
-    kfunc_not_found();
-    return 0;
-}
-static inline int map_kernel_range(unsigned long start, unsigned long size, pgprot_t prot, struct page **pages)
-{
-    kfunc_call(map_kernel_range_noflush, start, size, prot, pages);
-    kfunc_not_found();
-    return 0;
-}
-static inline void unmap_kernel_range_noflush(unsigned long addr, unsigned long size)
-{
-    kfunc_call(unmap_kernel_range_noflush, addr, size);
-    kfunc_not_found();
-}
-static inline void unmap_kernel_range(unsigned long addr, unsigned long size)
-{
-    kfunc_call(unmap_kernel_range, addr, size);
-    kfunc_not_found();
 }
 
 /* for /dev/kmem */

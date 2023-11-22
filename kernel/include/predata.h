@@ -3,9 +3,11 @@
 
 #include <ktypes.h>
 #include <stdbool.h>
+#include <preset.h>
 
-int superkey_auth(const char *key, int32_t len);
+int superkey_auth(const char *key, int len);
+struct patch_config *get_preset_patch_cfg();
 
-int predata_init();
+void predata_init(const char *skey, struct patch_config *config);
 
 #endif

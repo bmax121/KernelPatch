@@ -29,6 +29,7 @@ extern int kfunc_def(seq_buf_putmem)(struct seq_buf *s, const void *mem, unsigne
 extern int kfunc_def(seq_buf_putmem_hex)(struct seq_buf *s, const void *mem, unsigned int len);
 extern int kfunc_def(seq_buf_bitmask)(struct seq_buf *s, const unsigned long *maskp, int nmaskbits);
 
+// todo:
 static inline int seq_buf_printf(struct seq_buf *s, const char *fmt, ...)
 {
     if (!kfunc(seq_buf_printf)) {
@@ -76,15 +77,6 @@ static inline int seq_buf_bitmask(struct seq_buf *s, const unsigned long *maskp,
     kfunc_call(seq_buf_bitmask, s, maskp, nmaskbits);
     kfunc_not_found();
     return 0;
-}
-
-static inline int seq_buf_copy_to_user(void __user *to, const void *from, int n)
-{
-    struct seq_buf seq_buf;
-    seq_buf_clear(&seq_buf);
-    seq_buf.buffer = (void *)from;
-    seq_buf.len = n;
-    return seq_buf_to_user(&seq_buf, to, n);
 }
 
 #endif

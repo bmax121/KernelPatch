@@ -208,9 +208,9 @@ struct user_sve_header
     ((SVE_PT_SVE_FPCR_OFFSET(vq) + SVE_PT_SVE_FPCR_SIZE - SVE_PT_SVE_OFFSET + (__SVE_VQ_BYTES - 1)) / __SVE_VQ_BYTES * \
      __SVE_VQ_BYTES)
 
-#define SVE_PT_SIZE(vq, flags)                                                                        \
-    (((flags)&SVE_PT_REGS_MASK) == SVE_PT_REGS_SVE ? SVE_PT_SVE_OFFSET + SVE_PT_SVE_SIZE(vq, flags) : \
-                                                     SVE_PT_FPSIMD_OFFSET + SVE_PT_FPSIMD_SIZE(vq, flags))
+#define SVE_PT_SIZE(vq, flags)                                                                          \
+    (((flags) & SVE_PT_REGS_MASK) == SVE_PT_REGS_SVE ? SVE_PT_SVE_OFFSET + SVE_PT_SVE_SIZE(vq, flags) : \
+                                                       SVE_PT_FPSIMD_OFFSET + SVE_PT_FPSIMD_SIZE(vq, flags))
 
 /* pointer authentication masks (NT_ARM_PAC_MASK) */
 

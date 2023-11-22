@@ -2,24 +2,133 @@
 #define _LINUX_BITOPS_H
 
 #include <ktypes.h>
+#include <asm-generic/bitops/fls_ffs.h>
 
-/* Set bits in the first 'n' bytes when loaded from memory */
-#ifdef __LITTLE_ENDIAN
+#define FIELD_SIZEOF(t, f) (sizeof(((t *)0)->f))
+#define DIV_ROUND_UP(n, d) (((n) + (d)-1) / (d))
+#define DIV_ROUND_UP_ULL(ll, d)                 \
+    ({                                          \
+        unsigned long long _tmp = (ll) + (d)-1; \
+        do_div(_tmp, d);                        \
+        _tmp;                                   \
+    })
+
+#define BIT(nr) (1UL << (nr))
+#define BIT_MASK(nr) (1UL << ((nr) % BITS_PER_LONG))
+#define BIT_WORD(nr) ((nr) / BITS_PER_LONG)
+#define BITS_PER_BYTE 8
+#define BITS_TO_LONGS(nr) DIV_ROUND_UP(nr, BITS_PER_BYTE * sizeof(long))
+
+static inline void set_bit(int nr, volatile unsigned long *addr)
+{
+    unsigned long mask = BIT_MASK(nr);
+    unsigned long *p = ((unsigned long *)addr) + BIT_WORD(nr);
+    unsigned long flags;
+    *p |= mask;
+}
+
+static inline void clear_bit(int nr, volatile unsigned long *addr)
+{
+    unsigned long mask = BIT_MASK(nr);
+    unsigned long *p = ((unsigned long *)addr) + BIT_WORD(nr);
+    unsigned long flags;
+    *p &= ~mask;
+}
+
+static inline unsigned int __sw_hweight8(unsigned int w)
+{
+    unsigned int res = w - ((w >> 1) & 0x55);
+    res = (res & 0x33) + ((res >> 2) & 0x33);
+    return (res + (res >> 4)) & 0x0F;
+}
+
+static inline unsigned int __sw_hweight16(unsigned int w)
+{
+    unsigned int res = w - ((w >> 1) & 0x5555);
+    res = (res & 0x3333) + ((res >> 2) & 0x3333);
+    res = (res + (res >> 4)) & 0x0F0F;
+    return (res + (res >> 8)) & 0x00FF;
+}
+
+static inline unsigned int __sw_hweight32(unsigned int w)
+{
+    unsigned int res = w - ((w >> 1) & 0x55555555);
+    res = (res & 0x33333333) + ((res >> 2) & 0x33333333);
+    res = (res + (res >> 4)) & 0x0F0F0F0F;
+    res = res + (res >> 8);
+    return (res + (res >> 16)) & 0x000000FF;
+}
+
+static inline unsigned long __sw_hweight64(__u64 w)
+{
+    __u64 res = w - ((w >> 1) & 0x5555555555555555ul);
+    res = (res & 0x3333333333333333ul) + ((res >> 2) & 0x3333333333333333ul);
+    res = (res + (res >> 4)) & 0x0F0F0F0F0F0F0F0Ful;
+    res = res + (res >> 8);
+    res = res + (res >> 16);
+    return (res + (res >> 32)) & 0x00000000000000FFul;
+}
+
+static inline unsigned int __arch_hweight32(unsigned int w)
+{
+    return __sw_hweight32(w);
+}
+
+static inline unsigned int __arch_hweight16(unsigned int w)
+{
+    return __sw_hweight16(w);
+}
+
+static inline unsigned int __arch_hweight8(unsigned int w)
+{
+    return __sw_hweight8(w);
+}
+
+static inline unsigned long __arch_hweight64(__u64 w)
+{
+    return __sw_hweight64(w);
+}
+
+/*
+ * Compile time versions of __arch_hweightN()
+ */
+#define __const_hweight8(w)                                                                       \
+    ((unsigned int)((!!((w) & (1ULL << 0))) + (!!((w) & (1ULL << 1))) + (!!((w) & (1ULL << 2))) + \
+                    (!!((w) & (1ULL << 3))) + (!!((w) & (1ULL << 4))) + (!!((w) & (1ULL << 5))) + \
+                    (!!((w) & (1ULL << 6))) + (!!((w) & (1ULL << 7)))))
+
+#define __const_hweight16(w) (__const_hweight8(w) + __const_hweight8((w) >> 8))
+#define __const_hweight32(w) (__const_hweight16(w) + __const_hweight16((w) >> 16))
+#define __const_hweight64(w) (__const_hweight32(w) + __const_hweight32((w) >> 32))
+
+/*
+ * Generic interface.
+ */
+#define hweight8(w) (__builtin_constant_p(w) ? __const_hweight8(w) : __arch_hweight8(w))
+#define hweight16(w) (__builtin_constant_p(w) ? __const_hweight16(w) : __arch_hweight16(w))
+#define hweight32(w) (__builtin_constant_p(w) ? __const_hweight32(w) : __arch_hweight32(w))
+#define hweight64(w) (__builtin_constant_p(w) ? __const_hweight64(w) : __arch_hweight64(w))
+
+/*
+ * Interface for known constant arguments
+ */
+#define HWEIGHT8(w) (BUILD_BUG_ON_ZERO(!__builtin_constant_p(w)) + __const_hweight8(w))
+#define HWEIGHT16(w) (BUILD_BUG_ON_ZERO(!__builtin_constant_p(w)) + __const_hweight16(w))
+#define HWEIGHT32(w) (BUILD_BUG_ON_ZERO(!__builtin_constant_p(w)) + __const_hweight32(w))
+#define HWEIGHT64(w) (BUILD_BUG_ON_ZERO(!__builtin_constant_p(w)) + __const_hweight64(w))
+
+/*
+ * Type invariant interface to the compile time constant hweight functions.
+ */
+#define HWEIGHT(w) HWEIGHT64((u64)w)
+
 #define aligned_byte_mask(n) ((1UL << 8 * (n)) - 1)
-#else
-#define aligned_byte_mask(n) (~0xffUL << (BITS_PER_LONG - 8 - 8 * (n)))
-#endif
 
 #define BITS_PER_TYPE(type) (sizeof(type) * BITS_PER_BYTE)
 #define BITS_TO_LONGS(nr) DIV_ROUND_UP(nr, BITS_PER_TYPE(long))
 #define BITS_TO_U64(nr) DIV_ROUND_UP(nr, BITS_PER_TYPE(u64))
 #define BITS_TO_U32(nr) DIV_ROUND_UP(nr, BITS_PER_TYPE(u32))
 #define BITS_TO_BYTES(nr) DIV_ROUND_UP(nr, BITS_PER_TYPE(char))
-
-extern unsigned int __sw_hweight8(unsigned int w);
-extern unsigned int __sw_hweight16(unsigned int w);
-extern unsigned int __sw_hweight32(unsigned int w);
-extern unsigned long __sw_hweight64(__u64 w);
 
 #define for_each_set_bit(bit, addr, size) \
     for ((bit) = find_first_bit((addr), (size)); (bit) < (size); (bit) = find_next_bit((addr), (size), (bit) + 1))
@@ -167,15 +276,13 @@ static __always_inline __s64 sign_extend64(__u64 value, int index)
 
 static inline unsigned fls_long(unsigned long l)
 {
-    if (sizeof(l) == 4)
-        return fls(l);
+    if (sizeof(l) == 4) return fls(l);
     return fls64(l);
 }
 
 static inline int get_count_order(unsigned int count)
 {
-    if (count == 0)
-        return -1;
+    if (count == 0) return -1;
 
     return fls(--count);
 }
@@ -188,8 +295,7 @@ static inline int get_count_order(unsigned int count)
  */
 static inline int get_count_order_long(unsigned long l)
 {
-    if (l == 0UL)
-        return -1;
+    if (l == 0UL) return -1;
     return (int)fls_long(--l);
 }
 
@@ -203,12 +309,6 @@ static inline int get_count_order_long(unsigned long l)
  */
 static inline unsigned long __ffs64(u64 word)
 {
-#if BITS_PER_LONG == 32
-    if (((u32)word) == 0UL)
-        return __ffs((u32)(word >> 32)) + 32;
-#elif BITS_PER_LONG != 64
-#error BITS_PER_LONG not 32 or 64
-#endif
     return __ffs((unsigned long)word);
 }
 
@@ -234,7 +334,6 @@ static __always_inline void __assign_bit(long nr, volatile unsigned long *addr, 
         __clear_bit(nr, addr);
 }
 
-#ifndef set_mask_bits
 #define set_mask_bits(ptr, mask, bits)                         \
     ({                                                         \
         const typeof(*(ptr)) mask__ = (mask), bits__ = (bits); \
@@ -247,9 +346,7 @@ static __always_inline void __assign_bit(long nr, volatile unsigned long *addr, 
                                                                \
         old__;                                                 \
     })
-#endif
 
-#ifndef bit_clear_unless
 #define bit_clear_unless(ptr, clear, test)                                  \
     ({                                                                      \
         const typeof(*(ptr)) clear__ = (clear), test__ = (test);            \
@@ -262,17 +359,5 @@ static __always_inline void __assign_bit(long nr, volatile unsigned long *addr, 
                                                                             \
         !(old__ & test__);                                                  \
     })
-#endif
-
-#ifndef find_last_bit
-/**
- * find_last_bit - find the last set bit in a memory region
- * @addr: The address to start the search at
- * @size: The number of bits to search
- *
- * Returns the bit number of the last set bit, or size.
- */
-extern unsigned long find_last_bit(const unsigned long *addr, unsigned long size);
-#endif
 
 #endif
