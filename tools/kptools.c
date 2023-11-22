@@ -205,10 +205,12 @@ int patch_image()
     setup_preset_t *preset = (setup_preset_t *)(out_buf + align_image_len + KP_HEADER_SIZE);
     patch_config_t *config = &preset->patch_config;
     memset(config, 0, sizeof(patch_config_t));
-    // todo
-    strlcpy(config->su_config_file, "/data/adb/kernelpatch/su.conf", 128);
-    strlcpy(config->test_kpm_file, "/data/local/tmp/hello.kpm", 128);
-
+    // todo:
+#ifdef ANDROID
+    strlcpy(config->config_ini_path, "/data/adb/kernelpatch/kpinit.ini", sizeof(config->config_ini_path));
+#else
+    strlcpy(config->config_ini_path, "/etc/kernelpatch/kpinit.ini", sizeof(config->config_ini_path));
+#endif
     preset->kernel_size = kinfo.kernel_size;
     preset->start_offset = align_kernel_size;
     preset->page_shift = kinfo.page_shift;

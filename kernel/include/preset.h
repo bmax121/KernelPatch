@@ -47,18 +47,10 @@ typedef struct _setup_header_t // 64-bytes
 #endif
 
 #ifndef __ASSEMBLY__
-#ifndef ANDROID
 struct patch_config
 {
-    char val[PATCH_CONFIG_LEN];
+    char config_ini_path[256];
 };
-#else
-struct patch_config
-{
-    char su_config_file[128];
-    char test_kpm_file[128];
-};
-#endif
 typedef struct patch_config patch_config_t;
 #else
 #define patch_config_size (PATCH_CONFIG_LEN)

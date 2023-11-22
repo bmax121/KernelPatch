@@ -25,11 +25,9 @@ static void load_kpuserd_config()
     set_selinx_allow(current, 1);
 
     patch_config_t *config = get_preset_patch_cfg();
-    const char *su_config_path = config->su_config_file;
-    const char *kpm_path = config->test_kpm_file;
+    const char *su_config_path = config->config_ini_path;
 
     log_boot("config path: %s\n", su_config_path);
-    log_boot("module path: %s\n", kpm_path);
 
     // struct file *filp = filp_open(kpm_path, O_RDONLY, 0);
     // if (IS_ERR(filp)) {
