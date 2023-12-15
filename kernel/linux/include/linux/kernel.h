@@ -24,37 +24,27 @@ extern int kfunc_def(vsscanf)(const char *buf, const char *fmt, va_list args);
 
 static inline int vsprintf(char *buf, const char *fmt, va_list args)
 {
-    kfunc_call(vsprintf, buf, fmt, args);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(vsprintf, buf, fmt, args);
 }
 
 static inline int vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
 {
-    kfunc_call(vsnprintf, buf, size, fmt, args);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(vsnprintf, buf, size, fmt, args);
 }
 
 static inline int vscnprintf(char *buf, size_t size, const char *fmt, va_list args)
 {
-    kfunc_call(vscnprintf, buf, size, fmt, args);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(vscnprintf, buf, size, fmt, args);
 }
 
 static inline char *kvasprintf(gfp_t gfp, const char *fmt, va_list args)
 {
-    kfunc_call(kvasprintf, gfp, fmt, args);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(kvasprintf, gfp, fmt, args);
 }
 
 static inline int vsscanf(const char *buf, const char *fmt, va_list args)
 {
-    kfunc_call(vsscanf, buf, fmt, args);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(vsscanf, buf, fmt, args);
 }
 
 #endif

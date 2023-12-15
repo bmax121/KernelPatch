@@ -44,7 +44,7 @@ typedef struct
     int64_t page_shift;
     uint64_t kernel_va;
     uint64_t page_offset;
-} map_preset_t;
+} map_data_t;
 #else
 #define map_paging_init_backup_offset 0
 #define map_map_offset_offset 0x8

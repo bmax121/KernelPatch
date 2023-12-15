@@ -75,20 +75,23 @@ static int find_linux_banner(kallsym_t *info, char *img, int32_t imglen)
     while ((banner = (char *)memmem(banner + 1, imgend - banner, linux_banner_prefix, prefix_len)) != NULL) {
         if (isdigit(*(banner + prefix_len)) && *(banner + prefix_len + 1) == '.') {
             info->linux_banner_offset[info->banner_num++] = (int32_t)(banner - img);
+            fprintf(stdout, "[+] kernel linux_banner %d: %s", info->banner_num, banner);
         }
     }
-
     banner = img + info->linux_banner_offset[info->banner_num - 1];
-    fprintf(stdout, "[+] kernel linux_banner num: %d\n", info->banner_num);
-    fprintf(stdout, "[+] kernel last linux_banner: %s", banner);
 
     char *uts_release_start = banner + prefix_len;
     char *space = strchr(banner + prefix_len, ' ');
 
     char *dot = NULL;
-    info->version.major = strtol(uts_release_start, &dot, 10);
-    info->version.minor = strtol(dot + 1, &dot, 10);
-    info->version.patch = strtol(dot + 1, &dot, 10);
+    // todo:
+    // VERSION
+    info->version.major = (uint8_t)strtoul(uts_release_start, &dot, 10);
+    // PATCHLEVEL
+    info->version.minor = (uint8_t)strtoul(dot + 1, &dot, 10);
+    // SUBLEVEL
+    unsigned long patch = strtoul(dot + 1, &dot, 10);
+    info->version.patch = patch <= 256 ? patch : 255;
 
     fprintf(stdout, "[+] kernel version major: %d, minor: %d, patch: %d \n", info->version.major, info->version.minor,
             info->version.patch);
@@ -365,9 +368,9 @@ static int find_approx_addresses(kallsym_t *info, char *img, int32_t imglen)
             approx_offset, cand, approx_num_syms);
 
     //
-    // todo: tmp fix relo error, some bugs
+    // todo: tmp fix relo error, bugs with relo apply
     if (info->relo_applied) {
-        fprintf(stdout, "[-] kallsyms Here are some known bug, subsequent operations is undefined\n");
+        fprintf(stdout, "[-] kallsyms mismatch relo applied, subsequent operations may be undefined\n");
     }
 
     return 0;
@@ -608,6 +611,7 @@ static int correct_addresses_or_offsets(kallsym_t *info, char *img, int32_t imgl
         }
         if (pos < end) {
             info->symbol_banner_idx = i;
+            fprintf(stdout, "[+] kallsyms symbol banner index: %d\n", i);
             break;
         }
     }

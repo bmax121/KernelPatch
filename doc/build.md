@@ -68,3 +68,13 @@ cmake -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
     -DANDROID_ABI=arm64-v8a ../..
 cmake --build .
 ```
+
+## Build KernelPatch Module
+
+example:
+
+```shell
+export TARGET_COMPILE=aarch64-none-elf-
+cd kpm-demo/hello
+make
+```

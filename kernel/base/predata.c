@@ -17,6 +17,11 @@ int superkey_auth(const char *key, int len)
     return 0;
 }
 
+const char *get_superkey()
+{
+    return superkey;
+}
+
 struct patch_config *get_preset_patch_cfg()
 {
     return patch_config;
@@ -24,7 +29,7 @@ struct patch_config *get_preset_patch_cfg()
 
 void predata_init(const char *skey, struct patch_config *config)
 {
-    for (int i = 0; i < SUPER_KEY_LEN; i++) {
+    for (int i = 0; i < SUPER_KEY_LEN - 1; i++) {
         char c = skey[i];
         if (!c) {
             superkey_len = i;

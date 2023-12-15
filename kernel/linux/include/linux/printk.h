@@ -5,16 +5,6 @@
 #include <ksyms.h>
 #include <linux/kern_levels.h>
 
-// extern const char linux_banner[];
-// extern const char linux_proc_banner[];
-// extern int oops_in_progress; /* If set, an oops, panic(), BUG() or die() is in progress */
-// extern int console_printk[];
-// struct va_format
-// {
-//     const char *fmt;
-//     va_list *va;
-// };
-
 // extern int vprintk_emit(int facility, int level, const struct dev_printk_info *dev_info, const char *fmt, va_list args);
 // extern int vprintk(const char *fmt, va_list args);
 // extern int printk(const char *fmt, ...);
@@ -51,9 +41,6 @@ extern int kptr_restrict;
 #define pr_info(fmt, ...) printk(KERN_INFO pr_fmt(fmt), ##__VA_ARGS__)
 #define pr_cont(fmt, ...) printk(KERN_CONT fmt, ##__VA_ARGS__)
 
-extern int hex_dump_to_buffer(const void *buf, size_t len, int rowsize, int groupsize, char *linebuf, size_t linebuflen,
-                              bool ascii);
-
 static inline void dump_stack_lvl(const char *log_lvl)
 {
     kfunc_call(dump_stack_lvl, log_lvl);
@@ -62,8 +49,7 @@ static inline void dump_stack_lvl(const char *log_lvl)
 
 static inline void dump_stack(void)
 {
-    kfunc_call(dump_stack);
-    kfunc_not_found();
+    kfunc_direct_call(dump_stack);
 }
 
 #endif

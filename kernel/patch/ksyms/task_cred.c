@@ -13,9 +13,11 @@
 #include <uapi/linux/magic.h>
 #include <linux/capability.h>
 #include <linux/string.h>
+#include <linux/seccomp.h>
 #include <ksyms.h>
 #include <pgtable.h>
 #include <symbol.h>
+#include <asm/processor.h>
 
 struct task_struct_offset task_struct_offset = {
     .pid_offset = -1,
@@ -97,6 +99,9 @@ KP_EXPORT_SYMBOL(stack_end_offset);
 int thread_info_size = 0x90;
 KP_EXPORT_SYMBOL(thread_info_size);
 
+int pt_regs_offset = -1;
+KP_EXPORT_SYMBOL(pt_regs_offset);
+
 static int16_t *bl_list = 0;
 static int bl_cap = 0;
 
@@ -147,7 +152,7 @@ int resolve_cred_offset()
     struct cred *cred = cred_alloc_blank();
     struct cred *cred1 = cred_alloc_blank();
 
-    unsigned char _task[task_len];
+    uint64_t _task[task_len / 8];
     struct task_struct *task = (struct task_struct *)_task;
     memcpy(task, kvar(init_task), task_len);
     memcpy(cred, kvar(init_cred), cred_len);
@@ -386,7 +391,7 @@ int resolve_task_offset()
     int cred_len = kvlen(init_cred);
     int task_len = kvlen(init_task);
 
-    unsigned char _task[task_len];
+    uint64_t _task[task_len / 8];
     struct task_struct *task = (struct task_struct *)_task;
     memcpy(task, kvar(init_task), task_len);
 
@@ -408,7 +413,7 @@ int resolve_task_offset()
     }
     if (ci != 2) return -EINVAL;
 
-    unsigned char _flag[kvlen(init_cred)];
+    uint64_t _flag[kvlen(init_cred) / 8];
     struct cred *flag = (struct cred *)_flag;
     memcpy(flag, kvar(init_cred), cred_len);
 
@@ -437,6 +442,16 @@ int resolve_task_offset()
     }
     log_boot("    stack offset: %x\n", task_struct_offset.stack_offset);
 
+    // comm
+    for (uintptr_t i = start; i < end; i += sizeof(uintptr_t)) {
+        const char *comm = (const char *)i;
+        // swapper
+        if (!strncmp("swapper", comm, 7)) {
+            task_struct_offset.comm_offset = i - start;
+        }
+    }
+    log_boot("    comm offset: %x\n", task_struct_offset.comm_offset);
+
     // list_head
     // for (uintptr_t i = start; i < end; i += sizeof(uintptr_t)) {
     //     uintptr_t val = *(uintptr_t *)i;
@@ -447,15 +462,38 @@ int resolve_task_offset()
     //     }
     // }
 
-    // comm
+    return 0;
+}
+
+int resolve_task_offset_1()
+{
+    log_boot("struct task: \n");
+    int task_len = kvlen(init_task);
+
+    uint64_t _task[task_len / 8];
+    struct task_struct *task = (struct task_struct *)_task;
+    memcpy(task, kvar(init_task), task_len);
+
+    const struct task_struct *backup = override_current(task);
+
+    uintptr_t start = (uintptr_t)task;
+    uintptr_t end = start + task_len;
+
+    // seccomp
     for (uintptr_t i = start; i < end; i += sizeof(uintptr_t)) {
-        const char *comm = (const char *)i;
-        // swapper
-        if (!strncmp("swapper", comm, 7)) {
-            task_struct_offset.comm_offset = i - start;
+        int *modep = (int *)i;
+        int mode_back = *modep;
+        if (mode_back) continue;
+        *modep = 1158;
+        int mode = prctl_get_seccomp();
+        if (mode == 1158) {
+            task_struct_offset.seccomp_offset = i - start;
         }
+        *modep = mode_back;
     }
-    log_boot("    comm offset: %x\n", task_struct_offset.comm_offset);
+    log_boot("    seccomp offset: %x\n", task_struct_offset.seccomp_offset);
+
+    revert_current(backup);
 
     return 0;
 }
@@ -552,7 +590,9 @@ int resolve_struct()
     int err = 0;
     if ((err = resolve_task_offset())) goto out;
     if ((err = resolve_current())) goto out;
+    if ((err = resolve_task_offset_1())) goto out;
     if ((err = resolve_cred_offset())) goto out;
+
 out:
     return err;
 }

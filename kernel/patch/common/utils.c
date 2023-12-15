@@ -3,6 +3,7 @@
 #include <linux/trace_seq.h>
 #include <pgtable.h>
 #include <linux/string.h>
+#include <symbol.h>
 
 int trace_seq_copy_to_user(void __user *to, const void *from, int n)
 {
@@ -16,9 +17,7 @@ int trace_seq_copy_to_user(void __user *to, const void *from, int n)
     *plen = n;
     *preadpos = 0;
     *pfull = 0;
-    if (n > page_size) {
-        return 0;
-    }
+    if (n > page_size) return 0;
     memcpy(pbuffer, from, n);
     int sz = trace_seq_to_user(trace_seq, to, n);
     return sz;
@@ -44,3 +43,25 @@ int __must_check seq_copy_to_user(void __user *to, const void *from, int n)
     }
     return copy_len;
 }
+KP_EXPORT_SYMBOL(seq_copy_to_user);
+
+#include <linux/uaccess.h>
+
+// todo:
+long strncpy_from_user_nofault(char *dest, const char __user *src, long count)
+{
+    if (kfunc(strncpy_from_user)) {
+        long rc = kfunc(strncpy_from_user)(dest, src, count);
+        if (rc >= count) {
+            rc = count;
+            dest[rc - 1] = '\0';
+        } else if (rc > 0) {
+            rc++;
+        }
+        return rc;
+    }
+    kfunc_call(strncpy_from_user_nofault, dest, src, count);
+    kfunc_call(strncpy_from_unsafe_user, dest, src, count);
+    return 0;
+}
+KP_EXPORT_SYMBOL(strncpy_from_user_nofault);

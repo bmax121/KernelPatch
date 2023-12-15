@@ -52,12 +52,9 @@ start_prepare:
     // header
     adrp x12, header
     add x12, x12, :lo12:header
-    // start_preset.kernel_version = header.kernel_version;
-    ldr w13, [x12, #header_kernel_version_offset]
+    // start_preset.kernel_version = setup_preset.kernel_version;
+    ldr w13, [x10, #setup_kernel_version_offset]
     str w13, [x11, #start_kernel_version_offset]
-    // start_preset.kp_version = header.kp_version;
-    ldr w13, [x12, #header_kp_version_offset]
-    str w13, [x11, #start_kp_version_offset]
     // start_preset.kallsyms_lookup_name_offset = setup_preset.set.kallsyms_lookup_name_offset;
     ldr x13, [x10, #setup_kallsyms_lookup_name_offset_offset]
     str x13, [x11, #start_kallsyms_lookup_name_offset_offset]
@@ -75,6 +72,12 @@ start_prepare:
     str x13, [x11, #start_map_offset_offset]
     mov x20, x13
 
+    // memcpy(&start_preset.setup, &setup_header, KP_HEADER_SIZE);
+    add x0, x11, #start_header_offset
+    add x1, x12, #0
+    mov x2, #KP_HEADER_SIZE
+    bl memcpy8
+
     // memcpy(start_preset.superkey, setup_preset.superkey, SUPER_KEY_LEN);
     add x0, x11, #start_superkey_offset;
     add x1, x10, #setup_superkey_offset
@@ -87,19 +90,14 @@ start_prepare:
     mov x2, #patch_config_size
     bl memcpy8
 
-    // memcpy(start_preset.compile_time, header.compile_time, COMPILE_TIME_LEN);
-    add x0, x11, #start_compile_time_offset;
-    add x1, x12, #header_compile_time_offset
-    mov x2, #COMPILE_TIME_LEN
-    bl memcpy8
-
     // backup map area
-    // memcpy((uint64_t)start_preset.map_backup, kernel_pa + setup_preset.map_offset, (uint64_t)_map_end - (uint64_t)_map_start)
+    // memcpy(start_preset.map_backup, kernel_pa + setup_preset.map_offset, (uint64_t)_map_end - (uint64_t)_map_start)
     adrp x13, _map_end
     add x13, x13, :lo12:_map_end
     adrp x14, _map_start
     add x14, x14, :lo12:_map_start
     sub x2, x13, x14
+
     // start_preset.map_backup_len = (uint64_t)_map_end - (uint64_t)_map_start
     str x2, [x11, #start_map_backup_len_offset]
     add x0, x11, #start_map_backup_offset

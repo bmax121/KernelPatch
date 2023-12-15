@@ -9,93 +9,87 @@
 #include <linux/uaccess.h>
 #include <linux/string.h>
 #include <linux/slab.h>
-#include <minc/string.h>
 #include <taskob.h>
 #include <predata.h>
 #include <accctl.h>
 #include <asm/current.h>
 #include <linux/printk.h>
-#include <module.h>
+#include <linux/fs.h>
+#include <linux/vmalloc.h>
+#include <syscall.h>
+#include <kputils.h>
+#include <linux/ptrace.h>
+#include <predata.h>
+#include <linux/string.h>
+#include <linux/kernel.h>
+#include <linux/slab.h>
+#include <linux/umh.h>
+#include <uapi/scdefs.h>
 
-struct module *find_module(const char *name);
+/*
+Modified from KernelSU, GPLv2
+https://github.com/tiann/KernelSU
+*/
 
-static void load_kpuserd_config()
+const char origin_rc_file[] = "/system/etc/init/atrace.rc";
+const char replace_rc_file[] = "/dev/.atrace.rc";
+
+static const char patch_rc[] = ""
+                               "on late-init\n"
+                               "    rm %s \n"
+                               "on post-fs-data\n"
+                               "    start logd\n"
+                               "    exec -- /system/bin/truncate %s --android_user_init\n"
+                               "    exec u:r:magisk:s0 root -- " APD_PATH " post-fs-data\n"
+                               "on nonencrypted\n"
+                               "    exec u:r:magisk:s0 root -- " APD_PATH " services\n"
+                               "on property:vold.decrypt=trigger_restart_framework\n"
+                               "    exec u:r:magisk:s0 root -- " APD_PATH " services\n"
+                               "on property:sys.boot_completed=1\n"
+                               "    exec u:r:magisk:s0 root -- " APD_PATH " boot-completed\n"
+                               "\n"
+                               "";
+
+static const void *kernel_read_file(const char *path, loff_t *len)
 {
-    // todo: private allow
-    set_selinx_allow(current, 1);
+    void *data = 0;
+    struct file *filp = filp_open(path, O_RDONLY, 0);
+    if (IS_ERR(filp)) {
+        log_boot("open file: %s error: %d\n", path, PTR_ERR(filp));
+        goto out;
+    }
+    *len = vfs_llseek(filp, 0, SEEK_END);
+    vfs_llseek(filp, 0, SEEK_SET);
+    data = vmalloc(*len);
+    loff_t pos = 0;
+    kernel_read(filp, data, *len, &pos);
+    filp_close(filp, 0);
+out:
+    return data;
+}
 
+static void load_config()
+{
+    set_priv_selinx_allow(current, 1);
     patch_config_t *config = get_preset_patch_cfg();
-    const char *su_config_path = config->config_ini_path;
-
-    log_boot("config path: %s\n", su_config_path);
-
-    // struct file *filp = filp_open(kpm_path, O_RDONLY, 0);
-    // if (IS_ERR(filp)) {
-    //     log_boot("open: %s error: %d\n", kpm_path, PTR_ERR(filp));
-    //     goto out;
-    // }
-
-    // filp_close(filp, 0);
-    // out:
-    set_selinx_allow(current, 0);
+    const char *reserved = config->config_reserved;
+    log_boot("config_reserved: %s\n", reserved);
+    set_priv_selinx_allow(current, 0);
 }
 
 static void on_post_fs_data()
 {
     static bool done = false;
-    if (done) {
-        logkw("on_post_fs_data already done\n");
-        return;
-    }
+    if (done) return;
     done = true;
-    load_kpuserd_config();
+    set_priv_selinx_allow(current, 1);
+    load_config();
+    set_priv_selinx_allow(current, 0);
 }
 
-#define CONFIG_COMPAT
-
-struct user_arg_ptr
+static void on_second_stage()
 {
-#ifdef CONFIG_COMPAT
-    bool is_compat;
-#endif
-    union
-    {
-        const char __user *const __user *native;
-#ifdef CONFIG_COMPAT
-        const compat_uptr_t __user *compat;
-#endif
-    } ptr;
-};
-static const char __user *get_user_arg_ptr(void *a0, void *a1, int nr)
-{
-    char __user *const __user *native = (char __user *const __user *)a0;
-    int size = 8;
-    if (has_config_compat) {
-        native = (char __user *const __user *)a1;
-        if (a0) {
-            native = (char __user *const __user *)((unsigned long)a1 >> 32);
-            size = 4;
-        }
-    }
-    native = (char __user *const __user *)((unsigned long)native + nr * size);
-    char __user **upptr = memdup_user(native, size);
-    if (IS_ERR(upptr)) {
-        return ERR_PTR((long)upptr);
-    }
-    char __user *uptr;
-    if (size == 8) {
-        uptr = *upptr;
-    } else {
-        uptr = (char __user *)(unsigned long)*(int32_t *)upptr;
-    }
-    kfree(upptr);
-    return uptr;
 }
-
-/*
-Copied and modified from KernelSU, GPLv2
-https://github.com/tiann/KernelSU
-*/
 
 // int do_execveat_common(int fd, struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp, int flags)
 // int __do_execve_file(int fd, struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp, int flags,
@@ -108,10 +102,9 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
         filename_index = 1;
     }
     struct filename *filename = (struct filename *)args->args[filename_index];
-
     if (!filename || IS_ERR(filename)) return;
 
-    static const char app_process[] = "/system/bin/app_process";
+    const char app_process[] = "/system/bin/app_process";
     static bool first_app_process = true;
 
     /* This applies to versions Android 10+ */
@@ -122,37 +115,34 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
 
     if (!memcmp(filename->name, system_bin_init, sizeof(system_bin_init) - 1) ||
         !memcmp(filename->name, old_system_init, sizeof(old_system_init) - 1)) {
-        for (int i = 1; i < 0x7FFFFFFF; i++) {
-            const char __user *p1 =
+        for (int i = 1;; i++) {
+            const char *__user p1 =
                 get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], i);
-
-            if (p1 && !IS_ERR(p1)) {
+            if (!p1) break;
+            if (!IS_ERR(p1)) {
                 char arg[16] = { '\0' };
-                if (strncpy_from_user_nofault(arg, p1, sizeof(arg)) <= 0) {
-                    break;
-                }
-                if (!min_strcmp(arg, "second_stage")) {
-                    logkd("exec %s second_stage\n", filename->name);
+                if (strncpy_from_user_nofault(arg, p1, sizeof(arg)) <= 0) break;
+
+                if (!strcmp(arg, "second_stage")) {
+                    log_boot("0 exec %s second_stage\n", filename->name);
+                    on_second_stage();
                     init_second_stage_executed = true;
-                    //  apply_kernelsu_rules();
-                    //  ksu_android_ns_fs_check();
                 }
             }
         }
 
         if (!init_second_stage_executed) {
             int envp_index = filename_index + (has_config_compat ? 3 : 2);
-            for (int i = 0; i < 0x7FFFFFFF; i++) {
-                const char __user *up =
+            for (int i = 0;; i++) {
+                const char *__user up =
                     get_user_arg_ptr((void *)args->args[envp_index], (void *)args->args[envp_index + 1], i);
                 if (!up || IS_ERR(up)) break;
                 char env[256];
-                if (strncpy_from_user_nofault(env, up, sizeof(env)) <= 0) {
-                    break;
-                }
+                if (strncpy_from_user_nofault(env, up, sizeof(env)) <= 0) break;
+
                 // Parsing environment variable names and values
                 char *env_name = env;
-                char *env_value = min_strchr(env, '=');
+                char *env_value = strchr(env, '=');
                 if (env_value) {
                     // Replace equal sign with string terminator
                     *env_value = '\0';
@@ -160,10 +150,9 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
                     // Check if the environment variable name and value are matching
                     if (!strcmp(env_name, "INIT_SECOND_STAGE") &&
                         (!strcmp(env_value, "1") || !strcmp(env_value, "true"))) {
-                        logkd("exec %s second_stage\n", filename->name);
+                        log_boot("1 exec %s second_stage\n", filename->name);
+                        on_second_stage();
                         init_second_stage_executed = true;
-                        // apply_kernelsu_rules();
-                        // ksu_android_ns_fs_check();
                     }
                 }
             }
@@ -172,9 +161,90 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
 
     if (unlikely(first_app_process && !memcmp(filename->name, app_process, sizeof(app_process) - 1))) {
         first_app_process = false;
-        logkd("exec app_process, /data prepared, second_stage: %d\n", init_second_stage_executed);
+        log_boot("exec app_process, /data prepared, second_stage: %d\n", init_second_stage_executed);
         on_post_fs_data();
         remove_execv_hook(before_do_execve, 0);
+    }
+}
+
+static void after_openat(hook_fargs4_t *args, void *udata);
+
+static void before_openat(hook_fargs4_t *args, void *udata)
+{
+    // clear local
+    args->local.data0 = 0;
+
+    static bool replaced = false;
+    if (replaced) return;
+
+    const char __user *filename = (typeof(filename))syscall_argn(args, 1);
+    char buf[32];
+    strncpy_from_user_nofault(buf, filename, sizeof(buf));
+    if (strcmp(origin_rc_file, buf)) return;
+
+    replaced = true;
+
+    set_priv_selinx_allow(current, 1);
+    // create replace file and redirect
+    loff_t ori_len = 0;
+    struct file *newfp = filp_open(replace_rc_file, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (IS_ERR(newfp)) {
+        log_boot("create replace rc error: %d\n", PTR_ERR(newfp));
+        goto out;
+    }
+    const char *ori_rc_data = kernel_read_file(origin_rc_file, &ori_len);
+    if (!ori_rc_data) goto out;
+    char *replace_rc_data = vmalloc(sizeof(patch_rc) + sizeof(replace_rc_file) + SUPER_KEY_LEN);
+    const char *superkey = get_superkey();
+    sprintf(replace_rc_data, patch_rc, replace_rc_file, superkey);
+    loff_t off = 0;
+    kernel_write(newfp, replace_rc_data, strlen(replace_rc_data), &off);
+    kernel_write(newfp, ori_rc_data, ori_len, &off);
+    if (off != strlen(replace_rc_data) + ori_len) {
+        log_boot("write replace rc error: %x\n", off);
+        goto free;
+    }
+    // yes, filename is not read only
+    args->local.data0 = seq_copy_to_user((void *)filename, replace_rc_file, sizeof(replace_rc_file));
+    log_boot("redirect rc file: %x\n", args->local.data0);
+free:
+    filp_close(newfp, 0);
+    kvfree(ori_rc_data);
+    kvfree(replace_rc_data);
+out:
+    // read file not require selinux permission, so set not allow now
+    set_priv_selinx_allow(current, 0);
+    return;
+}
+
+static void after_openat(hook_fargs4_t *args, void *udata)
+{
+    if (args->local.data0) {
+        const char __user *filename = (typeof(filename))syscall_argn(args, 1);
+        int len = seq_copy_to_user((void *)filename, origin_rc_file, sizeof(origin_rc_file));
+        log_boot("restore rc file: %x\n", len);
+        // todo:
+        fp_unhook_syscall(__NR_openat, before_openat, after_openat);
+    }
+}
+
+#define EV_KEY 0x01
+#define KEY_VOLUMEDOWN 114
+
+// void input_handle_event(struct input_dev *dev, unsigned int type, unsigned int code, int value)
+static void before_input_handle_event(hook_fargs4_t *args, void *udata)
+{
+    static unsigned int volumedown_pressed_count = 0;
+    unsigned int type = args->arg1;
+    unsigned int code = args->arg2;
+    int value = args->arg3;
+    if (value && type == EV_KEY && code == KEY_VOLUMEDOWN) {
+        volumedown_pressed_count++;
+        if (volumedown_pressed_count == 3) {
+            log_boot("entering safemode ...");
+            struct file *filp = filp_open(replace_rc_file, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+            if (filp && !IS_ERR(filp)) filp_close(filp, 0);
+        }
     }
 }
 
@@ -187,6 +257,23 @@ int kpuserd_init()
         rc = err;
         goto out;
     }
+
+    fp_hook_syscalln(__NR_openat, 4, before_openat, after_openat, 0);
+
+    unsigned long input_handle_event_addr = kallsyms_lookup_name("input_handle_event");
+    if (!input_handle_event_addr) {
+        log_boot("no symbol input_handle_event_addr\n");
+        rc = -ENOENT;
+        goto out;
+    } else {
+        hook_err_t err = hook_wrap4((void *)input_handle_event_addr, before_input_handle_event, 0, 0);
+        if (err) {
+            log_boot("hook do_faccessat error: %d\n", err);
+            rc = err;
+            goto out;
+        }
+    }
+
 out:
     return rc;
 }

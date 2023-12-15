@@ -47,6 +47,11 @@ typedef __u32 __bitwise __wsum;
 
 typedef unsigned __bitwise __poll_t;
 
+#define ATOMIC_INIT(i) \
+    {                  \
+        (i)            \
+    }
+
 #ifdef __ASSEMBLY__
 #define _AC(X, Y) X
 #define _AT(T, X) X

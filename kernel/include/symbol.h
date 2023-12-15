@@ -1,14 +1,14 @@
 #ifndef _KP_SYMBOL_H_
 #define _KP_SYMBOL_H_
 
-#define KP_SYMBOL_LEN 31
+#define KP_SYMBOL_LEN 32
 
 // todo: name len
 typedef struct
 {
-    const char name[KP_SYMBOL_LEN + 1];
     unsigned long addr;
     unsigned long hash;
+    const char name[KP_SYMBOL_LEN];
 } kp_symbol_t;
 
 #define _KP_EXPORT_SYMBOL(sym)                                 \

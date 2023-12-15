@@ -7,7 +7,7 @@ typedef int (*memblock_mark_nomap_f)(phys_addr_t base, phys_addr_t size);
 typedef int (*printk_f)(const char *fmt, ...);
 typedef void (*paging_init_f)(void);
 
-map_preset_t map_preset __section(.map.data) __aligned(MAP_ALIGN) = {
+map_data_t map_preset __section(.map.data) __aligned(MAP_ALIGN) = {
 #ifdef MAP_DEBUG
     .str_fmt_px = "KP: %x-%llx\n",
 #endif
@@ -20,20 +20,20 @@ uint64_t __section(.map.text) __noinline __aligned(MAP_ALIGN) get_myva()
     return this_va & ~((uint64_t)MAP_ALIGN - 1);
 }
 
-map_preset_t *__noinline get_preset()
+map_data_t *__noinline get_preset()
 {
-    uint64_t va = get_myva() - sizeof(map_preset_t);
-    return (map_preset_t *)(va & ~((uint64_t)MAP_ALIGN - 1));
+    uint64_t va = get_myva() - sizeof(map_data_t);
+    return (map_data_t *)(va & ~((uint64_t)MAP_ALIGN - 1));
 }
 
 static uint64_t get_kva()
 {
-    map_preset_t *preset = get_preset();
+    map_data_t *preset = get_preset();
     uint64_t kernel_va = (uint64_t)preset - preset->map_offset;
     return kernel_va;
 }
 
-static uint64_t __noinline phys_to_lm(map_preset_t *preset, uint64_t phys)
+static uint64_t __noinline phys_to_lm(map_data_t *preset, uint64_t phys)
 {
     uint64_t page_offset = preset->page_offset;
     uint64_t virt = preset->kimage_voffset_relo ? (phys - preset->memstart_addr_relo) | page_offset :
@@ -41,7 +41,7 @@ static uint64_t __noinline phys_to_lm(map_preset_t *preset, uint64_t phys)
     return virt;
 }
 
-// static uint64_t __noinline lm_to_phys(map_preset_t *preset, uint64_t virt)
+// static uint64_t __noinline lm_to_phys(map_data_t *preset, uint64_t virt)
 // {
 //     uint64_t page_offset = preset->page_offset;
 //     uint64_t phys = preset->kimage_voffset_relo ? (virt & ~page_offset) + preset->memstart_addr_relo :
@@ -49,7 +49,7 @@ static uint64_t __noinline phys_to_lm(map_preset_t *preset, uint64_t phys)
 //     return phys;
 // }
 
-static inline uint64_t phys_to_kimg(map_preset_t *preset, uint64_t phys)
+static inline uint64_t phys_to_kimg(map_data_t *preset, uint64_t phys)
 {
     return phys + preset->kimage_voffset_relo;
 }
@@ -72,9 +72,9 @@ static void flush_icache_all(void)
     asm volatile("isb" : : : "memory");
 }
 
-static map_preset_t *__noinline mem_proc()
+static map_data_t *__noinline mem_proc()
 {
-    map_preset_t *preset = get_preset();
+    map_data_t *preset = get_preset();
     uint64_t kernel_va = get_kva();
     preset->kernel_va = kernel_va;
     preset->paging_init_relo += kernel_va;
@@ -111,7 +111,7 @@ static map_preset_t *__noinline mem_proc()
 }
 
 // todo: 52-bits pa
-static uint64_t __noinline get_or_create_pte(map_preset_t *preset, uint64_t va, uint64_t pa, uint64_t attr_indx)
+static uint64_t __noinline get_or_create_pte(map_data_t *preset, uint64_t va, uint64_t pa, uint64_t attr_indx)
 {
 #ifdef MAP_DEBUG
     printk_f printk = (printk_f)(preset->printk_relo);
@@ -181,11 +181,11 @@ static uint64_t __noinline get_or_create_pte(map_preset_t *preset, uint64_t va, 
 // todo: bti
 void __noinline _paging_init()
 {
-    map_preset_t *preset = mem_proc();
+    map_data_t *preset = mem_proc();
 #ifdef MAP_DEBUG
     printk_f printk = (printk_f)(preset->printk_relo);
 #define map_debug(idx, val) printk(preset->str_fmt_px, idx, val)
-    for (int i = 0; i < sizeof(map_preset_t); i += 8) {
+    for (int i = 0; i < sizeof(map_data_t); i += 8) {
         map_debug(i, *(uint64_t *)((uint64_t)preset + i));
     }
 #else

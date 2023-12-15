@@ -23,10 +23,10 @@ int linux_sybmol_len_init()
 {
     int rc = 0;
 
-    kvar_match(init_task, name, addr);
-    kvar_match(init_thread_union, name, addr);
-    kvar_match(init_cred, name, addr);
-    kvar_match(init_groups, name, addr);
+    kvar_lookup_name(init_task);
+    kvar_lookup_name(init_thread_union);
+    kvar_lookup_name(init_cred);
+    kvar_lookup_name(init_groups);
 
     if (!kvar(init_task) || !kvar(init_thread_union) || !kvar(init_cred) || !kvar(init_groups)) {
         rc = -ENOENT;
@@ -41,19 +41,24 @@ int linux_sybmol_len_init()
 
     log_boot("struct size: \n");
 
-    lookup_symbol_attrs((unsigned long)kvar(init_cred), &size, &offset, mod, name);
-    kvlen(init_cred) = size;
-    log_boot("    init_cred: %x\n", size);
+    if (!lookup_symbol_attrs) {
+        log_boot("    use default\n");
+        kvlen(init_cred) = 0x100;
+        kvlen(init_task) = 0x1400;
+        kvlen(init_thread_union) = 0x4000;
+    } else {
+        lookup_symbol_attrs((unsigned long)kvar(init_cred), &size, &offset, mod, name);
+        kvlen(init_cred) = size;
+        lookup_symbol_attrs((unsigned long)kvar(init_task), &size, &offset, mod, name);
+        kvlen(init_task) = size;
+        lookup_symbol_attrs((unsigned long)kvar(init_thread_union), &size, &offset, mod, name);
+        kvlen(init_thread_union) = size;
+    }
+    thread_size = kvlen(init_thread_union);
 
-    lookup_symbol_attrs((unsigned long)kvar(init_task), &size, &offset, mod, name);
-    kvlen(init_task) = size;
-    log_boot("    init_task: %x\n", size);
-
-    lookup_symbol_attrs((unsigned long)kvar(init_thread_union), &size, &offset, mod, name);
-    kvlen(init_thread_union) = size;
-    thread_size = size;
-    log_boot("    thread_union: %x\n", size);
-
+    log_boot("    init_cred: %x\n", kvlen(init_cred));
+    log_boot("    init_task: %x\n", kvlen(init_task));
+    log_boot("    thread_union: %x\n", kvlen(init_thread_union));
 out:
     return rc;
 }

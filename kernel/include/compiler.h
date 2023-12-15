@@ -32,8 +32,8 @@
 #define __must_hold(x) __attribute__((context(x, 1, 1)))
 #define __acquires(x) __attribute__((context(x, 0, 1)))
 #define __releases(x) __attribute__((context(x, 1, 0)))
-#define __acquire(x) __context__(x, 1)
-#define __release(x) __context__(x, -1)
+#define __acquire(x)
+#define __release(x)
 #define __cond_lock(x, c) \
     ((c) ? ({             \
         __acquire(x);     \
@@ -43,6 +43,7 @@
 #define __percpu
 #define __rcu
 #define __pmem
+#define notrace
 
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
@@ -81,5 +82,20 @@
 
 #define compiletime_assert_atomic_type(t) \
     compiletime_assert(__native_word(t), "Need native word sized stores/loads for atomicity.")
+
+#define barrier() __asm__ __volatile__("" : : : "memory")
+
+#define ___PASTE(a, b) a##b
+#define __PASTE(a, b) ___PASTE(a, b)
+#define __UNIQUE_ID(prefix) __PASTE(__PASTE(__UNIQUE_ID_, prefix), __COUNTER__)
+
+// /include/linux/instruction_pointer.h
+#define _RET_IP_ (unsigned long)__builtin_return_address(0)
+#define _THIS_IP_                \
+    ({                           \
+        __label__ __here;        \
+    __here:                      \
+        (unsigned long)&&__here; \
+    })
 
 #endif

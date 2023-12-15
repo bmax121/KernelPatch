@@ -11,6 +11,8 @@ extern uintptr_t kvar_def(sys_call_table);
 extern uintptr_t kvar_def(compat_sys_call_table);
 extern bool syscall_has_wrapper;
 
+const char __user *get_user_arg_ptr(void *a0, void *a1, int nr);
+
 long raw_syscall0(long nr);
 long raw_syscall1(long nr, long arg0);
 long raw_syscall2(long nr, long arg0, long arg1);
@@ -24,16 +26,23 @@ long raw_syscall6(long nr, long arg0, long arg1, long arg2, long arg3, long arg4
 static inline uint64_t *syscall_args(void *hook_fargs)
 {
     uint64_t *args;
-    if (syscall_has_wrapper)
+    if (syscall_has_wrapper) {
         args = ((struct pt_regs *)((hook_fargs0_t *)hook_fargs)->args[0])->regs;
-    else
+    } else {
         args = ((hook_fargs0_t *)hook_fargs)->args;
+    }
     return args;
 }
 
 static inline uint64_t syscall_argn(void *fdata_args, int n)
 {
     return syscall_args(fdata_args)[n];
+}
+
+static inline void set_syscall_argn(void *fdata_args, int n, uint64_t val)
+{
+    uint64_t *args = syscall_args(fdata_args);
+    args[n] = val;
 }
 
 static inline hook_err_t fp_hook_syscalln(int nr, int narg, void *before, void *after, void *udata)

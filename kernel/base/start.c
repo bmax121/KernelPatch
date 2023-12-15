@@ -13,6 +13,7 @@
 #include "start.h"
 #include "hook.h"
 #include "tlsf.h"
+#include "hmem.h"
 
 #define bits(n, high, low) (((n) << (63u - (high))) >> (63u - (high) + (low)))
 #define align_floor(x, align) ((uint64_t)(x) & ~((uint64_t)(align)-1))
@@ -77,6 +78,7 @@ uint64_t _kp_rw_end = 0;
 uint64_t _kp_region_start = 0;
 uint64_t _kp_region_end = 0;
 
+uint64_t ttbr1_el1 = 0;
 uint64_t kernel_va = 0;
 uint64_t kernel_stext_va = 0;
 uint64_t kernel_pa = 0;
@@ -126,6 +128,7 @@ uint64_t *pgtable_entry_kernel(uint64_t va)
     uint64_t pxd_ptrs = 1u << pxd_bits;
     uint64_t ttbr1_el1;
     asm volatile("mrs %0, ttbr1_el1" : "=r"(ttbr1_el1));
+
     uint64_t baddr = ttbr1_el1 & 0xFFFFFFFFFFFE;
     uint64_t page_size = 1 << page_shift;
     uint64_t page_size_mask = ~(page_size - 1);
@@ -133,6 +136,13 @@ uint64_t *pgtable_entry_kernel(uint64_t va)
     uint64_t pxd_va = phys_to_virt(pxd_pa);
     uint64_t pxd_entry_va = 0;
     uint64_t block_lv = 0;
+
+    // ================
+    // todo:
+    // branch to some function (even empty) will work, but I don't know why,
+    // if anyone knows, please let me know. thank you very much.
+    // ================
+    __flush_dcache_area((void *)pxd_va, page_size);
 
     for (int64_t lv = 4 - page_level; lv < 4; lv++) {
         uint64_t pxd_shift = (page_shift - 3) * (4 - lv) + 3;
@@ -151,7 +161,6 @@ uint64_t *pgtable_entry_kernel(uint64_t va)
             return 0;
         }
         //
-        dsb(ishst);
         pxd_va = phys_to_virt(pxd_pa);
         if (block_lv) {
             break;
@@ -166,13 +175,11 @@ uint64_t *pgtable_entry_kernel(uint64_t va)
         return 0;
     }
 #endif
-    // todo:
-    __flush_dcache_all();
     return (uint64_t *)pxd_entry_va;
 }
 KP_EXPORT_SYMBOL(pgtable_entry_kernel);
 
-static __noinline void prot_myself()
+static void prot_myself()
 {
     uint64_t *kpte = pgtable_entry_kernel(kernel_stext_va);
     log_boot("Kernel stext prot: %llx\n", *kpte);
@@ -180,6 +187,9 @@ static __noinline void prot_myself()
     _kp_region_start = (uint64_t)_kp_text_start;
     _kp_region_end = (uint64_t)_kp_end + HOOK_ALLOC_SIZE + MEMORY_ROX_SIZE + MEMORY_RW_SIZE;
     log_boot("Region: %llx, %llx\n", _kp_region_start, _kp_region_end);
+
+    uint64_t *kppte = pgtable_entry_kernel(_kp_region_start);
+    log_boot("KernelPatch start prot: %llx\n", *kppte);
 
     // text, rodata
     uint64_t text_start = (uint64_t)_kp_text_start;
@@ -277,7 +287,7 @@ static __noinline void prot_myself()
     }
 }
 
-static __noinline void restore_map()
+static void restore_map()
 {
     uint64_t start = kernel_va + start_preset.map_offset;
     uint64_t end = start + start_preset.map_backup_len;
@@ -297,17 +307,15 @@ static __noinline void restore_map()
     flush_icache_all();
 }
 
-static __noinline void pgtable_init()
+static void pgtable_init()
 {
+    asm volatile("mrs %0, ttbr1_el1" : "=r"(ttbr1_el1));
+
     uint64_t addr = kallsyms_lookup_name("memstart_addr");
-    if (addr) {
-        memstart_addr = *(int64_t *)addr;
-    }
+    if (addr) memstart_addr = *(int64_t *)addr;
 
     addr = kallsyms_lookup_name("kimage_voffset");
-    if (addr) {
-        kimage_voffset = *(uint64_t *)addr;
-    }
+    if (addr) kimage_voffset = *(uint64_t *)addr;
 
     uint64_t tcr_el1;
     asm volatile("mrs %0, tcr_el1" : "=r"(tcr_el1));
@@ -325,6 +333,8 @@ static __noinline void pgtable_init()
     uint64_t vabits_actual_addr = kallsyms_lookup_name("vabits_actual");
     page_offset = (vabits_actual_addr || kver >= VERSION(6, 0, 0)) ? -(1ul << va_bits) :
                                                                      (0xffffffffffffffff << (va_bits - 1));
+    dsb(ish);
+    isb();
 }
 
 #define log_reg(regname)                                                   \
@@ -334,7 +344,7 @@ static __noinline void pgtable_init()
         log_boot("" #regname ": %llx\n", regname##_val);                   \
     } while (0)
 
-static __noinline void log_regs()
+static void log_regs()
 {
     // log_reg(APDAKey_EL1); //      | R/W [1] | Pointer Authentication Key A for Data (Hi/Lo pair)
     // log_reg(APDBKey_EL1); //      | R/W [1] | Pointer Authentication Key B for Data (Hi/Lo pair)
@@ -386,7 +396,7 @@ static __noinline void log_regs()
     // log_reg(PMSIDR_EL1); //       | R   [4] | Sampling Profiling ID Register
 }
 
-static __noinline void start_init(uint64_t kva, uint64_t offset)
+static void start_init(uint64_t kva, uint64_t offset)
 {
     kernel_va = kva;
     kp_kimg_offset = offset;
@@ -396,22 +406,25 @@ static __noinline void start_init(uint64_t kva, uint64_t offset)
     kallsyms_lookup_name = (typeof(kallsyms_lookup_name))(kallsym_addr);
     kernel_stext_va = kallsyms_lookup_name("_stext");
     printk = (typeof(printk))kallsyms_lookup_name("printk");
-    if (!printk) {
-        printk = (typeof(printk))kallsyms_lookup_name("_printk");
-    }
+    if (!printk) printk = (typeof(printk))kallsyms_lookup_name("_printk");
+
     vsprintf = (typeof(vsprintf))kallsyms_lookup_name("vsprintf");
 
     log_boot(kernel_patch_logo);
 
     endian = *(unsigned char *)&(uint16_t){ 1 } ? little : big;
+    setup_header_t *header = &start_preset.header;
     kver = VERSION(start_preset.kernel_version.major, start_preset.kernel_version.minor,
                    start_preset.kernel_version.patch);
-    kpver = VERSION(start_preset.kp_version.major, start_preset.kp_version.minor, start_preset.kp_version.patch);
+    kpver = VERSION(header->kp_version.major, header->kp_version.minor, header->kp_version.patch);
 
     log_boot("Kernel pa: %llx\n", kernel_pa);
     log_boot("Kernel va: %llx\n", kernel_va);
+
+    log_boot("Kernel Version: %x\n", kver);
     log_boot("Kernel Patch Version: %x\n", kpver);
-    log_boot("Kernel Patch Compile Time: %s\n", (uint64_t)start_preset.compile_time);
+    log_boot("Kernel Patch Config: %llx\n", header->config_flags);
+    log_boot("Kernel Patch Compile Time: %s\n", (uint64_t)header->compile_time);
 
     kallsyms_on_each_symbol = (typeof(kallsyms_on_each_symbol))kallsyms_lookup_name("kallsyms_on_each_symbol");
     lookup_symbol_attrs = (typeof(lookup_symbol_attrs))kallsyms_lookup_name("lookup_symbol_attrs");

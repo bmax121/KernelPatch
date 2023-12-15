@@ -1,5 +1,7 @@
 #include "accctl.h"
 
+#include <pgtable.h>
+#include <ksyms.h>
 #include <taskext.h>
 #include <linux/spinlock.h>
 #include <linux/capability.h>
@@ -8,24 +10,19 @@
 #include <linux/pid.h>
 #include <linux/sched/task.h>
 #include <linux/sched.h>
-#include <pgtable.h>
-#include <ksyms.h>
-#include <minc/string.h>
+#include <linux/sched/task.h>
+#include <linux/seccomp.h>
+#include <asm/thread_info.h>
 #include <uapi/asm-generic/errno.h>
 
-int set_selinx_allow(struct task_struct *task, int val)
+int set_priv_selinx_allow(struct task_struct *task, int val)
 {
     struct task_ext *ext = get_task_ext(task);
-    if (unlikely(!task_ext_valid(ext))) {
-        logkfe("dirty task_ext, pid(maybe dirty): %d\n", ext->pid);
-        goto out;
-    }
-    ext->selinux_allow = val;
-out:
+    ext->priv_selinux_allow = val;
     return 0;
 }
 
-static void make_cred_su(struct cred *cred, const char *sctx)
+static void su_cred(struct cred *cred, uid_t uid)
 {
     *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_inheritable_offset) = full_cap;
     *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_permitted_offset) = full_cap;
@@ -33,15 +30,15 @@ static void make_cred_su(struct cred *cred, const char *sctx)
     *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_bset_offset) = full_cap;
     *(kernel_cap_t *)((uintptr_t)cred + cred_offset.cap_ambient_offset) = full_cap;
 
-    *(uid_t *)((uintptr_t)cred + cred_offset.uid_offset) = 0;
-    *(uid_t *)((uintptr_t)cred + cred_offset.euid_offset) = 0;
-    *(uid_t *)((uintptr_t)cred + cred_offset.fsuid_offset) = 0;
-    *(uid_t *)((uintptr_t)cred + cred_offset.suid_offset) = 0;
+    *(uid_t *)((uintptr_t)cred + cred_offset.uid_offset) = uid;
+    *(uid_t *)((uintptr_t)cred + cred_offset.euid_offset) = uid;
+    *(uid_t *)((uintptr_t)cred + cred_offset.fsuid_offset) = uid;
+    *(uid_t *)((uintptr_t)cred + cred_offset.suid_offset) = uid;
 
-    *(uid_t *)((uintptr_t)cred + cred_offset.gid_offset) = 0;
-    *(uid_t *)((uintptr_t)cred + cred_offset.egid_offset) = 0;
-    *(uid_t *)((uintptr_t)cred + cred_offset.fsgid_offset) = 0;
-    *(uid_t *)((uintptr_t)cred + cred_offset.sgid_offset) = 0;
+    *(uid_t *)((uintptr_t)cred + cred_offset.gid_offset) = uid;
+    *(uid_t *)((uintptr_t)cred + cred_offset.egid_offset) = uid;
+    *(uid_t *)((uintptr_t)cred + cred_offset.fsgid_offset) = uid;
+    *(uid_t *)((uintptr_t)cred + cred_offset.sgid_offset) = uid;
 }
 
 // int commit_kernel_cred()
@@ -49,8 +46,7 @@ static void make_cred_su(struct cred *cred, const char *sctx)
 //     int rc = 0;
 //     struct task_struct *task = current;
 //     struct task_ext *ext = get_task_ext(task);
-//     if (!task_ext_valid(ext))
-//         goto out;
+//     if (!task_ext_valid(ext)) goto out;
 
 //     const struct cred *old = get_task_cred(task);
 //     struct cred *new = prepare_kernel_cred(0);
@@ -59,106 +55,80 @@ static void make_cred_su(struct cred *cred, const char *sctx)
 //         kfunc(security_cred_getsecid)(old, &secid);
 //         set_security_override(new, secid);
 //     }
-//     // todo:
 //     commit_creds(new);
-
 // out:
 //     return rc;
 // }
 
-int commit_su(int super, const char *sctx)
+int commit_su(uid_t to_uid, const char *sctx)
 {
     int rc = 0;
-    int scontext_changed = 0;
     struct task_struct *task = current;
     struct task_ext *ext = get_task_ext(task);
-
-    if (!task_ext_valid(ext)) {
+    if (unlikely(!task_ext_valid(ext))) {
         logkfe("dirty task_ext, pid(maybe dirty): %d\n", ext->pid);
         rc = -ENOMEM;
         goto out;
     }
-    ext->super = super;
-    ext->selinux_allow = 1;
 
-    struct cred *new = prepare_creds();
-    make_cred_su(new, sctx);
+    struct thread_info *thi = current_thread_info();
+    thi->flags &= ~(_TIF_SECCOMP);
 
-    if (sctx && sctx[0]) {
-        scontext_changed = !set_security_override_from_ctx(new, sctx);
-        if (!scontext_changed) rc = -EINVAL;
-        ext->selinux_allow = !scontext_changed;
+    if (task_struct_offset.comm_offset > 0) {
+        struct seccomp *seccomp = (struct seccomp *)((uintptr_t)current + task_struct_offset.seccomp_offset);
+        seccomp->mode = SECCOMP_MODE_DISABLED;
+        // todo: free
+        // seccomp->filter = 0;
     }
 
+    ext->selinux_allow = 1;
+    struct cred *new = prepare_creds();
+    su_cred(new, to_uid);
+
+    struct group_info *group_info = groups_alloc(0);
+    set_groups(new, group_info);
+
+    if (sctx && sctx[0]) ext->selinux_allow = !!set_security_override_from_ctx(new, sctx);
     commit_creds(new);
 
 out:
-    logkfi("pid: %d, tgid: %d, sctx: %s, changed: %d\n", ext->pid, ext->tgid, sctx, scontext_changed);
+    logkfi("pid: %d, tgid: %d, to_uid: %d, sctx: %s, via_hook: %d\n", ext->pid, ext->tgid, to_uid, sctx,
+           ext->selinux_allow);
     return rc;
 }
 
-int effect_su_unsafe(const char *sctx)
+// todo: rcu
+int task_su(pid_t pid, uid_t to_uid, const char *sctx)
 {
     int rc = 0;
     int scontext_changed = 0;
-    struct task_struct *task = current;
-    struct task_ext *ext = get_task_ext(task);
-    if (!task_ext_valid(ext)) {
-        logkfe("dirty task_ext, pid(maybe dirty): %d\n", ext->pid);
-        rc = -ENOMEM;
-        goto out;
-    }
-
-    ext->selinux_allow = 1;
-    struct cred *cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
-    make_cred_su(cred, sctx);
-
-    if (sctx && sctx[0]) {
-        scontext_changed = !set_security_override_from_ctx(cred, sctx);
-        if (!scontext_changed) rc = -EINVAL;
-        ext->selinux_allow = !scontext_changed;
-    }
-
-out:
-    logkfi("pid: %d, tgid: %d, sctx: %s, changed: %d\n", ext->pid, ext->tgid, sctx, scontext_changed);
-    return rc;
-}
-
-// todo: cow, rcu
-int thread_su(pid_t vpid, const char *sctx)
-{
-    int rc = 0;
-    int scontext_changed = 0;
-    struct task_struct *task = find_get_task_by_vpid(vpid);
+    struct task_struct *task = find_get_task_by_vpid(pid);
     if (!task) {
-        logkfe("no such pid: %d\n", vpid);
+        logkfe("no such pid: %d\n", pid);
         rc = -ENOENT;
         goto out;
     }
     struct task_ext *ext = get_task_ext(task);
 
-    if (!task_ext_valid(ext)) {
+    if (unlikely(!task_ext_valid(ext))) {
         logkfe("dirty task_ext, pid(maybe dirty): %d\n", ext->pid);
         rc = -ENOMEM;
         goto out;
     }
 
     struct cred *cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
-    make_cred_su(cred, sctx);
-
+    su_cred(cred, to_uid);
     if (sctx && sctx[0]) scontext_changed = !set_security_override_from_ctx(cred, sctx);
 
     struct cred *real_cred = *(struct cred **)((uintptr_t)task + task_struct_offset.real_cred_offset);
     if (cred != real_cred) {
-        make_cred_su(real_cred, sctx);
+        su_cred(real_cred, to_uid);
         if (sctx && sctx[0]) scontext_changed = scontext_changed && !set_security_override_from_ctx(real_cred, sctx);
     }
+    ext->priv_selinux_allow = !scontext_changed;
 
-    ext->selinux_allow = !scontext_changed;
-    if (!scontext_changed) rc = -EINVAL;
-
-    logkfi("pid: %d, tgid: %d, sctx: %s, changed: %d\n", ext->pid, ext->tgid, sctx, scontext_changed);
-
+    logkfi("pid: %d, tgid: %d, to_uid: %d, sctx: %s, via_hook: %d\n", ext->pid, ext->tgid, to_uid, sctx,
+           ext->priv_selinux_allow);
 out:
     __put_task_struct(task);
     return rc;

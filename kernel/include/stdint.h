@@ -1,6 +1,10 @@
 #ifndef _KP_STDINT_H_
 #define _KP_STDINT_H_
 
+#ifndef NULL
+#define NULL 0
+#endif
+
 typedef signed char int8_t;
 typedef unsigned char uint8_t;
 typedef signed short int16_t;

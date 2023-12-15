@@ -11,18 +11,25 @@ if(ANDROID)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DANDROID")    
 endif()
 
-set(SRCS
-        kpatch.c
-        )
+set(SRCS kpatch.c)
 
+# if(ANDROID)
+#     file(GLOB ANDROID_SRCS "android/*.c")
+#     list(APPEND SRCS ${ANDROID_SRCS})
+# endif()
+
+
+add_library(kp STATIC ${SRCS})
+
+add_executable(kpatch ${SRCS} main.c)
+
+if(ANDROID)
 add_library(
-        libkpatch
-        STATIC
-        ${SRCS}
-        )
-
-add_executable(
-        kpatch
-        ${SRCS}
-        main.c
-        )
+    apjni 
+    SHARED
+    ${SRCS}
+    apjni.cpp
+)
+find_library(lib-log log)
+target_link_libraries(apjni ${lib-log})
+endif()

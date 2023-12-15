@@ -7,6 +7,10 @@
 #include <linux/string.h>
 #include <symbol.h>
 #include <uapi/asm-generic/errno.h>
+#include <asm-generic/compat.h>
+#include <linux/slab.h>
+#include <linux/err.h>
+#include <uapi/asm-generic/errno.h>
 
 uintptr_t kvar_def(sys_call_table) = 0;
 KP_EXPORT_SYMBOL(kvar(sys_call_table));
@@ -19,6 +23,46 @@ KP_EXPORT_SYMBOL(syscall_has_wrapper);
 
 bool has_config_compat = false;
 KP_EXPORT_SYMBOL(has_config_compat);
+
+struct user_arg_ptr
+{
+    union
+    {
+        const char __user *const __user *native;
+    } ptr;
+};
+
+struct user_arg_ptr_compat
+{
+    bool is_compat;
+    union
+    {
+        const char __user *const __user *native;
+        const compat_uptr_t __user *compat;
+    } ptr;
+};
+
+const char __user *get_user_arg_ptr(void *a0, void *a1, int nr)
+{
+    char __user *const __user *native = (char __user *const __user *)a0;
+    int size = 8;
+    if (has_config_compat) {
+        native = (char __user *const __user *)a1;
+        if (a0) size = 4; // compat
+    }
+    native = (char __user *const __user *)((unsigned long)native + nr * size);
+    char __user **upptr = memdup_user(native, size);
+    if (IS_ERR(upptr)) return ERR_PTR((long)upptr);
+
+    char __user *uptr;
+    if (size == 8) {
+        uptr = *upptr;
+    } else {
+        uptr = (char __user *)(unsigned long)*(int32_t *)upptr;
+    }
+    kvfree(upptr);
+    return uptr;
+}
 
 typedef long (*warp_raw_syscall_f)(const struct pt_regs *regs);
 typedef long (*raw_syscall0_f)();

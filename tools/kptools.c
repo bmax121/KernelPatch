@@ -9,7 +9,7 @@
 #include <unistd.h>
 #include <string.h>
 
-#include "version"
+#include "../version"
 
 #include "preset.h"
 #include "image.h"
@@ -201,22 +201,20 @@ int patch_image()
         return -1;
     }
 
-    setup_header_t *sdata = (setup_header_t *)(out_buf + align_image_len);
     setup_preset_t *preset = (setup_preset_t *)(out_buf + align_image_len + KP_HEADER_SIZE);
     patch_config_t *config = &preset->patch_config;
     memset(config, 0, sizeof(patch_config_t));
-    // todo:
 #ifdef ANDROID
-    strncpy(config->config_ini_path, "/data/adb/kernelpatch/kpinit.ini", sizeof(config->config_ini_path) - 1);
+    strncpy(config->config_reserved, "/data/adb/ap/init.ini", sizeof(config->config_reserved) - 1);
 #else
-    strncpy(config->config_ini_path, "/etc/kernelpatch/kpinit.ini", sizeof(config->config_ini_path) - 1);
+    strncpy(config->config_reserved, "/etc/kp/init.ini", sizeof(config->config_reserved) - 1);
 #endif
     preset->kernel_size = kinfo.kernel_size;
     preset->start_offset = align_kernel_size;
     preset->page_shift = kinfo.page_shift;
-    sdata->kernel_version.major = kallsym.version.major;
-    sdata->kernel_version.minor = kallsym.version.minor;
-    sdata->kernel_version.patch = kallsym.version.patch;
+    preset->kernel_version.major = kallsym.version.major;
+    preset->kernel_version.minor = kallsym.version.minor;
+    preset->kernel_version.patch = kallsym.version.patch;
 
     memcpy(preset->header_backup, out_buf, sizeof(preset->header_backup));
     preset->kp_offset = align_image_len;
@@ -285,6 +283,7 @@ int patch_image()
 int main(int argc, char *argv[])
 {
     version = (MAJOR << 16) + (MINOR << 8) + PATCH;
+    fprintf(stdout, "[+] kptools version: %x\n", version);
 
     struct option longopts[] = { { "version", no_argument, NULL, 'v' },     { "help", no_argument, NULL, 'h' },
                                  { "patch", required_argument, NULL, 'p' }, { "skey", required_argument, NULL, 's' },

@@ -6,22 +6,22 @@
 #include <linux/sched/task.h>
 #include <linux/pid.h>
 #include <linux/security.h>
-#include <minc/string.h>
 #include <log.h>
 #include <linux/cred.h>
 #include <linux/err.h>
 #include <pgtable.h>
 #include <linux/fs.h>
+#include <linux/seccomp.h>
+#include <inlinestring.h>
 #include <uapi/asm-generic/errno.h>
 
 static inline void prepare_init_ext(struct task_struct *task)
 {
     struct task_ext *ext = get_task_ext(task);
+    for (uintptr_t i = (uintptr_t)ext; i < (uintptr_t)ext + sizeof(struct task_ext); i += 8) {
+        *(uintptr_t *)i = 0;
+    }
     ext->magic = TASK_EXT_MAGIC;
-    ext->pid = 0;
-    ext->tgid = 0;
-    ext->super = 0;
-    ext->selinux_allow = 0;
 }
 
 static void prepare_task_ext(struct task_struct *new, struct task_struct *old)
@@ -32,11 +32,13 @@ static void prepare_task_ext(struct task_struct *new, struct task_struct *old)
         return;
     }
     struct task_ext *new_ext = get_task_ext(new);
+    for (uintptr_t i = (uintptr_t)new_ext; i < (uintptr_t)new_ext + sizeof(struct task_ext); i += 8) {
+        *(uintptr_t *)i = 0;
+    }
     new_ext->magic = TASK_EXT_MAGIC;
 
     new_ext->pid = __task_pid_nr_ns(new, PIDTYPE_PID, 0);
     new_ext->tgid = __task_pid_nr_ns(new, PIDTYPE_TGID, 0);
-    new_ext->super = 0;
     new_ext->selinux_allow = old_ext->selinux_allow;
 
     dsb(ishst);
@@ -55,7 +57,7 @@ struct task_struct *replace_copy_process(void *a0, void *a1, void *a2, void *a3,
 
 static void (*backup_cgroup_post_fork)(struct task_struct *p, void *a1) = 0;
 
-void replace_cgroup_post_fork(struct task_struct *p, void *a1)
+static void replace_cgroup_post_fork(struct task_struct *p, void *a1)
 {
     struct task_struct *new = p;
     backup_cgroup_post_fork(p, a1);
@@ -66,7 +68,7 @@ unsigned long execv_hook_addr = 0;
 
 static int hook_execv_compat(void *data, const char *name, struct module *, unsigned long addr)
 {
-    if (min_strncmp("do_execve_common", name, min_strlen("do_execve_common"))) {
+    if (inline_strncmp("do_execve_common", name, inline_strlen("do_execve_common"))) {
         return 0;
     }
     execv_hook_addr = addr;
@@ -93,6 +95,7 @@ int task_observer()
 
     prepare_init_ext(kvar(init_task));
 
+    // __switch_to
     unsigned long copy_process_addr = kallsyms_lookup_name("copy_process");
     if (copy_process_addr) {
         hook_err_t err = hook((void *)copy_process_addr, (void *)replace_copy_process, (void **)&backup_copy_process);

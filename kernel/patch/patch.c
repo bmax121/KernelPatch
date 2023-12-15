@@ -43,36 +43,45 @@ void before_panic(hook_fargs12_t *args, void *udata)
     printk("==== End KernelPatch for Kernel panic ====\n");
 }
 
-static void before_kernel_init(hook_fargs4_t *args, void *udata)
+static void before_rest_init(hook_fargs4_t *args, void *udata)
 {
     int err = 0;
-    log_boot("entering kernel init ...\n");
+    log_boot("entering init ...\n");
 
     if ((err = linux_sybmol_len_init())) goto out;
     log_boot("linux_sybmol_len_init done: %d\n", err);
+
     if ((err = linux_libs_symbol_init())) goto out;
     log_boot("linux_libs_symbol_init done: %d\n", err);
+
     if ((err = linux_misc_symbol_init())) goto out;
     log_boot("linux_misc_symbol_init done: %d\n", err);
 
-    if ((err = syscall_init())) goto out;
-    log_boot("syscall_init done: %d\n", err);
-    if ((err = resolve_struct())) goto out;
-    log_boot("resolve_struct done: %d\n", err);
     if ((err = bypass_kcfi())) goto out;
     log_boot("bypass_kcfi done: %d\n", err);
+
+    if ((err = syscall_init())) goto out;
+    log_boot("syscall_init done: %d\n", err);
+
+    if ((err = resolve_struct())) goto out;
+    log_boot("resolve_struct done: %d\n", err);
+
     if ((err = task_observer())) goto out;
     log_boot("task_observer done: %d\n", err);
+
     if ((err = selinux_hook_install())) goto out;
     log_boot("selinux_hook_install done: %d\n", err);
+
     if ((err = module_init())) goto out;
     log_boot("module_init done: %d\n", err);
+
     if ((err = supercall_install())) goto out;
     log_boot("supercall_install done: %d\n", err);
 
 #ifdef ANDROID
     if ((err = kpuserd_init())) goto out;
     log_boot("kpuserd_init done: %d\n", err);
+
     if ((err = su_compat_init())) goto out;
     log_boot("su_compat_init done: %d\n", err);
 #endif
@@ -81,9 +90,14 @@ out:
     return;
 }
 
+static void before_kernel_init(hook_fargs4_t *args, void *udata)
+{
+    log_boot("before kernel_init ...\n");
+}
+
 static void after_kernel_init(hook_fargs4_t *args, void *udata)
 {
-    log_boot("exiting kernel init ...\n");
+    log_boot("after kernel_init ...\n");
 }
 
 int patch()
@@ -104,19 +118,34 @@ int patch()
         }
     }
 
-    // kernel_init or rest_init
+    // rest_init or cgroup_init
     unsigned long init_addr = kallsyms_lookup_name("rest_init");
     if (!init_addr) {
-        init_addr = kallsyms_lookup_name("kernel_init");
+        init_addr = kallsyms_lookup_name("cgroup_init");
     }
     if (!init_addr) {
-        log_boot("no symbol rest_init or kernel_init\n");
+        log_boot("no symbol rest_init or cgroup_init\n");
         rc = -ENOENT;
         goto out;
     } else {
-        hook_err_t err = hook_wrap4((void *)init_addr, before_kernel_init, after_kernel_init, 0);
+        hook_err_t err = hook_wrap4((void *)init_addr, before_rest_init, 0, (void *)init_addr);
         if (err) {
-            log_boot("hook kernel init: %llx, error: %d\n", init_addr, err);
+            log_boot("hook for init: %llx, error: %d\n", init_addr, err);
+            rc = err;
+            goto out;
+        }
+    }
+
+    // kernel_init
+    unsigned long kernel_init_addr = kallsyms_lookup_name("kernel_init");
+    if (!kernel_init_addr) {
+        log_boot("no symbol kernel_init\n");
+        rc = -ENOENT;
+        goto out;
+    } else {
+        hook_err_t err = hook_wrap4((void *)kernel_init_addr, before_kernel_init, after_kernel_init, 0);
+        if (err) {
+            log_boot("hook kernel_init: %llx, error: %d\n", kernel_init_addr, err);
             rc = err;
             goto out;
         }

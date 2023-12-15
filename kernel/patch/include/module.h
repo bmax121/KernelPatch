@@ -49,7 +49,8 @@ int unload_module(const char *name);
 struct module *find_module(const char *name);
 
 int get_module_nums();
-int get_module_info(int index, char *info, int size);
+int list_modules(char *out_names, int size);
+int get_module_info(const char *name, char *out_info, int size);
 
 int module_init();
 

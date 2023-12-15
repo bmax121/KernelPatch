@@ -9,6 +9,9 @@
  * into some well-recognized area such as 0xdead000000000000,
  * that is also not mappable by user-space exploits:
  */
+
+#define CONFIG_ILLEGAL_POINTER_VALUE 0xdead000000000000
+
 #ifdef CONFIG_ILLEGAL_POINTER_VALUE
 #define POISON_POINTER_DELTA _AC(CONFIG_ILLEGAL_POINTER_VALUE, UL)
 #else

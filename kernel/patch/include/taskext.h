@@ -13,7 +13,10 @@ struct task_ext
     pid_t pid;
     pid_t tgid;
     int super;
+    int _;
     int selinux_allow;
+    int priv_selinux_allow;
+    void *__;
     // last
     uint64_t magic;
 };

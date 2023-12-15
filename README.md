@@ -11,9 +11,7 @@
 
 ```
 
-If you are using Android, [AndroidKernelPatch](https://github.com/bmax121/AndroidKernelPatch) would be a better choice.
-
-**English** | [简体中文](README_zh-CN.md)
+If you are using Android, [APatch](https://github.com/bmax121/APatch) would be a better choice.
 
 KernelPatch provides the fundamental capability to parse Linux kernel images without source code and symbol information, allowing for the retrieval of arbitrary symbol offsets and the injection of arbitrary code into the kernel.  
 Building upon this foundation, KernelPatch offers essential features such as system-call-hook and inline-hook in the kernel.  
@@ -40,6 +38,8 @@ Linux 6.3+ (not yet adapted)
 
 - [vmlinux-to-elf](https://github.com/marin-m/vmlinux-to-elf): Some ideas for parsing kernel symbols.
 - [android-inline-hook](https://github.com/bytedance/android-inline-hook): Some code for fixing arm64 inline hook instructions.
+- [KernelSU](https://github.com/tiann/KernelSU): Some Android compat code.
+- [tlsf](https://github.com/mattconte/tlsf): Memory allocator used for KPM. (Need a better one to allocate ROX memory.)
 
 ## License
 

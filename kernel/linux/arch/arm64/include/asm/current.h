@@ -33,7 +33,7 @@ static __always_inline struct thread_info *legacy_current_thread_info_sp_el0()
 
 static inline struct thread_info *current_thread_info()
 {
-    if (task_is_sp_el0) {
+    if (likely(task_is_sp_el0)) {
         uint64_t sp_el0;
         asm volatile("mrs %0, sp_el0" : "=r"(sp_el0));
         if (thread_info_in_task) {
@@ -49,7 +49,7 @@ static inline struct thread_info *current_thread_info()
 
 static inline struct task_struct *get_current()
 {
-    if (task_is_sp_el0) {
+    if (likely(task_is_sp_el0)) {
         uint64_t sp_el0;
         asm volatile("mrs %0, sp_el0" : "=r"(sp_el0));
         return (struct task_struct *)sp_el0;

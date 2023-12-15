@@ -85,6 +85,7 @@ SECTIONS
         base/*(.bss)
         *(.data)
         *(.bss)
+        . = ALIGN(16);
         _kp_symbol_start = .;
         *(.kp.symbol)
         _kp_symbol_end = .;

@@ -136,30 +136,81 @@
 static inline unsigned long compat_psr_to_pstate(const unsigned long psr)
 {
     unsigned long pstate;
-
     pstate = psr & ~COMPAT_PSR_DIT_BIT;
-
     if (psr & COMPAT_PSR_DIT_BIT) pstate |= PSR_AA32_DIT_BIT;
-
     return pstate;
 }
 
 static inline unsigned long pstate_to_compat_psr(const unsigned long pstate)
 {
     unsigned long psr;
-
     psr = pstate & ~PSR_AA32_DIT_BIT;
-
     if (pstate & PSR_AA32_DIT_BIT) psr |= COMPAT_PSR_DIT_BIT;
-
     return psr;
 }
 
-/*
- * This struct defines the way the registers are stored on the stack during an
- * exception. Note that sizeof(struct pt_regs) has to be a multiple of 16 (for
- * stack alignment). struct user_pt_regs must form a prefix of struct pt_regs.
- */
+struct pt_regs_lt4419
+{
+    union
+    {
+        struct user_pt_regs user_regs;
+        struct
+        {
+            u64 regs[31];
+            u64 sp;
+            u64 pc;
+            u64 pstate;
+        };
+    };
+    u64 orig_x0;
+    u64 syscallno;
+};
+
+struct pt_regs_lt4140
+{
+    union
+    {
+        struct user_pt_regs user_regs;
+        struct
+        {
+            u64 regs[31];
+            u64 sp;
+            u64 pc;
+            u64 pstate;
+        };
+    };
+    u64 orig_x0;
+    u64 syscallno;
+    u64 orig_addr_limit;
+    u64 unused; // maintain 16 byte alignment
+};
+
+struct pt_regs_lt5100
+{
+    union
+    {
+        struct user_pt_regs user_regs;
+        struct
+        {
+            u64 regs[31];
+            u64 sp;
+            u64 pc;
+            u64 pstate;
+        };
+    };
+    u64 orig_x0;
+#ifdef __AARCH64EB__
+    u32 unused2;
+    s32 syscallno;
+#else
+    s32 syscallno;
+    u32 unused2;
+#endif
+    u64 orig_addr_limit;
+    u64 pmr_save; // maintain 16 byte alignment
+    u64 stackframe[2];
+};
+
 struct pt_regs
 {
     union
@@ -225,8 +276,7 @@ static inline void forget_syscall(struct pt_regs *regs)
 
 static inline unsigned long user_stack_pointer(struct pt_regs *regs)
 {
-    // if (compat_user_mode(regs))
-    //     return regs->compat_sp;
+    if (compat_user_mode(regs)) return regs->compat_sp;
     return regs->sp;
 }
 

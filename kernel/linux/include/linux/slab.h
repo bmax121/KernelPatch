@@ -13,9 +13,11 @@ struct list_lru;
 extern void *kfunc_def(__kmalloc)(size_t size, gfp_t flags);
 extern void *kfunc_def(kmalloc)(size_t size, gfp_t flags);
 extern void kfunc_def(kfree)(const void *);
+extern void kfunc_def(kvfree)(const void *addr);
 
 void *__must_check krealloc(const void *, size_t, gfp_t);
 void kfree_sensitive(const void *);
+void kvfree_sensitive(const void *addr, size_t len);
 size_t __ksize(const void *);
 size_t ksize(const void *);
 void *kmem_cache_alloc(struct kmem_cache *cachep, gfp_t flags);
@@ -31,23 +33,20 @@ void *kmalloc_node_trace(struct kmem_cache *s, gfp_t gfpflags, int node, size_t 
 void *kmalloc_large(size_t size, gfp_t flags);
 void *kmalloc_large_node(size_t size, gfp_t flags, int node);
 
-static __always_inline void kfree_bulk(size_t size, void **p)
-{
-    kmem_cache_free_bulk(0, size, p);
-}
-
 static inline void *kmalloc(size_t size, gfp_t flags)
 {
     kfunc_call(kmalloc, size, flags);
-    kfunc_call(__kmalloc, size, flags);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(__kmalloc, size, flags);
 }
 
 static inline void kfree(const void *objp)
 {
-    kfunc_call(kfree, objp);
-    kfunc_not_found();
+    kfunc_direct_call(kfree, objp);
+}
+
+static inline void kvfree(const void *addr)
+{
+    kfunc_direct_call(kvfree, addr);
 }
 
 #endif

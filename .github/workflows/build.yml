@@ -20,9 +20,9 @@ jobs:
       - name: Generate version
         id: parse_version
         run: |
-          MAJOR=$(grep '#define MAJOR' kernel/version | awk '{print $3}')
-          MINOR=$(grep '#define MINOR' kernel/version | awk '{print $3}')
-          PATCH=$(grep '#define PATCH' kernel/version | awk '{print $3}')
+          MAJOR=$(grep '#define MAJOR' version | awk '{print $3}')
+          MINOR=$(grep '#define MINOR' version | awk '{print $3}')
+          PATCH=$(grep '#define PATCH' version | awk '{print $3}')
           VERSION="$MAJOR.$MINOR.$PATCH"
           echo "Generated Version: $VERSION"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
@@ -35,21 +35,21 @@ jobs:
           export TARGET_COMPILE=`pwd`/arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-elf/bin/aarch64-none-elf-
           cd kernel
           make
-          mv kpimg kpimg-${{ steps.parse_version.outputs.VERSION }}
-          mv kpimg.elf kpimg.elf-${{ steps.parse_version.outputs.VERSION }}
+          mv kpimg kpimg-linux
+          mv kpimg.elf kpimg.elf-linux
           make clean
           export ANDROID=1
           make
-          mv kpimg kpimg-android-${{ steps.parse_version.outputs.VERSION }}
-          mv kpimg.elf kpimg.elf-android-${{ steps.parse_version.outputs.VERSION }}
+          mv kpimg kpimg-android
+          mv kpimg.elf kpimg.elf-android
           unset ANDROID
 
       - name: Upload elf
         uses: actions/upload-artifact@v3
         with:
           path: |
-            kernel/kpimg.elf-${{ steps.parse_version.outputs.VERSION }}
-            kernel/kpimg.elf-android-${{ steps.parse_version.outputs.VERSION }}
+            kernel/kpimg.elf-linux
+            kernel/kpimg.elf-android
           name: kpimg.elf
 
       - name: Release
@@ -58,13 +58,12 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
           artifacts: |
-            version.txt
-            kernel/kpimg-${{ steps.parse_version.outputs.VERSION }}
-            kernel/kpimg-android-${{ steps.parse_version.outputs.VERSION }}
+            kernel/kpimg-linux
+            kernel/kpimg-android
           allowUpdates: true
           replacesArtifacts: true
 
-  Release-lib:
+  Release-user-lib:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -74,9 +73,9 @@ jobs:
       - name: Generate version
         id: parse_version
         run: |
-          MAJOR=$(grep '#define MAJOR' kernel/version | awk '{print $3}')
-          MINOR=$(grep '#define MINOR' kernel/version | awk '{print $3}')
-          PATCH=$(grep '#define PATCH' kernel/version | awk '{print $3}')
+          MAJOR=$(grep '#define MAJOR' version | awk '{print $3}')
+          MINOR=$(grep '#define MINOR' version | awk '{print $3}')
+          PATCH=$(grep '#define PATCH' version | awk '{print $3}')
           VERSION="$MAJOR.$MINOR.$PATCH"
           echo "Generated Version: $VERSION"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
@@ -88,7 +87,6 @@ jobs:
           make hdr
           cd ..
           zip -r kpuser.zip user
-          mv kpuser.zip kpuser-src-${{ steps.parse_version.outputs.VERSION }}.zip
 
       - name: Release
         uses: ncipollo/release-action@v1.12.0
@@ -96,11 +94,11 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
           artifacts: |
-            kpuser-src-${{ steps.parse_version.outputs.VERSION }}.zip
+            kpuser.zip
           allowUpdates: true
           replacesArtifacts: true
 
-  Build-android:
+  Build-android-kpatch-kptools:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -113,19 +111,13 @@ jobs:
       - name: Generate version
         id: parse_version
         run: |
-          MAJOR=$(grep '#define MAJOR' kernel/version | awk '{print $3}')
-          MINOR=$(grep '#define MINOR' kernel/version | awk '{print $3}')
-          PATCH=$(grep '#define PATCH' kernel/version | awk '{print $3}')
+          MAJOR=$(grep '#define MAJOR' version | awk '{print $3}')
+          MINOR=$(grep '#define MINOR' version | awk '{print $3}')
+          PATCH=$(grep '#define PATCH' version | awk '{print $3}')
           VERSION="$MAJOR.$MINOR.$PATCH"
           echo "Generated Version: $VERSION"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
-          TOOLS_MAJOR=$(grep '#define MAJOR' tools/version | awk '{print $3}')
-          TOOLS_MINOR=$(grep '#define MINOR' tools/version | awk '{print $3}')
-          TOOLS_PATCH=$(grep '#define PATCH' tools/version | awk '{print $3}')
-          TOOLS_VERSION="$TOOLS_MAJOR.$TOOLS_MINOR.$TOOLS_PATCH"
-          echo "Generated Tools Version: $TOOLS_VERSION"
-          echo "TOOLS_VERSION=$TOOLS_VERSION" >> $GITHUB_OUTPUT
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
         id: setup-ndk
@@ -152,7 +144,7 @@ jobs:
             -DANDROID_ABI=arm64-v8a ../..
           cmake --build .
           unset ANDROID
-          mv kpatch kpatch-android-${{ steps.parse_version.outputs.VERSION }}
+          mv kpatch kpatch-android
 
       - name: Build kptools-android
         run: |
@@ -165,7 +157,7 @@ jobs:
             -DANDROID_PLATFORM=android-33 \
             -DANDROID_ABI=arm64-v8a ../..
           cmake --build .
-          mv kptools kptools-android-${{ steps.parse_version.outputs.TOOLS_VERSION }}
+          mv kptools kptools-android
 
       - name: Release
         uses: ncipollo/release-action@v1.12.0
@@ -173,8 +165,9 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
           artifacts: |
-            user/build/android/kpatch-android-${{ steps.parse_version.outputs.VERSION }}
-            tools/build/android/kptools-android-${{ steps.parse_version.outputs.TOOLS_VERSION }}
+            user/build/android/kpatch-android
+            user/build/android/libapjni.so
+            tools/build/android/kptools-android
           allowUpdates: true
           replacesArtifacts: true
 
@@ -188,19 +181,12 @@ jobs:
       - name: Generate version
         id: parse_version
         run: |
-          MAJOR=$(grep '#define MAJOR' kernel/version | awk '{print $3}')
-          MINOR=$(grep '#define MINOR' kernel/version | awk '{print $3}')
-          PATCH=$(grep '#define PATCH' kernel/version | awk '{print $3}')
+          MAJOR=$(grep '#define MAJOR' version | awk '{print $3}')
+          MINOR=$(grep '#define MINOR' version | awk '{print $3}')
+          PATCH=$(grep '#define PATCH' version | awk '{print $3}')
           VERSION="$MAJOR.$MINOR.$PATCH"
           echo "Generated Version: $VERSION"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-
-          TOOLS_MAJOR=$(grep '#define MAJOR' tools/version | awk '{print $3}')
-          TOOLS_MINOR=$(grep '#define MINOR' tools/version | awk '{print $3}')
-          TOOLS_PATCH=$(grep '#define PATCH' tools/version | awk '{print $3}')
-          TOOLS_VERSION="$TOOLS_MAJOR.$TOOLS_MINOR.$TOOLS_PATCH"
-          echo "Generated Tools Version: $TOOLS_VERSION"
-          echo "TOOLS_VERSION=$TOOLS_VERSION" >> $GITHUB_OUTPUT
 
       - name: Make hdr
         run: |
@@ -215,7 +201,7 @@ jobs:
           mkdir -p build && cd build
           cmake ..
           make
-          mv kptools kptools-linux-${{ steps.parse_version.outputs.TOOLS_VERSION }}
+          mv kptools kptools-linux
 
       - name: Release
         uses: ncipollo/release-action@v1.12.0
@@ -223,7 +209,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
           artifacts: |
-            tools/build/kptools-linux-${{ steps.parse_version.outputs.TOOLS_VERSION }}
+            tools/build/kptools-linux
           allowUpdates: true
           replacesArtifacts: true
 
@@ -237,19 +223,12 @@ jobs:
       - name: Generate version
         id: parse_version
         run: |
-          MAJOR=$(grep '#define MAJOR' kernel/version | awk '{print $3}')
-          MINOR=$(grep '#define MINOR' kernel/version | awk '{print $3}')
-          PATCH=$(grep '#define PATCH' kernel/version | awk '{print $3}')
+          MAJOR=$(grep '#define MAJOR' version | awk '{print $3}')
+          MINOR=$(grep '#define MINOR' version | awk '{print $3}')
+          PATCH=$(grep '#define PATCH' version | awk '{print $3}')
           VERSION="$MAJOR.$MINOR.$PATCH"
           echo "Generated Version: $VERSION"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-
-          TOOLS_MAJOR=$(grep '#define MAJOR' tools/version | awk '{print $3}')
-          TOOLS_MINOR=$(grep '#define MINOR' tools/version | awk '{print $3}')
-          TOOLS_PATCH=$(grep '#define PATCH' tools/version | awk '{print $3}')
-          TOOLS_VERSION="$TOOLS_MAJOR.$TOOLS_MINOR.$TOOLS_PATCH"
-          echo "Generated Tools Version: $TOOLS_VERSION"
-          echo "TOOLS_VERSION=$TOOLS_VERSION" >> $GITHUB_OUTPUT
 
       - name: Make hdr
         run: |
@@ -264,13 +243,13 @@ jobs:
           mkdir -p build && cd build
           cmake ..
           make
-          mv kptools kptools-mac-${{ steps.parse_version.outputs.TOOLS_VERSION }}
+          mv kptools kptools-mac
       - name: Release
         uses: ncipollo/release-action@v1.12.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
           artifacts: |
-            tools/build/kptools-mac-${{ steps.parse_version.outputs.TOOLS_VERSION }}
+            tools/build/kptools-mac
           allowUpdates: true
           replacesArtifacts: true

@@ -10,7 +10,7 @@ KP_EXPORT_SYMBOL(kfunc(dump_stack_lvl));
 void kfunc_def(dump_stack)(void) = 0;
 KP_EXPORT_SYMBOL(kfunc(dump_stack));
 
-static void _linux_lib_dump_stack_sym_match()
+static void _linux_lib_dump_stack_sym_match(const char *name, unsigned long addr)
 {
     kfunc_match(dump_stack_lvl, name, addr);
     kfunc_match(dump_stack, name, addr);
@@ -31,7 +31,7 @@ KP_EXPORT_SYMBOL(kfunc(strnlen_unsafe_user));
 long kfunc_def(strnlen_user)(const char __user *str, long n);
 KP_EXPORT_SYMBOL(kfunc(strnlen_user));
 
-static void _linux_lib_strncpy_from_user_sym_match()
+static void _linux_lib_strncpy_from_user_sym_match(const char *name, unsigned long addr)
 {
     kfunc_match(strncpy_from_user_nofault, name, addr);
     if (!kfunc(strncpy_from_user_nofault)) {
@@ -138,7 +138,7 @@ KP_EXPORT_SYMBOL(kfunc(strreplace));
 void kfunc_def(fortify_panic)(const char *name) = 0;
 KP_EXPORT_SYMBOL(kfunc(fortify_panic));
 
-static void _linux_lib_string_sym_match()
+static void _linux_lib_string_sym_match(const char *name, unsigned long addr)
 {
     kfunc_match(strncasecmp, name, addr);
     kfunc_match(strcasecmp, name, addr);
@@ -192,7 +192,7 @@ KP_EXPORT_SYMBOL(kfunc(argv_free));
 char **kfunc_def(argv_split)(gfp_t gfp, const char *str, int *argcp) = 0;
 KP_EXPORT_SYMBOL(kfunc(argv_split));
 
-static void _linux_lib_argv_split_sym_match()
+static void _linux_lib_argv_split_sym_match(const char *name, unsigned long addr)
 {
     kfunc_match(argv_free, name, addr);
     kfunc_match(argv_split, name, addr);
@@ -231,7 +231,7 @@ KP_EXPORT_SYMBOL(kfunc(trace_seq_putmem_hex));
 int kfunc_def(trace_seq_bitmask)(struct trace_seq *s, const unsigned long *maskp, int nmaskbits) = 0;
 KP_EXPORT_SYMBOL(kfunc(trace_seq_bitmask));
 
-static void _linux_lib_seq_buf_sym_match()
+static void _linux_lib_seq_buf_sym_match(const char *name, unsigned long addr)
 {
     kfunc_match(seq_buf_to_user, name, addr);
     if (kfunc(seq_buf_to_user)) {
@@ -274,7 +274,7 @@ KP_EXPORT_SYMBOL(kfunc(sscanf));
 int kfunc_def(vsscanf)(const char *buf, const char *fmt, va_list args) = 0;
 KP_EXPORT_SYMBOL(kfunc(vsscanf));
 
-static void _linux_include_kernel_sym_match()
+static void _linux_include_kernel_sym_match(const char *name, unsigned long addr)
 {
     kfunc_match(sprintf, name, addr);
     kfunc_match(vsprintf, name, addr);
@@ -288,14 +288,23 @@ static void _linux_include_kernel_sym_match()
     kfunc_match(vsscanf, name, addr);
 }
 
-int linux_libs_symbol_init()
+static int _linux_libs_symbol_init(void *data, const char *name, struct module *m, unsigned long addr)
 {
-    int rc = 0;
-    _linux_lib_dump_stack_sym_match();
-    _linux_lib_strncpy_from_user_sym_match();
-    _linux_lib_string_sym_match();
-    _linux_lib_argv_split_sym_match();
-    _linux_lib_seq_buf_sym_match();
-    _linux_include_kernel_sym_match();
-    return rc;
+    _linux_lib_dump_stack_sym_match(name, addr);
+    _linux_lib_strncpy_from_user_sym_match(name, addr);
+    _linux_lib_string_sym_match(name, addr);
+    _linux_lib_argv_split_sym_match(name, addr);
+    _linux_lib_seq_buf_sym_match(name, addr);
+    _linux_include_kernel_sym_match(name, addr);
+    return 0;
+}
+
+int linux_libs_symbol_init(const char *name, unsigned long addr)
+{
+#ifdef INIT_USE_KALLSYMS_LOOKUP_NAME
+    _linux_libs_symbol_init(0, 0, 0, 0);
+#else
+    kallsyms_on_each_symbol(_linux_libs_symbol_init, 0);
+#endif
+    return 0;
 }

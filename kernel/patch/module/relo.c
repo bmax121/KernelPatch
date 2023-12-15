@@ -4,7 +4,6 @@
 #include <asm/elf.h>
 #include <kpmalloc.h>
 #include <linux/err.h>
-#include <minc/string.h>
 
 #include "insn.h"
 

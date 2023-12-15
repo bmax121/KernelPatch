@@ -7,11 +7,12 @@
 struct cred; // __randomize_layout
 struct inode;
 struct task_struct; // __randomize_layout
+struct group_info; // __randomize_layout
 
 #define CRED_MAGIC 0x43736564
 #define CRED_MAGIC_DEAD 0x44656144
 
-extern struct group_info *groups_alloc(int);
+extern struct group_info *kfunc_def(groups_alloc)(int gidsetsize);
 extern void groups_free(struct group_info *);
 
 extern int in_group_p(kgid_t);
@@ -19,9 +20,19 @@ extern int in_egroup_p(kgid_t);
 extern int groups_search(const struct group_info *, kgid_t);
 
 extern int set_current_groups(struct group_info *);
-extern void set_groups(struct cred *, struct group_info *);
+extern void kfunc_def(set_groups)(struct cred *, struct group_info *group_info);
 extern bool may_setgroups(void);
 extern void groups_sort(struct group_info *);
+
+static inline void set_groups(struct cred *new, struct group_info *group_info)
+{
+    kfunc_direct_call(set_groups, new, group_info);
+}
+
+static inline struct group_info *groups_alloc(int gidsetsize)
+{
+    kfunc_direct_call(groups_alloc, gidsetsize);
+}
 
 struct cred_offset
 {

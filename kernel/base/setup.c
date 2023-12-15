@@ -5,6 +5,14 @@ setup_header_t header __section(.setup.header) = { .magic = "KP1158",
                                                    .kp_version.major = MAJOR,
                                                    .kp_version.minor = MINOR,
                                                    .kp_version.patch = PATCH,
+                                                   .config_flags = 0
+#ifdef ANDROID
+                                                                   | CONFIG_ANDROID
+#endif
+#ifdef DEBUG
+                                                                   | CONFIG_DEBUG
+#endif
+                                                   ,
                                                    .compile_time = __TIME__ " " __DATE__ };
 
 setup_preset_t setup_preset __section(.setup.preset) = { 0 };

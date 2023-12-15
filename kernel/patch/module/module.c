@@ -177,10 +177,10 @@ static int simplify_symbols(struct module *mod, const struct load_info *info)
             break;
         case SHN_UNDEF:
             unsigned long addr = symbol_lookup_name(name);
-            // cause overflow in relocation
+            // kernel symbol cause overflow in relocation
             // if (!addr) addr = kallsyms_lookup_name(name);
             if (!addr) {
-                logke("Unknown symbol: %s\n", name);
+                logke("unknown symbol: %s\n", name);
                 ret = -ENOENT;
                 break;
             }
@@ -529,6 +529,7 @@ out:
     return err;
 }
 
+// todo: rcu
 struct module *find_module(const char *name)
 {
     struct module *pos;
@@ -552,23 +553,25 @@ int get_module_nums()
     return n;
 }
 
-int get_module_info(int index, char *info, int size)
+int list_modules(char *out_names, int size)
+{
+    struct module *pos;
+    int off = 0;
+    list_for_each_entry(pos, &modules.list, list)
+    {
+        off = snprintf(out_names + off, size - off, "%s\n", pos->info.name);
+    }
+    return off;
+}
+
+int get_module_info(const char *name, char *out_info, int size)
 {
     if (size <= 0) return 0;
 
-    struct module *pos = 0, *mod = 0;
-    int n = 0;
-    list_for_each_entry(pos, &modules.list, list)
-    {
-        if (n == index) {
-            mod = pos;
-            break;
-        }
-        n++;
-    }
+    struct module *mod = find_module(name);
     if (!mod) return -ENOENT;
 
-    int sz = snprintf(info, size - 1,
+    int sz = snprintf(out_info, size - 1,
                       "name=%s\n"
                       "version=%s\n"
                       "license=%s\n"

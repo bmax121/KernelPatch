@@ -5,6 +5,7 @@
 #include <ksyms.h>
 #include <common.h>
 #include <uapi/asm-generic/fcntl.h>
+#include <uapi/linux/fs.h>
 
 #define MAY_EXEC 0x00000001
 #define MAY_WRITE 0x00000002

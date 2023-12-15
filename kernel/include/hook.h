@@ -87,7 +87,7 @@ typedef struct
 typedef struct
 {
     void *chain;
-    int early_ret;
+    int skip_origin;
     hook_local_t local;
     uint64_t ret;
     union
@@ -102,7 +102,7 @@ typedef struct
 typedef struct
 {
     void *chain;
-    int early_ret;
+    int skip_origin;
     hook_local_t local;
     uint64_t ret;
     union
@@ -125,7 +125,7 @@ typedef hook_fargs4_t hook_fargs3_t;
 typedef struct
 {
     void *chain;
-    int early_ret;
+    int skip_origin;
     hook_local_t local;
     uint64_t ret;
     union
@@ -152,7 +152,7 @@ typedef hook_fargs8_t hook_fargs7_t;
 typedef struct
 {
     void *chain;
-    int early_ret;
+    int skip_origin;
     hook_local_t local;
     uint64_t ret;
     union
@@ -224,11 +224,6 @@ typedef struct _fphook_chain
     uint32_t transit[TRANSIT_INST_NUM];
 } fp_hook_chain_t __attribute__((aligned(8)));
 
-int hook_mem_add(uint64_t start, int32_t size);
-void *hook_mem_zalloc(uintptr_t origin_addr, enum hook_type type);
-void hook_mem_free(void *hook_mem);
-void *hook_get_mem_from_origin(uint64_t origin_addr);
-
 int32_t branch_from_to(uint32_t *tramp_buf, uint64_t src_addr, uint64_t dst_addr);
 int32_t branch_relative(uint32_t *buf, uint64_t src_addr, uint64_t dst_addr);
 int32_t branch_absolute(uint32_t *buf, uint64_t addr);
@@ -252,7 +247,19 @@ void unhook(void *func);
 hook_err_t hook_chain_add(hook_chain_t *chain, void *before, void *after, void *udata);
 void hook_chain_remove(hook_chain_t *chain, void *before, void *after);
 hook_err_t hook_wrap(void *func, int32_t argno, void *before, void *after, void *udata);
-void hook_unwrap(void *func, void *before, void *after);
+void hook_unwrap_remove(void *func, void *before, void *after, int remove);
+
+static inline void hook_unwrap(void *func, void *before, void *after)
+{
+    return hook_unwrap_remove(func, before, after, 1);
+}
+
+static inline void *hook_chain_origin_func(void *hook_args)
+{
+    hook_fargs0_t *args = (hook_fargs0_t *)hook_args;
+    hook_chain_t *chain = (hook_chain_t *)args->chain;
+    return (void *)chain->hook.relo_addr;
+}
 
 void fp_hook(uintptr_t fp_addr, void *replace, void **backup);
 void fp_unhook(uintptr_t fp_addr, void *backup);
@@ -263,12 +270,12 @@ static inline void hook_chain_install(hook_chain_t *chain)
 {
     hook_install(&chain->hook);
 }
+
 static inline void hook_chain_uninstall(hook_chain_t *chain)
 {
     hook_uninstall(&chain->hook);
 }
 
-//
 static inline hook_err_t hook_wrap0(void *func, hook_chain0_callback before, hook_chain0_callback after, void *udata)
 {
     return hook_wrap(func, 0, before, after, udata);

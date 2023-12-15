@@ -2,6 +2,7 @@
 #include <symbol.h>
 #include <pgtable.h>
 #include <cache.h>
+#include "hmem.h"
 
 // transit0
 typedef uint64_t (*transit0_func_t)();
@@ -15,14 +16,14 @@ uint64_t __attribute__((section(".fp.transit0.text"))) __attribute__((__noinline
     };
     fp_hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, fp_hook_chain_t, transit);
     hook_fargs0_t fargs;
-    fargs.early_ret = 0;
+    fargs.skip_origin = 0;
     fargs.chain = hook_chain;
     for (int32_t i = 0; i < hook_chain->chain_items_max; i++) {
         if (hook_chain->states[i] != CHAIN_ITEM_STATE_READY) continue;
         hook_chain0_callback func = hook_chain->befores[i];
         if (func) func(&fargs, hook_chain->udata[i]);
     }
-    if (!fargs.early_ret) {
+    if (!fargs.skip_origin) {
         transit0_func_t origin_func = (transit0_func_t)hook_chain->hook.origin_fp;
         fargs.ret = origin_func();
     }
@@ -48,7 +49,7 @@ _fp_transit4(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3)
     };
     fp_hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, fp_hook_chain_t, transit);
     hook_fargs4_t fargs;
-    fargs.early_ret = 0;
+    fargs.skip_origin = 0;
     fargs.arg0 = arg0;
     fargs.arg1 = arg1;
     fargs.arg2 = arg2;
@@ -59,7 +60,7 @@ _fp_transit4(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3)
         hook_chain4_callback func = hook_chain->befores[i];
         if (func) func(&fargs, hook_chain->udata[i]);
     }
-    if (!fargs.early_ret) {
+    if (!fargs.skip_origin) {
         transit4_func_t origin_func = (transit4_func_t)hook_chain->hook.origin_fp;
         fargs.ret = origin_func(fargs.arg0, fargs.arg1, fargs.arg2, fargs.arg3);
     }
@@ -87,7 +88,7 @@ _fp_transit8(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_
     };
     fp_hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, fp_hook_chain_t, transit);
     hook_fargs8_t fargs;
-    fargs.early_ret = 0;
+    fargs.skip_origin = 0;
     fargs.arg0 = arg0;
     fargs.arg1 = arg1;
     fargs.arg2 = arg2;
@@ -102,7 +103,7 @@ _fp_transit8(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_
         hook_chain8_callback func = hook_chain->befores[i];
         if (func) func(&fargs, hook_chain->udata[i]);
     }
-    if (!fargs.early_ret) {
+    if (!fargs.skip_origin) {
         transit8_func_t origin_func = (transit8_func_t)hook_chain->hook.origin_fp;
         fargs.ret =
             origin_func(fargs.arg0, fargs.arg1, fargs.arg2, fargs.arg3, fargs.arg4, fargs.arg5, fargs.arg6, fargs.arg7);
@@ -132,7 +133,7 @@ _fp_transit12(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64
     };
     fp_hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, fp_hook_chain_t, transit);
     hook_fargs12_t fargs;
-    fargs.early_ret = 0;
+    fargs.skip_origin = 0;
     fargs.arg0 = arg0;
     fargs.arg1 = arg1;
     fargs.arg2 = arg2;
@@ -151,7 +152,7 @@ _fp_transit12(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64
         hook_chain12_callback func = hook_chain->befores[i];
         if (func) func(&fargs, hook_chain->udata[i]);
     }
-    if (!fargs.early_ret) {
+    if (!fargs.skip_origin) {
         transit12_func_t origin_func = (transit12_func_t)hook_chain->hook.origin_fp;
         fargs.ret = origin_func(fargs.arg0, fargs.arg1, fargs.arg2, fargs.arg3, fargs.arg4, fargs.arg5, fargs.arg6,
                                 fargs.arg7, fargs.arg8, fargs.arg9, fargs.arg10, fargs.arg11);
@@ -297,6 +298,7 @@ void fp_hook_unwrap(uintptr_t fp_addr, void *before, void *after)
         if (chain->states[i] != CHAIN_ITEM_STATE_EMPTY) return;
     }
     fp_unhook(chain->hook.fp_addr, (void *)chain->hook.origin_fp);
+    // todo: unsafe
     hook_mem_free(chain);
     logkv("Unwrap func pointer: %llx, %llx, %llx\n", fp_addr, before, after);
 }
