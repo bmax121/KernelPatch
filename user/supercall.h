@@ -98,10 +98,10 @@ static inline long __sc_test(const char *key)
 }
 
 #ifdef ANDROID
-static inline long sc_su_grant_uid(const char *key, uid_t uid, uid_t to_uid, const char *sctx)
+static inline long sc_su_grant_uid(const char *key, uid_t uid, struct su_profile *profile)
 {
     if (!key || !key[0]) return -EINVAL;
-    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_SU_GRANT_UID, uid, to_uid, sctx);
+    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_SU_GRANT_UID, uid, profile);
     return ret;
 }
 
@@ -115,15 +115,22 @@ static inline long sc_su_revoke_uid(const char *key, uid_t uid)
 static inline long sc_su_uid_nums(const char *key)
 {
     if (!key || !key[0]) return -EINVAL;
-    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_SU_ALLOW_UID_NUM);
+    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_SU_NUMS);
     return ret;
 }
 
-static inline long sc_su_list_allow_uids(const char *key, char *buf, int buf_size)
+static inline long sc_su_allow_uids(const char *key, uid_t *buf, int num)
 {
     if (!key || !key[0]) return -EINVAL;
-    if (!buf || buf_size <= 0) return -EINVAL;
-    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_SU_LIST_ALLOW_UID, buf, buf_size);
+    if (!buf || num <= 0) return -EINVAL;
+    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_SU_LIST, buf, num);
+    return ret;
+}
+
+static inline long sc_su_uid_profile(const char *key, uid_t uid, struct su_profile *out_profile)
+{
+    if (!key || !key[0]) return -EINVAL;
+    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_SU_PROFILE, uid, out_profile);
     return ret;
 }
 

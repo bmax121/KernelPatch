@@ -71,6 +71,8 @@ static void print_usage(char **argv)
         "         Get the number of uids with the aforementioned permissions. \n"
         "    --su_list \n"
         "         List aforementioned uids. \n"
+        "    --su_profile uid \n"
+        "         Get the profile of the uid configuration. \n"
         "    --su_reset path \n"
         "         Reset '/system/bin/kp' to 'path'. The length of 'path' must be between 15-64, \n"
         "         including the terminating null byte ('\\0'). \n"
@@ -130,8 +132,9 @@ int main(int argc, char **argv)
 #ifdef ANDROID
                                  { "su_grant", no_argument, &cmd, SUPERCALL_SU_GRANT_UID },
                                  { "su_revoke", no_argument, &cmd, SUPERCALL_SU_REVOKE_UID },
-                                 { "su_num", no_argument, &cmd, SUPERCALL_SU_ALLOW_UID_NUM },
-                                 { "su_list", no_argument, &cmd, SUPERCALL_SU_LIST_ALLOW_UID },
+                                 { "su_num", no_argument, &cmd, SUPERCALL_SU_NUMS },
+                                 { "su_list", no_argument, &cmd, SUPERCALL_SU_LIST },
+                                 { "su_profile", no_argument, &cmd, SUPERCALL_SU_PROFILE },
                                  { "su_reset", no_argument, &cmd, SUPERCALL_SU_RESET_PATH },
                                  { "su_get", no_argument, &cmd, SUPERCALL_SU_GET_PATH },
                                  { "android_user_init", no_argument, &cmd, ANDROID_USER_INIT_CMD },
@@ -210,17 +213,32 @@ int main(int argc, char **argv)
         return __test(key);
 #ifdef ANDROID
     case SUPERCALL_SU_GRANT_UID:
-        if (argc >= 4) uid = (uid_t)atoi(argv[3]);
+        if (argc < 4) {
+            fprintf(stderr, "Empyt uid!\n");
+            return -EINVAL;
+        }
+        uid = (uid_t)atoi(argv[3]);
         if (argc >= 5) to_uid = (uid_t)atoi(argv[4]);
         if (argc >= 6) sctx = argv[5];
         return su_grant(key, uid, to_uid, sctx);
     case SUPERCALL_SU_REVOKE_UID:
-        if (argc >= 4) uid = (uid_t)atoi(argv[3]);
+        if (argc < 4) {
+            fprintf(stderr, "Empyt uid!\n");
+            return -EINVAL;
+        }
+        uid = (uid_t)atoi(argv[3]);
         return su_revoke(key, uid);
-    case SUPERCALL_SU_ALLOW_UID_NUM:
+    case SUPERCALL_SU_NUMS:
         return su_nums(key);
-    case SUPERCALL_SU_LIST_ALLOW_UID:
+    case SUPERCALL_SU_LIST:
         return su_list(key);
+    case SUPERCALL_SU_PROFILE:
+        if (argc < 4) {
+            fprintf(stderr, "Empyt uid!\n");
+            return -EINVAL;
+        }
+        uid = (uid_t)atoi(argv[3]);
+        return su_profile(key, uid);
     case SUPERCALL_SU_RESET_PATH:
         if (argc < 4) {
             fprintf(stderr, "Empyt module path!\n");

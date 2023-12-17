@@ -1,3 +1,4 @@
+#include <ktypes.h>
 #include <uapi/scdefs.h>
 #include <hook.h>
 #include <common.h>

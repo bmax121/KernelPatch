@@ -108,7 +108,14 @@ int __test(const char *key)
 
 int su_grant(const char *key, uid_t uid, uid_t to_uid, const char *scontext)
 {
-    int rc = sc_su_grant_uid(key, uid, to_uid, scontext);
+    struct su_profile profile = { 0 };
+    profile.uid = uid;
+    profile.to_uid = to_uid;
+    if (scontext) {
+        strncpy(profile.scontext, scontext, sizeof(profile.scontext) - 1);
+    }
+    profile.scontext[sizeof(profile.scontext) - 1] = '\0';
+    int rc = sc_su_grant_uid(key, uid, &profile);
     return rc;
 }
 
@@ -127,13 +134,25 @@ int su_nums(const char *key)
 
 int su_list(const char *key)
 {
-    char buf[1024];
-    int rc = sc_su_list_allow_uids(key, buf, sizeof(buf));
+    int nums = sc_su_uid_nums(key);
+    uid_t uids[nums];
+    int rc = sc_su_allow_uids(key, uids, nums);
     if (rc > 0) {
-        fprintf(stdout, "%s", buf);
+        for (int i = 0; i < rc; i++) {
+            fprintf(stdout, "%d\n", uids[i]);
+        }
         return 0;
     }
     return rc;
+}
+
+int su_profile(const char *key, uid_t uid)
+{
+    struct su_profile profile = { 0 };
+    long rc = sc_su_uid_profile(key, (uid_t)uid, &profile);
+    if (rc < 0) return rc;
+    fprintf(stdout, "uid: %d, to_uid: %d, scontext: %s\n", profile.uid, profile.to_uid, profile.scontext);
+    return 0;
 }
 
 int su_reset_path(const char *key, const char *path)
@@ -258,7 +277,12 @@ static void load_config_allow_uids(const char *key)
 
         uid_t uid = atol(suid);
         uid_t to_uid = atol(sto_uid);
-        sc_su_grant_uid(key, uid, to_uid, sctx);
+        struct su_profile profile = { 0 };
+        profile.uid = uid;
+        profile.to_uid = to_uid;
+        if (sctx) strncpy(profile.scontext, sctx, sizeof(profile.scontext) - 1);
+
+        sc_su_grant_uid(key, uid, &profile);
 
         if (uid != 2000) should_remove_default = true;
     }

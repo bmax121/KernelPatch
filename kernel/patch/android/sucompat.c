@@ -26,6 +26,7 @@
 #include <linux/spinlock.h>
 #include <syscall.h>
 #include <predata.h>
+#include <uapi/scdefs.h>
 
 /*
 Modified from KernelSU, GPLv2
@@ -38,14 +39,6 @@ static const char *current_su_path = 0;
 static const char apd_path[] = APD_PATH;
 static const char kpatch_path[] = KPATCH_PATH;
 static const char kpatch_shadow_path[] = KPATCH_SHADOW_PATH;
-static const char bypass_via_hook_sctx[] = "bypass_via_hook";
-
-struct su_profile
-{
-    uid_t uid;
-    uid_t to_uid;
-    char scontext[SUPERCALL_SCONTEXT_LEN];
-};
 
 struct allow_uid
 {
@@ -97,7 +90,7 @@ static int is_allow_uid(uid_t uid)
     return 0;
 }
 
-int su_add_allow_uid(uid_t uid, uid_t to_uid, const char *sctx, int async)
+int su_add_allow_uid(uid_t uid, struct su_profile *profile, int async)
 {
     rcu_read_lock();
     struct allow_uid *pos, *old = 0;
@@ -109,22 +102,18 @@ int su_add_allow_uid(uid_t uid, uid_t to_uid, const char *sctx, int async)
         }
     }
     struct allow_uid *new = (struct allow_uid *)kmalloc(sizeof(struct allow_uid), GFP_ATOMIC);
-    memset(new, 0, sizeof(struct allow_uid));
-    new->uid = uid;
-    new->profile.uid = uid;
-    new->profile.to_uid = to_uid;
-    memset(new->profile.scontext, 0, sizeof(new->profile.scontext));
-    if (sctx && strcmp(sctx, bypass_via_hook_sctx)) {
-        strlcpy(new->profile.scontext, sctx, sizeof(new->profile.scontext));
-    }
+    new->uid = profile->uid;
+    memcpy(&new->profile, profile, sizeof(struct su_profile));
+    new->profile.scontext[sizeof(new->profile.scontext) - 1] = '\0';
+    kvfree(profile);
 
     spin_lock(&list_lock);
     if (old) { // update
         list_replace_rcu(&old->list, &new->list);
-        logkfi("update uid: %d, to_uid: %d, sctx: %s\n", uid, to_uid, sctx);
+        logkfi("update uid: %d, to_uid: %d, sctx: %s\n", uid, new->profile.to_uid, new->profile.scontext);
     } else { // add new one
         list_add_rcu(&new->list, &allow_uid_list);
-        logkfi("new uid: %d, to_uid: %d, sctx: %s\n", uid, to_uid, sctx);
+        logkfi("new uid: %d, to_uid: %d, sctx: %s\n", uid, new->profile.to_uid, new->profile.scontext);
     }
     spin_unlock(&list_lock);
 
@@ -173,42 +162,76 @@ int su_allow_uid_nums()
         num++;
     }
     rcu_read_unlock();
+    logkd("allow uid num: %d\n", num);
     return num;
 }
 
-int su_list_allow_uids(char *__user ubuf, int ubuf_len)
+int su_allow_uids(uid_t *__user uuids, int unum)
 {
-    int uoff = 0;
-    char line[SUPERCALL_SCONTEXT_LEN + 32];
+    int rc = 0;
+    int num = 0;
     rcu_read_lock();
     struct allow_uid *pos;
     list_for_each_entry(pos, &allow_uid_list, list)
     {
-        int lline = snprintf(line, sizeof(line), "%d,%d,%s\n", pos->uid, pos->profile.to_uid, pos->profile.scontext);
-        int left = ubuf_len - uoff;
-        if (left < lline) return -ENOMEM;
-        uoff += seq_copy_to_user(ubuf + uoff, line, lline);
+        if (num >= unum) {
+            goto out;
+        }
+        uid_t uid = pos->profile.uid;
+        int cplen = seq_copy_to_user(uuids + num, &uid, sizeof(uid));
+        logkd("copy_to_user allow uid: %d\n", uid);
+        if (cplen <= 0) {
+            logkfd("seq_copy_to_user error: %d", cplen);
+            rc = cplen;
+            goto out;
+        }
+        num++;
     }
+    rc = num;
+out:
     rcu_read_unlock();
-    return uoff;
+    return rc;
 }
 
-// todo:
+int su_allow_uid_profile(uid_t uid, struct su_profile *__user uprofile)
+{
+    int rc = -ENOENT;
+    rcu_read_lock();
+    struct allow_uid *pos;
+    list_for_each_entry(pos, &allow_uid_list, list)
+    {
+        if (pos->profile.uid != uid) continue;
+        int cplen = seq_copy_to_user(uprofile, &pos->profile, sizeof(struct su_profile));
+        logkd("copy_to_user allow uid profile: %d %d %s\n", uid, pos->profile.to_uid, pos->profile.scontext);
+        if (cplen <= 0) {
+            logkfd("seq_copy_to_user error: %d", cplen);
+            rc = cplen;
+            goto out;
+        }
+        rc = 0;
+        goto out;
+    }
+out:
+    rcu_read_unlock();
+    return rc;
+}
+
 // no free, no lock
 int su_reset_path(const char *path)
 {
     char *new_su_path = kstrdup(path, GFP_ATOMIC);
     current_su_path = new_su_path;
-    dsb(ish);
-    logkfi("%s\n", current_su_path);
+    dsb(ishst);
+    logki(": %s\n", current_su_path);
     return 0;
 }
 
 int su_get_path(char *__user ubuf, int buf_len)
 {
     int len = strnlen(current_su_path, SU_PATH_MAX_LEN);
-    if (buf_len <= len) return -ENOMEM;
-    return seq_copy_to_user(ubuf, su_path, len);
+    if (buf_len < len) return -ENOMEM;
+    logkfi(": %s\n", current_su_path);
+    return seq_copy_to_user(ubuf, current_su_path, len + 1);
 }
 
 // todo: rcu_dereference_protected
@@ -414,7 +437,11 @@ int su_compat_init()
     spin_lock_init(&list_lock);
 
     // default shell
-    su_add_allow_uid(2000, 0, 0, 0);
+    struct su_profile default_shell_profile = {
+        .uid = 2000,
+        .to_uid = 0,
+    };
+    su_add_allow_uid(default_shell_profile.uid, &default_shell_profile, 1);
 
     // state
     unsigned long vfs_stat_addr = kallsyms_lookup_name("vfs_statx");

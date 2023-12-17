@@ -29,6 +29,7 @@ extern "C"
     int su_revoke(const char *key, uid_t uid);
     int su_nums(const char *key);
     int su_list(const char *key);
+    int su_profile(const char *key, uid_t uid);
     int su_reset_path(const char *key, const char *path);
     int su_get_path(const char *key);
     int android_user_init(const char *key);

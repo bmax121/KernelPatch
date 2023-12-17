@@ -78,7 +78,6 @@ uint64_t _kp_rw_end = 0;
 uint64_t _kp_region_start = 0;
 uint64_t _kp_region_end = 0;
 
-uint64_t ttbr1_el1 = 0;
 uint64_t kernel_va = 0;
 uint64_t kernel_stext_va = 0;
 uint64_t kernel_pa = 0;
@@ -309,8 +308,6 @@ static void restore_map()
 
 static void pgtable_init()
 {
-    asm volatile("mrs %0, ttbr1_el1" : "=r"(ttbr1_el1));
-
     uint64_t addr = kallsyms_lookup_name("memstart_addr");
     if (addr) memstart_addr = *(int64_t *)addr;
 

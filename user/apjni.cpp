@@ -79,14 +79,52 @@ extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeThreadSu(JN
     return rc;
 }
 
-extern "C" JNIEXPORT jstring JNICALL Java_me_bmax_apatch_Natives_nativeListSu(JNIEnv *env, jclass clz, jstring superKey)
+extern "C" JNIEXPORT jint JNICALL Java_me_bmax_apatch_Natives_nativeSuNums(JNIEnv *env, jclass clz, jstring superKey)
 {
     const char *skey = env->GetStringUTFChars(superKey, NULL);
-    char buf[1024] = { '\0' };
-    long rc = sc_su_list_allow_uids(skey, buf, sizeof(buf));
+    long rc = sc_su_uid_nums(skey);
     env->ReleaseStringUTFChars(superKey, skey);
-    jstring result = env->NewStringUTF(buf);
-    return result;
+    return rc;
+}
+
+extern "C" JNIEXPORT jintArray JNICALL Java_me_bmax_apatch_Natives_nativeSuUids(JNIEnv *env, jclass clz,
+                                                                                jstring superKey)
+{
+    const char *skey = env->GetStringUTFChars(superKey, NULL);
+    int num = sc_su_uid_nums(skey);
+    int uids[num];
+    long n = sc_su_allow_uids(skey, (uid_t *)uids, num);
+    if (n > 0) {
+        jintArray array = env->NewIntArray(num);
+        env->SetIntArrayRegion(array, 0, n, uids);
+        return array;
+    }
+    env->ReleaseStringUTFChars(superKey, skey);
+    return env->NewIntArray(0);
+}
+
+extern "C" JNIEXPORT jobject JNICALL Java_me_bmax_apatch_Natives_nativeSuProfile(JNIEnv *env, jclass clz,
+                                                                                 jstring superKey, jint uid)
+{
+    const char *skey = env->GetStringUTFChars(superKey, NULL);
+    struct su_profile profile = { 0 };
+    long rc = sc_su_uid_profile(skey, (uid_t)uid, &profile);
+    if (rc) {
+        env->ReleaseStringUTFChars(superKey, skey);
+        return nullptr;
+    }
+    jclass cls = env->FindClass("me/bmax/apatch/Natives$Profile");
+    jmethodID constructor = env->GetMethodID(cls, "<init>", "()V");
+    jfieldID uidField = env->GetFieldID(cls, "uid", "I");
+    jfieldID toUidField = env->GetFieldID(cls, "toUid", "I");
+    jfieldID scontextFild = env->GetFieldID(cls, "scontext", "Ljava/lang/String;");
+
+    jobject obj = env->NewObject(cls, constructor);
+    env->SetIntField(obj, uidField, profile.uid);
+    env->SetIntField(obj, toUidField, profile.to_uid);
+    env->SetObjectField(obj, scontextFild, env->NewStringUTF(profile.scontext));
+
+    return obj;
 }
 
 extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeLoadKernelPatchModule(JNIEnv *env, jclass clz,
@@ -123,7 +161,11 @@ extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeGrantSu(JNI
 {
     const char *skey = env->GetStringUTFChars(superKey, NULL);
     const char *sctx = env->GetStringUTFChars(scontext, NULL);
-    long rc = sc_su_grant_uid(skey, (uid_t)uid, (uid_t)to_uid, sctx);
+    struct su_profile profile = { 0 };
+    profile.uid = uid;
+    profile.to_uid = to_uid;
+    if (sctx) strncpy(profile.scontext, sctx, sizeof(profile.scontext) - 1);
+    long rc = sc_su_grant_uid(skey, uid, &profile);
     env->ReleaseStringUTFChars(superKey, skey);
     env->ReleaseStringUTFChars(scontext, sctx);
     return rc;
@@ -145,4 +187,15 @@ extern "C" JNIEXPORT jstring JNICALL Java_me_bmax_apatch_Natives_nativeSuPath(JN
     long rc = sc_su_get_path(skey, buf, sizeof(buf));
     env->ReleaseStringUTFChars(superKey, skey);
     return env->NewStringUTF(buf);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL Java_me_bmax_apatch_Natives_nativeResetSuPath(JNIEnv *env, jclass clz,
+                                                                                    jstring superKey, jstring jpath)
+{
+    const char *skey = env->GetStringUTFChars(superKey, NULL);
+    const char *path = env->GetStringUTFChars(jpath, NULL);
+    long rc = sc_su_reset_path(skey, path);
+    env->ReleaseStringUTFChars(superKey, skey);
+    env->ReleaseStringUTFChars(jpath, path);
+    return rc == 0;
 }

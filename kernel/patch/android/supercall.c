@@ -1,3 +1,4 @@
+#include <ktypes.h>
 #include <uapi/scdefs.h>
 #include <hook.h>
 #include <common.h>
@@ -10,17 +11,15 @@
 #include <linux/security.h>
 #include <accctl.h>
 #include <linux/string.h>
+#include <linux/err.h>
 #include <uapi/asm-generic/errno.h>
 
-static long call_grant_uid(uid_t uid, uid_t to_uid, const char *__user usctx)
+static long call_grant_uid(uid_t uid, struct su_profile *__user uprofile)
 {
-    const char *sctx = 0;
-    if (usctx) {
-        char buf[SUPERCALL_SCONTEXT_LEN];
-        int slen = strncpy_from_user_nofault(buf, usctx, sizeof(buf));
-        if (slen > 0) sctx = buf;
-    }
-    return su_add_allow_uid(uid, to_uid, sctx, 1);
+    struct su_profile *profile = memdup_user(uprofile, sizeof(struct su_profile));
+    if (IS_ERR(profile)) return PTR_ERR(profile);
+
+    return su_add_allow_uid(uid, profile, 1);
 }
 
 static long call_revoke_uid(uid_t uid)
@@ -33,9 +32,14 @@ static long call_su_allow_uid_nums()
     return su_allow_uid_nums();
 }
 
-static long call_su_list_allow_uid(char *__user buf, int buf_len)
+static long call_su_list_allow_uid(uid_t *__user uids, int num)
 {
-    return su_list_allow_uids(buf, buf_len);
+    return su_allow_uids(uids, num);
+}
+
+static long call_su_allow_uid_profile(uid_t uid, struct su_profile *__user uprofile)
+{
+    return su_allow_uid_profile(uid, uprofile);
 }
 
 static long call_reset_su_path(const char *__user upath)
@@ -55,13 +59,15 @@ long supercall_android(long cmd, long arg1, long arg2, long arg3)
 {
     switch (cmd) {
     case SUPERCALL_SU_GRANT_UID:
-        return call_grant_uid((uid_t)arg1, (uid_t)arg2, (const char *__user)arg3);
+        return call_grant_uid((uid_t)arg1, (struct su_profile * __user) arg2);
     case SUPERCALL_SU_REVOKE_UID:
         return call_revoke_uid((uid_t)arg1);
-    case SUPERCALL_SU_ALLOW_UID_NUM:
+    case SUPERCALL_SU_NUMS:
         return call_su_allow_uid_nums();
-    case SUPERCALL_SU_LIST_ALLOW_UID:
-        return call_su_list_allow_uid((char *__user)arg1, (int)arg2);
+    case SUPERCALL_SU_LIST:
+        return call_su_list_allow_uid((uid_t *)arg1, (int)arg2);
+    case SUPERCALL_SU_PROFILE:
+        return call_su_allow_uid_profile((uid_t)arg1, (struct su_profile * __user) arg2);
     case SUPERCALL_SU_RESET_PATH:
         return call_reset_su_path((const char *)arg1);
     case SUPERCALL_SU_GET_PATH:

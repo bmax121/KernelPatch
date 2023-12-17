@@ -44,12 +44,20 @@ static inline long hash_key(const char *key)
 #define KPATCH_PATH "/data/adb/kpatch"
 #define KPATCH_SHADOW_PATH "/system/bin/truncate"
 
+struct su_profile
+{
+    uid_t uid;
+    uid_t to_uid;
+    char scontext[SUPERCALL_SCONTEXT_LEN];
+};
+
 #define SUPERCALL_SU_GRANT_UID 0x1100
 #define SUPERCALL_SU_REVOKE_UID 0x1101
-#define SUPERCALL_SU_ALLOW_UID_NUM 0x1102
-#define SUPERCALL_SU_LIST_ALLOW_UID 0x1103
-#define SUPERCALL_SU_GET_PATH 0x1104
-#define SUPERCALL_SU_RESET_PATH 0x1105
+#define SUPERCALL_SU_NUMS 0x1102
+#define SUPERCALL_SU_LIST 0x1103
+#define SUPERCALL_SU_PROFILE 0x1104
+#define SUPERCALL_SU_GET_PATH 0x1110
+#define SUPERCALL_SU_RESET_PATH 0x1111
 
 #endif
 
