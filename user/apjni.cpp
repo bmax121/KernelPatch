@@ -62,7 +62,12 @@ extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeSu(JNIEnv *
     const char *skey = env->GetStringUTFChars(superKey, NULL);
     const char *sctx = 0;
     if (scontext) sctx = env->GetStringUTFChars(scontext, NULL);
-    long rc = sc_su(skey, (uid_t)to_uid, sctx);
+    struct su_profile profile = { 0 };
+    profile.uid = getuid();
+    if (sctx) {
+        strncpy(profile.scontext, sctx, sizeof(profile.scontext) - 1);
+    }
+    long rc = sc_su(skey, &profile);
     env->ReleaseStringUTFChars(superKey, skey);
     if (sctx) env->ReleaseStringUTFChars(scontext, sctx);
     return rc;
@@ -72,8 +77,14 @@ extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeThreadSu(JN
                                                                               jint tid, jint to_uid, jstring scontext)
 {
     const char *skey = env->GetStringUTFChars(superKey, NULL);
-    const char *sctx = env->GetStringUTFChars(scontext, NULL);
-    long rc = sc_su_task(skey, (uid_t)tid, (uid_t)to_uid, sctx);
+    const char *sctx = 0;
+    if (scontext) sctx = env->GetStringUTFChars(scontext, NULL);
+    struct su_profile profile = { 0 };
+    profile.uid = getuid();
+    if (sctx) {
+        strncpy(profile.scontext, sctx, sizeof(profile.scontext) - 1);
+    }
+    long rc = sc_su_task(skey, tid, &profile);
     env->ReleaseStringUTFChars(superKey, skey);
     env->ReleaseStringUTFChars(scontext, sctx);
     return rc;

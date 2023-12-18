@@ -11,12 +11,17 @@ if(ANDROID)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DANDROID")    
 endif()
 
-set(SRCS kpatch.c)
+set(SRCS 
+    kpatch.c
+    kpm.c
+    su.c
+)
 
-# if(ANDROID)
-#     file(GLOB ANDROID_SRCS "android/*.c")
-#     list(APPEND SRCS ${ANDROID_SRCS})
-# endif()
+if(ANDROID)
+    list(APPEND SRCS "sumgr.c")
+    file(GLOB ANDROID_SRCS "android/*.c")
+    list(APPEND SRCS ${ANDROID_SRCS})
+endif()
 
 
 add_library(kp STATIC ${SRCS})

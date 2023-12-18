@@ -18,6 +18,8 @@
 #include <accctl.h>
 #include <module.h>
 #include <kputils.h>
+#include <linux/err.h>
+#include <linux/slab.h>
 
 #define MAX_KEY_LEN 128
 
@@ -95,29 +97,24 @@ static long call_kpm_info(const char *__user uname, char *__user out_info, int o
     return sz;
 }
 
-static long call_su(uid_t to_uid, const char *__user uctx)
+static long call_su(struct su_profile *__user uprofile)
 {
-    char *sctx = 0;
-    char buf[SUPERCALL_SCONTEXT_LEN];
-    if (uctx) {
-        long len = strncpy_from_user_nofault(buf, uctx, SUPERCALL_SCONTEXT_LEN);
-        if (len <= 0) return -EINVAL;
-        sctx = buf;
-    }
-    int ret = commit_su(to_uid, sctx);
-    return ret;
+    struct su_profile *profile = memdup_user(uprofile, sizeof(struct su_profile));
+    if (IS_ERR(profile)) return PTR_ERR(profile);
+    profile->scontext[sizeof(profile->scontext) - 1] = '\0';
+    int rc = commit_su(profile->uid, profile->scontext);
+    kvfree(profile);
+    return rc;
 }
 
-static long call_su_task(pid_t pid, uid_t to_uid, const char *__user uctx)
+static long call_su_task(pid_t pid, struct su_profile *__user uprofile)
 {
-    char *sctx = 0;
-    char buf[SUPERCALL_SCONTEXT_LEN];
-    if (uctx) {
-        long len = strncpy_from_user_nofault(buf, uctx, SUPERCALL_SCONTEXT_LEN);
-        if (len <= 0) return -EINVAL;
-        sctx = buf;
-    }
-    return task_su(pid, to_uid, sctx);
+    struct su_profile *profile = memdup_user(uprofile, sizeof(struct su_profile));
+    if (IS_ERR(profile)) return PTR_ERR(profile);
+    profile->scontext[sizeof(profile->scontext) - 1] = '\0';
+    int rc = task_su(pid, profile->to_uid, profile->scontext);
+    kvfree(profile);
+    return rc;
 }
 
 static long supercall(long cmd, long arg1, long arg2, long arg3)
@@ -134,9 +131,9 @@ static long supercall(long cmd, long arg1, long arg2, long arg3)
     logkd("supercall with cmd: %x\n", cmd);
     switch (cmd) {
     case SUPERCALL_SU:
-        return call_su((uid_t)arg1, (const char *__user)arg2);
+        return call_su((struct su_profile * __user) arg1);
     case SUPERCALL_SU_TASK:
-        return call_su_task((pid_t)arg1, (uid_t)arg2, (const char *__user)arg3);
+        return call_su_task((pid_t)arg1, (struct su_profile * __user) arg2);
     case SUPERCALL_KPM_LOAD:
         return call_kpm_load((const char *__user)arg1, (const char *__user)arg2);
     case SUPERCALL_KPM_UNLOAD:

@@ -47,17 +47,10 @@ uint32_t kpv(const char *key)
     return 0;
 }
 
-int su_fork(const char *key, uid_t uid, const char *sctx)
-{
-    long ret = 0;
-    ret = sc_su(key, uid, sctx);
-    if (!ret) execlp("sh", "", NULL);
-    return ret;
-}
-
 int su_thread(const char *key, uid_t uid, uid_t to_uid, const char *sctx)
 {
-    return sc_su_task(key, uid, to_uid, sctx);
+    // return sc_su_task(key, uid, to_uid, sctx);
+    return 0;
 }
 
 int kpm_load(const char *key, const char *path, const char *args)
@@ -333,7 +326,9 @@ int android_user_init(const char *key)
     // check kernel_patch
     if (!sc_ready(key)) return -EFAULT;
 
-    sc_su(key, 0, 0);
+    struct su_profile profile = { 0 };
+    profile.uid = getuid();
+    sc_su(key, &profile);
 
     save_dmegs(key, boot0_log_path);
 

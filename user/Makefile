@@ -6,8 +6,11 @@ ifdef ANDROID
 endif
 
 SRC += kpatch.c
+SRC += kpm.c
+SRC += su.c
 
 ifdef ANDROID
+SRC += sumgr.c
 SRCS += $(wildcard android/*.c)
 endif
 

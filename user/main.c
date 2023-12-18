@@ -7,11 +7,13 @@
 #include <errno.h>
 
 #include "../banner"
-#include "kpatch.h"
 #include "uapi/scdefs.h"
+#include "kpatch.h"
+#include "su.h"
+#include "kpm.h"
 
 #ifdef ANDROID
-#define ANDROID_USER_INIT_CMD 0x100
+#include "sumgr.h"
 #endif
 
 static void print_usage(char **argv)
@@ -28,31 +30,31 @@ static void print_usage(char **argv)
 
     const char *help_sc =
         "SuperCall Usage: \n"
-        "%s <super_key> <command> [args...] \n"
+        "%s <super_key> <command> [options ...] \n"
         "\n"
         "Commnads: \n"
-        "    --hello \n"
+        "    hello \n"
         "         '%s' will echoed if KernelPatch installed successfully. \n"
-        "    --kpv \n"
+        "    kpv \n"
         "         Get KernelPatch version. \n"
-        "    --su [to_uid] [scontext] \n"
+        "    su [to_uid] [scontext] \n"
         "         Start a new shell with specified 'to_uid' and 'scontext', \n"
         "         If 'scontext' is not specified or specified with a non-existent value, \n"
         "         bypass all selinux permission checks for all calls initiated by this task using hooks, \n"
         "         but the permission determined by other task remain unchanged. \n"
-        "    --su_thread tid [to_uid] [scontext] \n"
+        "    su_thread tid [to_uid] [scontext] \n"
         "         Set the UID and security context of the thread corresponding to the 'tid'(gettid(2)) \n"
         "         to the specified 'to_uid' and 'scontext'. \n"
         "         However, these settings will not be propagated to the child tasks. (todo) \n"
-        "    --kpm_load path \n"
+        "    kpm_load path \n"
         "         Load KernelPatch Module with path 'path'. \n"
-        "    --kpm_unload name \n"
+        "    kpm_unload name \n"
         "         Unload KernelPatch Module named 'name'. \n"
-        "    --kpm_num \n"
+        "    kpm_num \n"
         "         Get the number of modules that have been loaded. \n"
-        "    --kpm_list \n"
+        "    kpm_list \n"
         "         List the module names of all loaded modules. \n"
-        "    --kpm_info name \n"
+        "    kpm_info name \n"
         "         Get detailed information about a module by its module 'name' \n"
         "\n";
     fprintf(stdout, help_sc, argv[0], SUPERCALL_HELLO_ECHO);
@@ -61,22 +63,22 @@ static void print_usage(char **argv)
         "Commands(Android specified):\n"
         "    The default command obtain a shell with the specified 'to_uid' and 'scontext' is 'kp', \n"
         "    whose full path is '/system/bin/kp'. This can avoid conflicts with the existing 'su' command. \n"
-        "    If you wish to modify this path, you can use the '--su_reset' command. \n"
+        "    If you wish to modify this path, you can use the 'su_reset' command. \n"
         "\n"
-        "    --su_grant uid [to_uid] [scontext] \n"
+        "    su_grant uid [to_uid] [scontext] \n"
         "         Grant permission for 'uid' to execute the '/system/bin/kp', \n"
-        "    --su_revoke uid \n"
+        "    su_revoke uid \n"
         "         Revoke permission. \n"
-        "    --su_num \n"
+        "    su_num \n"
         "         Get the number of uids with the aforementioned permissions. \n"
-        "    --su_list \n"
+        "    su_list \n"
         "         List aforementioned uids. \n"
-        "    --su_profile uid \n"
+        "    su_profile uid \n"
         "         Get the profile of the uid configuration. \n"
-        "    --su_reset path \n"
+        "    su_reset path \n"
         "         Reset '/system/bin/kp' to 'path'. The length of 'path' must be between 15-64, \n"
         "         including the terminating null byte ('\\0'). \n"
-        "    --su_get \n"
+        "    su_get \n"
         "         Get current path. \n"
         "\n";
     fprintf(stdout, "%s", help_android);
@@ -112,33 +114,60 @@ int main(int argc, char **argv)
         return -E2BIG;
     }
 
-    const char *scmd = argv[2];
+    if (argc <= 2) {
+        return -EINVAL;
+    }
 
+    const char *scmd = argv[2];
     int cmd = -1;
+
+    struct
+    {
+        const char *scmd;
+        int cmd;
+    } cmd_arr[] = {
+        { "hello", SUPERCALL_HELLO },
+        { "version", SUPERCALL_KP_VERSION },
+        { "su", 's' },
+        { "kpm", 'k' },
+#ifdef ANDROID
+        { "sumgr", 'm' },
+        { "android_user_init", 'a' },
+#endif
+    };
+
+    for (int i = 0; i < sizeof(cmd_arr) / sizeof(cmd_arr[0]); i++) {
+        if (strcmp(scmd, cmd_arr[i].scmd)) continue;
+        cmd = cmd_arr[i].cmd;
+        break;
+    }
+
+    if (cmd < 0) {
+        fprintf(stderr, "Invalid command: %s!\n", scmd);
+        return -EINVAL;
+    }
+
+    switch (cmd) {
+    case SUPERCALL_HELLO:
+        return hello(key);
+    case SUPERCALL_KP_VERSION:
+        return kpv(key);
+        break;
+    case 's':
+        return su_main(key, argc - 2, argv + 2);
+    case 'k':
+        return kpm_main(key, argc - 2, argv + 2);
+    case 'm':
+        return sumgr_main(key, argc - 2, argv + 2);
+    case 'a':
+        return android_user_init(key);
+    default:
+        fprintf(stderr, "Invalid command: %s!\n", scmd);
+        return -EINVAL;
+    }
 
     struct option longopts[] = { { "help", no_argument, &cmd, 'h' },
                                  { "version", no_argument, &cmd, 'v' },
-
-                                 { "hello", no_argument, &cmd, SUPERCALL_HELLO },
-                                 { "kpv", no_argument, &cmd, SUPERCALL_KP_VERSION },
-                                 { "su", no_argument, &cmd, SUPERCALL_SU },
-                                 { "su_thread", no_argument, &cmd, SUPERCALL_SU_TASK },
-                                 { "kpm_load", no_argument, &cmd, SUPERCALL_KPM_LOAD },
-                                 { "kpm_unload", no_argument, &cmd, SUPERCALL_KPM_UNLOAD },
-                                 { "kpm_num", no_argument, &cmd, SUPERCALL_KPM_NUMS },
-                                 { "kpm_list", no_argument, &cmd, SUPERCALL_KPM_LIST },
-                                 { "kpm_info", no_argument, &cmd, SUPERCALL_KPM_INFO },
-                                 { "test", no_argument, &cmd, SUPERCALL_TEST },
-#ifdef ANDROID
-                                 { "su_grant", no_argument, &cmd, SUPERCALL_SU_GRANT_UID },
-                                 { "su_revoke", no_argument, &cmd, SUPERCALL_SU_REVOKE_UID },
-                                 { "su_num", no_argument, &cmd, SUPERCALL_SU_NUMS },
-                                 { "su_list", no_argument, &cmd, SUPERCALL_SU_LIST },
-                                 { "su_profile", no_argument, &cmd, SUPERCALL_SU_PROFILE },
-                                 { "su_reset", no_argument, &cmd, SUPERCALL_SU_RESET_PATH },
-                                 { "su_get", no_argument, &cmd, SUPERCALL_SU_GET_PATH },
-                                 { "android_user_init", no_argument, &cmd, ANDROID_USER_INIT_CMD },
-#endif
                                  { 0, 0, 0, 0 } };
     char *optstr = "hv";
     int opt = -1;
@@ -170,10 +199,6 @@ int main(int argc, char **argv)
     const char *name = NULL;
 
     switch (cmd) {
-    case SUPERCALL_HELLO:
-        return hello(key);
-    case SUPERCALL_KP_VERSION:
-        return kpv(key);
     case SUPERCALL_SU:
         if (argc >= 4) to_uid = (uid_t)atoi(argv[3]);
         if (argc >= 5) sctx = argv[4];
@@ -248,12 +273,9 @@ int main(int argc, char **argv)
         return su_reset_path(key, path);
     case SUPERCALL_SU_GET_PATH:
         return su_get_path(key);
-    case ANDROID_USER_INIT_CMD:
-        return android_user_init(key);
 #endif
     default:
-        fprintf(stderr, "Invalid command: %s!\n", scmd);
-        return -EINVAL;
+        break;
     }
     return 0;
 }

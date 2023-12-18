@@ -37,18 +37,18 @@ static inline long sc_kp_version(const char *key)
     return ret;
 }
 
-static inline long sc_su(const char *key, uid_t to_uid, const char *sctx)
+static inline long sc_su(const char *key, struct su_profile *profile)
 {
     if (!key || !key[0]) return -EINVAL;
-    if (sctx && strlen(sctx) >= SUPERCALL_SCONTEXT_LEN) return -EINVAL;
-    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_SU, to_uid, sctx);
+    if (strlen(profile->scontext) >= SUPERCALL_SCONTEXT_LEN) return -EINVAL;
+    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_SU, profile);
     return ret;
 }
 
-static inline long sc_su_task(const char *key, pid_t tid, uid_t to_uid, const char *sctx)
+static inline long sc_su_task(const char *key, pid_t tid, struct su_profile *profile)
 {
     if (!key || !key[0]) return -EINVAL;
-    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_SU_TASK, tid, to_uid, sctx);
+    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_SU_TASK, tid, profile);
     return ret;
 }
 

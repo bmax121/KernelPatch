@@ -105,7 +105,6 @@ int su_add_allow_uid(uid_t uid, struct su_profile *profile, int async)
     new->uid = profile->uid;
     memcpy(&new->profile, profile, sizeof(struct su_profile));
     new->profile.scontext[sizeof(new->profile.scontext) - 1] = '\0';
-    kvfree(profile);
 
     spin_lock(&list_lock);
     if (old) { // update
