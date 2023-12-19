@@ -10,7 +10,7 @@ static inline long hash_key(const char *key)
     return hash;
 }
 
-#define SUPERCALL_HELLO_ECHO "Hello KernelPatch"
+#define SUPERCALL_HELLO_ECHO "hello1158"
 
 // #define __NR_supercall __NR3264_truncate // 45
 #define __NR_supercall 45
@@ -40,7 +40,11 @@ static inline long hash_key(const char *key)
 #define SU_PATH_MIN_LEN sizeof(ANDROID_SH_PATH)
 #define SU_PATH_MAX_LEN 64
 #define ANDROID_SU_PATH "/system/bin/kp"
+#define ADB_FLODER "/data/adb"
 #define APD_PATH "/data/adb/apd"
+#define APATCH_FLODER "/data/adb/ap"
+#define APATCH_BIN_FLODER "/data/adb/ap/bin"
+#define APATCH_LOG_FLODER "/data/adb/ap/log/"
 #define KPATCH_PATH "/data/adb/kpatch"
 #define KPATCH_SHADOW_PATH "/system/bin/truncate"
 

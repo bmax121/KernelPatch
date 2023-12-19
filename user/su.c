@@ -27,23 +27,25 @@ enum
 
 #ifdef ANDROID
 #define DEFAULT_SHELL "/system/bin/sh"
-#define DEFAULT_LOGIN_PATH ":/usr/bin:/user/sbin"
-#define DEFAULT_ROOT_LOGIN_PATH ":/data/adb:/data/adb/ap/bin"
+#define DEFAULT_PATH "/product/bin:/apex/com.android.runtime/bin:/system/bin:/odm/bin:/vendor/bin:/usr/bin"
+#define DEFAULT_ROOT_PATH                                                                                                                          \
+    "/sbin:/system/sbin:/product/bin:/apex/com.android.runtime/bin:/system/bin:/system/xbin:/odm/bin:/vendor/bin:/vendor/xbin:/usr/bin:/user/sbin" \
+    ":" ADB_FLODER ":" APATCH_BIN_FLODER
+
 #else
 #define DEFAULT_SHELL "/bin/sh"
-#define DEFAULT_LOGIN_PATH ":/bin:/usr/bin"
-#define DEFAULT_ROOT_LOGIN_PATH ":/usr/ucb:/bin:/usr/bin:/etc"
+#define DEFAULT_PATH ":/bin:/usr/bin"
+#define DEFAULT_ROOT_PATH ":/usr/ucb:/bin:/usr/bin:/etc"
 #endif
 
 #define DEFAULT_USER "root"
 #define PROGRAM_NAME "su"
 
-char *crypt(char const *key, char const *salt);
 static void run_shell(char const *, char const *, char **, size_t);
 /* If true, change some environment vars to indicate the user su'd to.  */
 static bool change_environment;
 
-static const char *program_name;
+extern const char program_name[];
 
 char *last_component(char const *name)
 {
@@ -84,8 +86,8 @@ static void change_identity(const struct passwd *pw)
     errno = 0;
     if (initgroups(pw->pw_name, pw->pw_gid) == -1) error(EXIT_CANCELED, errno, "cannot set groups");
     endgrent();
-    if (setgid(pw->pw_gid)) error(EXIT_CANCELED, errno, "cannot set group id");
-    if (setuid(pw->pw_uid)) error(EXIT_CANCELED, errno, "cannot set user id");
+    if (setresgid(pw->pw_gid, pw->pw_gid, pw->pw_gid)) error(EXIT_CANCELED, errno, "cannot set group id");
+    if (setresuid(pw->pw_uid, pw->pw_uid, pw->pw_uid)) error(EXIT_CANCELED, errno, "cannot set user id");
 }
 
 static void __attribute__((noreturn))
@@ -111,27 +113,32 @@ run_shell(char const *shell, char const *command, char **additional_args, size_t
     }
 }
 
-void usage(int status)
+static void usage(int status)
 {
     if (status != EXIT_SUCCESS)
-        fprintf(stderr, "Try `%s --help' for more information.\n", program_name);
+        fprintf(stderr, "Try `%s help' for more information.\n", program_name);
     else {
-        printf("Usage: %s [OPTION]... [USER [ARG]...]\n\n", program_name);
-        fprintf(stdout, ""
-                        "Change the effective user id and group id to that of USER.\n"
-                        "If USER not given, assume root.\n\n"
-                        "-c, --command=COMMAND        pass a single COMMAND to the shell with -c\n"
-                        "-m, --preserve-environment   do not reset environment variables\n"
-                        "-p                           same as -m\n"
-                        "-s, --shell=SHELL            run SHELL if /etc/shells allows it\n"
-                        "");
+        fprintf(stdout, "Change the user id, group id and security context.\n"
+                        "If USER not given, assume root.\n\n");
+        fprintf(stdout, "Usage: %s [OPTION]... [USER [ARG]...]\n\n", program_name);
+        fprintf(stdout,
+                "help                         Print this help message. \n"
+                "-c, --command=COMMAND        pass a single COMMAND to the shell with -c\n"
+                "-m, --preserve-environment   do not reset environment variables\n"
+                "-p                           same as -m\n"
+                "-s, --shell=SHELL            use SHELL instead of the default\n"
+                "-x, --scontext=SCONTEXT      Switch security context to SCONTEXT, If SCONTEXT is not specified\n"
+                "                             or specified with a non-existent value, bypass all selinux permission\n"
+                "                             checks for all calls initiated by this task using hooks, \n"
+                "                             but the permission determined by other task remain unchanged. \n"
+                "");
     }
     exit(status);
 }
 
 static struct option const longopts[] = {
     { "command", required_argument, NULL, 'c' }, { "preserve-environment", no_argument, NULL, 'p' },
-    { "shell", required_argument, NULL, 's' },   { "context", required_argument, NULL, 'x' },
+    { "shell", required_argument, NULL, 's' },   { "scontext", required_argument, NULL, 'x' },
     { "help", no_argument, NULL, 'h' },          { NULL, 0, NULL, 0 }
 };
 
@@ -143,8 +150,6 @@ int su_main(const char *key, int argc, char **argv)
     char *shell = NULL;
     char *scontext = NULL;
     struct passwd *pw;
-
-    program_name = argv[0];
 
     change_environment = true;
 
@@ -178,7 +183,8 @@ int su_main(const char *key, int argc, char **argv)
     if (scontext) {
         strncpy(profile.scontext, scontext, sizeof(profile.scontext) - 1);
     }
-    sc_su(key, &profile);
+
+    if (sc_su(key, &profile)) error(-EACCES, 0, "incorrect super key");
 
     pw = getpwnam(new_user);
     if (!(pw && pw->pw_name && pw->pw_name[0] && pw->pw_dir && pw->pw_dir[0]))
@@ -192,15 +198,17 @@ int su_main(const char *key, int argc, char **argv)
     if (change_environment) {
         xsetenv("HOME", pw->pw_dir);
         xsetenv("SHELL", shell);
-        char *old_path = getenv("PATH");
-        char *add_path = pw->pw_uid ? DEFAULT_LOGIN_PATH : DEFAULT_ROOT_LOGIN_PATH;
-        int path_len = strlen(old_path) + strlen(add_path) + 1;
-        char *new_path = malloc(path_len);
-        memset(new_path, 0, path_len);
-        strcat(new_path, old_path);
-        strcat(new_path, add_path);
-        xsetenv("PATH", new_path);
-        free(new_path);
+        // add path
+        // char *old_path = getenv("PATH");
+        // char *add_path = pw->pw_uid ? DEFAULT_PATH : DEFAULT_ROOT_PATH;
+        // int path_len = strlen(old_path) + strlen(add_path) + 1;
+        // char *new_path = malloc(path_len);
+        // memset(new_path, 0, path_len);
+        // strcat(new_path, old_path);
+        // strcat(new_path, add_path);
+        // xsetenv("PATH", new_path);
+        // free(new_path);
+        xsetenv("PATH", pw->pw_uid ? DEFAULT_PATH : DEFAULT_ROOT_PATH);
         if (pw->pw_uid) {
             xsetenv("USER", pw->pw_name);
             xsetenv("LOGNAME", pw->pw_name);

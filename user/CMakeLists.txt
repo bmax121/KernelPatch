@@ -18,7 +18,6 @@ set(SRCS
 )
 
 if(ANDROID)
-    list(APPEND SRCS "sumgr.c")
     file(GLOB ANDROID_SRCS "android/*.c")
     list(APPEND SRCS ${ANDROID_SRCS})
 endif()
@@ -32,8 +31,7 @@ if(ANDROID)
 add_library(
     apjni 
     SHARED
-    ${SRCS}
-    apjni.cpp
+    android/apjni.cpp
 )
 find_library(lib-log log)
 target_link_libraries(apjni ${lib-log})

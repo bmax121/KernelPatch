@@ -2,7 +2,7 @@
 #include <android/log.h>
 #include <cstring>
 
-#include "supercall.h"
+#include "../supercall.h"
 
 #define LOG_TAG "APatchNative"
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
