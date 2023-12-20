@@ -1,5 +1,5 @@
-#ifndef _KP_LOADER_H_
-#define _KP_LOADER_H_
+#ifndef _KP_MODULE_H_
+#define _KP_MODULE_H_
 
 #include <asm-generic/module.h>
 #include <kpmodule.h>

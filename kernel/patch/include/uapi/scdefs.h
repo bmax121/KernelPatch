@@ -34,6 +34,13 @@ static inline long hash_key(const char *key)
 #define SUPERCALL_KEY_MAX_LEN 0x40
 #define SUPERCALL_SCONTEXT_LEN 0x60
 
+struct su_profile
+{
+    uid_t uid;
+    uid_t to_uid;
+    char scontext[SUPERCALL_SCONTEXT_LEN];
+};
+
 #ifdef ANDROID
 
 #define ANDROID_SH_PATH "/system/bin/sh"
@@ -47,13 +54,6 @@ static inline long hash_key(const char *key)
 #define APATCH_LOG_FLODER "/data/adb/ap/log/"
 #define KPATCH_PATH "/data/adb/kpatch"
 #define KPATCH_SHADOW_PATH "/system/bin/truncate"
-
-struct su_profile
-{
-    uid_t uid;
-    uid_t to_uid;
-    char scontext[SUPERCALL_SCONTEXT_LEN];
-};
 
 #define SUPERCALL_SU_GRANT_UID 0x1100
 #define SUPERCALL_SU_REVOKE_UID 0x1101

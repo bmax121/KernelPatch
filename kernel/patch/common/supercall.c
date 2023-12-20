@@ -20,7 +20,6 @@
 #include <kputils.h>
 #include <linux/err.h>
 #include <linux/slab.h>
-#include <uapi/scdefs.h>
 
 #define MAX_KEY_LEN 128
 
