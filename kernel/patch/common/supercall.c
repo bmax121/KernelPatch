@@ -103,7 +103,7 @@ static long call_su(struct su_profile *__user uprofile)
     struct su_profile *profile = memdup_user(uprofile, sizeof(struct su_profile));
     if (IS_ERR(profile)) return PTR_ERR(profile);
     profile->scontext[sizeof(profile->scontext) - 1] = '\0';
-    int rc = commit_su(profile->uid, profile->scontext);
+    int rc = commit_su(profile->to_uid, profile->scontext);
     kvfree(profile);
     return rc;
 }

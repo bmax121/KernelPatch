@@ -122,7 +122,7 @@ static void usage(int status)
                         "If USER not given, assume root.\n\n");
         fprintf(stdout, "Usage: %s [OPTION]... [USER [ARG]...]\n\n", program_name);
         fprintf(stdout,
-                "help                         Print this help message. \n"
+                "-h, --help                       Print this help message. \n"
                 "-c, --command=COMMAND        pass a single COMMAND to the shell with -c\n"
                 "-m, --preserve-environment   do not reset environment variables\n"
                 "-p                           same as -m\n"
@@ -139,7 +139,7 @@ static void usage(int status)
 static struct option const longopts[] = {
     { "command", required_argument, NULL, 'c' }, { "preserve-environment", no_argument, NULL, 'p' },
     { "shell", required_argument, NULL, 's' },   { "scontext", required_argument, NULL, 'x' },
-    { "help", no_argument, NULL, 'h' },          { NULL, 0, NULL, 0 }
+    { "--help", no_argument, NULL, 'h' },        { NULL, 0, NULL, 0 }
 };
 
 int su_main(const char *key, int argc, char **argv)

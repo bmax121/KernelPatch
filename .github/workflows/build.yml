@@ -61,6 +61,7 @@ jobs:
             kernel/kpimg-linux
             kernel/kpimg-android
           allowUpdates: true
+          makeLatest: true
           replacesArtifacts: true
 
   Release-user-lib:
