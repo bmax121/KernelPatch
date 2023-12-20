@@ -1,5 +1,5 @@
-#ifndef _KP_SUPERCALL_H_
-#define _KP_SUPERCALL_H_
+#ifndef _KP_UAPI_SCDEF_H_
+#define _KP_UAPI_SCDEF_H_
 
 static inline long hash_key(const char *key)
 {
