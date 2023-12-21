@@ -6,8 +6,7 @@ extern "C"
 {
 #endif
 
-    int android_user_init(const char *key);
-
+    int android_user_init(const char *key, int argc, char **argv);
 #ifdef __cplusplus
 }
 #endif

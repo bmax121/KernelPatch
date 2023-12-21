@@ -17,8 +17,6 @@ extern "C"
 
     int __test(const char *key);
 
-    int android_user_init(const char *key);
-
 #ifdef __cplusplus
 }
 #endif

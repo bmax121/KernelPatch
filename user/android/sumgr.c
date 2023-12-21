@@ -89,14 +89,14 @@ void usage(int status)
             "    whose full PATH is '/system/bin/kp'. This can avoid conflicts with the existing 'su' command.\n"
             "    If you wish to modify this PATH, you can use the 'reset' command. \n"
             "\n"
-            "help                           Print this help message. \n"
-            "grant UID [TO_UID] [SCONTE]    Grant access permission to UID.\n"
-            "revoke                         Revoke access permission to UID.\n"
-            "num                            Get the number of uids with the aforementioned permissions.\n"
-            "list                           List aforementioned uids.\n"
-            "profile UID                    Get the profile of the uid configuration.\n"
-            "reset PATH                     Reset '/system/bin/kp' to PATH. The length of PATH must be between 14-63.\n"
-            "get                            Get current PATH.\n"
+            "help                              Print this help message. \n"
+            "grant <UID> [TO_UID] [SCONTEXT]   Grant access permission to UID.\n"
+            "revoke                            Revoke access permission to UID.\n"
+            "num                               Get the number of uids with the aforementioned permissions.\n"
+            "list                              List aforementioned uids.\n"
+            "profile <UID>                     Get the profile of the uid configuration.\n"
+            "reset <PATH>                      Reset '/system/bin/kp' to PATH. The length of PATH must be between 14-63.\n"
+            "get                               Get current su PATH.\n"
             "");
     }
     exit(status);
