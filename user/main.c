@@ -30,7 +30,7 @@ static void usage(int status)
         fprintf(stdout,
                 " \n"
                 "Options: \n"
-                "%s -h, --help       Print this message. \n"
+                "%s -h, --help       Print this help message. \n"
                 "%s -v, --version    Print version. \n"
                 "\n",
                 program_name, program_name);
@@ -116,8 +116,9 @@ int main(int argc, char **argv)
         strcat(program_name, " <SUPERKEY> sumgr");
         return sumgr_main(key, argc - 2, argv + 2);
     case 'a':
-        return android_user_init(key);
+        return android_user_init(key, argc - 2, argv + 2);
     case 'h':
+        strcat(program_name, " <SUPERKEY>");
         usage(EXIT_SUCCESS);
     default:
         fprintf(stderr, "Invalid command: %s!\n", scmd);

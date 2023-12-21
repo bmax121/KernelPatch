@@ -9,8 +9,10 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <getopt.h>
 
 #include "../supercall.h"
+#include "user_init.h"
 
 #define PKG_NAME_LEN 256
 
@@ -26,9 +28,8 @@ static char magiskpolicy_path[] = APATCH_BIN_FLODER "magiskpolicy";
 static char allow_uids_path[] = APATCH_FLODER ".allow_uid";
 static char su_path_path[] = APATCH_FLODER ".su_path";
 
-static char boot0_log_path[] = ADB_FLODER ".kpatch_0.log";
+static char boot0_log_path[] = APATCH_LOG_FLODER ".kpatch_0.log";
 static char boot1_log_path[] = APATCH_LOG_FLODER ".kpatch_1.log";
-static char boot2_log_path[] = APATCH_LOG_FLODER ".kpatch_2.log";
 
 char *strip(char *str)
 {
@@ -95,7 +96,7 @@ static void load_config_allow_uids(const char *key)
 
         int len = strlen(line);
         for (int i = 0; i < len; i++) {
-            if (isspace(line[i]) || line[i] == ':') line[i] = '\0';
+            if (isspace(line[i]) || line[i] == ',') line[i] = '\0';
         }
 
         char *split[4] = { 0 };
@@ -159,7 +160,7 @@ static void load_magisk_policy(const char *key)
             NULL,
         };
         int rc = execv(argv[0], argv);
-        log_kernel(key, "%d exec magiskpolicy error %s\n", getpid(), strerror(errno));
+        log_kernel(key, "%d exec magiskpolicy error: %s\n", getpid(), strerror(errno));
     } else {
         int status;
         wait(&status);
@@ -167,21 +168,37 @@ static void load_magisk_policy(const char *key)
     }
 }
 
-int android_user_init(const char *key)
+static struct option const longopts[] = { { "kernel", no_argument, NULL, 'k' }, { NULL, 0, NULL, 0 } };
+
+int android_user_init(const char *key, int argc, char **argv)
 {
-    // check kernel_patch
     if (!sc_ready(key)) return -EFAULT;
 
-    struct su_profile profile = { 0 };
-    profile.uid = getuid();
+    int from_kernel = false;
+
+    int optc;
+    while ((optc = getopt_long(argc, argv, "k", longopts, NULL)) != -1) {
+        switch (optc) {
+        case 'k':
+            from_kernel = true;
+            break;
+        default:
+            break;
+        }
+    }
+
+    struct su_profile profile = {
+        .uid = getuid(),
+    };
+
     sc_su(key, &profile);
 
-    save_dmegs(key, boot0_log_path);
+    if (from_kernel) log_kernel(key, "%d called from kernel.\n", getpid());
 
-    // create floder is not exist, but in actually, apatch is not installed
     if (!opendir(APATCH_FLODER)) mkdir(APATCH_FLODER, 0700);
-    if (!opendir(APATCH_BIN_FLODER)) mkdir(APATCH_BIN_FLODER, 0700);
     if (!opendir(APATCH_LOG_FLODER)) mkdir(APATCH_LOG_FLODER, 0700);
+
+    if (from_kernel) save_dmegs(key, boot0_log_path);
 
     log_kernel(key, "%d starting android user init ...\n", getpid());
 
@@ -189,8 +206,9 @@ int android_user_init(const char *key)
     load_config_allow_uids(key);
     load_magisk_policy(key);
 
-    save_dmegs(key, boot1_log_path);
+    if (from_kernel) save_dmegs(key, boot1_log_path);
 
-    fprintf(stdout, "%d finished android user init.\n", getpid());
+    log_kernel(key, "%d finished android user init.\n", getpid());
+
     return 0;
 }

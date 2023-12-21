@@ -137,7 +137,7 @@ int su_remove_allow_uid(uid_t uid, int async)
         if (pos->uid == uid) {
             list_del_rcu(&pos->list);
             spin_unlock(&list_lock);
-            logkfi("remove uid: %d, to_uid: %d, sctx: %s\n", pos->uid, pos->profile.to_uid, pos->profile.scontext);
+            logkfi("uid: %d, to_uid: %d, sctx: %s\n", pos->uid, pos->profile.to_uid, pos->profile.scontext);
             if (async) {
                 call_rcu(&pos->rcu, allow_reclaim_callback);
             } else {
@@ -161,7 +161,7 @@ int su_allow_uid_nums()
         num++;
     }
     rcu_read_unlock();
-    logkd("allow uid num: %d\n", num);
+    logkfd("%d\n", num);
     return num;
 }
 
@@ -178,7 +178,7 @@ int su_allow_uids(uid_t *__user uuids, int unum)
         }
         uid_t uid = pos->profile.uid;
         int cplen = seq_copy_to_user(uuids + num, &uid, sizeof(uid));
-        logkd("copy_to_user allow uid: %d\n", uid);
+        logkfd("uid: %d\n", uid);
         if (cplen <= 0) {
             logkfd("seq_copy_to_user error: %d", cplen);
             rc = cplen;
@@ -201,7 +201,7 @@ int su_allow_uid_profile(uid_t uid, struct su_profile *__user uprofile)
     {
         if (pos->profile.uid != uid) continue;
         int cplen = seq_copy_to_user(uprofile, &pos->profile, sizeof(struct su_profile));
-        logkd("copy_to_user allow uid profile: %d %d %s\n", uid, pos->profile.to_uid, pos->profile.scontext);
+        logkfd("profile: %d %d %s\n", uid, pos->profile.to_uid, pos->profile.scontext);
         if (cplen <= 0) {
             logkfd("seq_copy_to_user error: %d", cplen);
             rc = cplen;
@@ -218,10 +218,11 @@ out:
 // no free, no lock
 int su_reset_path(const char *path)
 {
+    if (!strcmp(current_su_path, path)) return 0;
     char *new_su_path = kstrdup(path, GFP_ATOMIC);
     current_su_path = new_su_path;
     dsb(ishst);
-    logki(": %s\n", current_su_path);
+    logkfi("%s\n", current_su_path);
     return 0;
 }
 
@@ -229,7 +230,7 @@ int su_get_path(char *__user ubuf, int buf_len)
 {
     int len = strnlen(current_su_path, SU_PATH_MAX_LEN);
     if (buf_len < len) return -ENOMEM;
-    logkfi(": %s\n", current_su_path);
+    logkfi("%s\n", current_su_path);
     return seq_copy_to_user(ubuf, current_su_path, len + 1);
 }
 

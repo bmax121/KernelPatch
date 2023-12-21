@@ -39,7 +39,7 @@ static const char patch_rc[] = ""
                                "    rm %s \n"
                                "on post-fs-data\n"
                                "    start logd\n"
-                               "    exec -- /system/bin/truncate %s --android_user_init\n"
+                               "    exec -- /system/bin/truncate %s android_user_init --kernel\n"
                                "    exec u:r:magisk:s0 root -- " APD_PATH " post-fs-data\n"
                                "on nonencrypted\n"
                                "    exec u:r:magisk:s0 root -- " APD_PATH " services\n"
@@ -242,7 +242,7 @@ static void before_input_handle_event(hook_fargs4_t *args, void *udata)
         volumedown_pressed_count++;
         if (volumedown_pressed_count == 3) {
             log_boot("entering safemode ...");
-            struct file *filp = filp_open(replace_rc_file, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+            struct file *filp = filp_open(SAFE_MODE_FLAG_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0666);
             if (filp && !IS_ERR(filp)) filp_close(filp, 0);
         }
     }

@@ -13,9 +13,10 @@
 
 If you are using Android, [APatch](https://github.com/bmax121/APatch) would be a better choice.
 
-KernelPatch provides the fundamental capability to parse Linux kernel images without source code and symbol information, allowing for the retrieval of arbitrary symbol offsets and the injection of arbitrary code into the kernel.  
-Building upon this foundation, KernelPatch offers essential features such as system-call-hook and inline-hook in the kernel.  
-You have complete control over the kernel, allowing you to implement desired functionalities such as privilege escalation, hiding, monitoring, and more.  
+- Obtain all symbol information without source code and symbol information.
+- Inject arbitrary code into the kernel. (Static patching the kernel image or Runtime dynamic loading).
+- Kernel symbol lookup, function inline hook and syscall table hook are provided.
+- Additional SU compatibility for Android.
 
 ## Supported Versions
 

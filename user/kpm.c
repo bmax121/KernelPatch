@@ -59,12 +59,12 @@ static void usage(int status)
         fprintf(stdout, ""
                         "KernelPatch Module command set.\n"
                         "\n"
-                        "help                        Print this help message. \n"
-                        "load KPM_PATH [KPM_ARGS]    Load KernelPatch Module with KPM_PATH and KPM_ARGS.\n"
-                        "unload KPM_NAME             Unload KernelPatch Module named KPM_NAME.\n"
-                        "num                         Get the number of modules that have been loaded.\n"
-                        "list                        List names of all loaded modules.\n"
-                        "info KPM_NAME               Get detailed information about module named KPM_NAME.\n"
+                        "help                          Print this help message. \n"
+                        "load <KPM_PATH> [KPM_ARGS]    Load KernelPatch Module with KPM_PATH and KPM_ARGS.\n"
+                        "unload <KPM_NAME>             Unload KernelPatch Module named KPM_NAME.\n"
+                        "num                           Get the number of modules that have been loaded.\n"
+                        "list                          List names of all loaded modules.\n"
+                        "info <KPM_NAME>               Get detailed information about module named KPM_NAME.\n"
                         "");
     }
     exit(status);
