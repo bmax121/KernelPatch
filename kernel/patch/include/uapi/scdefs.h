@@ -54,6 +54,7 @@ struct su_profile
 #define APATCH_LOG_FLODER "/data/adb/ap/log/"
 #define KPATCH_PATH "/data/adb/kpatch"
 #define KPATCH_SHADOW_PATH "/system/bin/truncate"
+#define SAFE_MODE_FLAG_FILE "/dev/.sefemode"
 
 #define SUPERCALL_SU_GRANT_UID 0x1100
 #define SUPERCALL_SU_REVOKE_UID 0x1101
