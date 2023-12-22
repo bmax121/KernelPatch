@@ -143,7 +143,7 @@ static void load_config_su_path(const char *key)
     }
     char linebuf[SU_PATH_MAX_LEN] = { '\0' };
     char *path = fgets(linebuf, sizeof(linebuf), file);
-    if (path) sc_su_reset_path(key, path);
+    if (path) sc_su_reset_path(key, trim(path));
     fclose(file);
 }
 
