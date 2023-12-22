@@ -11,12 +11,12 @@
 
 ```
 
-If you are using Android, [APatch](https://github.com/bmax121/APatch) would be a better choice.
-
 - Obtain all symbol information without source code and symbol information.
 - Inject arbitrary code into the kernel. (Static patching the kernel image or Runtime dynamic loading).
-- Kernel symbol lookup, function inline hook and syscall table hook are provided.
-- Additional SU compatibility for Android.
+- Kernel function inline hook and syscall table hook are provided.
+- Additional SU for Android.
+
+If you are using Android, [APatch](https://github.com/bmax121/APatch) would be a better choice.
 
 ## Supported Versions
 

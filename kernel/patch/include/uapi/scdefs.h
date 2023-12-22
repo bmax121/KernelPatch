@@ -46,14 +46,16 @@ struct su_profile
 #define ANDROID_SH_PATH "/system/bin/sh"
 #define SU_PATH_MIN_LEN sizeof(ANDROID_SH_PATH)
 #define SU_PATH_MAX_LEN 64
+
 #define ANDROID_SU_PATH "/system/bin/kp"
-#define ADB_FLODER "/data/adb"
-#define APD_PATH "/data/adb/apd"
-#define APATCH_FLODER "/data/adb/ap"
-#define APATCH_BIN_FLODER "/data/adb/ap/bin"
-#define APATCH_LOG_FLODER "/data/adb/ap/log/"
 #define KPATCH_PATH "/data/adb/kpatch"
+#define APD_PATH "/data/adb/apd"
 #define KPATCH_SHADOW_PATH "/system/bin/truncate"
+
+#define ADB_FLODER "/data/adb/"
+#define APATCH_FLODER "/data/adb/ap/"
+#define APATCH_BIN_FLODER "/data/adb/ap/bin/"
+#define APATCH_LOG_FLODER "/data/adb/ap/log/"
 #define SAFE_MODE_FLAG_FILE "/dev/.sefemode"
 
 #define SUPERCALL_SU_GRANT_UID 0x1100
