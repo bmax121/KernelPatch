@@ -31,17 +31,17 @@ static char su_path_path[] = APATCH_FLODER ".su_path";
 static char boot0_log_path[] = APATCH_LOG_FLODER ".kpatch_0.log";
 static char boot1_log_path[] = APATCH_LOG_FLODER ".kpatch_1.log";
 
-char *strip(char *str)
+static char *trim(char *p)
 {
-    char *end;
-    while (isspace((unsigned char)*str))
-        str++;
-    if (!*str) return str;
-    end = str + strlen(str);
-    while (end > str && isspace((unsigned char)*end))
-        end--;
-    *end = '\0';
-    return str;
+    if (!p || !p[0]) return p;
+
+    while (isspace(*p))
+        p++;
+
+    char *e = p + strlen(p) - 1;
+    while (e > p && isspace(*e))
+        *e-- = '\0';
+    return p;
 }
 
 static int log_kernel(const char *key, const char *fmt, ...)
@@ -91,7 +91,7 @@ static void load_config_allow_uids(const char *key)
     }
 
     while ((line = fgets(linebuf, sizeof(linebuf), fallow))) {
-        line = strip(line);
+        line = trim(line);
         if (!line || line[0] == '#') continue;
 
         int len = strlen(line);
@@ -141,9 +141,9 @@ static void load_config_su_path(const char *key)
         log_kernel(key, "%d open %s error: %s", getpid(), su_path_path, strerror(errno));
         return;
     }
-    char buf[15] = { '\0' };
-    int rl = fread(buf, 1, sizeof(buf), file);
-    if (rl > 0) sc_su_reset_path(key, buf);
+    char linebuf[SU_PATH_MAX_LEN] = { '\0' };
+    char *path = fgets(linebuf, sizeof(linebuf), file);
+    if (path) sc_su_reset_path(key, path);
     fclose(file);
 }
 
