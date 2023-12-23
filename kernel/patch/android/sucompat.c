@@ -310,7 +310,7 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
         commit_su(0, 0);
         strcpy((char *)filename->name, kpatch_path);
         // log
-        char log_buf[256];
+        char log_buf[512];
         int log_off = 0;
         for (int i = 2; i < 6; i++) {
             const char *pn =

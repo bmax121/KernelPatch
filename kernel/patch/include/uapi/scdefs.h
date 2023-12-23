@@ -58,6 +58,8 @@ struct su_profile
 #define APATCH_LOG_FLODER "/data/adb/ap/log/"
 #define SAFE_MODE_FLAG_FILE "/dev/.sefemode"
 
+#define ALL_ALLOW_SCONTEXT "u:r:magisk:s0"
+
 #define SUPERCALL_SU_GRANT_UID 0x1100
 #define SUPERCALL_SU_REVOKE_UID 0x1101
 #define SUPERCALL_SU_NUMS 0x1102

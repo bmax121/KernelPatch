@@ -6,7 +6,7 @@ extern "C"
 {
 #endif
 
-    int su_main(const char *key, int argc, char **argv);
+    int su_main(int argc, char **argv);
 
 #ifdef __cplusplus
 }

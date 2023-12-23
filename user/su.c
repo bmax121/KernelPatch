@@ -47,6 +47,7 @@ static void run_shell(char const *, char const *, char **, size_t);
 static bool change_environment;
 
 extern const char program_name[];
+extern const char *key;
 
 char *last_component(char const *name)
 {
@@ -143,7 +144,7 @@ static struct option const longopts[] = {
     { "--help", no_argument, NULL, 'h' },        { NULL, 0, NULL, 0 }
 };
 
-int su_main(const char *key, int argc, char **argv)
+int su_main(int argc, char **argv)
 {
     int optc;
     const char *new_user = DEFAULT_USER;

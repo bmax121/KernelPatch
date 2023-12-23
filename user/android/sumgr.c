@@ -74,6 +74,7 @@ int su_get_path(const char *key)
 }
 
 extern const char program_name[];
+extern const char *key;
 
 void usage(int status)
 {
@@ -102,7 +103,7 @@ void usage(int status)
     exit(status);
 }
 
-int sumgr_main(const char *key, int argc, char **argv)
+int sumgr_main(int argc, char **argv)
 {
     if (argc < 2) usage(EXIT_FAILURE);
 

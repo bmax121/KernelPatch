@@ -49,6 +49,7 @@ int kpm_info(const char *key, const char *name)
 }
 
 extern const char program_name[];
+extern const char *key;
 
 static void usage(int status)
 {
@@ -70,7 +71,7 @@ static void usage(int status)
     exit(status);
 }
 
-int kpm_main(const char *key, int argc, char **argv)
+int kpm_main(int argc, char **argv)
 {
     if (argc < 2) usage(EXIT_FAILURE);
 

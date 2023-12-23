@@ -15,10 +15,11 @@
 
 #ifdef ANDROID
 #include "android/sumgr.h"
-#include "android/user_init.h"
+#include "android/android_user.h"
 #endif
 
 char program_name[128] = { '\0' };
+const char *key = NULL;
 
 static void usage(int status)
 {
@@ -34,7 +35,7 @@ static void usage(int status)
                 "%s -v, --version    Print version. \n"
                 "\n",
                 program_name, program_name);
-        fprintf(stdout, "Usage: %s <SUPERKEY> <COMMAND> [-h, --help] [COMMAND_ARGS]...\n", program_name);
+        fprintf(stdout, "Usage: %s <COMMAND> [-h, --help] [COMMAND_ARGS]...\n", program_name);
         fprintf(stdout,
                 "\n"
                 "Commands:\n"
@@ -57,6 +58,9 @@ int main(int argc, char **argv)
 
     if (argc == 1) usage(EXIT_FAILURE);
 
+    key = argv[1];
+    strcat(program_name, " <SUPERKEY>");
+
     if (argc == 2) {
         if (!strcmp(argv[1], "-v") || !(strcmp(argv[1], "--version"))) {
             fprintf(stdout, "%x\n", version());
@@ -68,8 +72,7 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    const char *key = argv[1];
-    if (!key[0]) error(-EINVAL, 0, "superkey does not exist");
+    if (!key[0]) error(-EINVAL, 0, "invalid superkey");
 
     if (strnlen(key, SUPERCALL_KEY_MAX_LEN) >= SUPERCALL_KEY_MAX_LEN) error(-EINVAL, 0, "superkey too long");
 
@@ -89,7 +92,7 @@ int main(int argc, char **argv)
         { "-h", 'h' },
 #ifdef ANDROID
         { "sumgr", 'm' },
-        { "android_user_init", 'a' },
+        { "android_user", 'a' },
 #endif
     };
 
@@ -107,19 +110,19 @@ int main(int argc, char **argv)
     case SUPERCALL_KP_VERSION:
         return kpv(key);
     case 's':
-        strcat(program_name, " <SUPERKEY> su");
-        return su_main(key, argc - 2, argv + 2);
+        strcat(program_name, " su");
+        return su_main(argc - 2, argv + 2);
     case 'k':
-        strcat(program_name, " <SUPERKEY> kpm");
-        return kpm_main(key, argc - 2, argv + 2);
+        strcat(program_name, " kpm");
+        return kpm_main(argc - 2, argv + 2);
     case 'm':
-        strcat(program_name, " <SUPERKEY> sumgr");
-        return sumgr_main(key, argc - 2, argv + 2);
-    case 'a':
-        return android_user_init(key, argc - 2, argv + 2);
+        strcat(program_name, " sumgr");
+        return sumgr_main(argc - 2, argv + 2);
     case 'h':
-        strcat(program_name, " <SUPERKEY>");
         usage(EXIT_SUCCESS);
+        break;
+    case 'a':
+        return android_user(argc - 2, argv + 2);
     default:
         fprintf(stderr, "Invalid command: %s!\n", scmd);
         return -EINVAL;
