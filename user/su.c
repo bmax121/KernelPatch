@@ -124,7 +124,7 @@ static void usage(int status)
                         "If USER not given, assume root.\n\n");
         fprintf(stdout, "Usage: %s [OPTION]... [USER [ARG]...]\n\n", program_name);
         fprintf(stdout,
-                "-h, --help                       Print this help message. \n"
+                "-h, --help                   Print this help message. \n"
                 "-c, --command=COMMAND        pass a single COMMAND to the shell with -c\n"
                 "-m, --preserve-environment   do not reset environment variables\n"
                 "-p                           same as -m\n"

@@ -50,7 +50,7 @@ extern "C" JNIEXPORT jint JNICALL Java_me_bmax_apatch_Natives_nativeKernelPatchV
 {
     if (!superKey) return -EINVAL;
     const char *skey = env->GetStringUTFChars(superKey, NULL);
-    int version = sc_kp_version(skey);
+    uint32_t version = sc_kp_ver(skey);
     env->ReleaseStringUTFChars(superKey, skey);
     return version;
 }

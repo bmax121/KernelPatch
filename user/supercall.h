@@ -30,11 +30,18 @@ static inline long sc_klog(const char *key, const char *msg)
     return ret;
 }
 
-static inline long sc_kp_version(const char *key)
+static inline uint32_t sc_kp_ver(const char *key)
 {
     if (!key || !key[0]) return -EINVAL;
-    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_KP_VERSION);
-    return ret;
+    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_KERNELPATCH_VER);
+    return (uint32_t)ret;
+}
+
+static inline uint32_t sc_k_ver(const char *key)
+{
+    if (!key || !key[0]) return -EINVAL;
+    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_KERNEL_VER);
+    return (uint32_t)ret;
 }
 
 static inline long sc_su(const char *key, struct su_profile *profile)

@@ -25,12 +25,12 @@ struct allow_pkg_info
 };
 
 static char magiskpolicy_path[] = APATCH_BIN_FLODER "magiskpolicy";
-static char allow_uids_path[] = APATCH_FLODER ".allow_uid";
-static char su_path_path[] = APATCH_FLODER ".su_path";
+static char allow_uids_path[] = APATCH_FLODER "allow_uid";
+static char su_path_path[] = APATCH_FLODER "su_path";
 static char package_list_path[] = "/data/system/packages.list";
 
-static char boot0_log_path[] = APATCH_LOG_FLODER ".kpatch_0.log";
-static char boot1_log_path[] = APATCH_LOG_FLODER ".kpatch_1.log";
+static char boot0_log_path[] = APATCH_LOG_FLODER "kpatch_0.log";
+static char boot1_log_path[] = APATCH_LOG_FLODER "kpatch_1.log";
 
 extern const char *key;
 static bool from_kernel = false;
@@ -179,12 +179,18 @@ static void load_config_su_path()
     fclose(file);
 }
 
-static void fork_for_result(const char *exec, char **argv)
+static void fork_for_result(const char *exec, char *const *argv)
 {
     pid_t pid = fork();
     if (pid < 0) {
         log_kernel("%d fork %s error: %d\n", getpid(), exec, pid);
     } else if (pid == 0) {
+        setenv("SUPERKEY", key, 1);
+        char kpver[16] = { '\0' }, kver[16] = { '\0' };
+        sprintf(kpver, "%x", sc_kp_ver(key));
+        setenv("KERNEL_PATCH_VER", kpver, 1);
+        sprintf(kver, "%x", sc_k_ver(key));
+        setenv("KERNEL_VER", kver, 1);
         int rc = execv(exec, argv);
         log_kernel("%d exec %s error: %s\n", getpid(), exec, strerror(errno));
     } else {
@@ -256,10 +262,11 @@ int android_user(int argc, char **argv)
             scmd,
             NULL,
         };
+
         fork_for_result(APD_PATH, apd_argv);
 
         char log_path[128] = { '\0' };
-        sprintf(log_path, "%s/.kpatch_%s.log", APATCH_LOG_FLODER, scmd);
+        sprintf(log_path, "%s/kpatch_%s.log", APATCH_LOG_FLODER, scmd);
         save_dmegs(log_path);
     } else {
         log_kernel("invalid android user cmd: %s\n", scmd);

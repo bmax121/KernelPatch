@@ -57,7 +57,7 @@ void print_usage()
     char *c = "\nkptools. Kernel Image Patch Tools. "
               "version: %x\n"
               "\n"
-              "Usage: ./kptools <command> [args...]\n"
+              "Usage: ./kptools ...\n"
               "  -h, --help\n"
               "    Print this message.\n"
               "\n"

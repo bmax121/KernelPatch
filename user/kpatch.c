@@ -19,22 +19,24 @@ uint32_t version()
     return version_code;
 }
 
-uint32_t hello(const char *key)
+void hello(const char *key)
 {
     long ret = sc_hello(key);
     if (ret == SUPERCALL_HELLO_MAGIC) {
         fprintf(stdout, "%s\n", SUPERCALL_HELLO_ECHO);
-        ret = 0;
     }
-    return (uint32_t)ret;
 }
 
-uint32_t kpv(const char *key)
+void kpv(const char *key)
 {
-    long kpv = sc_kp_version(key);
-    if (kpv < 0) return kpv;
-    fprintf(stdout, "%x\n", (uint32_t)kpv);
-    return 0;
+    uint32_t kpv = sc_kp_ver(key);
+    fprintf(stdout, "%x\n", kpv);
+}
+
+void kv(const char *key)
+{
+    uint32_t kv = sc_k_ver(key);
+    fprintf(stdout, "%x\n", kv);
 }
 
 int __test(const char *key)

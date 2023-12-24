@@ -40,7 +40,8 @@ static void usage(int status)
                 "\n"
                 "Commands:\n"
                 "hello       If KernelPatch installed, '%s' will echoed.\n"
-                "version     Print KernelPatch version.\n"
+                "kpver       Print KernelPatch version.\n"
+                "kver        Print Kernel version.\n"
                 "su          KernelPatch Substitute User.\n"
                 "kpm         KernelPatch Module manager.\n"
 #ifdef ANDROID
@@ -85,7 +86,8 @@ int main(int argc, char **argv)
         int cmd;
     } cmd_arr[] = {
         { "hello", SUPERCALL_HELLO },
-        { "version", SUPERCALL_KP_VERSION },
+        { "kpver", SUPERCALL_KERNELPATCH_VER },
+        { "kver", SUPERCALL_KERNEL_VER },
         { "su", 's' },
         { "kpm", 'k' },
         { "--help", 'h' },
@@ -106,9 +108,14 @@ int main(int argc, char **argv)
 
     switch (cmd) {
     case SUPERCALL_HELLO:
-        return hello(key);
-    case SUPERCALL_KP_VERSION:
-        return kpv(key);
+        hello(key);
+        return 0;
+    case SUPERCALL_KERNELPATCH_VER:
+        kpv(key);
+        return 0;
+    case SUPERCALL_KERNEL_VER:
+        kv(key);
+        return 0;
     case 's':
         strcat(program_name, " su");
         return su_main(argc - 2, argv + 2);

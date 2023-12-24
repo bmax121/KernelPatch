@@ -34,7 +34,7 @@ https://github.com/tiann/KernelSU
 */
 
 static const char sh_path[] = ANDROID_SH_PATH;
-static const char su_path[SU_PATH_MAX_LEN] = ANDROID_SU_PATH;
+static const char default_su_path[] = ANDROID_SU_PATH;
 static const char *current_su_path = 0;
 static const char apd_path[] = APD_PATH;
 static const char kpatch_path[] = KPATCH_PATH;
@@ -258,7 +258,7 @@ static inline char *__user android_sh_user_path()
 
 static inline char *__user android_su_user_path()
 {
-    return (char *__user)copy_to_user_stack((void *)su_path, sizeof(su_path));
+    return (char *__user)copy_to_user_stack((void *)default_su_path, sizeof(default_su_path));
 }
 
 // int do_execveat_common(int fd, struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp, int flags)
@@ -296,8 +296,8 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
             strcpy((char *)filename->name, apd_path);
             const char *__user p0 =
                 get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], 0);
-            int sz = seq_copy_to_user((char *__user)p0, sh_path, sizeof(sh_path));
-            if (sz != sizeof(sh_path)) logkfe("seq_copy_to_user error: %d\n", sz);
+            int sz = seq_copy_to_user((char *__user)p0, default_su_path, sizeof(default_su_path));
+            if (sz != sizeof(default_su_path)) logkfe("seq_copy_to_user error: %d\n", sz);
         }
         kvfree(profile);
     } else if (!strcmp(kpatch_shadow_path, filename->name)) {
@@ -432,7 +432,7 @@ int su_compat_init()
 {
     int rc = 0;
 
-    current_su_path = su_path;
+    current_su_path = default_su_path;
     INIT_LIST_HEAD(&allow_uid_list);
     spin_lock_init(&list_lock);
 
