@@ -191,7 +191,10 @@ int patch_image()
 
     print_kpimg_info(out_buf + align_image_len);
 
-    get_kernel_info(&kinfo, image_buf, image_len);
+    if (get_kernel_info(&kinfo, image_buf, image_len)) {
+        fprintf(stderr, "[-] kptools is %s a kernel image?\n", image);
+        return -1;
+    }
     long align_kernel_size = align_ceil(kinfo.kernel_size, 4096);
 
     fprintf(stdout, "[+] kptools kernel new size 0x%08lx\n", align_kernel_size + kpimg_len);

@@ -62,7 +62,7 @@ int32_t get_kernel_info(kernel_info_t *kinfo, char *img, int32_t imglen)
 
     arm64_hdr_t *khdr = (arm64_hdr_t *)(img + kinfo->img_offset);
     if (strncmp(khdr->magic, KERNEL_MAGIC, strlen(KERNEL_MAGIC))) {
-        fprintf(stderr, "[-] kernel magic error :%s\n", khdr->magic);
+        fprintf(stderr, "[-] kernel magic error: %s\n", khdr->magic);
         return -1;
     }
 
@@ -81,6 +81,7 @@ int32_t get_kernel_info(kernel_info_t *kinfo, char *img, int32_t imglen)
 
     b_primary_entry_insn = u32le(b_primary_entry_insn);
     if ((b_primary_entry_insn & 0xFC000000) != 0x14000000) {
+        fprintf(stderr, "[-] kernel primary entry error: %x\n", b_primary_entry_insn);
         return -1;
     } else {
         uint32_t imm = (b_primary_entry_insn & 0x03ffffff) << 2;
