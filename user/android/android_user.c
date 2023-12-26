@@ -104,7 +104,6 @@ static uid_t get_package_uid(const char *pkg)
 
 static void load_config_allow_uids()
 {
-    bool remove_default_shell = false;
     char linebuf[256];
     char *line = 0;
 
@@ -154,15 +153,12 @@ static void load_config_allow_uids()
         if (sctx) strncpy(profile.scontext, sctx, sizeof(profile.scontext) - 1);
 
         sc_su_grant_uid(key, uid, &profile);
-
-        if (uid != 2000) remove_default_shell = true;
     }
 
     fclose(fallow);
 
-    if (remove_default_shell) {
-        sc_su_revoke_uid(key, 2000);
-    }
+    // remove defualt if this function is called from kernel
+    if (from_kernel) sc_su_revoke_uid(key, 2000);
 }
 
 static void load_config_su_path()

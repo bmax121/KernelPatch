@@ -295,6 +295,8 @@ static int hook_replace(slow_avc_audit)(struct selinux_state *_state, void *_ssi
 
 int selinux_hook_install()
 {
+    // todo: gcc -fipa-sra eg: avc_denied.isra.5
+
     hook_kfunc(avc_denied);
     hook_kfunc(slow_avc_audit);
 
