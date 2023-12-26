@@ -152,6 +152,7 @@ int su_main(int argc, char **argv)
     char *shell = NULL;
     char *scontext = NULL;
     struct passwd *pw;
+    struct passwd pw_copy;
 
     change_environment = true;
 
@@ -182,15 +183,17 @@ int su_main(int argc, char **argv)
     //
     struct su_profile profile = { 0 };
     profile.uid = getuid();
-    if (scontext) {
-        strncpy(profile.scontext, scontext, sizeof(profile.scontext) - 1);
-    }
-
     if (sc_su(key, &profile)) error(-EACCES, 0, "incorrect super key");
 
     pw = getpwnam(new_user);
     if (!(pw && pw->pw_name && pw->pw_name[0] && pw->pw_dir && pw->pw_dir[0]))
         error(EXIT_CANCELED, 0, "user %s does not exist", new_user);
+
+    pw_copy = *pw;
+    pw = &pw_copy;
+    pw->pw_name = strdup(pw->pw_name);
+    if (pw->pw_passwd) pw->pw_passwd = strdup(pw->pw_passwd);
+    pw->pw_dir = strdup(pw->pw_dir);
     pw->pw_shell = strdup(pw->pw_shell && pw->pw_shell[0] ? pw->pw_shell : DEFAULT_SHELL);
     endpwent();
 
@@ -220,6 +223,10 @@ int su_main(int argc, char **argv)
     change_identity(pw);
 
     if (chdir(pw->pw_dir) != 0) error(0, errno, "warning: cannot change directory to %s", pw->pw_dir);
+
+    // re su and change scontext
+    if (scontext) strncpy(profile.scontext, scontext, sizeof(profile.scontext) - 1);
+    if (sc_su(key, &profile)) error(-EACCES, 0, "incorrect super key");
 
     if (ferror(stderr)) exit(EXIT_CANCELED);
 
