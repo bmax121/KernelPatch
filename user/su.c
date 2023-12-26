@@ -183,6 +183,7 @@ int su_main(int argc, char **argv)
     //
     struct su_profile profile = { 0 };
     profile.uid = getuid();
+    if (scontext) strncpy(profile.scontext, scontext, sizeof(profile.scontext) - 1);
     if (sc_su(key, &profile)) error(-EACCES, 0, "incorrect super key");
 
     pw = getpwnam(new_user);
@@ -223,10 +224,6 @@ int su_main(int argc, char **argv)
     change_identity(pw);
 
     if (chdir(pw->pw_dir) != 0) error(0, errno, "warning: cannot change directory to %s", pw->pw_dir);
-
-    // re su and change scontext
-    if (scontext) strncpy(profile.scontext, scontext, sizeof(profile.scontext) - 1);
-    if (sc_su(key, &profile)) error(-EACCES, 0, "incorrect super key");
 
     if (ferror(stderr)) exit(EXIT_CANCELED);
 
