@@ -88,7 +88,7 @@ int dump_kallsym()
 
     kallsym_t kallsym;
     if (analyze_kallsym_info(&kallsym, image_buf, image_len, ARM64, 1)) {
-        fprintf(stderr, "analyze_kallsym_info error\n");
+        fprintf(stdout, "analyze_kallsym_info error\n");
         return -1;
     }
     dump_all_symbols(&kallsym, image_buf);
@@ -151,13 +151,13 @@ int patch_image()
         strcat(out, "_patched");
     }
     if (!strlen(kpimg)) {
-        fprintf(stderr, "[-] kptools kpimg not specified\n");
+        fprintf(stdout, "[-] kptools kpimg not specified\n");
         return EXIT_FAILURE;
     }
 
     FILE *fimage = fopen(image, "rb");
     if (!fimage) {
-        fprintf(stderr, "[-] kptools open file %s error\n", image);
+        fprintf(stdout, "[-] kptools open file %s error\n", image);
         return EXIT_FAILURE;
     }
     fseek(fimage, 0, SEEK_END);
@@ -172,7 +172,7 @@ int patch_image()
 
     FILE *fkpimg = fopen(kpimg, "rb");
     if (!fkpimg) {
-        fprintf(stderr, "[-] kptools open file %s error\n", kpimg);
+        fprintf(stdout, "[-] kptools open file %s error\n", kpimg);
         return EXIT_FAILURE;
     }
     fseek(fimage, 0, SEEK_END);
@@ -192,7 +192,7 @@ int patch_image()
     print_kpimg_info(out_buf + align_image_len);
 
     if (get_kernel_info(&kinfo, image_buf, image_len)) {
-        fprintf(stderr, "[-] kptools is %s a kernel image?\n", image);
+        fprintf(stdout, "[-] kptools is %s a kernel image?\n", image);
         return -1;
     }
     long align_kernel_size = align_ceil(kinfo.kernel_size, 4096);
@@ -200,7 +200,7 @@ int patch_image()
     fprintf(stdout, "[+] kptools kernel new size 0x%08lx\n", align_kernel_size + kpimg_len);
 
     if (analyze_kallsym_info(&kallsym, image_buf, image_len, ARM64, 1)) {
-        fprintf(stderr, "[-] kptools analyze_kallsym_info error\n");
+        fprintf(stdout, "[-] kptools analyze_kallsym_info error\n");
         return -1;
     }
 
@@ -259,7 +259,7 @@ int patch_image()
     if (strlen(superkey) > 0) {
         strncpy((char *)preset->superkey, superkey, SUPER_KEY_LEN);
     } else {
-        fprintf(stdout, "[-] kptools warnning use default key is dangerous!\n");
+        fprintf(stdout, "[?] kptools warnning use default key is dangerous!\n");
         strcpy((char *)preset->superkey, "kernel_patch");
     }
     fprintf(stdout, "[+] kptools supercall key: %s\n", preset->superkey);
@@ -274,7 +274,7 @@ int patch_image()
 
     FILE *fout = fopen(out, "wb");
     if (!fout) {
-        fprintf(stderr, "[-] kptools open file:%s error\n", out);
+        fprintf(stdout, "[-] kptools open file:%s error\n", out);
         return EXIT_FAILURE;
     }
     fwrite(out_buf, out_len, 1, fout);

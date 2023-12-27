@@ -57,10 +57,6 @@ typedef struct
 
     int32_t img_offset;
 
-    int32_t banner_num;
-    int32_t linux_banner_offset[4];
-    int32_t symbol_banner_idx;
-
     struct
     {
         uint8_t _;
@@ -68,6 +64,13 @@ typedef struct
         uint8_t minor;
         uint8_t major;
     } version;
+
+    int32_t banner_num;
+    int32_t linux_banner_offset[4];
+    int32_t symbol_banner_idx;
+
+    int32_t vectors_offset;
+    int32_t vectors_index;
 
     char *kallsyms_token_table[KSYM_TOKEN_NUMS];
     int32_t asm_long_size;
