@@ -292,8 +292,8 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
         }
         int32_t offset = r_offset - kernel_va;
         if (offset >= imglen) {
-            fprintf(stdout, "[-] kallsyms apply relocations error\n");
-            return -1;
+            // fprintf(stdout, "[-] kallsyms apply relocations error\n");
+            continue;
         }
         uint64_t value = uint_unpack(img + offset, 8, info->is_be);
         if (value == r_addend) continue;
