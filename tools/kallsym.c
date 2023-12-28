@@ -273,7 +273,7 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
 
     rela_num = (cand_end - cand_start) / 24;
     if (rela_num < ARM64_RELO_MIN_NUM) {
-        fprintf(stdout, "[-] kallsyms can't find arm64 relocation table\n");
+        fprintf(stdout, "[?] kallsyms can't find arm64 relocation table\n");
         return 0;
     }
     fprintf(stdout,
@@ -718,9 +718,11 @@ static int correct_addresses_or_offsets(kallsym_t *info, char *img, int32_t imgl
 {
     int rc = correct_addresses_or_offsets_by_banner(info, img, imglen);
     if (rc) {
-        fprintf(stdout, "[?] kallsyms ========");
-        fprintf(stdout, "[?] kallsyms no linux_banner? the behavior behind this is undefined!");
-        fprintf(stdout, "[?] kallsyms ========");
+        fprintf(stdout, "[?] kallsyms ========\n");
+        fprintf(
+            stdout,
+            "[?] kallsyms no linux_banner? Is your kernel configuration CONFIG_KALLSYMS_ALL=y? Subsequent operations may be undefined!\n");
+        fprintf(stdout, "[?] kallsyms ========\n");
     }
     if (rc) rc = correct_addresses_or_offsets_by_vectors(info, img, imglen);
     return rc;
