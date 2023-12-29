@@ -229,7 +229,7 @@ int su_reset_path(const char *path)
 int su_get_path(char *__user ubuf, int buf_len)
 {
     int len = strnlen(current_su_path, SU_PATH_MAX_LEN);
-    if (buf_len < len) return -ENOMEM;
+    if (buf_len < len) return -ENOBUFS;
     logkfi("%s\n", current_su_path);
     return seq_copy_to_user(ubuf, current_su_path, len + 1);
 }

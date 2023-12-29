@@ -77,10 +77,12 @@ static long call_kpm_nums()
 static long call_kpm_list(char *__user names, int len)
 {
     if (len <= 0) return -EINVAL;
-    char buf[len];
-    int sz = list_modules(buf, len);
-    sz = seq_copy_to_user(names, buf, sz);
-    return sz;
+    char buf[4096];
+    int sz = list_modules(buf, sizeof(buf));
+    if (sz > len) return -ENOBUFS;
+    sz = seq_copy_to_user(names, buf, len);
+    if (sz < 0) return sz;
+    return 0;
 }
 
 static long call_kpm_info(const char *__user uname, char *__user out_info, int out_len)

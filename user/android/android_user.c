@@ -25,9 +25,8 @@ struct allow_pkg_info
 };
 
 static char magiskpolicy_path[] = APATCH_BIN_FLODER "magiskpolicy";
-static char allow_uids_path[] = APATCH_FLODER "allow_uid";
+static char pkg_cfg_path[] = APATCH_FLODER "package_config";
 static char su_path_path[] = APATCH_FLODER "su_path";
-static char package_list_path[] = "/data/system/packages.list";
 
 static char boot0_log_path[] = APATCH_LOG_FLODER "kpatch_0.log";
 static char boot1_log_path[] = APATCH_LOG_FLODER "kpatch_1.log";
@@ -82,83 +81,77 @@ static void save_dmegs(const char *file)
     }
 }
 
-// todo: opt
-static uid_t get_package_uid(const char *pkg)
+static char *csv_val(const char *header, const char *line, const char *key)
 {
-    FILE *flist = fopen(package_list_path, "r");
-    if (flist == NULL) {
-        log_kernel("%d open %s error: %s", getpid(), package_list_path, strerror(errno));
-        return -1;
+    const char *kpos = strstr(header, key);
+    if (!kpos) return NULL;
+    int kidx = 0;
+    const char *c = NULL;
+    for (c = header; c < kpos; c++) {
+        if (*c == ',') kidx++;
     }
-    char linebuf[1024];
-    char *line = 0;
-    while ((line = fgets(linebuf, sizeof(linebuf), flist))) {
-        line = trim(line);
-        if (!strstr(linebuf, pkg)) continue;
-        char *space = strchr(linebuf, ' ');
-        return atoi(space + 1);
+    printf("index: %d\n", kidx);
+    for (c = line; kidx; c++) {
+        if (*c == ',') kidx--;
     }
-    fclose(flist);
-    return -1;
+    const char *e = c;
+    for (; *e && *e != ','; e++) {
+    };
+
+    return strndup(c, e - c);
 }
 
 static void load_config_allow_uids()
 {
-    char linebuf[256];
+    char linebuf[1024], header[1024] = { '\0' };
     char *line = 0;
 
-    FILE *fallow = fopen(allow_uids_path, "r");
+    FILE *fallow = fopen(pkg_cfg_path, "r");
     if (fallow == NULL) {
-        log_kernel("%d open %s error: %s", getpid(), allow_uids_path, strerror(errno));
+        log_kernel("%d open %s error: %s", getpid(), pkg_cfg_path, strerror(errno));
         return;
     }
 
-    while ((line = fgets(linebuf, sizeof(linebuf), fallow))) {
+    // remove defualt if this function is called from kernel and the file is existed
+    if (from_kernel) sc_su_revoke_uid(key, 2000);
+
+    fgets(header, sizeof(header) - 1, fallow);
+    if (!strlen(header)) goto out;
+
+    while ((line = fgets(linebuf, sizeof(linebuf) - 1, fallow))) {
         line = trim(line);
         if (!line || line[0] == '#') continue;
+        log_kernel("pkg config line: %s\n", line);
 
-        int len = strlen(line);
-        for (int i = 0; i < len; i++) {
-            if (isspace(line[i]) || line[i] == ',') line[i] = '\0';
-        }
-
-        char *split[4] = { 0 };
-        int j = 0;
-        for (int i = 0; i < len; i++) {
-            if (line[i]) {
-                split[j++] = line + i;
-                while (line[++i])
-                    ;
-            }
-        }
-
-        const char *pkg = split[0];
-        const char *sto_uid = split[2];
-        const char *sctx = split[3];
-        if (!pkg || !sto_uid) continue;
-
-        // const char *suid = split[1];
-        // uid_t uid = atol(suid);
-        uid_t uid = get_package_uid(pkg);
-        if (uid == (uid_t)-1) {
-            log_kernel("no uid of pkg %s", pkg);
+        char *sallow = csv_val(header, line, "allow");
+        if (!atol(sallow)) {
+            free(sallow);
             continue;
         }
-        log_kernel("pkg: %s, uid: %d", pkg, uid);
+
+        char *spkg = csv_val(header, line, "pkg");
+        char *suid = csv_val(header, line, "uid");
+        char *sto_uid = csv_val(header, line, "to_uid");
+        char *ssctx = csv_val(header, line, "sctx");
+
+        log_kernel("grant pkg: %s, uid: %d, to_uid: %d, sctx: %s\n", spkg, suid, sto_uid, ssctx);
 
         uid_t to_uid = atol(sto_uid);
         struct su_profile profile = { 0 };
-        profile.uid = uid;
+        profile.uid = atol(suid);
         profile.to_uid = to_uid;
-        if (sctx) strncpy(profile.scontext, sctx, sizeof(profile.scontext) - 1);
+        if (ssctx) strncpy(profile.scontext, ssctx, sizeof(profile.scontext) - 1);
 
-        sc_su_grant_uid(key, uid, &profile);
+        sc_su_grant_uid(key, profile.uid, &profile);
+
+        free(spkg);
+        free(suid);
+        free(sto_uid);
+        free(ssctx);
     }
 
+out:
     fclose(fallow);
-
-    // remove defualt if this function is called from kernel
-    if (from_kernel) sc_su_revoke_uid(key, 2000);
 }
 
 static void load_config_su_path()
@@ -207,18 +200,21 @@ static void init()
     struct su_profile profile = { .uid = getuid() };
     sc_su(key, &profile);
 
-    log_kernel("%d starting android user init, from kernel: %d\n", getpid(), from_kernel);
+    log_kernel("%d ==== starting android user init, from kernel: %d\n", getpid(), from_kernel);
 
     if (!opendir(APATCH_FLODER)) mkdir(APATCH_FLODER, 0700);
     if (!opendir(APATCH_LOG_FLODER)) mkdir(APATCH_LOG_FLODER, 0700);
 
     if (from_kernel) save_dmegs(boot0_log_path);
 
+    log_kernel("%d ==== load selinxu policy.\n", getpid());
     load_magisk_policy();
+    log_kernel("%d ==== reset su path.\n", getpid());
     load_config_su_path();
+    log_kernel("%d ==== load allow uids.\n", getpid());
     load_config_allow_uids();
 
-    log_kernel("%d finished android user init.\n", getpid());
+    log_kernel("%d ==== finished android user init.\n", getpid());
 
     if (from_kernel) save_dmegs(boot1_log_path);
 }
@@ -252,7 +248,10 @@ int android_user(int argc, char **argv)
             .scontext = ALL_ALLOW_SCONTEXT,
         };
         sc_su(key, &profile);
-
+#if 0
+#undef APD_PATH
+#define APD_PATH "/data/local/tmp/apd"
+#endif
         char *apd_argv[] = {
             APD_PATH,
             scmd,
