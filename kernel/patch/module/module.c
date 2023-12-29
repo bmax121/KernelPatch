@@ -416,7 +416,7 @@ int load_module(void *data, int len, const char *args)
     }
 
     if (find_module(info->info.name)) {
-        logkd("module: %s exist\n", info->info.name);
+        logkfd("%s exist\n", info->info.name);
         err = -EEXIST;
         goto out;
     }
@@ -492,16 +492,16 @@ out:
 int load_module_path(const char *path, const char *args)
 {
     long err = 0;
-    logkd("loading module with path: %s, args: %s\n", path, args);
+    logkfd("path: %s, args: %s\n", path, args);
 
     struct file *filp = filp_open(path, O_RDONLY, 0);
     if (unlikely(IS_ERR(filp))) {
-        logke("open module error\n");
+        logkfe("open module: %s error\n", path);
         err = PTR_ERR(filp);
         goto out;
     }
     loff_t len = vfs_llseek(filp, 0, SEEK_END);
-    logkd("module size: %llx\n", len);
+    logkfd("module size: %llx\n", len);
     vfs_llseek(filp, 0, SEEK_SET);
 
     void *data = kp_malloc(len);
@@ -516,7 +516,7 @@ int load_module_path(const char *path, const char *args)
     filp_close(filp, 0);
 
     if (pos != len) {
-        logke("read module error\n");
+        logkfe("read module: %s error\n", path);
         err = -EIO;
         goto free;
     }
@@ -550,6 +550,7 @@ int get_module_nums()
     {
         n++;
     }
+    logkfd("%d\n", n);
     return n;
 }
 
@@ -559,8 +560,9 @@ int list_modules(char *out_names, int size)
     int off = 0;
     list_for_each_entry(pos, &modules.list, list)
     {
-        off = snprintf(out_names + off, size - off, "%s\n", pos->info.name);
+        off += snprintf(out_names + off, size - 1 - off, "%s\n", pos->info.name);
     }
+    out_names[off] = '\0';
     return off;
 }
 
@@ -578,6 +580,7 @@ int get_module_info(const char *name, char *out_info, int size)
                       "author=%s\n"
                       "description=%s\n",
                       mod->info.name, mod->info.version, mod->info.license, mod->info.author, mod->info.description);
+    logkfd("%s", out_info);
     return sz;
 }
 

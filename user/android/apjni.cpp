@@ -6,6 +6,7 @@
 
 #define LOG_TAG "APatchNative"
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
 static void fillIntArray(JNIEnv *env, jobject list, int *data, int count)
 {
@@ -50,7 +51,7 @@ extern "C" JNIEXPORT jint JNICALL Java_me_bmax_apatch_Natives_nativeKernelPatchV
 {
     if (!superKey) return -EINVAL;
     const char *skey = env->GetStringUTFChars(superKey, NULL);
-    int version = sc_kp_version(skey);
+    uint32_t version = sc_kp_ver(skey);
     env->ReleaseStringUTFChars(superKey, skey);
     return version;
 }
@@ -80,7 +81,6 @@ extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeThreadSu(JN
     const char *sctx = 0;
     if (scontext) sctx = env->GetStringUTFChars(scontext, NULL);
     struct su_profile profile = { 0 };
-    profile.uid = getuid();
     if (sctx) {
         strncpy(profile.scontext, sctx, sizeof(profile.scontext) - 1);
     }
@@ -146,12 +146,10 @@ extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeLoadKernelP
     const char *skey = env->GetStringUTFChars(superKey, NULL);
     const char *path = env->GetStringUTFChars(modulePath, NULL);
     const char *args = env->GetStringUTFChars(jargs, NULL);
-
     long rc = sc_kpm_load(skey, path, args);
     env->ReleaseStringUTFChars(superKey, skey);
     env->ReleaseStringUTFChars(modulePath, path);
     env->ReleaseStringUTFChars(jargs, args);
-
     return rc;
 }
 
@@ -165,6 +163,45 @@ extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeUnloadKerne
     env->ReleaseStringUTFChars(superKey, skey);
     env->ReleaseStringUTFChars(modName, name);
     return rc;
+}
+
+extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeKernelPatchModuleNum(JNIEnv *env, jclass clz,
+                                                                                          jstring superKey)
+{
+    const char *skey = env->GetStringUTFChars(superKey, NULL);
+    long rc = sc_kpm_nums(skey);
+    env->ReleaseStringUTFChars(superKey, skey);
+    return rc;
+}
+
+extern "C" JNIEXPORT jstring JNICALL Java_me_bmax_apatch_Natives_nativeKernelPatchModuleList(JNIEnv *env, jclass clz,
+                                                                                             jstring superKey)
+{
+    const char *skey = env->GetStringUTFChars(superKey, NULL);
+    long rc = sc_kpm_nums(skey);
+    char buf[4096] = { '\0' };
+    rc = sc_kpm_list(skey, buf, sizeof(buf));
+    if (rc) {
+        LOGE("nativeKernelPatchModuleList error: %ld\n", rc);
+    }
+    env->ReleaseStringUTFChars(superKey, skey);
+    return env->NewStringUTF(buf);
+}
+
+extern "C" JNIEXPORT jstring JNICALL Java_me_bmax_apatch_Natives_nativeKernelPatchModuleInfo(JNIEnv *env, jclass clz,
+                                                                                             jstring superKey,
+                                                                                             jstring modName)
+{
+    const char *skey = env->GetStringUTFChars(superKey, NULL);
+    const char *name = env->GetStringUTFChars(modName, NULL);
+    char buf[512] = { '\0' };
+    long rc = sc_kpm_info(skey, name, buf, sizeof(buf));
+    if (rc) {
+        LOGE("nativeKernelPatchModuleInfo error: %ld\n", rc);
+    }
+    env->ReleaseStringUTFChars(superKey, skey);
+    env->ReleaseStringUTFChars(modName, name);
+    return env->NewStringUTF(buf);
 }
 
 extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeGrantSu(JNIEnv *env, jclass clz, jstring superKey,

@@ -39,14 +39,14 @@ static const char patch_rc[] = ""
                                "    rm %s \n"
                                "on post-fs-data\n"
                                "    start logd\n"
-                               "    exec -- /system/bin/truncate %s android_user_init --kernel\n"
-                               "    exec u:r:magisk:s0 root -- " APD_PATH " post-fs-data\n"
+                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user init -k\n"
+                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user post-fs-data -k'\n"
                                "on nonencrypted\n"
-                               "    exec u:r:magisk:s0 root -- " APD_PATH " services\n"
+                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user services -k'\n"
                                "on property:vold.decrypt=trigger_restart_framework\n"
-                               "    exec u:r:magisk:s0 root -- " APD_PATH " services\n"
+                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user services -k'\n"
                                "on property:sys.boot_completed=1\n"
-                               "    exec u:r:magisk:s0 root -- " APD_PATH " boot-completed\n"
+                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user boot-completed -k'\n"
                                "\n"
                                "";
 
@@ -194,9 +194,9 @@ static void before_openat(hook_fargs4_t *args, void *udata)
     }
     const char *ori_rc_data = kernel_read_file(origin_rc_file, &ori_len);
     if (!ori_rc_data) goto out;
-    char *replace_rc_data = vmalloc(sizeof(patch_rc) + sizeof(replace_rc_file) + SUPER_KEY_LEN);
+    char *replace_rc_data = vmalloc(sizeof(patch_rc) + sizeof(replace_rc_file) + 5 * SUPER_KEY_LEN);
     const char *superkey = get_superkey();
-    sprintf(replace_rc_data, patch_rc, replace_rc_file, superkey);
+    sprintf(replace_rc_data, patch_rc, replace_rc_file, superkey, superkey, superkey, superkey, superkey);
     loff_t off = 0;
     kernel_write(newfp, replace_rc_data, strlen(replace_rc_data), &off);
     kernel_write(newfp, ori_rc_data, ori_len, &off);
@@ -212,7 +212,7 @@ free:
     kvfree(ori_rc_data);
     kvfree(replace_rc_data);
 out:
-    // read file not require selinux permission, so set not allow now
+    // read file not require selinux permission, reset not allow now
     set_priv_selinx_allow(current, 0);
     return;
 }

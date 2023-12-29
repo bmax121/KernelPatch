@@ -18,7 +18,8 @@ static inline long hash_key(const char *key)
 #define SUPERCALL_HELLO 0x1000
 #define SUPERCALL_KLOG 0x1004
 
-#define SUPERCALL_KP_VERSION 0x1008
+#define SUPERCALL_KERNELPATCH_VER 0x1008
+#define SUPERCALL_KERNEL_VER 0x1009
 
 #define SUPERCALL_SU 0x1010
 #define SUPERCALL_SU_TASK 0x1011 // syscall(__NR_gettid)
@@ -57,6 +58,8 @@ struct su_profile
 #define APATCH_BIN_FLODER "/data/adb/ap/bin/"
 #define APATCH_LOG_FLODER "/data/adb/ap/log/"
 #define SAFE_MODE_FLAG_FILE "/dev/.sefemode"
+
+#define ALL_ALLOW_SCONTEXT "u:r:magisk:s0"
 
 #define SUPERCALL_SU_GRANT_UID 0x1100
 #define SUPERCALL_SU_REVOKE_UID 0x1101

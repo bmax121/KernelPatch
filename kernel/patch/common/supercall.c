@@ -77,10 +77,12 @@ static long call_kpm_nums()
 static long call_kpm_list(char *__user names, int len)
 {
     if (len <= 0) return -EINVAL;
-    char buf[len];
-    int sz = list_modules(buf, len);
-    sz = seq_copy_to_user(names, buf, sz);
-    return sz;
+    char buf[4096];
+    int sz = list_modules(buf, sizeof(buf));
+    if (sz > len) return -ENOBUFS;
+    sz = seq_copy_to_user(names, buf, len);
+    if (sz < 0) return sz;
+    return 0;
 }
 
 static long call_kpm_info(const char *__user uname, char *__user out_info, int out_len)
@@ -125,8 +127,10 @@ static long supercall(long cmd, long arg1, long arg2, long arg3)
         return SUPERCALL_HELLO_MAGIC;
     case SUPERCALL_KLOG:
         return call_klog((const char *__user)arg1);
-    case SUPERCALL_KP_VERSION:
+    case SUPERCALL_KERNELPATCH_VER:
         return kpver;
+    case SUPERCALL_KERNEL_VER:
+        return kver;
     }
     logkd("supercall with cmd: %x\n", cmd);
     switch (cmd) {

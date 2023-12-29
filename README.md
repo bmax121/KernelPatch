@@ -18,6 +18,11 @@
 
 If you are using Android, [APatch](https://github.com/bmax121/APatch) would be a better choice.
 
+## Requirement
+
+CONFIG_KALLSYMS=y
+CONFIG_KALLSYMS_ALL=y
+
 ## Supported Versions
 
 Currently only supports arm64 architecture.  

@@ -47,6 +47,7 @@ static void run_shell(char const *, char const *, char **, size_t);
 static bool change_environment;
 
 extern const char program_name[];
+extern const char *key;
 
 char *last_component(char const *name)
 {
@@ -123,7 +124,7 @@ static void usage(int status)
                         "If USER not given, assume root.\n\n");
         fprintf(stdout, "Usage: %s [OPTION]... [USER [ARG]...]\n\n", program_name);
         fprintf(stdout,
-                "-h, --help                       Print this help message. \n"
+                "-h, --help                   Print this help message. \n"
                 "-c, --command=COMMAND        pass a single COMMAND to the shell with -c\n"
                 "-m, --preserve-environment   do not reset environment variables\n"
                 "-p                           same as -m\n"
@@ -143,7 +144,7 @@ static struct option const longopts[] = {
     { "--help", no_argument, NULL, 'h' },        { NULL, 0, NULL, 0 }
 };
 
-int su_main(const char *key, int argc, char **argv)
+int su_main(int argc, char **argv)
 {
     int optc;
     const char *new_user = DEFAULT_USER;
@@ -151,6 +152,7 @@ int su_main(const char *key, int argc, char **argv)
     char *shell = NULL;
     char *scontext = NULL;
     struct passwd *pw;
+    struct passwd pw_copy;
 
     change_environment = true;
 
@@ -181,15 +183,18 @@ int su_main(const char *key, int argc, char **argv)
     //
     struct su_profile profile = { 0 };
     profile.uid = getuid();
-    if (scontext) {
-        strncpy(profile.scontext, scontext, sizeof(profile.scontext) - 1);
-    }
-
+    if (scontext) strncpy(profile.scontext, scontext, sizeof(profile.scontext) - 1);
     if (sc_su(key, &profile)) error(-EACCES, 0, "incorrect super key");
 
     pw = getpwnam(new_user);
     if (!(pw && pw->pw_name && pw->pw_name[0] && pw->pw_dir && pw->pw_dir[0]))
         error(EXIT_CANCELED, 0, "user %s does not exist", new_user);
+
+    pw_copy = *pw;
+    pw = &pw_copy;
+    pw->pw_name = strdup(pw->pw_name);
+    if (pw->pw_passwd) pw->pw_passwd = strdup(pw->pw_passwd);
+    pw->pw_dir = strdup(pw->pw_dir);
     pw->pw_shell = strdup(pw->pw_shell && pw->pw_shell[0] ? pw->pw_shell : DEFAULT_SHELL);
     endpwent();
 

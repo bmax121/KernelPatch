@@ -74,6 +74,7 @@ int su_get_path(const char *key)
 }
 
 extern const char program_name[];
+extern const char *key;
 
 void usage(int status)
 {
@@ -96,13 +97,13 @@ void usage(int status)
             "list                              List aforementioned uids.\n"
             "profile <UID>                     Get the profile of the uid configuration.\n"
             "reset <PATH>                      Reset '/system/bin/kp' to PATH. The length of PATH must be between 14-63.\n"
-            "get                               Get current su PATH.\n"
+            "path                              Get current su PATH.\n"
             "");
     }
     exit(status);
 }
 
-int sumgr_main(const char *key, int argc, char **argv)
+int sumgr_main(int argc, char **argv)
 {
     if (argc < 2) usage(EXIT_FAILURE);
 
@@ -116,7 +117,7 @@ int sumgr_main(const char *key, int argc, char **argv)
     } cmd_arr[] = { { "grant", SUPERCALL_SU_GRANT_UID }, { "revoke", SUPERCALL_SU_REVOKE_UID },
                     { "num", SUPERCALL_SU_NUMS },        { "list", SUPERCALL_SU_LIST },
                     { "profile", SUPERCALL_SU_PROFILE }, { "reset", SUPERCALL_SU_RESET_PATH },
-                    { "get", SUPERCALL_SU_GET_PATH },    { "help", 0 } };
+                    { "path", SUPERCALL_SU_GET_PATH },   { "help", 0 } };
 
     for (int i = 0; i < sizeof(cmd_arr) / sizeof(cmd_arr[0]); i++) {
         if (strcmp(scmd, cmd_arr[i].scmd)) continue;

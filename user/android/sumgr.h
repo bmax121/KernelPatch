@@ -8,7 +8,7 @@ extern "C"
 {
 #endif
 
-    int sumgr_main(const char *key, int argc, char **argv);
+    int sumgr_main(int argc, char **argv);
 
     int su_grant(const char *key, uid_t uid, uid_t to_uid, const char *scontext);
     int su_revoke(const char *key, uid_t uid);

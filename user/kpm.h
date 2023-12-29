@@ -6,7 +6,7 @@ extern "C"
 {
 #endif
 
-    int kpm_main(const char *key, int argc, char **argv);
+    int kpm_main(int argc, char **argv);
 
     int kpm_load(const char *key, const char *path, const char *args);
     int kpm_unload(const char *key, const char *name);

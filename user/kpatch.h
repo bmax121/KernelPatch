@@ -12,8 +12,9 @@ extern "C"
 
     uint32_t version();
 
-    uint32_t hello(const char *key);
-    uint32_t kpv(const char *key);
+    void hello(const char *key);
+    void kpv(const char *key);
+    void kv(const char *key);
 
     int __test(const char *key);
 
