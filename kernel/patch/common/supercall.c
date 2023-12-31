@@ -89,14 +89,15 @@ static long call_kpm_info(const char *__user uname, char *__user out_info, int o
 {
     if (out_len <= 0) return -EINVAL;
     char name[64];
-    char buf[1024];
+    char buf[2048];
     int len = strncpy_from_user_nofault(name, uname, sizeof(name));
     if (len <= 0) return -EINVAL;
     int sz = get_module_info(name, buf, sizeof(buf));
-    if (sz <= 0) return sz;
-    if (sz > out_len) return -ENOMEM;
+    if (sz < 0) return sz;
+    if (sz > out_len) return -ENOBUFS;
     sz = seq_copy_to_user(out_info, buf, sz);
-    return sz;
+    if (sz < 0) return sz;
+    return 0;
 }
 
 static long call_su(struct su_profile *__user uprofile)

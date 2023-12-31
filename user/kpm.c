@@ -39,7 +39,7 @@ int kpm_list(const char *key)
 
 int kpm_info(const char *key, const char *name)
 {
-    char buf[1024];
+    char buf[2048];
     int rc = sc_kpm_info(key, name, buf, sizeof(buf));
     if (rc > 0) {
         fprintf(stdout, "%s", buf);

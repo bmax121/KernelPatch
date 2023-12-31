@@ -578,8 +578,10 @@ int get_module_info(const char *name, char *out_info, int size)
                       "version=%s\n"
                       "license=%s\n"
                       "author=%s\n"
-                      "description=%s\n",
-                      mod->info.name, mod->info.version, mod->info.license, mod->info.author, mod->info.description);
+                      "description=%s\n"
+                      "args=%s\n",
+                      mod->info.name, mod->info.version, mod->info.license, mod->info.author, mod->info.description,
+                      mod->args);
     logkfd("%s", out_info);
     return sz;
 }
