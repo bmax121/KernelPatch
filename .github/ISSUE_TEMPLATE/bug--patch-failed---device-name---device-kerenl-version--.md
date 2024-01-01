@@ -1,6 +1,6 @@
 ---
-name: 'Bug: Patch Failed'
-about: If kptools fails to patch kernel image
+name: 'Bug: Patch Failed. (device name) (device kerenl version) '
+about: kptools fails to patch kernel image
 title: Patch Failed
 labels: ''
 assignees: ''
