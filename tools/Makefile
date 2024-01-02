@@ -1,10 +1,14 @@
 
 CFLAGS = -std=c11 -Wall -Wextra -Wno-unused -Wno-unused-parameter
-# CFLAGS += -g
+
+ifdef DEBUG
+	CFLAGS += -DDEBUG -g
+endif
 
 ifdef ANDROID
 	CFLAGS += -DANDROID
 endif
+
 
 objs := image.o kallsym.o kptools.o order.o
 

@@ -276,6 +276,12 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
         fprintf(stdout, "[?] kallsyms can't find arm64 relocation table\n");
         return 0;
     }
+
+    if (info->retry_relo && kernel_va > min_va) {
+        fprintf(stdout, "[+] kallsyms retry reloaction with min_va\n");
+        kernel_va = min_va;
+    }
+
     fprintf(stdout,
             "[+] kallsyms find arm64 relocation table range: [0x%08x, 0x%08x), text_va: 0x%08lx, count: 0x%08x\n",
             cand_start, cand_end, kernel_va, rela_num);
@@ -306,11 +312,11 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
 
     if (apply_num) info->relo_applied = 1;
 
-// #define KALLSYM_SAVE_RELO
-#ifdef KALLSYM_SAVE_RELO
+#if 0
 #include <stdio.h>
-    FILE *frelo = fopen("/Users/bmax/tmp/kernel.relo", "wb+");
+    FILE *frelo = fopen("./kernel.relo", "wb+");
     fwrite(img, imglen, 1, frelo);
+    fprintf(stdout, "===== writed relo kernel image ====\n");
     fclose(frelo);
 #endif
 
@@ -369,7 +375,6 @@ static int find_approx_addresses(kallsym_t *info, char *img, int32_t imglen)
             approx_offset, cand, approx_num_syms);
 
     //
-    // todo: tmp fix relo error, bugs with relo apply
     if (info->relo_applied) {
         fprintf(stdout, "[-] kallsyms mismatch relo applied, subsequent operations may be undefined\n");
     }
@@ -398,7 +403,7 @@ static int find_approx_offsets(kallsym_t *info, char *img, int32_t imglen)
         }
     }
     if (sym_num < KSYM_MIN_NEQ_SYMS) {
-        fprintf(stdout, "[-] kallsyms find approximate kallsyms_offsets error\n");
+        fprintf(stdout, "[?] kallsyms find approximate kallsyms_offsets error\n");
         return -1;
     }
     cand -= KSYM_MIN_NEQ_SYMS * elem_size;
@@ -592,6 +597,7 @@ static int find_names(kallsym_t *info, char *img, int32_t imglen)
 static int correct_addresses_or_offsets_by_vectors(kallsym_t *info, char *img, int32_t imglen)
 {
     // vectors .align 11
+    // todo: tramp_vectors .align 11
     int32_t pos = info->kallsyms_names_offset;
     int32_t index = 0;
     char symbol[KSYM_SYMBOL_LEN] = { '\0' };
@@ -695,7 +701,7 @@ static int correct_addresses_or_offsets_by_banner(kallsym_t *info, char *img, in
         }
         if (pos < end) {
             info->symbol_banner_idx = i;
-            fprintf(stdout, "[+] kallsyms sure linux_banner index: %d\n", i);
+            fprintf(stdout, "[+] kallsyms linux_banner index: %d\n", i);
             break;
         }
     }
@@ -718,11 +724,9 @@ static int correct_addresses_or_offsets(kallsym_t *info, char *img, int32_t imgl
 {
     int rc = correct_addresses_or_offsets_by_banner(info, img, imglen);
     if (rc) {
-        fprintf(stdout, "[?] kallsyms ========\n");
         fprintf(
             stdout,
             "[?] kallsyms no linux_banner? Is your kernel configuration CONFIG_KALLSYMS_ALL=y? Subsequent operations may be undefined!\n");
-        fprintf(stdout, "[?] kallsyms ========\n");
     }
     if (rc) rc = correct_addresses_or_offsets_by_vectors(info, img, imglen);
     return rc;
@@ -758,6 +762,9 @@ R kallsyms_token_index
 */
 int analyze_kallsym_info(kallsym_t *info, char *img, int32_t imglen, enum arch_type arch, int32_t is_64)
 {
+    char *backup_img = (char *)malloc(imglen);
+    memcpy(backup_img, img, imglen);
+
     memset(info, 0, sizeof(kallsym_t));
     info->is_64 = is_64;
     info->asm_long_size = 4;
@@ -772,19 +779,38 @@ int analyze_kallsym_info(kallsym_t *info, char *img, int32_t imglen, enum arch_t
     img += info->img_offset;
     imglen -= info->img_offset;
 
-    int32_t (*funcs[])(kallsym_t *, char *, int32_t) = { find_linux_banner,
-                                                         find_token_table,
-                                                         find_token_index,
-                                                         try_find_arm64_relo_table,
-                                                         find_markers,
-                                                         find_approx_addresses_or_offset,
-                                                         find_names,
-                                                         find_num_syms,
-                                                         correct_addresses_or_offsets };
-    for (int i = 0; i < (int)(sizeof(funcs) / sizeof(funcs[0])); i++) {
-        if (funcs[i](info, img, imglen)) return -1;
+    int rc = -1;
+    int32_t (*base_funcs[])(kallsym_t *, char *, int32_t) = {
+        find_linux_banner,
+        find_token_table,
+        find_token_index,
+    };
+    for (int i = 0; i < (int)(sizeof(base_funcs) / sizeof(base_funcs[0])); i++) {
+        if ((rc = base_funcs[i](info, img, imglen))) goto out;
     }
-    return 0;
+
+    int32_t (*funcs[])(kallsym_t *, char *, int32_t) = {
+        try_find_arm64_relo_table,   find_markers, find_approx_addresses_or_offset, find_names, find_num_syms,
+        correct_addresses_or_offsets
+    };
+    for (int i = 0; i < (int)(sizeof(funcs) / sizeof(funcs[0])); i++) {
+        if ((rc = funcs[i](info, img, imglen))) break;
+    }
+
+    if (!rc) goto out;
+
+    // retry reloaction
+    fprintf(stdout, "[+] kallsyms now retry reloacation\n");
+    memcpy(img, backup_img, imglen);
+    info->retry_relo = 1;
+
+    for (int i = 0; i < (int)(sizeof(funcs) / sizeof(funcs[0])); i++) {
+        if ((rc = funcs[i](info, img, imglen))) break;
+    }
+
+out:
+    free(backup_img);
+    return rc;
 }
 
 int32_t get_symbol_index_offset(kallsym_t *info, char *img, int32_t index)
