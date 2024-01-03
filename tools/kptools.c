@@ -191,7 +191,9 @@ static int fillin_patch_symbol(kallsym_t *kallsym, char *img_buf, patch_symbol_t
     symbol->do_execveat_common = get_symbol_offset_zero(kallsym, img_buf, "do_execveat_common");
     symbol->do_execve_common = get_symbol_offset_zero(kallsym, img_buf, "do_execve_common");
     if (!symbol->__do_execve_file && !symbol->do_execveat_common && !symbol->do_execve_common) {
-        symbol->do_execveat_common = find_suffixed_symbol(kallsym, img_buf, "do_execve_common");
+        symbol->__do_execve_file = find_suffixed_symbol(kallsym, img_buf, "__do_execve_file");
+        symbol->do_execveat_common = find_suffixed_symbol(kallsym, img_buf, "do_execveat_common");
+        symbol->do_execve_common = find_suffixed_symbol(kallsym, img_buf, "do_execve_common");
     }
     if (!symbol->__do_execve_file && !symbol->do_execveat_common && !symbol->do_execve_common) return -1;
 
@@ -208,10 +210,19 @@ static int fillin_patch_symbol(kallsym_t *kallsym, char *img_buf, patch_symbol_t
     symbol->vfs_statx = get_symbol_offset_zero(kallsym, img_buf, "vfs_statx");
     symbol->do_statx = get_symbol_offset_zero(kallsym, img_buf, "do_statx");
     symbol->vfs_fstatat = get_symbol_offset_zero(kallsym, img_buf, "vfs_fstatat");
+    if (!symbol->vfs_statx && !symbol->do_statx && !symbol->vfs_fstatat) {
+        symbol->vfs_statx = find_suffixed_symbol(kallsym, img_buf, "vfs_statx");
+        symbol->do_statx = find_suffixed_symbol(kallsym, img_buf, "do_statx");
+        symbol->vfs_fstatat = find_suffixed_symbol(kallsym, img_buf, "vfs_fstatat");
+    }
     if (!symbol->vfs_statx && !symbol->do_statx && !symbol->vfs_fstatat) return -1;
 
     symbol->do_faccessat = get_symbol_offset_zero(kallsym, img_buf, "do_faccessat");
     symbol->sys_faccessat = get_symbol_offset_zero(kallsym, img_buf, "sys_faccessat");
+    if (!symbol->do_faccessat && !symbol->sys_faccessat) {
+        symbol->do_faccessat = find_suffixed_symbol(kallsym, img_buf, "do_faccessat");
+        symbol->sys_faccessat = find_suffixed_symbol(kallsym, img_buf, "sys_faccessat");
+    }
     if (!symbol->do_faccessat && !symbol->sys_faccessat) return -1;
 
     if ((is_be() ^ target_is_be)) {
