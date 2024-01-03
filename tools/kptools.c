@@ -182,10 +182,10 @@ static int fillin_patch_symbol(kallsym_t *kallsym, char *img_buf, patch_symbol_t
 
     symbol->copy_process = get_symbol_offset_zero(kallsym, img_buf, "copy_process");
     symbol->cgroup_post_fork = get_symbol_offset_zero(kallsym, img_buf, "cgroup_post_fork");
-    if (!symbol->copy_process && symbol->cgroup_post_fork) {
+    if (!symbol->copy_process && !symbol->cgroup_post_fork) {
         symbol->copy_process = find_suffixed_symbol(kallsym, img_buf, "copy_process");
     }
-    if (!symbol->copy_process && symbol->cgroup_post_fork) return -1;
+    if (!symbol->copy_process && !symbol->cgroup_post_fork) return -1;
 
     symbol->__do_execve_file = get_symbol_offset_zero(kallsym, img_buf, "__do_execve_file");
     symbol->do_execveat_common = get_symbol_offset_zero(kallsym, img_buf, "do_execveat_common");
