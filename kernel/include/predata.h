@@ -8,7 +8,8 @@
 int superkey_auth(const char *key, int len);
 const char *get_superkey();
 struct patch_config *get_preset_patch_cfg();
+struct patch_symbol *get_preset_patch_sym();
 
-void predata_init(const char *skey, struct patch_config *config);
+void predata_init();
 
 #endif

@@ -8,6 +8,7 @@
 #include <asm/current.h>
 #include <security/selinux/include/avc.h>
 #include <security/selinux/include/security.h>
+#include <predata.h>
 
 #define SHOW_AVC_PASS_LOG
 
@@ -63,12 +64,11 @@ static void _selinux_debug(u32 ssid, u32 tsid, u16 tclass, u32 requested)
         return 0;                                                                           \
     }
 
-static int hook_backup(avc_denied)(struct selinux_state *state, void *ssid, void *tsid, void *tclass, void *requested,
-                                   void *driver, void *xperm, void *flags, struct av_decision *avd) = 0;
+static int (*avc_denied_backup)(struct selinux_state *state, void *ssid, void *tsid, void *tclass, void *requested,
+                                void *driver, void *xperm, void *flags, struct av_decision *avd) = 0;
 
-static int hook_replace(avc_denied)(struct selinux_state *_state, void *_ssid, void *_tsid, void *_tclass,
-                                    void *_requested, void *_driver, void *_xperm, void *_flags,
-                                    struct av_decision *_avd)
+static int avc_denied_replace(struct selinux_state *_state, void *_ssid, void *_tsid, void *_tclass, void *_requested,
+                              void *_driver, void *_xperm, void *_flags, struct av_decision *_avd)
 {
     struct task_ext *ext = get_current_task_ext();
     if (unlikely(task_ext_valid(ext) && (ext->selinux_allow || ext->priv_selinux_allow))) {
@@ -81,24 +81,23 @@ static int hook_replace(avc_denied)(struct selinux_state *_state, void *_ssid, v
         avd->auditdeny = 0;
         return 0;
     }
-    int rc = hook_call_backup(avc_denied, _state, _ssid, _tsid, _tclass, _requested, _driver, _xperm, _flags, _avd);
+    int rc = avc_denied_backup(_state, _ssid, _tsid, _tclass, _requested, _driver, _xperm, _flags, _avd);
     return rc;
 }
 
-static int hook_backup(slow_avc_audit)(struct selinux_state *_state, void *_ssid, void *_tsid, void *_tclass,
-                                       void *_requested, void *_audited, void *_denied, void *_result,
-                                       struct common_audit_data *_a) = 0;
+static int (*slow_avc_audit_backup)(struct selinux_state *_state, void *_ssid, void *_tsid, void *_tclass,
+                                    void *_requested, void *_audited, void *_denied, void *_result,
+                                    struct common_audit_data *_a) = 0;
 
-static int hook_replace(slow_avc_audit)(struct selinux_state *_state, void *_ssid, void *_tsid, void *_tclass,
-                                        void *_requested, void *_audited, void *_denied, void *_result,
-                                        struct common_audit_data *_a)
+static int slow_avc_audit_replace(struct selinux_state *_state, void *_ssid, void *_tsid, void *_tclass,
+                                  void *_requested, void *_audited, void *_denied, void *_result,
+                                  struct common_audit_data *_a)
 {
     struct task_ext *ext = get_current_task_ext();
     if (unlikely(task_ext_valid(ext) && (ext->selinux_allow || ext->priv_selinux_allow))) {
         return 0;
     }
-    int rc =
-        hook_call_backup(slow_avc_audit, _state, _ssid, _tsid, _tclass, _requested, _audited, _denied, _result, _a);
+    int rc = slow_avc_audit_backup(_state, _ssid, _tsid, _tclass, _requested, _audited, _denied, _result, _a);
     return rc;
 }
 
@@ -295,10 +294,25 @@ static int hook_replace(slow_avc_audit)(struct selinux_state *_state, void *_ssi
 
 int selinux_hook_install()
 {
-    // todo: gcc -fipa-sra eg: avc_denied.isra.5
+    unsigned long avc_denied_addr = get_preset_patch_sym()->avc_denied;
+    if (avc_denied_addr) {
+        hook_err_t err = hook((void *)avc_denied_addr, (void *)avc_denied_replace, (void **)&avc_denied_backup);
+        if (err != HOOK_NO_ERR) {
+            log_boot("hook avc_denied_addr: %llx, error: %d\n", avc_denied_addr, err);
+        }
+    }
 
-    hook_kfunc(avc_denied);
-    hook_kfunc(slow_avc_audit);
+    unsigned long slow_avc_audit_addr = get_preset_patch_sym()->slow_avc_audit;
+    if (slow_avc_audit_addr) {
+        hook_err_t err =
+            hook((void *)slow_avc_audit_addr, (void *)slow_avc_audit_replace, (void **)&slow_avc_audit_backup);
+        if (err != HOOK_NO_ERR) {
+            log_boot("hook slow_avc_audit: %llx, error: %d\n", slow_avc_audit_addr, err);
+        }
+    }
+
+    // hook_kfunc(avc_denied);
+    // hook_kfunc(slow_avc_audit);
 
     // hook_kfunc(avc_has_perm_noaudit);
     // hook_kfunc(avc_has_perm);

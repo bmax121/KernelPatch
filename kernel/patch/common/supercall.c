@@ -25,7 +25,7 @@
 
 #include <linux/umh.h>
 
-static long call_test()
+static long call_test(long arg1, long arg2, long arg3)
 {
     char *cmd = "/system/bin/touch";
     // const char *superkey = get_superkey();
@@ -150,7 +150,7 @@ static long supercall(long cmd, long arg1, long arg2, long arg3)
     case SUPERCALL_KPM_INFO:
         return call_kpm_info((const char *__user)arg1, (char *__user)arg2, (int)arg3);
     case SUPERCALL_TEST:
-        return call_test();
+        return call_test(arg1, arg2, arg3);
     }
 #ifdef ANDROID
     return supercall_android(cmd, arg1, arg2, arg3);

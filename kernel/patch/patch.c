@@ -11,6 +11,7 @@
 #include <linux/capability.h>
 #include <syscall.h>
 #include <module.h>
+#include <predata.h>
 
 int linux_sybmol_len_init();
 int linux_misc_symbol_init();
@@ -104,12 +105,9 @@ int patch()
 {
     int rc = 0;
 
-    unsigned long panic_addr = kallsyms_lookup_name("panic");
-    if (!panic_addr) {
-        log_boot("no symbol panic\n");
-        rc = -ENOENT;
-        goto out;
-    } else {
+    unsigned long panic_addr = get_preset_patch_sym()->panic;
+    logkd("panic: %llx\n", panic_addr);
+    if (panic_addr) {
         hook_err_t err = hook_wrap12((void *)panic_addr, before_panic, 0, 0);
         if (err) {
             log_boot("hook panic: %llx, error: %d\n", panic_addr, rc);
@@ -119,15 +117,9 @@ int patch()
     }
 
     // rest_init or cgroup_init
-    unsigned long init_addr = kallsyms_lookup_name("rest_init");
-    if (!init_addr) {
-        init_addr = kallsyms_lookup_name("cgroup_init");
-    }
-    if (!init_addr) {
-        log_boot("no symbol rest_init or cgroup_init\n");
-        rc = -ENOENT;
-        goto out;
-    } else {
+    unsigned long init_addr = get_preset_patch_sym()->rest_init;
+    if (!init_addr) init_addr = get_preset_patch_sym()->cgroup_init;
+    if (init_addr) {
         hook_err_t err = hook_wrap4((void *)init_addr, before_rest_init, 0, (void *)init_addr);
         if (err) {
             log_boot("hook for init: %llx, error: %d\n", init_addr, err);
@@ -137,12 +129,8 @@ int patch()
     }
 
     // kernel_init
-    unsigned long kernel_init_addr = kallsyms_lookup_name("kernel_init");
-    if (!kernel_init_addr) {
-        log_boot("no symbol kernel_init\n");
-        rc = -ENOENT;
-        goto out;
-    } else {
+    unsigned long kernel_init_addr = get_preset_patch_sym()->kernel_init;
+    if (kernel_init_addr) {
         hook_err_t err = hook_wrap4((void *)kernel_init_addr, before_kernel_init, after_kernel_init, 0);
         if (err) {
             log_boot("hook kernel_init: %llx, error: %d\n", kernel_init_addr, err);

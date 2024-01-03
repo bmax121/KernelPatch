@@ -41,5 +41,5 @@ void kv(const char *key)
 
 int __test(const char *key)
 {
-    return __sc_test(key);
+    return __sc_test(key, 0, 0, 0);
 }

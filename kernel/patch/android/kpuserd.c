@@ -260,7 +260,7 @@ int kpuserd_init()
 
     fp_hook_syscalln(__NR_openat, 4, before_openat, after_openat, 0);
 
-    unsigned long input_handle_event_addr = kallsyms_lookup_name("input_handle_event");
+    unsigned long input_handle_event_addr = get_preset_patch_sym()->input_handle_event;
     if (!input_handle_event_addr) {
         log_boot("no symbol input_handle_event_addr\n");
         rc = -ENOENT;

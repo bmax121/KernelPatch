@@ -27,6 +27,7 @@
 #include <syscall.h>
 #include <predata.h>
 #include <uapi/scdefs.h>
+#include <predata.h>
 
 /*
 Modified from KernelSU, GPLv2
@@ -444,9 +445,9 @@ int su_compat_init()
     su_add_allow_uid(default_shell_profile.uid, &default_shell_profile, 1);
 
     // state
-    unsigned long vfs_stat_addr = kallsyms_lookup_name("vfs_statx");
-    if (!vfs_stat_addr) vfs_stat_addr = kallsyms_lookup_name("do_statx");
-    if (!vfs_stat_addr) vfs_stat_addr = kallsyms_lookup_name("vfs_fstatat");
+    unsigned long vfs_stat_addr = get_preset_patch_sym()->vfs_statx;
+    if (!vfs_stat_addr) vfs_stat_addr = get_preset_patch_sym()->do_statx;
+    if (!vfs_stat_addr) vfs_stat_addr = get_preset_patch_sym()->vfs_fstatat;
     if (!vfs_stat_addr) {
         log_boot("no symbol vfs_fstatat, do_statx or vfs_statx\n");
         rc = -ENOENT;
@@ -461,8 +462,8 @@ int su_compat_init()
     }
 
     // access
-    unsigned long faccessat_addr = kallsyms_lookup_name("do_faccessat");
-    if (!faccessat_addr) faccessat_addr = kallsyms_lookup_name("sys_faccessat");
+    unsigned long faccessat_addr = get_preset_patch_sym()->do_faccessat;
+    if (!faccessat_addr) faccessat_addr = get_preset_patch_sym()->sys_faccessat;
     if (!faccessat_addr) {
         log_boot("no symbol do_faccessat or sys_faccessat\n");
         rc = -ENOENT;

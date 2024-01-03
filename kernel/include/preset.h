@@ -19,7 +19,8 @@
 #define CONFIG_DEBUG 0x1
 #define CONFIG_ANDROID 0x2
 
-#define PATCH_CONFIG_LEN (512)
+#define PATCH_SYMBOL_LEN (512)
+#define PATCH_CONFIG_LEN (256)
 
 #define VERSION(major, minor, patch) (((major) << 16) + ((minor) << 8) + (patch))
 
@@ -50,7 +51,7 @@ typedef struct _setup_header_t // 64-bytes
     };
 } setup_header_t;
 
-_Static_assert(sizeof(setup_header_t) == KP_HEADER_SIZE, "setup_header_t size error");
+_Static_assert(sizeof(setup_header_t) == KP_HEADER_SIZE, "sizeof setup_header_t size error");
 
 #else
 #define header_magic_offset 0
@@ -60,11 +61,53 @@ _Static_assert(sizeof(setup_header_t) == KP_HEADER_SIZE, "setup_header_t size er
 #endif
 
 #ifndef __ASSEMBLY__
+struct patch_symbol
+{
+    union
+    {
+        struct
+        {
+            uint64_t panic;
+            uint64_t rest_init;
+            uint64_t cgroup_init;
+            uint64_t kernel_init;
+            uint64_t report_cfi_failure;
+            uint64_t __cfi_slowpath_diag;
+            uint64_t __cfi_slowpath;
+            uint64_t copy_process;
+            uint64_t cgroup_post_fork;
+            uint64_t __do_execve_file;
+            uint64_t do_execveat_common;
+            uint64_t do_execve_common;
+            uint64_t avc_denied;
+            uint64_t slow_avc_audit;
+            uint64_t input_handle_event;
+            uint64_t vfs_statx;
+            uint64_t do_statx;
+            uint64_t vfs_fstatat;
+            uint64_t do_faccessat;
+            uint64_t sys_faccessat;
+        };
+        char _cap[PATCH_SYMBOL_LEN];
+    };
+};
+typedef struct patch_symbol patch_symbol_t;
+_Static_assert(sizeof(patch_symbol_t) == PATCH_SYMBOL_LEN, "sizeof struct patch_symbol too big");
+#else
+#define patch_symbol_size (PATCH_SYMBOL_LEN)
+#endif
+
+#ifndef __ASSEMBLY__
 struct patch_config
 {
-    char config_reserved[256];
+    union
+    {
+        char config_reserved[256];
+        char _cap[PATCH_CONFIG_LEN];
+    };
 };
 typedef struct patch_config patch_config_t;
+_Static_assert(sizeof(patch_config_t) == PATCH_CONFIG_LEN, "sizeof struct patch_config_t too big");
 #else
 #define patch_config_size (PATCH_CONFIG_LEN)
 #endif
@@ -94,6 +137,7 @@ typedef struct _setup_preset_t
     uint8_t header_backup[HDR_BACKUP_SIZE];
     uint8_t superkey[SUPER_KEY_LEN];
 
+    patch_symbol_t patch_symbol;
     patch_config_t patch_config;
 } setup_preset_t;
 #else
@@ -115,7 +159,9 @@ typedef struct _setup_preset_t
 #define setup_memblock_mark_nomap_offset (setup_kimage_voffset_offset_offset + 8)
 #define setup_header_backup_offset (setup_memblock_mark_nomap_offset + 8)
 #define setup_superkey_offset (setup_header_backup_offset + HDR_BACKUP_SIZE)
-#define setup_patch_config_offset (setup_superkey_offset + SUPER_KEY_LEN)
+#define setup_patch_symbol_offset (setup_superkey_offset + SUPER_KEY_LEN)
+#define setup_patch_config_offset (setup_patch_symbol_offset + PATCH_SYMBOL_LEN)
+#define setup_end (setup_patch_config_offset + PATCH_CONFIG_LEN)
 #endif
 
 #endif // _KP_PRESET_H_

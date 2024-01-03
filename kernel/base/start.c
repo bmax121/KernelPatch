@@ -444,7 +444,7 @@ int __attribute__((section(".start.text"))) __noinline start(uint64_t kva, uint6
     prot_myself();
     restore_map();
     log_regs();
-    predata_init((const char *)start_preset.superkey, &start_preset.patch_config);
+    predata_init();
     symbol_init();
     rc = nice_zone();
     return rc;
