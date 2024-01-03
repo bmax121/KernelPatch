@@ -60,6 +60,7 @@ jobs:
           artifacts: |
             kernel/kpimg-linux
             kernel/kpimg-android
+          generateReleaseNotes: true
           allowUpdates: true
           replacesArtifacts: true
           prerelease: true

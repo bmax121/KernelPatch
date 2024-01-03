@@ -275,6 +275,8 @@ int32_t branch_relative(uint32_t *buf, uint64_t src_addr, uint64_t dst_addr)
         buf[1] = ARM64_NOP;
         return 2;
     }
+    // todo: add bit c or bit cj here
+    // d503245f        bti     c
     return 0;
 }
 KP_EXPORT_SYMBOL(branch_relative);
@@ -285,6 +287,8 @@ int32_t branch_absolute(uint32_t *buf, uint64_t addr)
     buf[1] = 0xd61f0220; // BR X17
     buf[2] = addr & 0xFFFFFFFF;
     buf[3] = addr >> 32u;
+    // todo: add bit c or bit cj here
+    // d503245f        bti     c
     return 4;
 }
 KP_EXPORT_SYMBOL(branch_absolute);
@@ -562,7 +566,8 @@ void hook_install(hook_t *hook)
         *((uint32_t *)hook->origin_addr + i) = hook->tramp_insts[i];
     }
     flush_icache_all();
-    *entry = ori_prot;
+    // todo: this is temporary fix for bit
+    *entry = ori_prot & 0xFFFBFFFFFFFFFFFF;
     flush_tlb_kernel_page(va);
 }
 KP_EXPORT_SYMBOL(hook_install);
