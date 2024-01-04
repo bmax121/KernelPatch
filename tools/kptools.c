@@ -343,6 +343,15 @@ int patch_image()
 
     preset->memstart_addr_offset = get_symbol_offset(&kallsym, image_buf, "memstart_addr");
     if (preset->memstart_addr_offset < 0) preset->memstart_addr_offset = 0;
+    if (!preset->memstart_addr_offset) {
+        fprintf(stdout, "[!] kptools ==== warring ====\n");
+        fprintf(stdout, "[!] kptools ==== warring ====\n");
+        fprintf(stdout, "[!] kptools It seems that CONFIG_KALLSYMS_ALL=y is not enabled in the kernel.\n");
+        fprintf(stdout, "[!] kptools It is recommended that you do not flash it and wait for support.\n");
+        fprintf(stdout, "[!] kptools ==== warring ====\n");
+        fprintf(stdout, "[!] kptools ==== warring ====\n");
+        return -1;
+    }
 
     if (kallsym.version.major >= 6) preset->vabits_flag = 1;
     if (get_symbol_offset(&kallsym, image_buf, "vabits_actual") > 0) preset->vabits_flag = 1;
