@@ -3,9 +3,11 @@ name: 'Bug: Patch Failed'
 about: kptools fails to patch kernel image
 title: 'Patch Failed (Device Name) (Device Kerenl Version) '
 labels: ''
-assignees: ''
+assignees: bmax121
 
 ---
+
+**First, confirm whether your kernel has CONFIG_KALLSYMS_ALL=y enabled. If not or cannot be sure, please wait for support.**
 
 The following two information are what I need to fix the problem
 
