@@ -132,13 +132,112 @@ static void target_endian_preset(setup_preset_t *preset, int32_t target_is_be)
     }
 }
 
+static int32_t get_symbol_offset_zero(kallsym_t *info, char *img, char *symbol)
+{
+    int32_t offset = get_symbol_offset(info, img, symbol);
+    return offset > 0 ? offset : 0;
+}
+
+struct on_each_symbol_struct
+{
+    const char *symbol;
+    uint64_t addr;
+};
+
+static int32_t on_each_symbol_callbackup(int32_t index, char type, const char *symbol, int32_t offset, void *userdata)
+{
+    struct on_each_symbol_struct *data = (struct on_each_symbol_struct *)userdata;
+    int len = strlen(data->symbol);
+    if (strstr(symbol, data->symbol) == symbol && (symbol[len] == '.' || symbol[len] == '$')) {
+        fprintf(stdout, "[+] kallsyms %s -> %s: type: %c, offset: 0x%08x\n", data->symbol, symbol, type, offset);
+        data->addr = offset;
+        return 1;
+    }
+    return 0;
+}
+
+static int32_t find_suffixed_symbol(kallsym_t *kallsym, char *img_buf, const char *symbol)
+{
+    struct on_each_symbol_struct udata = { symbol, 0 };
+    on_each_symbol(kallsym, img_buf, &udata, on_each_symbol_callbackup);
+    return udata.addr;
+}
+
+static int fillin_patch_symbol(kallsym_t *kallsym, char *img_buf, patch_symbol_t *symbol, int32_t target_is_be)
+{
+    symbol->panic = get_symbol_offset_zero(kallsym, img_buf, "panic");
+
+    symbol->rest_init = get_symbol_offset_zero(kallsym, img_buf, "rest_init");
+    symbol->cgroup_init = get_symbol_offset_zero(kallsym, img_buf, "cgroup_init");
+    if (!symbol->rest_init && !symbol->cgroup_init) {
+        symbol->rest_init = find_suffixed_symbol(kallsym, img_buf, "rest_init");
+    }
+    if (!symbol->rest_init && !symbol->cgroup_init) return -1;
+
+    symbol->kernel_init = get_symbol_offset_zero(kallsym, img_buf, "kernel_init");
+
+    symbol->report_cfi_failure = get_symbol_offset_zero(kallsym, img_buf, "report_cfi_failure");
+    symbol->__cfi_slowpath_diag = get_symbol_offset_zero(kallsym, img_buf, "__cfi_slowpath_diag");
+    symbol->__cfi_slowpath = get_symbol_offset_zero(kallsym, img_buf, "__cfi_slowpath");
+
+    symbol->copy_process = get_symbol_offset_zero(kallsym, img_buf, "copy_process");
+    symbol->cgroup_post_fork = get_symbol_offset_zero(kallsym, img_buf, "cgroup_post_fork");
+    if (!symbol->copy_process && !symbol->cgroup_post_fork) {
+        symbol->copy_process = find_suffixed_symbol(kallsym, img_buf, "copy_process");
+    }
+    if (!symbol->copy_process && !symbol->cgroup_post_fork) return -1;
+
+    symbol->__do_execve_file = get_symbol_offset_zero(kallsym, img_buf, "__do_execve_file");
+    symbol->do_execveat_common = get_symbol_offset_zero(kallsym, img_buf, "do_execveat_common");
+    symbol->do_execve_common = get_symbol_offset_zero(kallsym, img_buf, "do_execve_common");
+    if (!symbol->__do_execve_file && !symbol->do_execveat_common && !symbol->do_execve_common) {
+        symbol->__do_execve_file = find_suffixed_symbol(kallsym, img_buf, "__do_execve_file");
+        symbol->do_execveat_common = find_suffixed_symbol(kallsym, img_buf, "do_execveat_common");
+        symbol->do_execve_common = find_suffixed_symbol(kallsym, img_buf, "do_execve_common");
+    }
+    if (!symbol->__do_execve_file && !symbol->do_execveat_common && !symbol->do_execve_common) return -1;
+
+    symbol->avc_denied = get_symbol_offset_zero(kallsym, img_buf, "avc_denied");
+    if (!symbol->avc_denied) {
+        // gcc -fipa-sra eg: avc_denied.isra.5
+        symbol->avc_denied = find_suffixed_symbol(kallsym, img_buf, "avc_denied");
+    }
+    if (!symbol->avc_denied) return -1;
+    symbol->slow_avc_audit = get_symbol_offset_zero(kallsym, img_buf, "slow_avc_audit");
+
+    symbol->input_handle_event = get_symbol_offset_zero(kallsym, img_buf, "input_handle_event");
+
+    symbol->vfs_statx = get_symbol_offset_zero(kallsym, img_buf, "vfs_statx");
+    symbol->do_statx = get_symbol_offset_zero(kallsym, img_buf, "do_statx");
+    symbol->vfs_fstatat = get_symbol_offset_zero(kallsym, img_buf, "vfs_fstatat");
+    if (!symbol->vfs_statx && !symbol->do_statx && !symbol->vfs_fstatat) {
+        symbol->vfs_statx = find_suffixed_symbol(kallsym, img_buf, "vfs_statx");
+        symbol->do_statx = find_suffixed_symbol(kallsym, img_buf, "do_statx");
+        symbol->vfs_fstatat = find_suffixed_symbol(kallsym, img_buf, "vfs_fstatat");
+    }
+    if (!symbol->vfs_statx && !symbol->do_statx && !symbol->vfs_fstatat) return -1;
+
+    symbol->do_faccessat = get_symbol_offset_zero(kallsym, img_buf, "do_faccessat");
+    symbol->sys_faccessat = get_symbol_offset_zero(kallsym, img_buf, "sys_faccessat");
+    if (!symbol->do_faccessat && !symbol->sys_faccessat) {
+        symbol->do_faccessat = find_suffixed_symbol(kallsym, img_buf, "do_faccessat");
+        symbol->sys_faccessat = find_suffixed_symbol(kallsym, img_buf, "sys_faccessat");
+    }
+    if (!symbol->do_faccessat && !symbol->sys_faccessat) return -1;
+
+    if ((is_be() ^ target_is_be)) {
+        for (int64_t *pos = (int64_t *)symbol; pos <= (int64_t *)symbol; pos++) {
+            *pos = i64swp(*pos);
+        }
+    }
+
+    return 0;
+}
+
 // todo
 void select_map_area(kallsym_t *kallsym, char *image_buf, int32_t *map_start, int32_t *max_size)
 {
     int32_t addr = 0x200;
-    // uint32_t kv = VERSION(kallsym->version.major, kallsym->version.minor, 0);
-    // if (kv < VERSION(5, 15, 0)) {
-    // }
     addr = get_symbol_offset(kallsym, image_buf, "tcp_init_sock");
     *map_start = align_ceil(addr, 16);
     *max_size = 0x800;
@@ -205,13 +304,8 @@ int patch_image()
     }
 
     setup_preset_t *preset = (setup_preset_t *)(out_buf + align_image_len + KP_HEADER_SIZE);
-    patch_config_t *config = &preset->patch_config;
-    memset(config, 0, sizeof(patch_config_t));
-#ifdef ANDROID
-    strncpy(config->config_reserved, "/data/adb/ap/init.ini", sizeof(config->config_reserved) - 1);
-#else
-    strncpy(config->config_reserved, "/etc/kp/init.ini", sizeof(config->config_reserved) - 1);
-#endif
+    memset(preset, 0, sizeof(setup_preset_t));
+
     preset->kernel_size = kinfo.kernel_size;
     preset->start_offset = align_kernel_size;
     preset->page_shift = kinfo.page_shift;
@@ -249,6 +343,15 @@ int patch_image()
 
     preset->memstart_addr_offset = get_symbol_offset(&kallsym, image_buf, "memstart_addr");
     if (preset->memstart_addr_offset < 0) preset->memstart_addr_offset = 0;
+    if (!preset->memstart_addr_offset) {
+        fprintf(stdout, "[!] kptools ==== warring ====\n");
+        fprintf(stdout, "[!] kptools ==== warring ====\n");
+        fprintf(stdout, "[!] kptools It seems that CONFIG_KALLSYMS_ALL=y is not enabled in the kernel.\n");
+        fprintf(stdout, "[!] kptools It is recommended that you do not flash it and wait for support.\n");
+        fprintf(stdout, "[!] kptools ==== warring ====\n");
+        fprintf(stdout, "[!] kptools ==== warring ====\n");
+        return -1;
+    }
 
     if (kallsym.version.major >= 6) preset->vabits_flag = 1;
     if (get_symbol_offset(&kallsym, image_buf, "vabits_actual") > 0) preset->vabits_flag = 1;
@@ -263,6 +366,21 @@ int patch_image()
         strcpy((char *)preset->superkey, "kernel_patch");
     }
     fprintf(stdout, "[+] kptools supercall key: %s\n", preset->superkey);
+
+    patch_symbol_t *symbol = &preset->patch_symbol;
+
+    int rc = fillin_patch_symbol(&kallsym, image_buf, symbol, kinfo.is_be);
+    if (rc) {
+        fprintf(stdout, "[-] kptools fillin_patch_symbol error\n");
+        return EXIT_FAILURE;
+    }
+
+    patch_config_t *config = &preset->patch_config;
+#ifdef ANDROID
+    strncpy(config->config_reserved, "/data/adb/ap/init.ini", sizeof(config->config_reserved) - 1);
+#else
+    strncpy(config->config_reserved, "/etc/kp/init.ini", sizeof(config->config_reserved) - 1);
+#endif
 
     // todo:
     // kernel_resize(&kinfo, out_buf, align_kernel_size + align_image_len);

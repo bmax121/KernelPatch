@@ -106,6 +106,6 @@ int dump_all_symbols(kallsym_t *info, char *img);
 int get_symbol_index_offset(kallsym_t *info, char *img, int32_t index);
 int32_t get_symbol_offset(kallsym_t *info, char *img, char *symbol);
 int on_each_symbol(kallsym_t *info, char *img, void *userdata,
-                   int32_t (*fn)(int32_t index, char *type, const char *symbol, int32_t offset, void *userdata));
+                   int32_t (*fn)(int32_t index, char type, const char *symbol, int32_t offset, void *userdata));
 
 #endif // _KALLSYM_H_

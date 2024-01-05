@@ -848,7 +848,7 @@ int32_t get_symbol_offset(kallsym_t *info, char *img, char *symbol)
             return offset;
         }
     }
-    fprintf(stdout, "[?] kallsyms can't find symbol: %s\n", symbol);
+    fprintf(stdout, "[?] kallsyms no symbol: %s\n", symbol);
     return -1;
 }
 
@@ -870,7 +870,7 @@ int dump_all_symbols(kallsym_t *info, char *img)
 }
 
 int on_each_symbol(kallsym_t *info, char *img, void *userdata,
-                   int32_t (*fn)(int32_t index, char *type, const char *symbol, int32_t offset, void *userdata))
+                   int32_t (*fn)(int32_t index, char type, const char *symbol, int32_t offset, void *userdata))
 {
     img = img + info->img_offset;
 
@@ -882,7 +882,8 @@ int on_each_symbol(kallsym_t *info, char *img, void *userdata,
         memset(symbol, 0, sizeof(symbol));
         decompress_symbol_name(info, img, &pos, &type, symbol);
         int32_t offset = get_symbol_index_offset(info, img, i);
-        if (fn(i, &type, symbol, offset, userdata)) return -1;
+        int rc = fn(i, type, symbol, offset, userdata);
+        if (rc) return rc;
     }
     return 0;
 }

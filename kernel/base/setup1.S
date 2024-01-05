@@ -84,6 +84,12 @@ start_prepare:
     mov x2, #SUPER_KEY_LEN
     bl memcpy8
 
+    // memcpy(&start_preset.patch_symbol, &setup_preset.patch_symbol, sizeof(header.patch_symbol));
+    add x0, x11, #start_patch_symbol_offset;
+    add x1, x10, #setup_patch_symbol_offset
+    mov x2, #patch_symbol_size
+    bl memcpy8
+
     // memcpy(&start_preset.patch_config, &setup_preset.patch_config, sizeof(header.patch_config));
     add x0, x11, #start_patch_config_offset;
     add x1, x10, #setup_patch_config_offset

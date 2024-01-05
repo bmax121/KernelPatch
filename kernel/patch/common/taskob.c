@@ -14,6 +14,7 @@
 #include <linux/seccomp.h>
 #include <inlinestring.h>
 #include <uapi/asm-generic/errno.h>
+#include <predata.h>
 
 static inline void prepare_init_ext(struct task_struct *task)
 {
@@ -66,15 +67,6 @@ static void replace_cgroup_post_fork(struct task_struct *p, void *a1)
 
 unsigned long execv_hook_addr = 0;
 
-static int hook_execv_compat(void *data, const char *name, struct module *, unsigned long addr)
-{
-    if (inline_strncmp("do_execve_common", name, inline_strlen("do_execve_common"))) {
-        return 0;
-    }
-    execv_hook_addr = addr;
-    return 1;
-}
-
 // int do_execveat_common(int fd, struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp, int flags)
 // int __do_execve_file(int fd, struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp, int flags,
 //                      struct file *file);
@@ -96,7 +88,7 @@ int task_observer()
     prepare_init_ext(kvar(init_task));
 
     // __switch_to
-    unsigned long copy_process_addr = kallsyms_lookup_name("copy_process");
+    unsigned long copy_process_addr = get_preset_patch_sym()->copy_process;
     if (copy_process_addr) {
         hook_err_t err = hook((void *)copy_process_addr, (void *)replace_copy_process, (void **)&backup_copy_process);
         if (err) {
@@ -106,7 +98,7 @@ int task_observer()
         }
     } else {
         log_boot("no symbol copy_process, try cgroup_post_fork\n");
-        unsigned long cgroup_post_fork_addr = kallsyms_lookup_name("cgroup_post_fork");
+        unsigned long cgroup_post_fork_addr = get_preset_patch_sym()->cgroup_post_fork;
         if (!cgroup_post_fork_addr) {
             log_boot("no symbol cgroup_post_fork\n");
             rc = -ENOENT;
@@ -122,11 +114,9 @@ int task_observer()
     }
 
     // hook execv
-    execv_hook_addr = kallsyms_lookup_name("__do_execve_file");
-    if (!execv_hook_addr) execv_hook_addr = kallsyms_lookup_name("do_execveat_common");
-    if (!execv_hook_addr) {
-        kallsyms_on_each_symbol(hook_execv_compat, 0);
-    }
+    execv_hook_addr = get_preset_patch_sym()->__do_execve_file;
+    if (!execv_hook_addr) execv_hook_addr = get_preset_patch_sym()->do_execveat_common;
+    if (!execv_hook_addr) execv_hook_addr = get_preset_patch_sym()->do_execve_common;
 
     if (!execv_hook_addr) {
         log_boot("no symbol for execv hook\n");
