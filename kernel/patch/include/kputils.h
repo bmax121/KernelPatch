@@ -6,4 +6,6 @@
 
 int __must_check seq_copy_to_user(void __user *to, const void *from, int n);
 
+void print_bootlog();
+
 #endif

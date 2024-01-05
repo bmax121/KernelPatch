@@ -19,6 +19,9 @@
 #define CONFIG_DEBUG 0x1
 #define CONFIG_ANDROID 0x2
 
+#define MAP_SYMBOL_NUM (10)
+#define MAP_SYMBOL_SIZE (MAP_SYMBOL_NUM * 8)
+
 #define PATCH_SYMBOL_LEN (512)
 #define PATCH_CONFIG_LEN (256)
 
@@ -51,13 +54,35 @@ typedef struct _setup_header_t // 64-bytes
     };
 } setup_header_t;
 
-_Static_assert(sizeof(setup_header_t) == KP_HEADER_SIZE, "sizeof setup_header_t size error");
+_Static_assert(sizeof(setup_header_t) == KP_HEADER_SIZE, "sizeof setup_header_t mismatch");
 
 #else
 #define header_magic_offset 0
 #define header_kp_version_offset (MAGIC_LEN)
 #define header_config_flags (header_kp_version_offset + 4 + 4)
 #define header_compile_time_offset (header_config_flags + 8)
+#endif
+
+#ifndef __ASSEMBLY__
+struct map_symbol
+{
+    union
+    {
+        struct
+        {
+            uint64_t paging_init_relo;
+            uint64_t memblock_reserve_relo;
+            uint64_t memblock_alloc_relo;
+            uint64_t memblock_virt_alloc_relo;
+            uint64_t memblock_mark_nomap_relo;
+        };
+        char _cap[MAP_SYMBOL_SIZE];
+    };
+};
+typedef struct map_symbol map_symbol_t;
+_Static_assert(sizeof(map_symbol_t) == MAP_SYMBOL_SIZE, "sizeof map_symbol_t mismatch");
+#else
+#define patch_map_symbol_size (MAP_SYMBOL_SIZE)
 #endif
 
 #ifndef __ASSEMBLY__
@@ -92,7 +117,7 @@ struct patch_symbol
     };
 };
 typedef struct patch_symbol patch_symbol_t;
-_Static_assert(sizeof(patch_symbol_t) == PATCH_SYMBOL_LEN, "sizeof struct patch_symbol too big");
+_Static_assert(sizeof(patch_symbol_t) == PATCH_SYMBOL_LEN, "sizeof patch_symbol_t mismatch");
 #else
 #define patch_symbol_size (PATCH_SYMBOL_LEN)
 #endif
@@ -107,7 +132,7 @@ struct patch_config
     };
 };
 typedef struct patch_config patch_config_t;
-_Static_assert(sizeof(patch_config_t) == PATCH_CONFIG_LEN, "sizeof struct patch_config_t too big");
+_Static_assert(sizeof(patch_config_t) == PATCH_CONFIG_LEN, "sizeof patch_config_t mismatch");
 #else
 #define patch_config_size (PATCH_CONFIG_LEN)
 #endif

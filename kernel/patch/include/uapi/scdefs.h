@@ -30,6 +30,8 @@ static inline long hash_key(const char *key)
 #define SUPERCALL_KPM_LIST 0x1023
 #define SUPERCALL_KPM_INFO 0x1024
 
+#define SUPERCALL_BOOTLOG 0x10fd
+#define SUPERCALL_PANIC 0x10fe
 #define SUPERCALL_TEST 0x10ff
 
 #define SUPERCALL_KEY_MAX_LEN 0x40

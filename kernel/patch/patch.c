@@ -21,10 +21,8 @@ int resolve_struct();
 int task_observer();
 int bypass_kcfi();
 
-void before_panic(hook_fargs12_t *args, void *udata)
+void print_bootlog()
 {
-    printk("==== Start KernelPatch for Kernel panic ====\n");
-
     const char *log = get_boot_log();
     char buf[1024];
     int off = 0;
@@ -40,7 +38,12 @@ void before_panic(hook_fargs12_t *args, void *udata)
             buf[off++] = log[i];
         }
     }
+}
 
+void before_panic(hook_fargs12_t *args, void *udata)
+{
+    printk("==== Start KernelPatch for Kernel panic ====\n");
+    print_bootlog();
     printk("==== End KernelPatch for Kernel panic ====\n");
 }
 

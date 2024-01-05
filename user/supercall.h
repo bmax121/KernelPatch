@@ -98,6 +98,18 @@ static inline long sc_kpm_info(const char *key, const char *name, char *buf, int
     return ret;
 }
 
+static inline long sc_bootlog(const char *key)
+{
+    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_BOOTLOG);
+    return ret;
+}
+
+static inline long sc_panic(const char *key)
+{
+    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_PANIC);
+    return ret;
+}
+
 static inline long __sc_test(const char *key, long a1, long a2, long a3)
 {
     long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_TEST, a1, a2, a3);

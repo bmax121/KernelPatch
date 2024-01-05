@@ -20,6 +20,7 @@
 #include <kputils.h>
 #include <linux/err.h>
 #include <linux/slab.h>
+#include <kputils.h>
 
 #define MAX_KEY_LEN 128
 
@@ -40,6 +41,19 @@ static long call_test(long arg1, long arg2, long arg3)
     };
     int rc = call_usermodehelper(cmd, argv, envp, UMH_WAIT_PROC);
     log_boot("user_init: %d\n", rc);
+    return 0;
+}
+
+static long call_bootlog()
+{
+    print_bootlog();
+    return 0;
+}
+
+static long call_panic()
+{
+    unsigned long panic_addr = kallsyms_lookup_name("panic");
+    ((void (*)(const char *fmt, ...))panic_addr)("!!!! kernel_patch panic !!!!");
     return 0;
 }
 
@@ -149,6 +163,10 @@ static long supercall(long cmd, long arg1, long arg2, long arg3)
         return call_kpm_list((char *__user)arg1, (int)arg2);
     case SUPERCALL_KPM_INFO:
         return call_kpm_info((const char *__user)arg1, (char *__user)arg2, (int)arg3);
+    case SUPERCALL_BOOTLOG:
+        return call_bootlog();
+    case SUPERCALL_PANIC:
+        return call_panic();
     case SUPERCALL_TEST:
         return call_test(arg1, arg2, arg3);
     }

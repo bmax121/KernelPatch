@@ -90,6 +90,9 @@ int main(int argc, char **argv)
         { "kver", SUPERCALL_KERNEL_VER },
         { "su", 's' },
         { "kpm", 'k' },
+        { "bootlog", 'l' },
+        { "panic", '.' },
+        { "test", 't' },
         { "--help", 'h' },
         { "-h", 'h' },
 #ifdef ANDROID
@@ -125,6 +128,15 @@ int main(int argc, char **argv)
     case 'm':
         strcat(program_name, " sumgr");
         return sumgr_main(argc - 2, argv + 2);
+    case 'l':
+        bootlog(key);
+        break;
+    case '.':
+        panic(key);
+        break;
+    case 't':
+        __test(key);
+        break;
     case 'h':
         usage(EXIT_SUCCESS);
         break;

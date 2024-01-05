@@ -16,6 +16,8 @@ extern "C"
     void kpv(const char *key);
     void kv(const char *key);
 
+    void bootlog(const char *key);
+    void panic(const char *key);
     int __test(const char *key);
 
 #ifdef __cplusplus
