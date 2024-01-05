@@ -72,6 +72,7 @@ struct map_symbol
         {
             uint64_t paging_init_relo;
             uint64_t memblock_reserve_relo;
+            uint64_t memblock_free_relo;
             uint64_t memblock_alloc_relo;
             uint64_t memblock_virt_alloc_relo;
             uint64_t memblock_mark_nomap_relo;
@@ -81,8 +82,6 @@ struct map_symbol
 };
 typedef struct map_symbol map_symbol_t;
 _Static_assert(sizeof(map_symbol_t) == MAP_SYMBOL_SIZE, "sizeof map_symbol_t mismatch");
-#else
-#define patch_map_symbol_size (MAP_SYMBOL_SIZE)
 #endif
 
 #ifndef __ASSEMBLY__
@@ -118,8 +117,6 @@ struct patch_symbol
 };
 typedef struct patch_symbol patch_symbol_t;
 _Static_assert(sizeof(patch_symbol_t) == PATCH_SYMBOL_LEN, "sizeof patch_symbol_t mismatch");
-#else
-#define patch_symbol_size (PATCH_SYMBOL_LEN)
 #endif
 
 #ifndef __ASSEMBLY__
@@ -133,8 +130,6 @@ struct patch_config
 };
 typedef struct patch_config patch_config_t;
 _Static_assert(sizeof(patch_config_t) == PATCH_CONFIG_LEN, "sizeof patch_config_t mismatch");
-#else
-#define patch_config_size (PATCH_CONFIG_LEN)
 #endif
 
 #ifndef __ASSEMBLY__
@@ -148,6 +143,8 @@ typedef struct _setup_preset_t
     int64_t start_offset;
     int64_t map_offset; // must aligned MAP_ALIGN
     int64_t map_max_size;
+
+    map_symbol_t map_symbol;
 
     int64_t kallsyms_lookup_name_offset;
     int64_t paging_init_offset;
@@ -173,7 +170,8 @@ typedef struct _setup_preset_t
 #define setup_start_offset_offset (setup_kp_offset_offset + 8)
 #define setup_map_offset_offset (setup_start_offset_offset + 8)
 #define setup_map_max_size_offset (setup_map_offset_offset + 8)
-#define setup_kallsyms_lookup_name_offset_offset (setup_map_max_size_offset + 8)
+#define setup_map_symbol_offset (setup_map_max_size_offset + 8)
+#define setup_kallsyms_lookup_name_offset_offset (setup_map_symbol_offset + MAP_SYMBOL_SIZE)
 #define setup_paging_init_offset_offset (setup_kallsyms_lookup_name_offset_offset + 8)
 #define setup_printk_offset_offset (setup_paging_init_offset_offset + 8)
 #define setup_memblock_reserve_offset_offset (setup_printk_offset_offset + 8)

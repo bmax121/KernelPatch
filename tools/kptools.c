@@ -138,6 +138,17 @@ static int32_t get_symbol_offset_zero(kallsym_t *info, char *img, char *symbol)
     return offset > 0 ? offset : 0;
 }
 
+static int32_t get_symbol_offset_exit(kallsym_t *info, char *img, char *symbol)
+{
+    int32_t offset = get_symbol_offset(info, img, symbol);
+    if (offset >= 0) {
+        return offset;
+    } else {
+        fprintf(stdout, "[-] kallsyms no symbol: %s\n", symbol);
+        exit(-1);
+    }
+}
+
 struct on_each_symbol_struct
 {
     const char *symbol;
@@ -230,7 +241,24 @@ static int fillin_patch_symbol(kallsym_t *kallsym, char *img_buf, patch_symbol_t
             *pos = i64swp(*pos);
         }
     }
+    return 0;
+}
 
+static int fillin_map_symbol(kallsym_t *kallsym, char *img_buf, map_symbol_t *symbol, int32_t target_is_be)
+{
+    symbol->paging_init_relo = get_symbol_offset_exit(kallsym, img_buf, "paging_init");
+    symbol->memblock_reserve_relo = get_symbol_offset_exit(kallsym, img_buf, "memblock_reserve");
+    symbol->memblock_free_relo = get_symbol_offset_exit(kallsym, img_buf, "memblock_free");
+    symbol->memblock_alloc_relo = get_symbol_offset_zero(kallsym, img_buf, "memblock_alloc_try_nid");
+    if (!symbol->memblock_alloc_relo) get_symbol_offset_exit(kallsym, img_buf, "memblock_phys_alloc_try_nid");
+    symbol->memblock_virt_alloc_relo = get_symbol_offset_exit(kallsym, img_buf, "memblock_virt_alloc_try_nid");
+    symbol->memblock_mark_nomap_relo = get_symbol_offset_exit(kallsym, img_buf, "memblock_mark_nomap");
+
+    if ((is_be() ^ target_is_be)) {
+        for (int64_t *pos = (int64_t *)symbol; pos <= (int64_t *)symbol; pos++) {
+            *pos = i64swp(*pos);
+        }
+    }
     return 0;
 }
 
@@ -321,6 +349,9 @@ int patch_image()
     preset->map_offset = map_start;
     preset->map_max_size = map_max_size;
     fprintf(stdout, "[+] kptools map_start: 0x%x, max_size: 0x%x\n", map_start, map_max_size);
+
+    map_symbol_t *map_symbol = &preset->map_symbol;
+    fillin_map_symbol(&kallsym, image_buf, map_symbol, kinfo.is_be);
 
     preset->kallsyms_lookup_name_offset = get_symbol_offset(&kallsym, image_buf, "kallsyms_lookup_name");
 

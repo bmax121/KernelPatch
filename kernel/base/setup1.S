@@ -10,8 +10,8 @@ memcpy8:
     cmp x2, 0
     ble .l8end
 .l8loop:
-    ldrb w9, [x1], 1
-    strb w9, [x0], 1
+    ldrb w3, [x1], 1
+    strb w3, [x0], 1
     subs x2, x2, 1
     cbnz x2, .l8loop
 .l8end:
@@ -24,8 +24,8 @@ rmemcpy32:
     subs x2, x2, #0x4
     b.lt .r32end
 .r32loop:
-    ldr w9, [x1, x2]
-    str w9, [x0, x2]
+    ldr w3, [x1, x2]
+    str w3, [x0, x2]
     subs x2, x2, #0x4
     b.ge .r32loop
 .r32end:
@@ -40,9 +40,9 @@ start_prepare:
     stp x21, x22, [sp, -16]!
     // kernel_pa
     mov x19, x0
-    // map_preset
-    adrp x9, map_preset
-    add x9, x9, :lo12:map_preset
+    // map_data
+    adrp x9, map_data
+    add x9, x9, :lo12:map_data
     // setup_preset
     adrp x10, setup_preset
     add x10, x10, :lo12:setup_preset
@@ -87,13 +87,13 @@ start_prepare:
     // memcpy(&start_preset.patch_symbol, &setup_preset.patch_symbol, sizeof(header.patch_symbol));
     add x0, x11, #start_patch_symbol_offset;
     add x1, x10, #setup_patch_symbol_offset
-    mov x2, #patch_symbol_size
+    mov x2, #PATCH_SYMBOL_LEN
     bl memcpy8
 
     // memcpy(&start_preset.patch_config, &setup_preset.patch_config, sizeof(header.patch_config));
     add x0, x11, #start_patch_config_offset;
     add x1, x10, #setup_patch_config_offset
-    mov x2, #patch_config_size
+    mov x2, #PATCH_CONFIG_LEN
     bl memcpy8
 
     // backup map area
@@ -133,57 +133,62 @@ map_prepare:
     stp x29, x30, [sp, -16]!
     stp x19, x20, [sp, -16]!
     mov x19, x0
-    // map_preset
-    adrp x9, map_preset
-    add x9, x9, :lo12:map_preset
+    // map_data
+    adrp x9, map_data
+    add x9, x9, :lo12:map_data
     // setup_preset
     adrp x10, setup_preset
     add x10, x10, :lo12:setup_preset
-    // map_preset.kernel_pa = kernel_pa;
+    // map_data.kernel_pa = kernel_pa;
     str x19, [x9, #map_kernel_pa_offset]
-    // map_preset.map_offset = setup_preset.map_offset;
+    // map_data.map_offset = setup_preset.map_offset;
     ldr x11, [x10, #setup_map_offset_offset]
     str x11, [x9, #map_map_offset_offset]
     mov x14, x11
-    // map_preset.paging_init_relo = setup_preset.paging_init_offset;
+    // map_data.map_symbol = setup_preset.map_symbol
+    add x0, x9, #map_map_symbol_offset
+    add x1, x10, #setup_map_symbol_offset
+    mov x2, #MAP_SYMBOL_SIZE
+    bl memcpy8
+    // map_data.paging_init_relo = setup_preset.paging_init_offset;
     ldr x11, [x10, #setup_paging_init_offset_offset]
     str x11, [x9, #map_paging_init_relo_offset]
     mov x15, x11
-    // map_preset.memblock_reserve_relo = setup_preset.memblock_reserve_offset;
+    // map_data.memblock_reserve_relo = setup_preset.memblock_reserve_offset;
     ldr x11, [x10, #setup_memblock_reserve_offset_offset]
     str x11, [x9, #map_memblock_reserve_relo_offset]
-    // map_preset.memblock_alloc_try_nid_relo = setup_preset.memblock_alloc_try_nid_offset;
+    // map_data.memblock_alloc_try_nid_relo = setup_preset.memblock_alloc_try_nid_offset;
     ldr x11, [x10, #setup_memblock_alloc_try_nid_offset_offset]
     str x11, [x9, #map_memblock_alloc_try_nid_relo_offset]
-    // map_preset.memblock_mark_nomap_relo = setup_preset.memblock_mark_nomap_offset;
+    // map_data.memblock_mark_nomap_relo = setup_preset.memblock_mark_nomap_offset;
     ldr x11, [x10, #setup_memblock_mark_nomap_offset]
     str x11, [x9, #map_memblock_mark_nomap_relo_offset]
-    // map_preset.vabits_flag = setup_preset.vabits_flag 
+    // map_data.vabits_flag = setup_preset.vabits_flag 
     ldr x11, [x10, #setup_vabits_flag_offset]
     str x11, [x9, #map_vabits_flag_offset]
-    // map_preset.memstart_addr_relo = setup_preset.memstart_addr_offset 
+    // map_data.memstart_addr_relo = setup_preset.memstart_addr_offset 
     ldr x11, [x10, #setup_memstart_addr_offset_offset]
     str x11, [x9, #map_memstart_addr_relo_offset]
-    // map_preset.kimage_voffset_relo = setup_preset.kimage_voffset_offset 
+    // map_data.kimage_voffset_relo = setup_preset.kimage_voffset_offset 
     ldr x11, [x10, #setup_kimage_voffset_offset_offset]
     str x11, [x9, #map_kimage_voffset_relo_offset]
 #ifdef MAP_DEBUG
-    // map_preset.printk_relo = setup_preset.printk_offset;
+    // map_data.printk_relo = setup_preset.printk_offset;
     ldr x11, [x10, #setup_printk_offset_offset]
     str x11, [x9, #map_printk_relo_offset]
 #endif
     // set start memory info
-    // map_preset.start_offset = setup_preset.start_offset;
+    // map_data.start_offset = setup_preset.start_offset;
     ldr x11, [x10, #setup_start_offset_offset]
     str x11, [x9, #map_start_offset_offset]
-    // map_preset.start_size = (int64_t)(_kp_end - _kp_start);
+    // map_data.start_size = (int64_t)(_kp_end - _kp_start);
     adrp x11, _kp_end
     add x11, x11, :lo12:_kp_end
     adrp x12, _kp_start
     add x12, x12, :lo12:_kp_start
     sub x11, x11, x12
     str x11, [x9, #map_start_size_offset]
-    // map_preset.alloc_size = HOOK_ALLOC_SIZE + MEMORY_ROX_SIZE + MEMORY_RW_SIZE;
+    // map_data.alloc_size = HOOK_ALLOC_SIZE + MEMORY_ROX_SIZE + MEMORY_RW_SIZE;
     mov x11, #HOOK_ALLOC_SIZE
     add x11, x11, #MEMORY_ROX_SIZE
     add x11, x11, #MEMORY_RW_SIZE
@@ -192,7 +197,7 @@ map_prepare:
     // backup and hook paging_init
     // uint64_t paging_init_pa = paging_init_offset + kernel_pa;
     add x13, x15, x19
-    // map_preset.paging_init_backup = *(uint32_t *)(paging_init_pa);
+    // map_data.paging_init_backup = *(uint32_t *)(paging_init_pa);
     ldr w12, [x13]
     str w12, [x9, #map_paging_init_backup_offset]
     dsb ish
