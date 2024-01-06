@@ -126,10 +126,9 @@ static void target_endian_preset(setup_preset_t *preset, int32_t target_is_be)
     preset->kp_offset = i64swp(preset->kp_offset);
     preset->map_offset = i64swp(preset->map_offset);
     preset->map_max_size = i64swp(preset->map_max_size);
-    for (int64_t *pos = (int64_t *)&preset->kallsyms_lookup_name_offset;
-         pos <= (int64_t *)&preset->kimage_voffset_offset; pos++) {
-        *pos = i64swp(*pos);
-    }
+    preset->kallsyms_lookup_name_offset = i64swp(preset->kallsyms_lookup_name_offset);
+    preset->paging_init_offset = i64swp(preset->paging_init_offset);
+    preset->printk_offset = i64swp(preset->printk_offset);
 }
 
 static int32_t get_symbol_offset_zero(kallsym_t *info, char *img, char *symbol)
@@ -246,13 +245,19 @@ static int fillin_patch_symbol(kallsym_t *kallsym, char *img_buf, patch_symbol_t
 
 static int fillin_map_symbol(kallsym_t *kallsym, char *img_buf, map_symbol_t *symbol, int32_t target_is_be)
 {
-    symbol->paging_init_relo = get_symbol_offset_exit(kallsym, img_buf, "paging_init");
     symbol->memblock_reserve_relo = get_symbol_offset_exit(kallsym, img_buf, "memblock_reserve");
     symbol->memblock_free_relo = get_symbol_offset_exit(kallsym, img_buf, "memblock_free");
-    symbol->memblock_alloc_relo = get_symbol_offset_zero(kallsym, img_buf, "memblock_alloc_try_nid");
-    if (!symbol->memblock_alloc_relo) get_symbol_offset_exit(kallsym, img_buf, "memblock_phys_alloc_try_nid");
-    symbol->memblock_virt_alloc_relo = get_symbol_offset_exit(kallsym, img_buf, "memblock_virt_alloc_try_nid");
-    symbol->memblock_mark_nomap_relo = get_symbol_offset_exit(kallsym, img_buf, "memblock_mark_nomap");
+
+    symbol->memblock_mark_nomap_relo = get_symbol_offset_zero(kallsym, img_buf, "memblock_mark_nomap");
+
+    symbol->memblock_phys_alloc_relo = get_symbol_offset_zero(kallsym, img_buf, "memblock_phys_alloc_try_nid");
+    symbol->memblock_virt_alloc_relo = get_symbol_offset_zero(kallsym, img_buf, "memblock_virt_alloc_try_nid");
+    if (!symbol->memblock_phys_alloc_relo && !symbol->memblock_virt_alloc_relo) return -1;
+
+    uint64_t memblock_alloc_try_nid = get_symbol_offset_zero(kallsym, img_buf, "memblock_alloc_try_nid");
+    if (!symbol->memblock_phys_alloc_relo) symbol->memblock_phys_alloc_relo = memblock_alloc_try_nid;
+    if (!symbol->memblock_virt_alloc_relo) symbol->memblock_virt_alloc_relo = memblock_alloc_try_nid;
+    if (!symbol->memblock_phys_alloc_relo && !symbol->memblock_virt_alloc_relo) return -1;
 
     if ((is_be() ^ target_is_be)) {
         for (int64_t *pos = (int64_t *)symbol; pos <= (int64_t *)symbol; pos++) {
@@ -360,35 +365,6 @@ int patch_image()
 
     int32_t paging_init_offset = get_symbol_offset(&kallsym, image_buf, "paging_init");
     preset->paging_init_offset = relo_branch_func(image_buf, paging_init_offset);
-
-    preset->memblock_reserve_offset = get_symbol_offset(&kallsym, image_buf, "memblock_reserve");
-
-    preset->memblock_alloc_try_nid_offset = get_symbol_offset(&kallsym, image_buf, "memblock_phys_alloc_try_nid");
-    if (preset->memblock_alloc_try_nid_offset <= 0)
-        preset->memblock_alloc_try_nid_offset = get_symbol_offset(&kallsym, image_buf, "memblock_alloc_try_nid");
-
-    preset->memblock_mark_nomap_offset = get_symbol_offset(&kallsym, image_buf, "memblock_mark_nomap");
-    if (preset->memblock_mark_nomap_offset < 0) {
-        preset->memblock_mark_nomap_offset = 0;
-    }
-
-    preset->memstart_addr_offset = get_symbol_offset(&kallsym, image_buf, "memstart_addr");
-    if (preset->memstart_addr_offset < 0) preset->memstart_addr_offset = 0;
-    if (!preset->memstart_addr_offset) {
-        fprintf(stdout, "[!] kptools ==== warring ====\n");
-        fprintf(stdout, "[!] kptools ==== warring ====\n");
-        fprintf(stdout, "[!] kptools It seems that CONFIG_KALLSYMS_ALL=y is not enabled in the kernel.\n");
-        fprintf(stdout, "[!] kptools It is recommended that you do not flash it and wait for support.\n");
-        fprintf(stdout, "[!] kptools ==== warring ====\n");
-        fprintf(stdout, "[!] kptools ==== warring ====\n");
-        return -1;
-    }
-
-    if (kallsym.version.major >= 6) preset->vabits_flag = 1;
-    if (get_symbol_offset(&kallsym, image_buf, "vabits_actual") > 0) preset->vabits_flag = 1;
-
-    preset->kimage_voffset_offset = get_symbol_offset(&kallsym, image_buf, "kimage_voffset");
-    if (preset->kimage_voffset_offset < 0) preset->kimage_voffset_offset = 0;
 
     if (strlen(superkey) > 0) {
         strncpy((char *)preset->superkey, superkey, SUPER_KEY_LEN);

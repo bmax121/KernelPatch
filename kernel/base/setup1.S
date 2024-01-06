@@ -145,33 +145,16 @@ map_prepare:
     ldr x11, [x10, #setup_map_offset_offset]
     str x11, [x9, #map_map_offset_offset]
     mov x14, x11
+    // map_data.paging_init_relo = setup_preset.paging_init_offset;
+    ldr x11, [x10, #setup_paging_init_offset_offset]
+    str x11, [x9, #map_paging_init_relo_offset]
+    mov x15, x11
     // map_data.map_symbol = setup_preset.map_symbol
     add x0, x9, #map_map_symbol_offset
     add x1, x10, #setup_map_symbol_offset
     mov x2, #MAP_SYMBOL_SIZE
     bl memcpy8
-    // map_data.paging_init_relo = setup_preset.paging_init_offset;
-    ldr x11, [x10, #setup_paging_init_offset_offset]
-    str x11, [x9, #map_paging_init_relo_offset]
-    mov x15, x11
-    // map_data.memblock_reserve_relo = setup_preset.memblock_reserve_offset;
-    ldr x11, [x10, #setup_memblock_reserve_offset_offset]
-    str x11, [x9, #map_memblock_reserve_relo_offset]
-    // map_data.memblock_alloc_try_nid_relo = setup_preset.memblock_alloc_try_nid_offset;
-    ldr x11, [x10, #setup_memblock_alloc_try_nid_offset_offset]
-    str x11, [x9, #map_memblock_alloc_try_nid_relo_offset]
-    // map_data.memblock_mark_nomap_relo = setup_preset.memblock_mark_nomap_offset;
-    ldr x11, [x10, #setup_memblock_mark_nomap_offset]
-    str x11, [x9, #map_memblock_mark_nomap_relo_offset]
-    // map_data.vabits_flag = setup_preset.vabits_flag 
-    ldr x11, [x10, #setup_vabits_flag_offset]
-    str x11, [x9, #map_vabits_flag_offset]
-    // map_data.memstart_addr_relo = setup_preset.memstart_addr_offset 
-    ldr x11, [x10, #setup_memstart_addr_offset_offset]
-    str x11, [x9, #map_memstart_addr_relo_offset]
-    // map_data.kimage_voffset_relo = setup_preset.kimage_voffset_offset 
-    ldr x11, [x10, #setup_kimage_voffset_offset_offset]
-    str x11, [x9, #map_kimage_voffset_relo_offset]
+    
 #ifdef MAP_DEBUG
     // map_data.printk_relo = setup_preset.printk_offset;
     ldr x11, [x10, #setup_printk_offset_offset]

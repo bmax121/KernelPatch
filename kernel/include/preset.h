@@ -19,7 +19,7 @@
 #define CONFIG_DEBUG 0x1
 #define CONFIG_ANDROID 0x2
 
-#define MAP_SYMBOL_NUM (10)
+#define MAP_SYMBOL_NUM (5)
 #define MAP_SYMBOL_SIZE (MAP_SYMBOL_NUM * 8)
 
 #define PATCH_SYMBOL_LEN (512)
@@ -70,10 +70,9 @@ struct map_symbol
     {
         struct
         {
-            uint64_t paging_init_relo;
             uint64_t memblock_reserve_relo;
             uint64_t memblock_free_relo;
-            uint64_t memblock_alloc_relo;
+            uint64_t memblock_phys_alloc_relo;
             uint64_t memblock_virt_alloc_relo;
             uint64_t memblock_mark_nomap_relo;
         };
@@ -143,18 +142,10 @@ typedef struct _setup_preset_t
     int64_t start_offset;
     int64_t map_offset; // must aligned MAP_ALIGN
     int64_t map_max_size;
-
-    map_symbol_t map_symbol;
-
     int64_t kallsyms_lookup_name_offset;
     int64_t paging_init_offset;
     int64_t printk_offset;
-    int64_t memblock_reserve_offset;
-    int64_t memblock_alloc_try_nid_offset;
-    int64_t vabits_flag;
-    int64_t memstart_addr_offset;
-    int64_t kimage_voffset_offset;
-    int64_t memblock_mark_nomap_offset;
+    map_symbol_t map_symbol;
 
     uint8_t header_backup[HDR_BACKUP_SIZE];
     uint8_t superkey[SUPER_KEY_LEN];
@@ -170,17 +161,11 @@ typedef struct _setup_preset_t
 #define setup_start_offset_offset (setup_kp_offset_offset + 8)
 #define setup_map_offset_offset (setup_start_offset_offset + 8)
 #define setup_map_max_size_offset (setup_map_offset_offset + 8)
-#define setup_map_symbol_offset (setup_map_max_size_offset + 8)
-#define setup_kallsyms_lookup_name_offset_offset (setup_map_symbol_offset + MAP_SYMBOL_SIZE)
+#define setup_kallsyms_lookup_name_offset_offset (setup_map_max_size_offset + 8)
 #define setup_paging_init_offset_offset (setup_kallsyms_lookup_name_offset_offset + 8)
 #define setup_printk_offset_offset (setup_paging_init_offset_offset + 8)
-#define setup_memblock_reserve_offset_offset (setup_printk_offset_offset + 8)
-#define setup_memblock_alloc_try_nid_offset_offset (setup_memblock_reserve_offset_offset + 8)
-#define setup_vabits_flag_offset (setup_memblock_alloc_try_nid_offset_offset + 8)
-#define setup_memstart_addr_offset_offset (setup_vabits_flag_offset + 8)
-#define setup_kimage_voffset_offset_offset (setup_memstart_addr_offset_offset + 8)
-#define setup_memblock_mark_nomap_offset (setup_kimage_voffset_offset_offset + 8)
-#define setup_header_backup_offset (setup_memblock_mark_nomap_offset + 8)
+#define setup_map_symbol_offset (setup_printk_offset_offset + 8)
+#define setup_header_backup_offset (setup_map_symbol_offset + MAP_SYMBOL_SIZE)
 #define setup_superkey_offset (setup_header_backup_offset + HDR_BACKUP_SIZE)
 #define setup_patch_symbol_offset (setup_superkey_offset + SUPER_KEY_LEN)
 #define setup_patch_config_offset (setup_patch_symbol_offset + PATCH_SYMBOL_LEN)

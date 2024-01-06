@@ -26,30 +26,17 @@ typedef struct
     int64_t start_size;
     int64_t alloc_size;
     uint64_t kernel_pa;
-
-    map_symbol_t map_symbol;
-
     uint64_t paging_init_relo;
-    uint64_t memblock_reserve_relo;
-    uint64_t memblock_free_relo;
-    uint64_t memblock_alloc_try_nid_relo;
-    uint64_t memblock_virt_alloc_try_nid_relo;
-    uint64_t memblock_mark_nomap_relo;
-
-    uint64_t vabits_flag;
-    int64_t memstart_addr_relo;
-    uint64_t kimage_voffset_relo;
+    map_symbol_t map_symbol;
 #ifdef MAP_DEBUG
     uint64_t printk_relo;
-    uint64_t tmp0;
-    uint64_t tmp1;
     char str_fmt_px[24];
 #endif
     // local
     int64_t va1_bits;
     int64_t page_shift;
-    uint64_t kernel_va;
-    uint64_t page_offset;
+    uint64_t kimage_voffset;
+    uint64_t linear_voffset;
 } map_data_t;
 #else
 #define map_paging_init_backup_offset 0
@@ -58,18 +45,10 @@ typedef struct
 #define map_start_size_offset 0x18
 #define map_alloc_size_offset 0x20
 #define map_kernel_pa_offset 0x28
-#define map_map_symbol_offset (map_kernel_pa_offset + 8)
-#define map_paging_init_relo_offset (map_map_symbol_offset + MAP_SYMBOL_SIZE)
-#define map_memblock_reserve_relo_offset (map_paging_init_relo_offset + 8)
-#define map_memblock_free_relo_offset (map_memblock_reserve_relo_offset + 8)
-#define map_memblock_alloc_try_nid_relo_offset (map_memblock_free_relo_offset + 8)
-#define map_memblock_virt_alloc_try_nid_relo_offset (map_memblock_alloc_try_nid_relo_offset + 8)
-#define map_memblock_mark_nomap_relo_offset (map_memblock_virt_alloc_try_nid_relo_offset + 8)
-#define map_vabits_flag_offset (map_memblock_mark_nomap_relo_offset + 8)
-#define map_memstart_addr_relo_offset (map_vabits_flag_offset + 8)
-#define map_kimage_voffset_relo_offset (map_memstart_addr_relo_offset + 8)
+#define map_paging_init_relo_offset (map_kernel_pa_offset + 8)
+#define map_map_symbol_offset (map_paging_init_relo_offset + 8)
 #ifdef MAP_DEBUG
-#define map_printk_relo_offset (map_kimage_voffset_relo_offset + 8)
+#define map_printk_relo_offset (map_map_symbol_offset + MAP_SYMBOL_SIZE)
 #define map_tmp0_offset (map_printk_relo_offset + 8)
 #define map_tmp1_offset (map_tmp0_offset + 8)
 #define map_str_fmt_px_offset (map_tmp1_offset + 8)
@@ -77,7 +56,7 @@ typedef struct
 #endif
 
 #ifndef __ASSEMBLY__
-typedef int (*start_f)(uint64_t kva, uint64_t offset);
+typedef int (*start_f)(uint64_t kimage_voffset, uint64_t linear_voffset);
 extern void _start_kernel();
 extern void _paging_init();
 extern void _link_base();

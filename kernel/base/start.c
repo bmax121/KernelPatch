@@ -88,7 +88,6 @@ uint64_t page_offset = 0;
 int64_t page_shift = 0;
 int64_t page_size = 0;
 int64_t va_bits = 0;
-uint64_t kp_kimg_offset = 0;
 // int64_t pa_bits = 0;
 
 tlsf_t kp_rw_mem = 0;
@@ -393,13 +392,9 @@ static void log_regs()
     // log_reg(PMSIDR_EL1); //       | R   [4] | Sampling Profiling ID Register
 }
 
-static void start_init(uint64_t kva, uint64_t offset)
+static void start_init()
 {
-    kernel_va = kva;
-    kp_kimg_offset = offset;
-    kernel_pa = start_preset.kernel_pa;
-    kernel_size = start_preset.kernel_size;
-    uint64_t kallsym_addr = kva + start_preset.kallsyms_lookup_name_offset;
+    uint64_t kallsym_addr = kernel_va + start_preset.kallsyms_lookup_name_offset;
     kallsyms_lookup_name = (typeof(kallsyms_lookup_name))(kallsym_addr);
     kernel_stext_va = kallsyms_lookup_name("_stext");
     printk = (typeof(printk))kallsyms_lookup_name("printk");
@@ -436,10 +431,14 @@ static int nice_zone()
     return err;
 }
 
-int __attribute__((section(".start.text"))) __noinline start(uint64_t kva, uint64_t offset)
+int __attribute__((section(".start.text"))) __noinline start(uint64_t kimage_voffset, uint64_t linear_voffset)
 {
+    kernel_pa = start_preset.kernel_pa;
+    kernel_va = kimage_voffset + kernel_pa;
+    kernel_size = start_preset.kernel_size;
+
     int rc = 0;
-    start_init(kva, offset);
+    start_init();
     pgtable_init();
     prot_myself();
     restore_map();

@@ -99,7 +99,6 @@ extern int64_t kernel_size;
 extern int64_t page_shift;
 extern int64_t page_size;
 extern int64_t va_bits;
-extern uint64_t kp_kimg_offset;
 // extern int64_t pa_bits;
 
 static inline uint64_t phys_to_virt(uint64_t phys)
@@ -124,7 +123,7 @@ static inline uint64_t kimg_to_phys(uint64_t addr)
 
 static inline uint64_t kp_kimg_to_phys(uint64_t addr)
 {
-    return addr - kp_kimg_offset - kimage_voffset;
+    return addr - kimage_voffset;
 }
 
 static inline void flush_tlb_kernel_range(uint64_t start, uint64_t end)
