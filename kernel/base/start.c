@@ -78,17 +78,17 @@ uint64_t _kp_rw_end = 0;
 uint64_t _kp_region_start = 0;
 uint64_t _kp_region_end = 0;
 
+uint64_t kimage_voffset = 0;
+uint64_t linear_voffset = 0;
 uint64_t kernel_va = 0;
-uint64_t kernel_stext_va = 0;
 uint64_t kernel_pa = 0;
 int64_t kernel_size = 0;
-int64_t memstart_addr = 0;
-uint64_t kimage_voffset = 0;
-uint64_t page_offset = 0;
 int64_t page_shift = 0;
 int64_t page_size = 0;
 int64_t va_bits = 0;
 // int64_t pa_bits = 0;
+
+uint64_t kernel_stext_va = 0;
 
 tlsf_t kp_rw_mem = 0;
 tlsf_t kp_rox_mem = 0;
@@ -199,7 +199,7 @@ static void prot_myself()
         uint64_t *pte = pgtable_entry_kernel(i);
         *pte |= PTE_SHARED;
         *pte = *pte & ~PTE_PXN;
-        if (kimage_voffset) {
+        if (has_vmalloc_area()) {
             *pte |= PTE_RDONLY;
             *pte &= ~PTE_DBM;
         }
@@ -215,7 +215,7 @@ static void prot_myself()
     for (uint64_t i = data_start; i < align_data_end; i += page_size) {
         uint64_t *pte = pgtable_entry_kernel(i);
         *pte = (*pte | PTE_DBM | PTE_SHARED) & ~PTE_RDONLY;
-        if (kimage_voffset) {
+        if (has_vmalloc_area()) {
             *pte |= PTE_PXN;
         }
     }
@@ -242,7 +242,7 @@ static void prot_myself()
     for (uint64_t i = _kp_rw_start; i < _kp_rw_end; i += page_size) {
         uint64_t *pte = pgtable_entry_kernel(i);
         *pte = (*pte | PTE_DBM | PTE_SHARED) & ~PTE_RDONLY;
-        if (kimage_voffset) {
+        if (has_vmalloc_area()) {
             *pte |= PTE_PXN;
         }
     }
@@ -264,7 +264,7 @@ static void prot_myself()
         *pte |= PTE_SHARED;
         *pte = *pte & ~PTE_PXN;
         // todo: tlsf malloc block_split will write to alloced memory
-        // if (kimage_voffset) {
+        // if (has_vmalloc_area()) {
         // *pte |= PTE_RDONLY;
         // *pte &= ~PTE_DBM;
         // }
@@ -272,16 +272,17 @@ static void prot_myself()
     flush_tlb_kernel_range(_kp_rox_start, _kp_rox_end);
 
     // add to vmalloc area
-    if (kimage_voffset) {
-        // log_boot("Add to vmalloc area", 0, 0);
-        void (*vm_area_add_early)(struct vm_struct *vm) =
-            (typeof(vm_area_add_early))kallsyms_lookup_name("vm_area_add_early");
+    void (*vm_area_add_early)(struct vm_struct *vm) =
+        (typeof(vm_area_add_early))kallsyms_lookup_name("vm_area_add_early");
+
+    if (vm_area_add_early) {
         kp_vm.addr = (void *)_kp_region_start;
         kp_vm.phys_addr = kp_kimg_to_phys(_kp_region_start);
         kp_vm.size = _kp_region_end - _kp_region_start;
         kp_vm.flags = 0x00000044;
         kp_vm.caller = (void *)_kp_region_start;
         vm_area_add_early(&kp_vm);
+        log_boot("add vmalloc area: %llx, %llx\n", kp_vm.addr, kp_vm.size);
     }
 }
 
@@ -303,34 +304,6 @@ static void restore_map()
         flush_tlb_kernel_page(i);
     }
     flush_icache_all();
-}
-
-static void pgtable_init()
-{
-    uint64_t addr = kallsyms_lookup_name("memstart_addr");
-    if (addr) memstart_addr = *(int64_t *)addr;
-
-    addr = kallsyms_lookup_name("kimage_voffset");
-    if (addr) kimage_voffset = *(uint64_t *)addr;
-
-    uint64_t tcr_el1;
-    asm volatile("mrs %0, tcr_el1" : "=r"(tcr_el1));
-    uint64_t t1sz = bits(tcr_el1, 21, 16);
-    va_bits = 64 - t1sz;
-    uint64_t tg1 = bits(tcr_el1, 31, 30);
-
-    page_shift = 12;
-    if (tg1 == 1) {
-        page_shift = 14;
-    } else if (tg1 == 3) {
-        page_shift = 16;
-    }
-    page_size = 1 << page_shift;
-    uint64_t vabits_actual_addr = kallsyms_lookup_name("vabits_actual");
-    page_offset = (vabits_actual_addr || kver >= VERSION(6, 0, 0)) ? -(1ul << va_bits) :
-                                                                     (0xffffffffffffffff << (va_bits - 1));
-    dsb(ish);
-    isb();
 }
 
 #define log_reg(regname)                                                   \
@@ -392,8 +365,15 @@ static void log_regs()
     // log_reg(PMSIDR_EL1); //       | R   [4] | Sampling Profiling ID Register
 }
 
-static void start_init()
+static void start_init(uint64_t kimage_voff, uint64_t linear_voff)
 {
+    kimage_voffset = kimage_voff;
+    linear_voffset = linear_voff;
+
+    kernel_pa = start_preset.kernel_pa;
+    kernel_va = kimage_voff + kernel_pa;
+    kernel_size = start_preset.kernel_size;
+
     uint64_t kallsym_addr = kernel_va + start_preset.kallsyms_lookup_name_offset;
     kallsyms_lookup_name = (typeof(kallsyms_lookup_name))(kallsym_addr);
     kernel_stext_va = kallsyms_lookup_name("_stext");
@@ -420,6 +400,20 @@ static void start_init()
 
     kallsyms_on_each_symbol = (typeof(kallsyms_on_each_symbol))kallsyms_lookup_name("kallsyms_on_each_symbol");
     lookup_symbol_attrs = (typeof(lookup_symbol_attrs))kallsyms_lookup_name("lookup_symbol_attrs");
+
+    uint64_t tcr_el1;
+    asm volatile("mrs %0, tcr_el1" : "=r"(tcr_el1));
+    uint64_t t1sz = bits(tcr_el1, 21, 16);
+    va_bits = 64 - t1sz;
+    uint64_t tg1 = bits(tcr_el1, 31, 30);
+
+    page_shift = 12;
+    if (tg1 == 1) {
+        page_shift = 14;
+    } else if (tg1 == 3) {
+        page_shift = 16;
+    }
+    page_size = 1 << page_shift;
 }
 
 static int nice_zone()
@@ -431,15 +425,10 @@ static int nice_zone()
     return err;
 }
 
-int __attribute__((section(".start.text"))) __noinline start(uint64_t kimage_voffset, uint64_t linear_voffset)
+int __attribute__((section(".start.text"))) __noinline start(uint64_t kimage_voff, uint64_t linear_voff)
 {
-    kernel_pa = start_preset.kernel_pa;
-    kernel_va = kimage_voffset + kernel_pa;
-    kernel_size = start_preset.kernel_size;
-
     int rc = 0;
-    start_init();
-    pgtable_init();
+    start_init(kimage_voff, linear_voff);
     prot_myself();
     restore_map();
     log_regs();

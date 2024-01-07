@@ -90,6 +90,10 @@ struct patch_symbol
     {
         struct
         {
+            uint64_t kallsyms_lookup_name;
+            uint64_t printk;
+            uint64_t vm_area_add_early;
+
             uint64_t panic;
             uint64_t rest_init;
             uint64_t cgroup_init;
