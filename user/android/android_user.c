@@ -90,7 +90,6 @@ static char *csv_val(const char *header, const char *line, const char *key)
     for (c = header; c < kpos; c++) {
         if (*c == ',') kidx++;
     }
-    printf("index: %d\n", kidx);
     for (c = line; kidx; c++) {
         if (*c == ',') kidx--;
     }
