@@ -19,6 +19,8 @@
 #include <symbol.h>
 #include <asm/processor.h>
 
+#define TASK_COMM_LEN 16
+
 struct task_struct_offset task_struct_offset = {
     .pid_offset = -1,
     .tgid_offset = -1,
@@ -72,22 +74,25 @@ struct cred_offset cred_offset = {
 };
 KP_EXPORT_SYMBOL(cred_offset);
 
+struct task_struct *init_task;
+struct cread *init_cred;
+
 int thread_size = -1;
 KP_EXPORT_SYMBOL(thread_size);
 
-bool thread_info_in_task = false;
+int thread_info_in_task = 0;
 KP_EXPORT_SYMBOL(thread_info_in_task);
 
-bool task_is_sp_el0 = false;
-KP_EXPORT_SYMBOL(task_is_sp_el0);
+int current_is_sp_el0 = 0;
+KP_EXPORT_SYMBOL(current_is_sp_el0);
 
-bool thread_info_is_sp_el0 = false;
+int thread_info_is_sp_el0 = 0;
 KP_EXPORT_SYMBOL(thread_info_is_sp_el0);
 
-bool thread_info_is_sp = false;
+int thread_info_is_sp = 0;
 KP_EXPORT_SYMBOL(thread_info_is_sp);
 
-int task_in_thread_info_offset = -1;
+int task_in_thread_info_offset = 16;
 KP_EXPORT_SYMBOL(task_in_thread_info_offset);
 
 int stack_in_task_offset = -1;
@@ -385,6 +390,18 @@ int resolve_cred_offset()
     return 0;
 }
 
+static int find_swapper_comm_offset(uint64_t start, int size)
+{
+    const char swapper_comm[TASK_COMM_LEN] = "swapper";
+    const char swapper_comm_1[TASK_COMM_LEN] = "swapper/0";
+    for (uint64_t i = start; i < start + size; i += 8) {
+        if (!memcmp(swapper_comm, (void *)i, TASK_COMM_LEN) || !memcmp(swapper_comm_1, (void *)i, TASK_COMM_LEN)) {
+            return i - start;
+        }
+    }
+    return 0;
+}
+
 int resolve_task_offset()
 {
     log_boot("struct task: \n");
@@ -397,60 +414,60 @@ int resolve_task_offset()
 
     uintptr_t start = (uintptr_t)task;
     uintptr_t end = start + task_len;
-    uintptr_t find = 0;
-    int16_t cand[8] = { 0 };
-    int ci = 0;
+    // uintptr_t find = 0;
+    // int16_t cand[8] = { 0 };
+    // int ci = 0;
 
     // cred and real_cred
-    find = (uintptr_t)kvar(init_cred);
-    memset(cand, 0, sizeof(cand));
-    ci = 0;
-    for (uintptr_t i = start; i < end; i += sizeof(uintptr_t)) {
-        uintptr_t val = *(uintptr_t *)i;
-        if (find == val) {
-            cand[ci++] = i - start;
-        }
-    }
-    if (ci != 2) return -EINVAL;
+    // find = (uintptr_t)kvar(init_cred);
+    // memset(cand, 0, sizeof(cand));
+    // ci = 0;
+    // for (uintptr_t i = start; i < end; i += sizeof(uintptr_t)) {
+    //     uintptr_t val = *(uintptr_t *)i;
+    //     if (find == val) {
+    //         cand[ci++] = i - start;
+    //     }
+    // }
+    // if (ci != 2) return -EINVAL;
 
-    uint64_t _flag[kvlen(init_cred) / 8];
-    struct cred *flag = (struct cred *)_flag;
-    memcpy(flag, kvar(init_cred), cred_len);
+    // uint64_t _flag[kvlen(init_cred) / 8];
+    // struct cred *flag = (struct cred *)_flag;
+    // memcpy(flag, kvar(init_cred), cred_len);
 
-    *(uintptr_t *)(start + cand[0]) = (uintptr_t)flag;
-    const struct cred *real_cred = get_task_cred(task);
-    if (real_cred == flag) {
-        task_struct_offset.real_cred_offset = cand[0];
-        task_struct_offset.cred_offset = cand[1];
-    } else {
-        task_struct_offset.real_cred_offset = cand[1];
-        task_struct_offset.cred_offset = cand[0];
-    }
+    // *(uintptr_t *)(start + cand[0]) = (uintptr_t)flag;
+    // const struct cred *real_cred = get_task_cred(task);
+    // if (real_cred == flag) {
+    //     task_struct_offset.real_cred_offset = cand[0];
+    //     task_struct_offset.cred_offset = cand[1];
+    // } else {
+    //     task_struct_offset.real_cred_offset = cand[1];
+    //     task_struct_offset.cred_offset = cand[0];
+    // }
 
-    log_boot("    cred offset: %x\n", task_struct_offset.cred_offset);
-    log_boot("    read_cred offset: %x\n", task_struct_offset.real_cred_offset);
+    // log_boot("    cred offset: %x\n", task_struct_offset.cred_offset);
+    // log_boot("    read_cred offset: %x\n", task_struct_offset.real_cred_offset);
 
     // stack
-    uintptr_t stack_base = (uintptr_t)kvar(init_thread_union);
-    for (uintptr_t i = start; i < end; i += sizeof(uintptr_t)) {
-        uintptr_t val = *(uintptr_t *)i;
-        if (stack_base == val) {
-            stack_in_task_offset = i - start;
-            task_struct_offset.stack_offset = stack_in_task_offset;
-            break;
-        }
-    }
-    log_boot("    stack offset: %x\n", task_struct_offset.stack_offset);
+    // uintptr_t stack_base = (uintptr_t)kvar(init_thread_union);
+    // for (uintptr_t i = start; i < end; i += sizeof(uintptr_t)) {
+    //     uintptr_t val = *(uintptr_t *)i;
+    //     if (stack_base == val) {
+    //         stack_in_task_offset = i - start;
+    //         task_struct_offset.stack_offset = stack_in_task_offset;
+    //         break;
+    //     }
+    // }
+    // log_boot("    stack offset: %x\n", task_struct_offset.stack_offset);
 
     // comm
-    for (uintptr_t i = start; i < end; i += sizeof(uintptr_t)) {
-        const char *comm = (const char *)i;
-        // swapper
-        if (!strncmp("swapper", comm, 7)) {
-            task_struct_offset.comm_offset = i - start;
-        }
-    }
-    log_boot("    comm offset: %x\n", task_struct_offset.comm_offset);
+    // for (uintptr_t i = start; i < end; i += sizeof(uintptr_t)) {
+    //     const char *comm = (const char *)i;
+    //     // swapper
+    //     if (!strncmp("swapper", comm, 7)) {
+    //         task_struct_offset.comm_offset = i - start;
+    //     }
+    // }
+    // log_boot("    comm offset: %x\n", task_struct_offset.comm_offset);
 
     // list_head
     // for (uintptr_t i = start; i < end; i += sizeof(uintptr_t)) {
@@ -556,7 +573,7 @@ int resolve_current()
 
     // where is task
     if (sp_el0 == (uint64_t)kvar(init_task)) {
-        task_is_sp_el0 = true;
+        current_is_sp_el0 = true;
         log_boot("    current is sp_el0\n");
     } else {
         if (sp_el0 == init_thread_union_addr) {
@@ -582,14 +599,132 @@ int resolve_current()
     return err;
 }
 
+#define TASK_STRUCT_MAX_SIZE 0x1800
+#define THREAD_INFO_MAX_SIZE 0x90
+#define CRED_MAX_SIZE 0x200
+
 int resolve_struct()
 {
-    if (thread_size <= 0) thread_size = 0x4000;
     full_cap = CAP_FULL_SET;
 
+    uint64_t sp_el0, sp;
+    asm volatile("mrs %0, sp_el0" : "=r"(sp_el0));
+    asm volatile("mov %0, sp" : "=r"(sp));
+
+    log_boot("sp_el0: %llx\n", sp_el0);
+    log_boot("sp: %llx\n", sp);
+
+    // uint64_t sp_low = sp & ~(0x4000 - 1);
+    // for (int i = 0; i < 0x4000; i += 8) {
+    //     logkd("qqqq %llx\n", *(uint64_t *)(sp_low + i));
+    // }
+
+    int comm_offset = 0;
+    // detect current
+    comm_offset = find_swapper_comm_offset(sp_el0, TASK_STRUCT_MAX_SIZE);
+    current_is_sp_el0 = (sp_el0 & (page_size - 1) || comm_offset);
+
+    if (current_is_sp_el0) {
+        log_boot("sp_el0: current\n");
+        init_task = (struct task_struct *)sp_el0;
+        // detect THREAD_SIZE and end_of_stack and CONFIG_THREAD_INFO_IN_TASK
+        int thread_shift_cand[] = { 14, 15, page_shift };
+        for (int i = 0; i < sizeof(thread_shift_cand) / sizeof(thread_shift_cand[0]); i++) {
+            int tsz = 1 << thread_shift_cand[i];
+            uint64_t sp_low = sp & ~(tsz - 1);
+            uint64_t *psp = (uint64_t *)sp_low;
+            if (*psp == STACK_END_MAGIC) {
+                thread_size = tsz;
+                stack_end_offset = 0;
+                thread_info_in_task = true;
+                break;
+            }
+            for (uint64_t *p = psp + 1; p < psp + THREAD_INFO_MAX_SIZE / 8; p++) {
+                if (*p == STACK_END_MAGIC) {
+                    thread_size = tsz;
+                    stack_end_offset = (uint64_t)p - sp_low;
+                    thread_info_in_task = false;
+                    break;
+                }
+            }
+        }
+        log_boot("  ====  stack end offset stack: %x\n", stack_end_offset);
+        log_boot("  ====  thread_info_in_task: %x\n", thread_info_in_task);
+    } else {
+        log_boot("sp_el0: current_thread_info\n");
+        thread_info_in_task = false;
+        int find_flag = 0;
+        // task_in_thread_info_offset, 16 generally, see thread_info_be490
+        for (uint64_t ptr = sp_el0; ptr < sp_el0 + THREAD_INFO_MAX_SIZE; ptr += sizeof(uint64_t)) {
+            uint64_t pv = *(uint64_t *)ptr;
+            if (pv == STACK_END_MAGIC) {
+                stack_end_offset = ptr - sp_el0;
+                break;
+            }
+            if (find_flag) continue;
+            if (!is_kimg_range(pv)) continue;
+            comm_offset = find_swapper_comm_offset(pv, TASK_STRUCT_MAX_SIZE);
+            if (comm_offset) {
+                init_task = (struct task_struct *)pv;
+                task_in_thread_info_offset = ptr - sp_el0;
+                find_flag = 1;
+            }
+        }
+        log_boot("=====  task offset of thread_info: %x\n", task_in_thread_info_offset);
+    }
+    log_boot("==== init_task addr: %llx\n", init_task);
+    log_boot("======= comm offset of task: %x\n", comm_offset);
+
+    if (thread_size <= 0) {
+        log_boot("fatal error: thread_size\n");
+    }
+
+    // stack
+    uint64_t stack_base = (sp & ~(thread_size - 1));
+    for (uintptr_t i = (uintptr_t)init_task; i < (uintptr_t)init_task + TASK_STRUCT_MAX_SIZE; i += sizeof(uintptr_t)) {
+        uintptr_t val = *(uintptr_t *)i;
+        if (stack_base == val) {
+            stack_in_task_offset = i - (uintptr_t)init_task;
+            task_struct_offset.stack_offset = stack_in_task_offset;
+            break;
+        }
+    }
+    log_boot("   ====== stack offset: %x\n", task_struct_offset.stack_offset);
+
+    // detect init_cred
+    // todo: get_task_cred not export
+    int cred_offset[2];
+    int cred_offset_idx = 0;
+    const struct cred *init_cred = get_task_cred(init_task);
+    log_boot("===== init_cred addr: %llx\n", init_cred);
+    for (uintptr_t i = (uintptr_t)init_task; i < (uintptr_t)init_task + TASK_STRUCT_MAX_SIZE; i += sizeof(uintptr_t)) {
+        uintptr_t val = *(uintptr_t *)i;
+        if (val == (uintptr_t)init_cred) {
+            cred_offset[cred_offset_idx++] = i - (uintptr_t)init_task;
+            if (cred_offset_idx >= 2) break;
+        }
+    }
+
+    char flag_cred[CRED_MAX_SIZE];
+    memcpy(flag_cred, init_cred, sizeof(flag_cred));
+    *(uintptr_t *)((uintptr_t)init_task + cred_offset[0]) = (uintptr_t)flag_cred;
+    if ((uintptr_t)init_cred == (uintptr_t)flag_cred) {
+        task_struct_offset.real_cred_offset = cred_offset[0];
+        task_struct_offset.cred_offset = cred_offset[1];
+    } else {
+        task_struct_offset.real_cred_offset = cred_offset[1];
+        task_struct_offset.cred_offset = cred_offset[0];
+    }
+    *(uintptr_t *)((uintptr_t)init_task + cred_offset[0]) = (uintptr_t)init_cred;
+
+    log_boot(" ====  cred offset: %x\n", task_struct_offset.cred_offset);
+    log_boot(" =====   read_cred offset: %x\n", task_struct_offset.real_cred_offset);
+
+    // detect
+
     int err = 0;
-    if ((err = resolve_task_offset())) goto out;
-    if ((err = resolve_current())) goto out;
+    // if ((err = resolve_task_offset())) goto out;
+    // if ((err = resolve_current())) goto out;
     if ((err = resolve_task_offset_1())) goto out;
     if ((err = resolve_cred_offset())) goto out;
 

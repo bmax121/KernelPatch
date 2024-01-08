@@ -104,44 +104,40 @@ static inline void transfer_pid(struct task_struct *old, struct task_struct *new
 
 static inline struct pid *find_pid_ns(int nr, struct pid_namespace *ns)
 {
-    kfunc_call(find_pid_ns, nr, ns);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(find_pid_ns, nr, ns);
 }
+
 static inline struct pid *find_vpid(int nr)
 {
-    kfunc_call(find_vpid, nr);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(find_vpid, nr);
 }
+
 static inline struct pid *find_get_pid(int nr)
 {
-    kfunc_call(find_get_pid, nr);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(find_get_pid, nr);
 }
+
 static inline struct pid *find_ge_pid(int nr, struct pid_namespace *ns)
 {
-    kfunc_call(find_ge_pid, nr, ns);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(find_ge_pid, nr, ns);
 }
+
 static inline struct pid *alloc_pid(struct pid_namespace *ns, pid_t *set_tid, size_t set_tid_size)
 {
-    kfunc_call(alloc_pid, ns, set_tid, set_tid_size);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(alloc_pid, ns, set_tid, set_tid_size);
 }
+
 static inline void free_pid(struct pid *pid)
 {
-    kfunc_call(free_pid, pid);
-    kfunc_not_found();
+    kfunc_direct_call(free_pid, pid);
 }
+
 static inline void disable_pid_allocation(struct pid_namespace *ns)
 {
     kfunc_call(disable_pid_allocation, ns);
     kfunc_not_found();
 }
+
 static inline pid_t pid_nr_ns(struct pid *pid, struct pid_namespace *ns)
 {
     kfunc_call(pid_nr_ns, pid, ns);
