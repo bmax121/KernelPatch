@@ -1,3 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* 
+ * Copyright (C) 2023 bmax121. All Rights Reserved.
+ */
+
 #ifndef _KPU_ANDROID_SUMGR_H_
 #define _KPU_ANDROID_SUMGR_H_
 

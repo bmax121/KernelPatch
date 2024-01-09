@@ -1,3 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* 
+ * Copyright (C) 2023 bmax121. All Rights Reserved.
+ */
+
 #include <linux/list.h>
 #include <ktypes.h>
 #include <stdbool.h>
@@ -28,11 +33,6 @@
 #include <predata.h>
 #include <uapi/scdefs.h>
 #include <predata.h>
-
-/*
-Modified from KernelSU, GPLv2
-https://github.com/tiann/KernelSU
-*/
 
 static const char sh_path[] = ANDROID_SH_PATH;
 static const char default_su_path[] = ANDROID_SU_PATH;

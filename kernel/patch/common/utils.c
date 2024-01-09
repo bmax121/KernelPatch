@@ -1,3 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* 
+ * Copyright (C) 2023 bmax121. All Rights Reserved.
+ */
+
 #include <kputils.h>
 #include <linux/seq_buf.h>
 #include <linux/trace_seq.h>

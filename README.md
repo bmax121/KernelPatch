@@ -44,8 +44,7 @@ Linux 6.3+ (not yet adapted)
 
 - [vmlinux-to-elf](https://github.com/marin-m/vmlinux-to-elf): Some ideas for parsing kernel symbols.
 - [android-inline-hook](https://github.com/bytedance/android-inline-hook): Some code for fixing arm64 inline hook instructions.
-- [KernelSU](https://github.com/tiann/KernelSU): Some Android compat code.
-- [tlsf](https://github.com/mattconte/tlsf): Memory allocator used for KPM. (Need a better one to allocate ROX memory.)
+- [tlsf](https://github.com/mattconte/tlsf): Memory allocator used for KPM. (Need another to allocate ROX memory.)
 
 ## License
 
