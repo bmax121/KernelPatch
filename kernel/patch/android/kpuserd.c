@@ -1,3 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* 
+ * Copyright (C) 2023 bmax121. All Rights Reserved.
+ */
+
 #include <ktypes.h>
 #include <hook.h>
 #include <linux/fs.h>
@@ -25,11 +30,6 @@
 #include <linux/slab.h>
 #include <linux/umh.h>
 #include <uapi/scdefs.h>
-
-/*
-Modified from KernelSU, GPLv2
-https://github.com/tiann/KernelSU
-*/
 
 const char origin_rc_file[] = "/system/etc/init/atrace.rc";
 const char replace_rc_file[] = "/dev/.atrace.rc";
