@@ -13,7 +13,6 @@
 #include <module.h>
 #include <predata.h>
 
-int linux_sybmol_len_init();
 int linux_misc_symbol_init();
 int linux_libs_symbol_init();
 
@@ -51,9 +50,6 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
 {
     int err = 0;
     log_boot("entering init ...\n");
-
-    if ((err = linux_sybmol_len_init())) goto out;
-    log_boot("linux_sybmol_len_init done: %d\n", err);
 
     if ((err = linux_libs_symbol_init())) goto out;
     log_boot("linux_libs_symbol_init done: %d\n", err);

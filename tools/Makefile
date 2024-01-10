@@ -10,7 +10,7 @@ ifdef ANDROID
 endif
 
 
-objs := image.o kallsym.o kptools.o order.o
+objs := image.o kallsym.o kptools.o order.o insn.o
 
 .PHONY: all
 all: kptools

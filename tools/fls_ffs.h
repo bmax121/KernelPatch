@@ -1,7 +1,9 @@
 #ifndef _ASM_GENERIC_BITOPS_FLS_FFS_H_
 #define _ASM_GENERIC_BITOPS_FLS_FFS_H_
 
-#include <ktypes.h>
+#include <stdint.h>
+
+#define BITS_PER_LONG 64
 
 /**
  * fls - find last (most-significant) bit set
@@ -10,7 +12,7 @@
  * This is defined the same way as ffs.
  * Note fls(0) = 0, fls(1) = 1, fls(0x80000000) = 32.
  */
-static __always_inline int fls(unsigned int x)
+static inline int fls(unsigned int x)
 {
     int r = 32;
 
@@ -38,7 +40,7 @@ static __always_inline int fls(unsigned int x)
     return r;
 }
 
-static __always_inline unsigned long __fls(unsigned long word)
+static inline unsigned long __fls(unsigned long word)
 {
     int num = BITS_PER_LONG - 1;
 
@@ -68,7 +70,7 @@ static __always_inline unsigned long __fls(unsigned long word)
     return num;
 }
 
-static __always_inline int fls64(__u64 x)
+static inline int fls64(u64 x)
 {
     if (x == 0) return 0;
     return __fls(x) + 1;
@@ -80,7 +82,7 @@ static __always_inline int fls64(__u64 x)
  *
  * Undefined if no bit exists, so code should check against 0 first.
  */
-static __always_inline unsigned long __ffs(unsigned long word)
+static inline unsigned long __ffs(unsigned long word)
 {
     int num = 0;
 

@@ -90,7 +90,7 @@ int task_observer()
 {
     int rc = 0;
 
-    prepare_init_ext(kvar(init_task));
+    prepare_init_ext(init_task);
 
     // __switch_to
     unsigned long copy_process_addr = get_preset_patch_sym()->copy_process;

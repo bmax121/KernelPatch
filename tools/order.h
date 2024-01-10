@@ -3,8 +3,8 @@
  * Copyright (C) 2023 bmax121. All Rights Reserved.
  */
 
-#ifndef _ORDER_H_
-#define _ORDER_H_
+#ifndef _KP_ORDER_H_
+#define _KP_ORDER_H_
 
 #include <stdint.h>
 
