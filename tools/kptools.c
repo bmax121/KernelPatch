@@ -279,8 +279,8 @@ int patch_image()
         fprintf(stdout, "[-] kptools open file %s error\n", kpimg);
         return EXIT_FAILURE;
     }
-    fseek(fimage, 0, SEEK_END);
-    long kpimg_len = ftell(fimage);
+    fseek(fkpimg, 0, SEEK_END);
+    long kpimg_len = ftell(fkpimg);
     fseek(fkpimg, 0, SEEK_SET);
     fprintf(stdout, "[+] kptools kernel patch image size: 0x%08lx\n", kpimg_len);
 
