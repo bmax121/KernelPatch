@@ -9,11 +9,14 @@ endif
 objs := image.o kallsym.o kptools.o order.o
 
 .PHONY: all
-all: kptools
+all: preset.h kptools
 
 .PHONY: kptools
 kptools: ${objs}
 	${CC} -o $@ $^
+
+preset.h:
+	@cp -f ../kernel/include/$@ $@
 
 %.o : %.c
 	$(CC) -c $(CFLAGS) $(CPPFLAGS) $< -o $@
