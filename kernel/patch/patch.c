@@ -58,34 +58,34 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
     if ((err = linux_misc_symbol_init())) goto out;
     log_boot("linux_misc_symbol_init done: %d\n", err);
 
-    if ((err = bypass_kcfi())) goto out;
-    log_boot("bypass_kcfi done: %d\n", err);
+    //     if ((err = bypass_kcfi())) goto out;
+    //     log_boot("bypass_kcfi done: %d\n", err);
 
-    if ((err = syscall_init())) goto out;
-    log_boot("syscall_init done: %d\n", err);
+    //     if ((err = syscall_init())) goto out;
+    //     log_boot("syscall_init done: %d\n", err);
 
-    if ((err = resolve_struct())) goto out;
-    log_boot("resolve_struct done: %d\n", err);
+    //     if ((err = resolve_struct())) goto out;
+    //     log_boot("resolve_struct done: %d\n", err);
 
-    if ((err = task_observer())) goto out;
-    log_boot("task_observer done: %d\n", err);
+    //     if ((err = task_observer())) goto out;
+    //     log_boot("task_observer done: %d\n", err);
 
-    if ((err = selinux_hook_install())) goto out;
-    log_boot("selinux_hook_install done: %d\n", err);
+    //     if ((err = selinux_hook_install())) goto out;
+    //     log_boot("selinux_hook_install done: %d\n", err);
 
-    if ((err = module_init())) goto out;
-    log_boot("module_init done: %d\n", err);
+    //     if ((err = module_init())) goto out;
+    //     log_boot("module_init done: %d\n", err);
 
-    if ((err = supercall_install())) goto out;
-    log_boot("supercall_install done: %d\n", err);
+    //     if ((err = supercall_install())) goto out;
+    //     log_boot("supercall_install done: %d\n", err);
 
-#ifdef ANDROID
-    if ((err = kpuserd_init())) goto out;
-    log_boot("kpuserd_init done: %d\n", err);
+    // #ifdef ANDROID
+    //     if ((err = kpuserd_init())) goto out;
+    //     log_boot("kpuserd_init done: %d\n", err);
 
-    if ((err = su_compat_init())) goto out;
-    log_boot("su_compat_init done: %d\n", err);
-#endif
+    //     if ((err = su_compat_init())) goto out;
+    //     log_boot("su_compat_init done: %d\n", err);
+    // #endif
 
 out:
     return;
@@ -106,7 +106,6 @@ int patch()
     int rc = 0;
 
     unsigned long panic_addr = get_preset_patch_sym()->panic;
-    logkd("panic: %llx\n", panic_addr);
     if (panic_addr) {
         hook_err_t err = hook_wrap12((void *)panic_addr, before_panic, 0, 0);
         if (err) {
