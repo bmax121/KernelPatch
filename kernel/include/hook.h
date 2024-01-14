@@ -232,6 +232,7 @@ typedef struct _fphook_chain
 int32_t branch_from_to(uint32_t *tramp_buf, uint64_t src_addr, uint64_t dst_addr);
 int32_t branch_relative(uint32_t *buf, uint64_t src_addr, uint64_t dst_addr);
 int32_t branch_absolute(uint32_t *buf, uint64_t addr);
+int32_t ret_absolute(uint32_t *buf, uint64_t addr);
 
 #ifdef HOOK_INTO_BRANCH_FUNC
 uint64_t branch_func_addr(uint64_t addr);

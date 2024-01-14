@@ -281,8 +281,7 @@ KP_EXPORT_SYMBOL(fp_hook_wrap);
 
 void fp_hook_unwrap(uintptr_t fp_addr, void *before, void *after)
 {
-    uint64_t origin = branch_func_addr(fp_addr);
-    fp_hook_chain_t *chain = (fp_hook_chain_t *)hook_get_mem_from_origin(origin);
+    fp_hook_chain_t *chain = (fp_hook_chain_t *)hook_get_mem_from_origin(fp_addr);
     if (!chain) return;
     for (int i = 0; i < FP_HOOK_CHAIN_NUM; i++) {
         if (chain->states[i] == CHAIN_ITEM_STATE_READY)
