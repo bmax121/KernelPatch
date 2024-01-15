@@ -5,11 +5,6 @@ ifdef DEBUG
 	CFLAGS += -DDEBUG -g
 endif
 
-ifdef ANDROID
-	CFLAGS += -DANDROID
-endif
-
-
 objs := image.o kallsym.o kptools.o order.o insn.o
 
 .PHONY: all

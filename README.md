@@ -38,7 +38,7 @@ Linux 6.3+ (not yet adapted)
 
 ## More Information
 
-[Documentation](./doc/en/)
+[Documentation](./doc/)
 
 ## Credits
 

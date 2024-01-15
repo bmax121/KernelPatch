@@ -48,42 +48,42 @@ void before_panic(hook_fargs12_t *args, void *udata)
 
 static void before_rest_init(hook_fargs4_t *args, void *udata)
 {
-    int err = 0;
+    int rc = 0;
     log_boot("entering init ...\n");
 
-    if ((err = linux_libs_symbol_init())) goto out;
-    log_boot("linux_libs_symbol_init done: %d\n", err);
+    if ((rc = linux_libs_symbol_init())) goto out;
+    log_boot("linux_libs_symbol_init done: %d\n", rc);
 
-    if ((err = linux_misc_symbol_init())) goto out;
-    log_boot("linux_misc_symbol_init done: %d\n", err);
+    if ((rc = linux_misc_symbol_init())) goto out;
+    log_boot("linux_misc_symbol_init done: %d\n", rc);
 
-    if ((err = bypass_kcfi())) goto out;
-    log_boot("bypass_kcfi done: %d\n", err);
+    if ((rc = bypass_kcfi())) goto out;
+    log_boot("bypass_kcfi done: %d\n", rc);
 
-    if ((err = syscall_init())) goto out;
-    log_boot("syscall_init done: %d\n", err);
+    if ((rc = syscall_init())) goto out;
+    log_boot("syscall_init done: %d\n", rc);
 
-    if ((err = resolve_struct())) goto out;
-    log_boot("resolve_struct done: %d\n", err);
+    if ((rc = resolve_struct())) goto out;
+    log_boot("resolve_struct done: %d\n", rc);
 
-    if ((err = task_observer())) goto out;
-    log_boot("task_observer done: %d\n", err);
+    if ((rc = task_observer())) goto out;
+    log_boot("task_observer done: %d\n", rc);
 
-    if ((err = selinux_hook_install())) goto out;
-    log_boot("selinux_hook_install done: %d\n", err);
+    if ((rc = selinux_hook_install())) goto out;
+    log_boot("selinux_hook_install done: %d\n", rc);
 
-    if ((err = module_init())) goto out;
-    log_boot("module_init done: %d\n", err);
+    if ((rc = module_init())) goto out;
+    log_boot("module_init done: %d\n", rc);
 
-    if ((err = supercall_install())) goto out;
-    log_boot("supercall_install done: %d\n", err);
+    if ((rc = supercall_install())) goto out;
+    log_boot("supercall_install done: %d\n", rc);
 
 #ifdef ANDROID
-    if ((err = kpuserd_init())) goto out;
-    log_boot("kpuserd_init done: %d\n", err);
+    if ((rc = kpuserd_init())) goto out;
+    log_boot("kpuserd_init done: %d\n", rc);
 
-    if ((err = su_compat_init())) goto out;
-    log_boot("su_compat_init done: %d\n", err);
+    if ((rc = su_compat_init())) goto out;
+    log_boot("su_compat_init done: %d\n", rc);
 #endif
 
 out:
@@ -105,7 +105,6 @@ int patch()
     int rc = 0;
 
     unsigned long panic_addr = get_preset_patch_sym()->panic;
-    logkd("panic: %llx\n", panic_addr);
     if (panic_addr) {
         hook_err_t err = hook_wrap12((void *)panic_addr, before_panic, 0, 0);
         if (err) {

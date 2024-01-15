@@ -181,4 +181,12 @@ typedef struct _setup_preset_t
 #define setup_end (setup_patch_config_offset + PATCH_CONFIG_LEN)
 #endif
 
+#ifndef __ASSEMBLY__
+typedef struct _preset
+{
+    setup_header_t header;
+    setup_preset_t preset;
+} preset_t;
+#endif
+
 #endif // _KP_PRESET_H_

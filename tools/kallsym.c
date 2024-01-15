@@ -719,8 +719,8 @@ static int correct_addresses_or_offsets_by_banner(kallsym_t *info, char *img, in
         fprintf(stdout, "[-] kallsyms no linux_banner in names table\n");
         return -1;
     }
-
     info->symbol_banner_idx = -1;
+
     // find correct addresses or offsets
     for (int i = 0; i < info->banner_num; i++) {
         int32_t target_offset = info->linux_banner_offset[i];
@@ -758,7 +758,6 @@ static int correct_addresses_or_offsets_by_banner(kallsym_t *info, char *img, in
 static int correct_addresses_or_offsets(kallsym_t *info, char *img, int32_t imglen)
 {
     int rc = correct_addresses_or_offsets_by_banner(info, img, imglen);
-    rc = -1;
     if (rc) {
         fprintf(stdout, "[?] kallsyms no linux_banner? maybe CONFIG_KALLSYMS_ALL=n?\n");
     }

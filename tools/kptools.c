@@ -53,6 +53,7 @@ static char image[FILENAME_MAX] = { '\0' };
 static char out[FILENAME_MAX] = { '\0' };
 static char kpimg[FILENAME_MAX] = { '\0' };
 static char superkey[SUPER_KEY_LEN] = { '\0' };
+static char configReserved[256] = { '\0' };
 
 static kernel_info_t kinfo;
 static kallsym_t kallsym;
@@ -67,6 +68,7 @@ void print_usage()
               "    Print this message.\n"
               "\n"
               "  -p, --patch <kernel_image> <--kpimg kpimg> <--skey super_key> [--out image_patched]\n"
+              "  -t, --targetOS <name>, name: Android or Linux, default: Android\n"
               "  Patch kernel_image with kpimg.\n"
               "    If --out is not specified, default ${kernel_image}__patched will be used.\n"
               "    super_key: Authentication key for supercall system call.\n"
@@ -281,8 +283,22 @@ void select_map_area(kallsym_t *kallsym, char *image_buf, int32_t *map_start, in
     *max_size = 0x800;
 }
 
+void set_config_reserved(const char *osName)
+{
+    if (strcmp(osName, "Android") == 0) {
+        strncpy(configReserved, "/data/adb/ap/init.ini", sizeof(configReserved) - 1);
+    } else if (strcmp(osName, "Linux") == 0) {
+        strncpy(configReserved, "/etc/kp/init.ini", sizeof(configReserved) - 1);
+    }
+}
+
 int patch_image()
 {
+    if (!strlen(configReserved)) {
+        set_config_reserved("Android");
+    }
+    fprintf(stdout, "[+] kptools patch config reserved is %s\n", configReserved);
+
     if (!strlen(out)) {
         strcpy(out, image);
         strcat(out, "_patched");
@@ -312,8 +328,8 @@ int patch_image()
         fprintf(stdout, "[-] kptools open file %s error\n", kpimg);
         return EXIT_FAILURE;
     }
-    fseek(fimage, 0, SEEK_END);
-    long kpimg_len = ftell(fimage);
+    fseek(fkpimg, 0, SEEK_END);
+    long kpimg_len = ftell(fkpimg);
     fseek(fkpimg, 0, SEEK_SET);
     fprintf(stdout, "[+] kptools kernel patch image size: 0x%08lx\n", kpimg_len);
 
@@ -388,11 +404,7 @@ int patch_image()
     }
 
     patch_config_t *config = &preset->patch_config;
-#ifdef ANDROID
-    strncpy(config->config_reserved, "/data/adb/ap/init.ini", sizeof(config->config_reserved) - 1);
-#else
-    strncpy(config->config_reserved, "/etc/kp/init.ini", sizeof(config->config_reserved) - 1);
-#endif
+    strncpy(config->config_reserved, configReserved, sizeof(config->config_reserved) - 1);
 
     // todo:
     // kernel_resize(&kinfo, out_buf, align_kernel_size + align_image_len);
@@ -418,11 +430,16 @@ int main(int argc, char *argv[])
     version = (MAJOR << 16) + (MINOR << 8) + PATCH;
     fprintf(stdout, "[+] kptools version: %x\n", version);
 
-    struct option longopts[] = { { "version", no_argument, NULL, 'v' },     { "help", no_argument, NULL, 'h' },
-                                 { "patch", required_argument, NULL, 'p' }, { "skey", required_argument, NULL, 's' },
-                                 { "out", required_argument, NULL, 'o' },   { "kpimg", required_argument, NULL, 'k' },
-                                 { "dump", required_argument, NULL, 'd' },  { 0, 0, 0, 0 } };
-    char *optstr = "vhp:d:o:";
+    struct option longopts[] = { { "version", no_argument, NULL, 'v' },
+                                 { "help", no_argument, NULL, 'h' },
+                                 { "patch", required_argument, NULL, 'p' },
+                                 { "skey", required_argument, NULL, 's' },
+                                 { "out", required_argument, NULL, 'o' },
+                                 { "kpimg", required_argument, NULL, 'k' },
+                                 { "dump", required_argument, NULL, 'd' },
+                                 { "targetOS", required_argument, NULL, 't' },
+                                 { 0, 0, 0, 0 } };
+    char *optstr = "vhp:d:o:t:";
 
     int cmd = '\0';
     int opt = -1;
@@ -448,6 +465,11 @@ int main(int argc, char *argv[])
             break;
         case 's':
             strncpy(superkey, optarg, SUPER_KEY_LEN);
+            break;
+        case 't':
+            if (optarg && strlen(optarg) > 0) {
+                set_config_reserved(optarg);
+            }
             break;
         default:
             break;
