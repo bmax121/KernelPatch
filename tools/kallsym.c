@@ -14,6 +14,7 @@
 #include "kallsym.h"
 #include "order.h"
 #include "insn.h"
+#include "common.h"
 
 #define align_floor(x, align) ((uint64_t)(x) & ~((uint64_t)(align)-1))
 #define align_ceil(x, align) (((uint64_t)(x) + (uint64_t)(align)-1) & ~((uint64_t)(align)-1))
@@ -80,8 +81,8 @@ static int find_linux_banner(kallsym_t *info, char *img, int32_t imglen)
     while ((banner = (char *)memmem(banner + 1, imgend - banner, linux_banner_prefix, prefix_len)) != NULL) {
         if (isdigit(*(banner + prefix_len)) && *(banner + prefix_len + 1) == '.') {
             info->linux_banner_offset[info->banner_num++] = (int32_t)(banner - img);
-            fprintf(stdout, "[+] kallsyms linux_banner %d: %s", info->banner_num, banner);
-            fprintf(stdout, "[+] kallsyms linux_banner offset: 0x%lx\n", banner - img);
+            tools_logi("linux_banner %d: %s", info->banner_num, banner);
+            tools_logi("linux_banner offset: 0x%lx\n", banner - img);
         }
     }
     banner = img + info->linux_banner_offset[info->banner_num - 1];
@@ -99,8 +100,8 @@ static int find_linux_banner(kallsym_t *info, char *img, int32_t imglen)
     unsigned long patch = strtoul(dot + 1, &dot, 10);
     info->version.patch = patch <= 256 ? patch : 255;
 
-    fprintf(stdout, "[+] kernel version major: %d, minor: %d, patch: %d \n", info->version.major, info->version.minor,
-            info->version.patch);
+    tools_logi("kernel version major: %d, minor: %d, patch: %d\n", info->version.major, info->version.minor,
+               info->version.patch);
     return 0;
 }
 
@@ -113,7 +114,7 @@ static int dump_kernel_config(kallsym_t *info, char *img, int32_t imglen)
   archived in GZip format between the magic string 'IKCFG_ST' and 'IKCFG_ED' in
   the built kernel.
   */
-    fprintf(stdout, "[-] dump_kernel_config not implemented\n");
+    tools_logw("not implemented\n");
     return 0;
 }
 
@@ -134,7 +135,7 @@ static int find_token_table(kallsym_t *info, char *img, int32_t imglen)
     for (; pos < imgend; pos = num_start + 1) {
         num_start = (char *)memmem(pos, imgend - pos, nums_syms, sizeof(nums_syms));
         if (!num_start) {
-            fprintf(stdout, "[-] kallsyms find token_table error\n");
+            tools_loge("find token_table error\n");
             return -1;
         }
         char *num_end = num_start + sizeof(nums_syms);
@@ -156,7 +157,7 @@ static int find_token_table(kallsym_t *info, char *img, int32_t imglen)
     int32_t offset = pos + 2 - img;
 
     info->kallsyms_token_table_offset = offset;
-    fprintf(stdout, "[+] kallsyms kallsyms_token_table offset: 0x%08x\n", offset);
+    tools_logi("kallsyms_token_table offset: 0x%08x\n", offset);
 
     // rebuild token_table
     pos = img + info->kallsyms_token_table_offset;
@@ -165,7 +166,7 @@ static int find_token_table(kallsym_t *info, char *img, int32_t imglen)
         while (*(pos++)) {
         };
     }
-    // fprintf(stdout, "[+] kallsyms token table: ");
+    // tools_logi("token table: ");
     // for (int32_t i = 0; i < KSYM_TOKEN_NUMS; i++) {
     //   printf("%s ", info->kallsyms_token_table[i]);
     // }
@@ -194,17 +195,17 @@ static int find_token_index(kallsym_t *info, char *img, int32_t imglen)
     char *bepos = (char *)memmem(img, imglen, be_index, sizeof(be_index));
 
     if (!lepos && !bepos) {
-        fprintf(stdout, "[-] kallsyms kallsyms_token_index error\n");
+        tools_loge("kallsyms_token_index error\n");
         return -1;
     }
-    fprintf(stdout, "[+] kallsyms endian: %s\n", lepos ? "little" : "big");
+    tools_logi("endian: %s\n", lepos ? "little" : "big");
 
     char *pos = lepos ? lepos : bepos;
     info->is_be = lepos ? 0 : 1;
 
     info->kallsyms_token_index_offset = pos - img;
 
-    fprintf(stdout, "[+] kallsyms kallsyms_token_index offset: 0x%08x\n", info->kallsyms_token_index_offset);
+    tools_logi("kallsyms_token_index offset: 0x%08x\n", info->kallsyms_token_index_offset);
     return 0;
 }
 
@@ -269,12 +270,12 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
     }
 
     if (info->elf64_kernel_base) {
-        fprintf(stdout, "[+] kallsyms find arm64 relocation kernel_va: 0x%08llx, but try use: %08llx\n", kernel_va,
-                info->elf64_kernel_base);
+        tools_logi("find arm64 relocation kernel_va: 0x%08llx, but try use: %08llx\n", kernel_va,
+                   info->elf64_kernel_base);
         kernel_va = info->elf64_kernel_base;
     } else {
         info->elf64_kernel_base = kernel_va;
-        fprintf(stdout, "[+] kallsyms find arm64 relocation kernel_va: 0x%08llx\n", kernel_va);
+        tools_logi("find arm64 relocation kernel_va: 0x%08llx\n", kernel_va);
     }
 
     int32_t cand_start = cand - 24 * rela_num;
@@ -288,12 +289,11 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
 
     rela_num = (cand_end - cand_start) / 24;
     if (rela_num < ARM64_RELO_MIN_NUM) {
-        fprintf(stdout, "[?] kallsyms can't find arm64 relocation table\n");
+        tools_logw("can't find arm64 relocation table\n");
         return 0;
     }
 
-    fprintf(stdout, "[+] kallsyms find arm64 relocation table range: [0x%08x, 0x%08x), count: 0x%08x\n", cand_start,
-            cand_end, rela_num);
+    tools_logi("find arm64 relocation table range: [0x%08x, 0x%08x), count: 0x%08x\n", cand_start, cand_end, rela_num);
 
     // apply relocations
     int32_t apply_num = 0;
@@ -303,12 +303,12 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
         uint64_t r_addend = uint_unpack(img + cand + 16, 8, info->is_be);
         if (!r_offset && !r_info && !r_addend) continue;
         if (r_offset <= kernel_va || r_offset >= max_va - imglen) {
-            // fprintf(stdout, "[-] kallsyms warn ignore arm64 relocation r_offset: 0x%08lx at 0x%08x\n", r_offset, cand);
+            // tools_loge("warn ignore arm64 relocation r_offset: 0x%08lx at 0x%08x\n", r_offset, cand);
             continue;
         }
         int32_t offset = r_offset - kernel_va;
         if (offset >= imglen) {
-            // fprintf(stdout, "[-] kallsyms apply relocations error\n");
+            // tools_loge("apply relocations error\n");
             continue;
         }
         uint64_t value = uint_unpack(img + offset, 8, info->is_be);
@@ -317,7 +317,7 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
         apply_num++;
     }
     if (apply_num) apply_num--;
-    fprintf(stdout, "[+] kallsyms apply 0x%08x relocation entries\n", apply_num);
+    tools_logi("apply 0x%08x relocation entries\n", apply_num);
 
     if (apply_num) info->relo_applied = 1;
 
@@ -325,7 +325,7 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
 #include <stdio.h>
     FILE *frelo = fopen("./kernel.relo", "wb+");
     fwrite(img, imglen, 1, frelo);
-    fprintf(stdout, "===== write relo kernel image ====\n");
+    tools_logi("===== write relo kernel image ====\n");
     fclose(frelo);
 #endif
 
@@ -358,7 +358,7 @@ static int find_approx_addresses(kallsym_t *info, char *img, int32_t imglen)
         }
     }
     if (sym_num < KSYM_MIN_NEQ_SYMS) {
-        fprintf(stdout, "[-] kallsyms find approximate kallsyms_addresses error\n");
+        tools_loge("find approximate kallsyms_addresses error\n");
         return -1;
     }
 
@@ -378,14 +378,13 @@ static int find_approx_addresses(kallsym_t *info, char *img, int32_t imglen)
     info->has_relative_base = 0;
     int32_t approx_num_syms = (cand - approx_offset) / elem_size;
     info->_approx_addresses_or_offsets_num = approx_num_syms;
-    fprintf(stdout,
-            "[+] kallsyms approximate kallsyms_addresses range: [0x%08x, 0x%08x) "
-            "count: 0x%08x\n",
-            approx_offset, cand, approx_num_syms);
+    tools_logi("approximate kallsyms_addresses range: [0x%08x, 0x%08x) "
+               "count: 0x%08x\n",
+               approx_offset, cand, approx_num_syms);
 
     //
     if (info->relo_applied) {
-        fprintf(stdout, "[-] kallsyms mismatch relo applied, subsequent operations may be undefined\n");
+        tools_loge("mismatch relo applied, subsequent operations may be undefined\n");
     }
 
     return 0;
@@ -412,7 +411,7 @@ static int find_approx_offsets(kallsym_t *info, char *img, int32_t imglen)
         }
     }
     if (sym_num < KSYM_MIN_NEQ_SYMS) {
-        fprintf(stdout, "[?] kallsyms find approximate kallsyms_offsets error\n");
+        tools_logw("find approximate kallsyms_offsets error\n");
         return -1;
     }
     cand -= KSYM_MIN_NEQ_SYMS * elem_size;
@@ -441,10 +440,9 @@ static int find_approx_offsets(kallsym_t *info, char *img, int32_t imglen)
     int32_t approx_num_syms = (end - approx_offset) / elem_size;
     info->_approx_addresses_or_offsets_num = approx_num_syms;
     // The real interval is contained in this approximate interval
-    fprintf(stdout,
-            "[+] kallsyms approximate kallsyms_offsets range: [0x%08x, 0x%08x) "
-            "count: 0x%08x\n",
-            approx_offset, end, approx_num_syms);
+    tools_logi("approximate kallsyms_offsets range: [0x%08x, 0x%08x) "
+               "count: 0x%08x\n",
+               approx_offset, end, approx_num_syms);
     return 0;
 }
 
@@ -479,12 +477,12 @@ static int find_num_syms(kallsym_t *info, char *img, int32_t imglen)
     }
 
     if (cand >= nsyms_max_offset) {
-        fprintf(stdout, "[-] kallsyms kallsyms_num_syms error\n");
+        tools_loge("kallsyms_num_syms error\n");
         return -1;
     } else {
         info->kallsyms_num_syms = nsyms;
         info->kallsyms_num_syms_offset = cand;
-        fprintf(stdout, "[+] kallsyms kallsyms_num_syms offset: 0x%08x, value: 0x%08x\n", cand, nsyms);
+        tools_logi("kallsyms_num_syms offset: 0x%08x, value: 0x%08x\n", cand, nsyms);
     }
     return 0;
 }
@@ -507,13 +505,12 @@ static int find_markers(kallsym_t *info, char *img, int32_t imglen)
     }
     int32_t marker_num = (marker_end - cand) / elem_size;
     if (marker || marker_num < KSYM_MIN_MARKER) {
-        fprintf(stdout, "[-] kallsyms find kallsyms_markers error\n");
+        tools_loge("find kallsyms_markers error\n");
         return -1;
     }
     info->kallsyms_markers_offset = cand;
     info->_marker_num = marker_num;
-    fprintf(stdout, "[+] kallsyms kallsyms_markers range: [0x%08x, 0x%08x), count: 0x%08x\n", cand, marker_end,
-            marker_num);
+    tools_logi("kallsyms_markers range: [0x%08x, 0x%08x), count: 0x%08x\n", cand, marker_end, marker_num);
     return 0;
 }
 
@@ -579,11 +576,11 @@ static int find_names(kallsym_t *info, char *img, int32_t imglen)
         if (!test_marker_num) break;
     }
     if (test_marker_num) {
-        fprintf(stdout, "[-] kallsyms find kallsyms_names error\n");
+        tools_loge("find kallsyms_names error\n");
         return -1;
     }
     info->kallsyms_names_offset = cand;
-    fprintf(stdout, "[+] kallsyms kallsyms_names offset: 0x%08x\n", cand);
+    tools_logi("kallsyms_names offset: 0x%08x\n", cand);
 
 #if 0
     // print all symbol for test
@@ -596,7 +593,7 @@ static int find_names(kallsym_t *info, char *img, int32_t imglen)
         memset(symbol, 0, sizeof(symbol));
         int32_t ret = decompress_symbol_name(info, img, &pos, NULL, symbol);
         if (ret) break;
-        fprintf(stdout, "index: %d, %08x, symbol: %s\n", index, pos, symbol);
+        tools_logi("index: %d, %08x, symbol: %s\n", index, pos, symbol);
         index++;
     }
 #endif
@@ -612,14 +609,14 @@ int arm64_verify_pid_vnr(kallsym_t *info, char *img, int32_t offset)
         if (enc == AARCH64_INSN_CLS_BR_SYS) {
             if (aarch64_insn_extract_system_reg(insn) == AARCH64_INSN_SPCLREG_SP_EL0) {
                 info->elf64_current_heuris = AARCH64_INSN_SPCLREG_SP_EL0;
-                fprintf(stdout, "[+] kallsyms pid_vnr verfied succeed, sp_el0, insn: 0x%x\n", insn);
+                tools_logi("pid_vnr verfied succeed, sp_el0, insn: 0x%x\n", insn);
                 return 0;
             }
         } else if (enc == AARCH64_INSN_CLS_DP_IMM) {
             u32 rn = aarch64_insn_decode_register(AARCH64_INSN_REGTYPE_RN, insn);
             if (rn == AARCH64_INSN_REG_SP) {
                 info->elf64_current_heuris = AARCH64_INSN_REG_SP;
-                fprintf(stdout, "[+] kallsyms pid_vnr verfied succeed, sp, insn: 0x%x\n", insn);
+                tools_logi("pid_vnr verfied succeed, sp, insn: 0x%x\n", insn);
                 return 0;
             }
         }
@@ -645,15 +642,14 @@ static int correct_addresses_or_offsets_by_vectors(kallsym_t *info, char *img, i
             pid_vnr_index = index;
         }
         if (vector_index && pid_vnr_index) {
-            fprintf(stdout, "[+] kallsyms names table vector index: 0x%08x, pid_vnr index: 0x%08x\n", vector_index,
-                    pid_vnr_index);
+            tools_logi("names table vector index: 0x%08x, pid_vnr index: 0x%08x\n", vector_index, pid_vnr_index);
             break;
         }
         index++;
     }
 
     if (pos >= info->kallsyms_markers_offset) {
-        fprintf(stdout, "[-] kallsyms no verify symbol in names table\n");
+        tools_loge("no verify symbol in names table\n");
         return -1;
     }
 
@@ -674,23 +670,23 @@ static int correct_addresses_or_offsets_by_vectors(kallsym_t *info, char *img, i
             int32_t pid_vnr_offset =
                 uint_unpack(img + pos + pid_vnr_index * elem_size, elem_size, info->is_be) - first_elem_val;
             if (!arm64_verify_pid_vnr(info, img, pid_vnr_offset)) {
-                fprintf(stdout, "[+] kallsyms vectors offset: 0x%08x\n", vector_offset);
-                fprintf(stdout, "[+] kallsyms pid_vnr offset: 0x%08x\n", pid_vnr_offset);
+                tools_logi("vectors offset: 0x%08x\n", vector_offset);
+                tools_logi("pid_vnr offset: 0x%08x\n", pid_vnr_offset);
                 break;
             }
         }
     }
     if (pos >= search_end) {
-        fprintf(stdout, "[-] kallsyms can't locate vectors\n");
+        tools_loge("can't locate vectors\n");
         return -1;
     }
 
     if (info->has_relative_base) {
         info->kallsyms_offsets_offset = pos;
-        fprintf(stdout, "[+] kallsyms kallsyms_offsets offset: 0x%08x\n", pos);
+        tools_logi("kallsyms_offsets offset: 0x%08x\n", pos);
     } else {
         info->kallsyms_addresses_offset = pos;
-        fprintf(stdout, "[+] kallsyms kallsyms_addresses offset: 0x%08x\n", pos);
+        tools_logi("kallsyms_addresses offset: 0x%08x\n", pos);
     }
 
     return 0;
@@ -709,14 +705,14 @@ static int correct_addresses_or_offsets_by_banner(kallsym_t *info, char *img, in
         if (ret) return ret;
 
         if (!strcmp(symbol, "linux_banner")) {
-            fprintf(stdout, "[+] kallsyms names table linux_banner index: 0x%08x\n", index);
+            tools_logi("names table linux_banner index: 0x%08x\n", index);
             break;
         }
         index++;
     }
 
     if (pos >= info->kallsyms_markers_offset) {
-        fprintf(stdout, "[-] kallsyms no linux_banner in names table\n");
+        tools_loge("no linux_banner in names table\n");
         return -1;
     }
     info->symbol_banner_idx = -1;
@@ -736,21 +732,21 @@ static int correct_addresses_or_offsets_by_banner(kallsym_t *info, char *img, in
         }
         if (pos < end) {
             info->symbol_banner_idx = i;
-            fprintf(stdout, "[+] kallsyms linux_banner index: %d\n", i);
+            tools_logi("linux_banner index: %d\n", i);
             break;
         }
     }
     if (info->symbol_banner_idx < 0) {
-        fprintf(stdout, "[-] kallsyms correct addressed or offsets error\n");
+        tools_loge("correct addressed or offsets error\n");
         return -1;
     }
 
     if (info->has_relative_base) {
         info->kallsyms_offsets_offset = pos;
-        fprintf(stdout, "[+] kallsyms kallsyms_offsets offset: 0x%08x\n", pos);
+        tools_logi("kallsyms_offsets offset: 0x%08x\n", pos);
     } else {
         info->kallsyms_addresses_offset = pos;
-        fprintf(stdout, "[+] kallsyms kallsyms_addresses offset: 0x%08x\n", pos);
+        tools_logi("kallsyms_addresses offset: 0x%08x\n", pos);
     }
     return 0;
 }
@@ -758,8 +754,9 @@ static int correct_addresses_or_offsets_by_banner(kallsym_t *info, char *img, in
 static int correct_addresses_or_offsets(kallsym_t *info, char *img, int32_t imglen)
 {
     int rc = correct_addresses_or_offsets_by_banner(info, img, imglen);
+    rc = -1;
     if (rc) {
-        fprintf(stdout, "[?] kallsyms no linux_banner? maybe CONFIG_KALLSYMS_ALL=n?\n");
+        tools_logw("no linux_banner? maybe CONFIG_KALLSYMS_ALL=n?\n");
     }
     if (rc) rc = correct_addresses_or_offsets_by_vectors(info, img, imglen);
     return rc;
@@ -895,11 +892,11 @@ int get_symbol_offset_and_size(kallsym_t *info, char *img, char *symbol, int32_t
                     break;
                 }
             }
-            fprintf(stdout, "[+] kallsyms %s: type: %c, offset: 0x%08x, size: 0x%x\n", symbol, type, offset, *size);
+            tools_logi("%s: type: %c, offset: 0x%08x, size: 0x%x\n", symbol, type, offset, *size);
             return offset;
         }
     }
-    fprintf(stdout, "[?] kallsyms no symbol: %s\n", symbol);
+    tools_logw("no symbol: %s\n", symbol);
     return -1;
 }
 
@@ -916,11 +913,11 @@ int get_symbol_offset(kallsym_t *info, char *img, char *symbol)
         decompress_symbol_name(info, img, &pos, &type, decomp);
         if (!strcmp(decomp, symbol)) {
             int32_t offset = get_symbol_index_offset(info, img, i);
-            fprintf(stdout, "[+] kallsyms %s: type: %c, offset: 0x%08x\n", symbol, type, offset);
+            tools_logi("%s: type: %c, offset: 0x%08x\n", symbol, type, offset);
             return offset;
         }
     }
-    fprintf(stdout, "[?] kallsyms no symbol: %s\n", symbol);
+    tools_logw("no symbol: %s\n", symbol);
     return -1;
 }
 
@@ -936,7 +933,7 @@ int dump_all_symbols(kallsym_t *info, char *img)
         memset(symbol, 0, sizeof(symbol));
         decompress_symbol_name(info, img, &pos, &type, symbol);
         int32_t offset = get_symbol_index_offset(info, img, i);
-        printf("0x%08x %c %s\n", offset, type, symbol);
+        fprintf(stdout, "0x%08x %c %s\n", offset, type, symbol);
     }
     return 0;
 }

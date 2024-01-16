@@ -8,7 +8,6 @@
 
 #include <stdint.h>
 
-// todo
 #define is_be() (*(unsigned char *)&(uint16_t){ 1 } ? 0 : 1)
 
 int16_t i16swp(int16_t val);

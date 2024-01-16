@@ -5,7 +5,7 @@ ifdef DEBUG
 	CFLAGS += -DDEBUG -g
 endif
 
-objs := image.o kallsym.o kptools.o order.o insn.o
+objs := image.o kallsym.o kptools.o order.o insn.o patch.o symbol.o
 
 .PHONY: all
 all: kptools

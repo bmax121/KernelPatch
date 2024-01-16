@@ -43,6 +43,9 @@ typedef struct version_t
 #endif
 
 #ifndef __ASSEMBLY__
+
+typedef uint64_t config_t;
+
 typedef struct _setup_header_t // 64-bytes
 {
     union
@@ -52,7 +55,7 @@ typedef struct _setup_header_t // 64-bytes
             char magic[MAGIC_LEN]; //
             version_t kp_version;
             uint32_t _;
-            uint64_t config_flags;
+            config_t config_flags;
             char compile_time[COMPILE_TIME_LEN];
         };
         char _cap[64];
@@ -119,6 +122,7 @@ struct patch_symbol
             uint64_t vfs_fstatat;
             uint64_t do_faccessat;
             uint64_t sys_faccessat;
+            uint64_t sys_call_table;
         };
         char _cap[PATCH_SYMBOL_LEN];
     };
@@ -144,7 +148,7 @@ _Static_assert(sizeof(patch_config_t) == PATCH_CONFIG_LEN, "sizeof patch_config_
 typedef struct _setup_preset_t
 {
     version_t kernel_version;
-    uint32_t _;
+    int32_t image_size;
     int64_t kernel_size;
     int64_t page_shift;
     int64_t kp_offset;
@@ -182,10 +186,10 @@ typedef struct _setup_preset_t
 #endif
 
 #ifndef __ASSEMBLY__
-typedef struct _preset
+typedef struct
 {
     setup_header_t header;
-    setup_preset_t preset;
+    setup_preset_t setup;
 } preset_t;
 #endif
 
