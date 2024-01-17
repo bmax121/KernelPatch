@@ -70,6 +70,7 @@ extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeSu(JNIEnv *
     if (scontext) sctx = env->GetStringUTFChars(scontext, NULL);
     struct su_profile profile = { 0 };
     profile.uid = getuid();
+    profile.to_uid = (pid_t)to_uid;
     if (sctx) {
         strncpy(profile.scontext, sctx, sizeof(profile.scontext) - 1);
     }
@@ -86,6 +87,8 @@ extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeThreadSu(JN
     const char *sctx = 0;
     if (scontext) sctx = env->GetStringUTFChars(scontext, NULL);
     struct su_profile profile = { 0 };
+    profile.uid = getuid();
+    profile.to_uid = (pid_t)to_uid;
     if (sctx) {
         strncpy(profile.scontext, sctx, sizeof(profile.scontext) - 1);
     }
