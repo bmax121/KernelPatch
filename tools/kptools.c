@@ -32,10 +32,9 @@ static char superkey[SUPER_KEY_LEN] = { '\0' };
 
 const char *program_name = NULL;
 
-void print_usage()
+void print_usage(char **argv)
 {
-    char *c = "\nkptools. Kernel Image Patch Tools. "
-              "version: %x\n"
+    char *c = "\n%s Kernel Image Patch Tools. "
               "\n"
               "Usage: ./kptools ...\n"
               "  -h, --help\n"
@@ -46,6 +45,10 @@ void print_usage()
               "    If --out is not specified, default ${kernel_image}__patched will be used.\n"
               "    super_key: Authentication key for supercall system call.\n"
               "\n"
+              "  -u, --unpatch <patched_kernel_image> [--out image_patched]\n"
+              "    Reset superkey of patched_kernel_image to new_super_key.\n"
+              "    If --out is not specified, default ${kernel_image}__patched will be used.\n"
+              "\n"
               "  -r, --resetkey <patched_kernel_image> <--skey new_super_key> [--out image_patched]\n"
               "    Reset superkey of patched_kernel_image to new_super_key.\n"
               "    If --out is not specified, default ${kernel_image}__patched will be used.\n"
@@ -53,25 +56,24 @@ void print_usage()
               "  -d, --dump <kernel_image>\n"
               "    Analyze and dump kallsyms infomations of kernel_image to stdout.\n"
               "\n";
-    fprintf(stdout, c, version);
+    fprintf(stdout, c, argv[0], version);
 }
 
 int main(int argc, char *argv[])
 {
     version = (MAJOR << 16) + (MINOR << 8) + PATCH;
-
-    tools_logi("[+] kptools version: %x\n", version);
+    fprintf(stdout, "%s version: %x\n", argv[0], version);
 
     struct option longopts[] = {
-        { "version", no_argument, NULL, 'v' },     { "help", no_argument, NULL, 'h' },
+        { "version", no_argument, NULL, 'v' },         { "help", no_argument, NULL, 'h' },
 
-        { "patch", required_argument, NULL, 'p' }, { "resetkey", required_argument, NULL, 'r' },
-        { "dump", required_argument, NULL, 'd' },
+        { "patch", required_argument, NULL, 'p' },     { "unpatch", required_argument, NULL, 'u' },
+        { "reset_key", required_argument, NULL, 'r' }, { "dump", required_argument, NULL, 'd' },
 
-        { "skey", required_argument, NULL, 's' },  { "out", required_argument, NULL, 'o' },
-        { "kpimg", required_argument, NULL, 'k' }, { 0, 0, 0, 0 }
+        { "skey", required_argument, NULL, 's' },      { "out", required_argument, NULL, 'o' },
+        { "kpimg", required_argument, NULL, 'k' },     { 0, 0, 0, 0 }
     };
-    char *optstr = "vhp:d:o:r:";
+    char *optstr = "vhp:d:o:r:u:k:s:";
 
     char cmd = '\0';
     int opt = -1;
@@ -86,6 +88,7 @@ int main(int argc, char *argv[])
             break;
         case 'p':
         case 'd':
+        case 'u':
         case 'r':
             cmd = opt;
             strncpy(kimg_path, optarg, FILENAME_MAX - 1);
@@ -111,16 +114,19 @@ int main(int argc, char *argv[])
     }
 
     if (cmd == 'h') {
-        print_usage();
+        print_usage(argv);
     } else if (cmd == 'p') {
         ret = patch_img(kimg_path, kpimg_path, out_path, superkey);
     } else if (cmd == 'd') {
         ret = dump_kallsym(kimg_path);
+    } else if (cmd == 'u') {
+        ret = unpatch_img(kimg_path, out_path);
     } else if (cmd == 'r') {
+        ret = reset_key(kimg_path, out_path, superkey);
     } else if (cmd == 'v') {
         fprintf(stdout, "%x\n", version);
     } else {
-        print_usage();
+        print_usage(argv);
     }
     return ret;
 }

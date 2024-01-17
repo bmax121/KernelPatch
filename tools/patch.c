@@ -65,6 +65,16 @@ static int read_img(const char *path, char **con, int *len)
     return 0;
 }
 
+static int write_img(const char *path, char *img, int len)
+{
+    FILE *fout = fopen(path, "wb");
+    if (!fout) tools_error_exit("open %s %s\n", path, strerror(errno));
+    int writelen = fwrite(img, 1, len, fout);
+    if (writelen != len) tools_error_exit("write file: %s incomplete\n", path);
+    fclose(fout);
+    return 0;
+}
+
 static void print_kpimg_info(preset_t *preset)
 {
     setup_header_t *header = &preset->header;
@@ -242,8 +252,8 @@ static int fillin_patch_symbol(kallsym_t *kallsym, char *img_buf, patch_symbol_t
 int patch_img(const char *k_img_path, const char *kp_img_path, const char *out_path, const char *superkey)
 {
     if (!k_img_path || !kp_img_path || !out_path || !superkey) tools_error_exit("empty args\n");
-
     if (strlen(superkey) <= 0) tools_error_exit("empty superkey\n");
+    if (strlen(superkey) >= SUPER_KEY_LEN) tools_error_exit("too long superkey\n");
 
     // read image files
     char *k_img = NULL, *kp_img = NULL;
@@ -254,9 +264,8 @@ int patch_img(const char *k_img_path, const char *kp_img_path, const char *out_p
 
     // kernel image infomation
     kernel_info_t kinfo;
-    if (get_kernel_info(&kinfo, k_img, k_img_len)) {
-        tools_error_exit("get_kernel_info error\n");
-    };
+    if (get_kernel_info(&kinfo, k_img, k_img_len)) tools_error_exit("get_kernel_info error\n");
+
     int kernel_size = kinfo.kernel_size;
     int align_kernel_size = align_ceil(kernel_size, SZ_4K);
 
@@ -264,12 +273,12 @@ int patch_img(const char *k_img_path, const char *kp_img_path, const char *out_p
     int align_k_img_len;
     preset_t *old_preset = get_preset(k_img, k_img_len);
     if (old_preset) {
-        tools_logi("update patch...\n");
+        tools_logi("update image ...\n");
         align_k_img_len = (char *)old_preset - k_img;
         assert((align_k_img_len & (SZ_4K - 1)) == 0);
         k_img_len = align_k_img_len;
     } else {
-        tools_logi("new patch...\n");
+        tools_logi("new image ...\n");
         align_k_img_len = align_ceil(k_img_len, SZ_4K);
     }
 
@@ -282,9 +291,7 @@ int patch_img(const char *k_img_path, const char *kp_img_path, const char *out_p
 
     // set preset
     kallsym_t kallsym;
-    if (analyze_kallsym_info(&kallsym, k_img, k_img_len, ARM64, 1)) {
-        tools_error_exit("analyze_kallsym_info error\n");
-    }
+    if (analyze_kallsym_info(&kallsym, k_img, k_img_len, ARM64, 1)) tools_error_exit("analyze_kallsym_info error\n");
 
     preset_t *preset = (preset_t *)(out_img + align_k_img_len);
     print_kpimg_info(preset);
@@ -297,6 +304,7 @@ int patch_img(const char *k_img_path, const char *kp_img_path, const char *out_p
     setup->kernel_version.patch = kallsym.version.patch;
 
     setup->image_size = old_preset ? old_preset->setup.image_size : k_img_len;
+    printf("aaaaaaaaaaaaaa imagesize: %x\n", preset->setup.image_size);
 
     setup->kernel_size = kinfo.kernel_size;
     setup->page_shift = kinfo.page_shift;
@@ -337,7 +345,8 @@ int patch_img(const char *k_img_path, const char *kp_img_path, const char *out_p
     fillin_patch_symbol(&kallsym, k_img, &setup->patch_symbol, kinfo.is_be);
 
     // superkey
-    strncpy((char *)setup->superkey, superkey, SUPER_KEY_LEN);
+    strncpy((char *)setup->superkey, superkey, SUPER_KEY_LEN - 1);
+    tools_logi("superkey: %s\n", setup->superkey);
 
     // config
     patch_config_t *config = &setup->patch_config;
@@ -353,15 +362,12 @@ int patch_img(const char *k_img_path, const char *kp_img_path, const char *out_p
     int text_offset = align_k_img_len + SZ_4K;
     b((uint32_t *)(out_img + kinfo.b_stext_insn_offset), kinfo.b_stext_insn_offset, text_offset);
 
+    // write out
+    write_img(out_path, out_img, out_img_len);
+
     // free
     free(k_img);
     free(kp_img);
-
-    // write
-    FILE *fout = fopen(out_path, "wb");
-    if (!fout) tools_error_exit("open %s %s\n", out_path, strerror(errno));
-    fwrite(out_img, out_img_len, 1, fout);
-    fclose(fout);
     free(out_img);
 
     tools_logi("patch done: %s\n", out_path);
@@ -371,11 +377,42 @@ int patch_img(const char *k_img_path, const char *kp_img_path, const char *out_p
 
 int unpatch_img(const char *k_img_path, const char *out_path)
 {
+    if (!k_img_path || !out_path) tools_error_exit("empty args\n");
+    char *k_img = NULL;
+    int k_img_len = 0;
+    read_img(k_img_path, &k_img, &k_img_len);
+    preset_t *preset = get_preset(k_img, k_img_len);
+    if (!preset) tools_error_exit("not patched kernel image\n");
+    printf("aaaaaaaaaaaaaa imagesize: %x\n", preset->setup.image_size);
+    int image_size = preset->setup.image_size ?: ((char *)preset - k_img);
+    printf("aaaaaaaaaaaaaa imagesize: %x\n", image_size);
+    write_img(out_path, k_img, image_size);
+    free(k_img);
     return 0;
 }
 
-int reset_key(const char *k_img_path, const char *key, const char *out_path)
+int reset_key(const char *k_img_path, const char *out_path, const char *superkey)
 {
+    if (!k_img_path || !out_path || !superkey) tools_error_exit("empty args\n");
+    if (strlen(superkey) <= 0) tools_error_exit("empty superkey\n");
+    if (strlen(superkey) >= SUPER_KEY_LEN) tools_error_exit("too long superkey\n");
+
+    char *k_img = NULL;
+    int k_img_len = 0;
+    read_img(k_img_path, &k_img, &k_img_len);
+
+    preset_t *preset = get_preset(k_img, k_img_len);
+    if (!preset) tools_error_exit("not patched kernel image\n");
+
+    char *origin_key = strdup((char *)preset->setup.superkey);
+    strcpy((char *)preset->setup.superkey, superkey);
+    tools_logi("reset superkey: %s -> %s\n", origin_key, preset->setup.superkey);
+
+    write_img(out_path, k_img, k_img_len);
+
+    free(origin_key);
+    free(k_img);
+
     return 0;
 }
 
