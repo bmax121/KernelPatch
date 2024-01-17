@@ -8,6 +8,9 @@ set(SOURCES
 	kallsym.c
 	kptools.c
 	order.c
+	insn.c
+	patch.c
+	symbol.c
 )
 
 add_executable(
