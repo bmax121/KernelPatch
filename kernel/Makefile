@@ -23,24 +23,24 @@ endif
 INCLUDE := -I. -Iinclude -Ipatch/include -Ilinux -Ilinux/include -Ilinux/arch/arm64/include -Ilinux/tools/arch/arm64/include
 
 ifdef CONFIG_MODULES
-	obj-y += base/setup.c 
-	obj-y += base/setup1.S
-	obj-y += base/cache.S
-	obj-y += base/tlsf.c
-	obj-y += base/start.c 
-	obj-y += base/map.c 
-	obj-y += base/map1.S 
-	obj-y += base/hook.c 
-	obj-y += base/fphook.c 
-	obj-y += base/hmem.c 
-	obj-y += base/predata.c 
-	obj-y += base/symbol.c 
+	obj-y += base/setup.o 
+	obj-y += base/setup1.o
+	obj-y += base/cache.o
+	obj-y += base/tlsf.o
+	obj-y += base/start.o
+	obj-y += base/map.o
+	obj-y += base/map1.o
+	obj-y += base/hook.o
+	obj-y += base/fphook.o
+	obj-y += base/hmem.O 
+	obj-y += base/predata.o
+	obj-y += base/symbol.o
 
-	obj-y += $(wildcard patch/*.c)
-	obj-y += $(wildcard patch/common/*.c)
-	obj-y += $(wildcard patch/module/*.c)
-	obj-y += $(wildcard patch/ksyms/*.c)
-	obj-y += $(wildcard patch/android/*.c)
+	obj-y += $(wildcard patch/*.o)
+	obj-y += $(wildcard patch/common/*.o)
+	obj-y += $(wildcard patch/module/*.o)
+	obj-y += $(wildcard patch/ksyms/*.o)
+	obj-y += $(wildcard patch/android/*.o)
 else
 	BASE_SRCS += base/setup.c 
 	BASE_SRCS += base/setup1.S
