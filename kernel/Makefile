@@ -22,34 +22,54 @@ endif
 
 INCLUDE := -I. -Iinclude -Ipatch/include -Ilinux -Ilinux/include -Ilinux/arch/arm64/include -Ilinux/tools/arch/arm64/include
 
-BASE_SRCS += base/setup.c 
-BASE_SRCS += base/setup1.S
-BASE_SRCS += base/cache.S
-BASE_SRCS += base/tlsf.c
-BASE_SRCS += base/start.c 
-BASE_SRCS += base/map.c 
-BASE_SRCS += base/map1.S 
-BASE_SRCS += base/hook.c 
-BASE_SRCS += base/fphook.c 
-BASE_SRCS += base/hmem.c 
-BASE_SRCS += base/predata.c 
-BASE_SRCS += base/symbol.c 
+ifdef CONFIG_MODULES
+	obj-y += base/setup.c 
+	obj-y += base/setup1.S
+	obj-y += base/cache.S
+	obj-y += base/tlsf.c
+	obj-y += base/start.c 
+	obj-y += base/map.c 
+	obj-y += base/map1.S 
+	obj-y += base/hook.c 
+	obj-y += base/fphook.c 
+	obj-y += base/hmem.c 
+	obj-y += base/predata.c 
+	obj-y += base/symbol.c 
 
-BASE_SRCS += $(wildcard patch/*.c)
-BASE_SRCS += $(wildcard patch/common/*.c)
-BASE_SRCS += $(wildcard patch/module/*.c)
-BASE_SRCS += $(wildcard patch/ksyms/*.c)
+	obj-y += $(wildcard patch/*.c)
+	obj-y += $(wildcard patch/common/*.c)
+	obj-y += $(wildcard patch/module/*.c)
+	obj-y += $(wildcard patch/ksyms/*.c)
+	obj-y += $(wildcard patch/android/*.c)
+else
+	BASE_SRCS += base/setup.c 
+	BASE_SRCS += base/setup1.S
+	BASE_SRCS += base/cache.S
+	BASE_SRCS += base/tlsf.c
+	BASE_SRCS += base/start.c 
+	BASE_SRCS += base/map.c 
+	BASE_SRCS += base/map1.S 
+	BASE_SRCS += base/hook.c 
+	BASE_SRCS += base/fphook.c 
+	BASE_SRCS += base/hmem.c 
+	BASE_SRCS += base/predata.c 
+	BASE_SRCS += base/symbol.c 
 
-ifdef ANDROID
-	BASE_SRCS += $(wildcard patch/android/*.c)
+	BASE_SRCS += $(wildcard patch/*.c)
+	BASE_SRCS += $(wildcard patch/common/*.c)
+	BASE_SRCS += $(wildcard patch/module/*.c)
+	BASE_SRCS += $(wildcard patch/ksyms/*.c)
+
+	ifdef ANDROID
+		BASE_SRCS += $(wildcard patch/android/*.c)
+	endif
+
+	SRCS += $(BASE_SRCS)
+	SRCS += $(LINUX_SRCS)
+
+	OBJS := $(SRCS:.c=.o)
+	OBJS := $(OBJS:.S=.o)
 endif
-
-SRCS += $(BASE_SRCS)
-SRCS += $(LINUX_SRCS)
-
-OBJS := $(SRCS:.c=.o)
-OBJS := $(OBJS:.S=.o)
-
 all: hdr ${TARGET}
 
 ${TARGET}: ${TARGET}.elf

@@ -1,0 +1,17 @@
+menu "Apatch"
+
+config Apatch
+	tristate "Apatch function support"
+	depends on OVERLAY_FS
+	default y
+	help
+	Enable kernel-level root privileges on Android System.
+
+config Apatch_Debug
+	bool "Apatch debug mode"
+	depends on Apatch
+	default n
+	help
+	Enable Apatch debug mode
+
+endmenu
