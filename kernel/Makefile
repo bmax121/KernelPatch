@@ -1,47 +1,65 @@
-ifndef TARGET_COMPILE
-    $(error TARGET_COMPILE not set)
-endif
-
-TARGET=kpimg
-
-CC = $(TARGET_COMPILE)gcc
-LD = $(TARGET_COMPILE)ld
-AS = $(TARGET_COMPILE)as
-OBJCOPY = $(TARGET_COMPILE)objcopy
-
-CFLAGS += -Wall -fno-builtin -std=gnu11 -nostdinc
-CFLAGS += -g
-
-ifdef DEBUG
-	CFLAGS += -DDEBUG -DMAP_DEBUG -g
-endif
-
-ifdef ANDROID
-	CFLAGS += -DANDROID
-endif
-
-INCLUDE := -I. -Iinclude -Ipatch/include -Ilinux -Ilinux/include -Ilinux/arch/arm64/include -Ilinux/tools/arch/arm64/include
-
 ifdef CONFIG_MODULES
-	obj-y += base/setup.o 
-	obj-y += base/setup1.o
-	obj-y += base/cache.o
-	obj-y += base/tlsf.o
-	obj-y += base/start.o
-	obj-y += base/map.o
-	obj-y += base/map1.o
-	obj-y += base/hook.o
-	obj-y += base/fphook.o
-	obj-y += base/hmem.O 
-	obj-y += base/predata.o
-	obj-y += base/symbol.o
+	#obj-y += base/setup.o 
+	#obj-y += base/setup1.o
+	#obj-y += base/cache.o
+	#obj-y += base/tlsf.o
+	#obj-y += base/start.o
+	#obj-y += base/map.o
+	#obj-y += base/map1.o
+	#obj-y += base/hook.o
+	#obj-y += base/fphook.o
+	#obj-y += base/hmem.O 
+	#obj-y += base/predata.o
+	#obj-y += base/symbol.o
 
-	obj-y += $(wildcard patch/*.o)
-	obj-y += $(wildcard patch/common/*.o)
-	obj-y += $(wildcard patch/module/*.o)
-	obj-y += $(wildcard patch/ksyms/*.o)
-	obj-y += $(wildcard patch/android/*.o)
+	#obj-y += $(wildcard patch/*.o)
+	#obj-y += $(wildcard patch/common/*.o)
+	#obj-y += $(wildcard patch/module/*.o)
+	#obj-y += $(wildcard patch/ksyms/*.o)
+	#obj-y += $(wildcard patch/android/*.o)
+	obj-y += patch/apatch.o 
+	#obj-y += patch/patch.o 
+	#obj-y += patch/module/module.o
+	#obj-y += patch/module/relo.o
+	#obj-y += patch/module/insn.o
+	#obj-y += patch/common/accctl.o
+	#obj-y += patch/common/hotpatch.o
+	#obj-y += patch/common/secpass.o
+	#obj-y += patch/common/selinuxhook.o
+	#obj-y += patch/common/supercall.o
+	#obj-y += patch/common/taskob.o
+	#obj-y += patch/common/utils.o
+	ccflags-y += -Wno-implicit-function-declaration -Wno-strict-prototypes -Wno-int-conversion -Wno-gcc-compat -Wmacro-redefined
+	ccflags-y += -Wno-declaration-after-statement
+	ccflags-y += -Wno-date-time
+	ccflags-y += -Wall -fno-builtin -std=gnu11 -nostdinc
+	ccflags-y += -g
+
 else
+	ifndef TARGET_COMPILE
+		$(error TARGET_COMPILE not set)
+	endif
+
+	TARGET=kpimg
+
+	CC = $(TARGET_COMPILE)gcc
+	LD = $(TARGET_COMPILE)ld
+	AS = $(TARGET_COMPILE)as
+	OBJCOPY = $(TARGET_COMPILE)objcopy
+
+	CFLAGS += -Wall -fno-builtin -std=gnu11 -nostdinc
+	CFLAGS += -g
+
+	ifdef DEBUG
+		CFLAGS += -DDEBUG -DMAP_DEBUG -g
+	endif
+
+	ifdef ANDROID
+		CFLAGS += -DANDROID
+	endif
+
+	INCLUDE := -I. -Iinclude -Ipatch/include -Ilinux -Ilinux/include -Ilinux/arch/arm64/include -Ilinux/tools/arch/arm64/include
+
 	BASE_SRCS += base/setup.c 
 	BASE_SRCS += base/setup1.S
 	BASE_SRCS += base/cache.S
