@@ -80,10 +80,11 @@ int commit_su(uid_t to_uid, const char *sctx)
     thi->flags &= ~(_TIF_SECCOMP);
 
     if (task_struct_offset.comm_offset > 0) {
-        struct seccomp *seccomp = (struct seccomp *)((uintptr_t)current + task_struct_offset.seccomp_offset);
+        struct seccomp *seccomp = (struct seccomp *)((uintptr_t)task + task_struct_offset.seccomp_offset);
         seccomp->mode = SECCOMP_MODE_DISABLED;
-        // todo: free
-        // seccomp->filter = 0;
+        // only be called when the task is exiting, so no barriers
+        // todo: WARN_ON(tsk->sighand != NULL);
+        // seccomp_filter_release(task);
     }
 
     ext->selinux_allow = 1;
@@ -119,6 +120,17 @@ int task_su(pid_t pid, uid_t to_uid, const char *sctx)
         logkfe("dirty task_ext, pid(maybe dirty): %d\n", ext->pid);
         rc = -ENOMEM;
         goto out;
+    }
+
+    struct thread_info *thi = get_task_thread_info(task);
+    thi->flags &= ~(_TIF_SECCOMP);
+
+    if (task_struct_offset.comm_offset > 0) {
+        struct seccomp *seccomp = (struct seccomp *)((uintptr_t)task + task_struct_offset.seccomp_offset);
+        seccomp->mode = SECCOMP_MODE_DISABLED;
+        // only be called when the task is exiting, so no barriers
+        // todo: WARN_ON(tsk->sighand != NULL);
+        // seccomp_filter_release(task);
     }
 
     struct cred *cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);

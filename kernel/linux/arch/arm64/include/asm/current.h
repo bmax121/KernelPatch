@@ -83,6 +83,12 @@ static inline struct task_ext *get_current_task_ext()
     return get_task_ext(current);
 }
 
+static inline struct thread_info *get_task_thread_info(const struct task_struct *task)
+{
+    if (thread_info_in_task) return (struct thread_info *)task;
+    return (struct thread_info *)get_stack(task);
+}
+
 #define current_ext get_current_task_ext()
 
 static inline const struct task_struct *override_current(struct task_struct *task)
