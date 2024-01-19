@@ -200,8 +200,9 @@ void __noinline _paging_init()
     phys_addr_t alloc_size = start_size + data->alloc_size;
     uint64_t start_pa =
         ((memblock_phys_alloc_try_nid_f)data->map_symbol.memblock_phys_alloc_relo)(alloc_size, page_size, 0);
-    // if (data->map_symbol.memblock_mark_nomap_relo)
-    //     ((memblock_mark_nomap_f)(data->map_symbol.memblock_mark_nomap_relo))(start_pa, start_size);
+
+    if (data->map_symbol.memblock_mark_nomap_relo)
+        ((memblock_mark_nomap_f)(data->map_symbol.memblock_mark_nomap_relo))(start_pa, start_size);
 
     // paging_init
     uint64_t paging_init_va = data->paging_init_relo;
@@ -213,7 +214,6 @@ void __noinline _paging_init()
     // AttrIndx[2:0] encoding
     uint64_t ktext_pte = get_or_create_pte(data, data->paging_init_relo, 0, 0);
     uint64_t attrs = *(uint64_t *)ktext_pte;
-    map_debug(0x100, attrs);
     uint64_t attr_indx = attrs & 0b11100;
 
     // clear wxn

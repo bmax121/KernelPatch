@@ -156,7 +156,7 @@ static inline void flush_tlb_kernel_page(uint64_t addr)
 
 static inline int is_kimg_range(uint64_t addr)
 {
-    return addr > kernel_va && addr < (kernel_va + kernel_size);
+    return addr >= kernel_va && addr < (kernel_va + kernel_size);
 }
 
 uint64_t *pgtable_entry_kernel(uint64_t va);

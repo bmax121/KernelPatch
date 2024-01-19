@@ -17,6 +17,9 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <string.h>
+#include <fcntl.h>
+#include <sched.h>
+#include <sys/mount.h>
 #include <error.h>
 
 #include "supercall.h"
@@ -47,11 +50,11 @@ enum
 #define PROGRAM_NAME "su"
 
 static void run_shell(char const *, char const *, char **, size_t);
-/* If true, change some environment vars to indicate the user su'd to.  */
-static bool change_environment;
-
 extern const char program_name[];
 extern const char *key;
+
+int setns(int __fd, int __ns_type);
+int unshare(int __flags);
 
 char *last_component(char const *name)
 {
@@ -86,14 +89,39 @@ static void xsetenv(char const *name, char const *val)
     putenv(string);
 }
 
-/* Become the user and group(s) specified by PW.  */
-static void change_identity(const struct passwd *pw)
+static int switch_mnt_ns(int pid)
 {
-    errno = 0;
-    if (initgroups(pw->pw_name, pw->pw_gid) == -1) error(EXIT_CANCELED, errno, "cannot set groups");
-    endgrent();
-    if (setresgid(pw->pw_gid, pw->pw_gid, pw->pw_gid)) error(EXIT_CANCELED, errno, "cannot set group id");
-    if (setresuid(pw->pw_uid, pw->pw_uid, pw->pw_uid)) error(EXIT_CANCELED, errno, "cannot set user id");
+    int rc = 0;
+    char mnt[32];
+    snprintf(mnt, sizeof(mnt), "/proc/%d/ns/mnt", pid);
+    if ((rc = access(mnt, R_OK)) < 0) {
+        error(0, errno, "access %s error\n", mnt);
+        return rc;
+    }
+    int fd = open(mnt, O_RDONLY);
+    if (fd < 0) {
+        error(0, errno, "access %s\n", mnt);
+        rc = fd;
+        return rc;
+    }
+    // switch to its namespace
+    if ((rc = setns(fd, 0)) < 0) error(0, errno, "setns %d error\n", fd);
+    close(fd);
+
+    return rc;
+}
+
+static void set_identity(uid_t uid, gid_t *gids, int gids_num)
+{
+    gid_t gid;
+    if (gids_num > 0) {
+        if (setgroups(gids_num, gids)) error(EXIT_CANCELED, errno, "cannot set groups");
+        gid = gids[0];
+    } else {
+        gid = uid;
+    }
+    if (setresgid(gid, gid, gid)) error(EXIT_CANCELED, errno, "cannot set gids");
+    if (setresuid(uid, uid, uid)) error(EXIT_CANCELED, errno, "cannot set uids");
 }
 
 static void __attribute__((noreturn))
@@ -127,97 +155,164 @@ static void usage(int status)
         fprintf(stdout, "Change the user id, group id and security context.\n"
                         "If USER not given, assume root.\n\n");
         fprintf(stdout, "Usage: %s [OPTION]... [USER [ARG]...]\n\n", program_name);
-        fprintf(stdout,
-                "-h, --help                   Print this help message. \n"
-                "-c, --command=COMMAND        pass a single COMMAND to the shell with -c\n"
-                "-m, --preserve-environment   do not reset environment variables\n"
-                "-p                           same as -m\n"
-                "-s, --shell=SHELL            use SHELL instead of the default\n"
-                "-x, --scontext=SCONTEXT      Switch security context to SCONTEXT, If SCONTEXT is not specified\n"
-                "                             or specified with a non-existent value, bypass all selinux permission\n"
-                "                             checks for all calls initiated by this task using hooks, \n"
-                "                             but the permission determined by other task remain unchanged. \n"
-                "");
+        fprintf(
+            stdout,
+            "-h, --help                         Print this help message. \n"
+            "-c, --command=COMMAND              pass a single COMMAND to the shell with -c\n"
+            "-m, -p, --preserve-environment     do not reset environment variables\n"
+            "-g, --group GROUP                  Specify the primary group\n"
+            "-G, --supp-group GROUP             Specify a supplementary group.\n"
+            "                                       The first specified supplementary group is also used\n"
+            "                                       as a primary group if the option -g is not specified.\n"
+            "-t, --target PID                   PID to take mount namespace from\n "
+            "-i, --target-isolate               Use new isolated namespace if -t is specified.\n "
+            "-s, --shell SHELL                  use SHELL instead of the default\n"
+            "-, -l, --login                     Pretend the shell to be a login shell\n"
+            "-Z, -x, --context SCONTEXT         Switch security context to SCONTEXT, If SCONTEXT is not specified\n"
+            "                                   or specified with a non-existent value, bypass all selinux permission\n"
+            "                                   checks for all calls initiated by this task using hooks, \n"
+            "                                   but the permission determined by other task remain unchanged. \n"
+            "-M, --mount-master                 force run in the global mount namespace\n"
+            "");
     }
     exit(status);
 }
 
-static struct option const longopts[] = {
-    { "command", required_argument, NULL, 'c' }, { "preserve-environment", no_argument, NULL, 'p' },
-    { "shell", required_argument, NULL, 's' },   { "scontext", required_argument, NULL, 'x' },
-    { "--help", no_argument, NULL, 'h' },        { NULL, 0, NULL, 0 }
-};
+static struct option const longopts[] = { { "command", required_argument, 0, 'c' },
+                                          { "help", no_argument, 0, 'h' },
+                                          { "login", no_argument, 0, 'l' },
+                                          { "preserve-environment", no_argument, 0, 'p' },
+                                          { "shell", required_argument, 0, 's' },
+                                          { "version", no_argument, 0, 'v' },
+                                          { "context", required_argument, 0, 'Z' },
+                                          { "mount-master", no_argument, 0, 'M' },
+                                          { "target", required_argument, 0, 't' },
+                                          { "target-isolate", required_argument, 0, 'i' },
+                                          { "group", required_argument, 0, 'g' },
+                                          { "supp-group", required_argument, 0, 'G' },
+                                          { 0, 0, 0, 0 },
+                                          { NULL, 0, NULL, 0 } };
+
+uid_t uid = 0;
+bool login = false;
+bool keepenv = false;
+bool isolated = false;
+pid_t target = -1;
+
+char *command = NULL;
+char *shell = NULL;
+char *scontext = NULL;
+
+gid_t gids_num = 0;
+gid_t gids[128] = { -1 };
+
+const char *new_user = DEFAULT_USER;
 
 int su_main(int argc, char **argv)
 {
-    int optc;
-    const char *new_user = DEFAULT_USER;
-    char *command = NULL;
-    char *shell = NULL;
-    char *scontext = NULL;
+    int optc, c;
+
     struct passwd *pw;
     struct passwd pw_copy;
 
-    change_environment = true;
+    pid_t origin_pid = getpid();
 
-    while ((optc = getopt_long(argc, argv, "c:flmps:x:h", longopts, NULL)) != -1) {
-        switch (optc) {
+    while ((c = getopt_long(argc, argv, "c:hlmps:VvuZ:Mt:g:G:", longopts, 0)) != -1) {
+        switch (c) {
         case 'c':
             command = optarg;
             break;
+        case 'h':
+            usage(EXIT_SUCCESS);
+        case 'l':
+            login = true;
+            break;
         case 'm':
         case 'p':
-            change_environment = false;
+            keepenv = true;
             break;
         case 's':
             shell = optarg;
             break;
-        case 'x':
+        case 'Z':
             scontext = optarg;
             break;
-        case 'h':
-            usage(EXIT_SUCCESS);
+        case 'M':
+        case 't':
+            if (target != -1) {
+                error(-EINVAL, 0, "Can't use -M and -t at the same time\n");
+            }
+            if (optarg == 0) {
+                target = 0;
+            } else {
+                target = atol(optarg);
+                if (*optarg == '-' || target == -1) {
+                    error(-EINVAL, 0, "Invalid PID: %s\n", optarg);
+                }
+            }
+            break;
+        case 'i':
+            isolated = true;
+            break;
+        case 'g':
+        case 'G':
+            if (atol(optarg) >= 0) {
+                if (gids_num >= sizeof(gids) / sizeof(gids[0])) break;
+                gids[gids_num++] = atol(optarg);
+            } else {
+                error(-EINVAL, 0, "Invalid GID: %s\n", optarg);
+            }
+            break;
         default:
             usage(EXIT_FAILURE);
         }
     }
 
+    // login
+    if (optind < argc && strcmp(argv[optind], "-") == 0) {
+        login = true;
+        optind++;
+    }
+
+    // user uid
     if (optind < argc) new_user = argv[optind++];
 
-    //
+    pw = getpwnam(new_user);
+    if (pw)
+        uid = pw->pw_uid;
+    else
+        uid = atol(new_user);
+    optind++;
+
+    //  environment
+    if (!shell && keepenv) shell = getenv("SHELL");
+    if (!shell) shell = DEFAULT_SHELL;
+
+    // su from kernel
     struct su_profile profile = { 0 };
     profile.uid = getuid();
+    profile.to_uid = 0;
     if (scontext) strncpy(profile.scontext, scontext, sizeof(profile.scontext) - 1);
     if (sc_su(key, &profile)) error(-EACCES, 0, "incorrect super key");
 
-    pw = getpwnam(new_user);
-    if (!(pw && pw->pw_name && pw->pw_name[0] && pw->pw_dir && pw->pw_dir[0]))
-        error(EXIT_CANCELED, 0, "user %s does not exist", new_user);
+    // session leader
+    // setsid();
 
-    pw_copy = *pw;
-    pw = &pw_copy;
-    pw->pw_name = strdup(pw->pw_name);
-    if (pw->pw_passwd) pw->pw_passwd = strdup(pw->pw_passwd);
-    pw->pw_dir = strdup(pw->pw_dir);
-    pw->pw_shell = strdup(pw->pw_shell && pw->pw_shell[0] ? pw->pw_shell : DEFAULT_SHELL);
-    endpwent();
+    // namespaces
+    if (target > 0) { // namespace of pid
+        if (switch_mnt_ns(target)) {
+            error(0, errno, "switch_mnt_ns failed, fallback to global\n");
+        } else {
+            if (isolated) { // new isolated namespace
+                if (unshare(CLONE_NEWNS) < 0) error(0, errno, "unshare");
+                if (mount(0, "/", 0, MS_PRIVATE | MS_REC, 0) < 0) error(0, errno, "mount");
+            }
+        }
+    }
 
-    if (!shell && !change_environment) shell = getenv("SHELL");
-    shell = strdup(shell ? shell : pw->pw_shell);
-
-    if (change_environment) {
+    if (!keepenv) {
         xsetenv("HOME", pw->pw_dir);
         xsetenv("SHELL", shell);
-        // add path
-        // char *old_path = getenv("PATH");
-        // char *add_path = pw->pw_uid ? DEFAULT_PATH : DEFAULT_ROOT_PATH;
-        // int path_len = strlen(old_path) + strlen(add_path) + 1;
-        // char *new_path = malloc(path_len);
-        // memset(new_path, 0, path_len);
-        // strcat(new_path, old_path);
-        // strcat(new_path, add_path);
-        // xsetenv("PATH", new_path);
-        // free(new_path);
         xsetenv("PATH", pw->pw_uid ? DEFAULT_PATH : DEFAULT_ROOT_PATH);
         if (pw->pw_uid) {
             xsetenv("USER", pw->pw_name);
@@ -225,9 +320,9 @@ int su_main(int argc, char **argv)
         }
     }
 
-    change_identity(pw);
+    set_identity(uid, gids, gids_num);
 
-    if (chdir(pw->pw_dir) != 0) error(0, errno, "warning: cannot change directory to %s", pw->pw_dir);
+    if (chdir(pw->pw_dir) != 0) error(0, errno, "cannot change directory: %s", pw->pw_dir);
 
     if (ferror(stderr)) exit(EXIT_CANCELED);
 

@@ -128,6 +128,8 @@ static void load_config_allow_uids()
         log_kernel("pkg config line: %s\n", line);
 
         char *sallow = csv_val(header, line, "allow");
+        if (!sallow) continue;
+
         if (!atol(sallow)) {
             free(sallow);
             continue;
@@ -138,7 +140,9 @@ static void load_config_allow_uids()
         char *sto_uid = csv_val(header, line, "to_uid");
         char *ssctx = csv_val(header, line, "sctx");
 
-        log_kernel("grant pkg: %s, uid: %d, to_uid: %d, sctx: %s\n", spkg, suid, sto_uid, ssctx);
+        if (!spkg || !suid || !sto_uid || !ssctx) continue;
+
+        log_kernel("grant pkg: %s, uid: %s, to_uid: %s, sctx: %s\n", spkg, suid, sto_uid, ssctx);
 
         uid_t to_uid = atol(sto_uid);
         struct su_profile profile = { 0 };

@@ -33,6 +33,7 @@
 #include <predata.h>
 #include <uapi/scdefs.h>
 #include <predata.h>
+#include <linux/vmalloc.h>
 
 static const char sh_path[] = ANDROID_SH_PATH;
 static const char default_su_path[] = ANDROID_SU_PATH;
@@ -55,7 +56,7 @@ static spinlock_t list_lock;
 static void allow_reclaim_callback(struct rcu_head *rcu)
 {
     struct allow_uid *allow = container_of(rcu, struct allow_uid, rcu);
-    kfree(allow);
+    kvfree(allow);
 }
 
 static struct su_profile *search_allow_uid(uid_t uid)
@@ -66,7 +67,7 @@ static struct su_profile *search_allow_uid(uid_t uid)
     {
         if (pos->uid == uid) {
             // make a deep copy
-            struct su_profile *profile = kmalloc(sizeof(struct su_profile), GFP_ATOMIC);
+            struct su_profile *profile = (struct su_profile *)vmalloc(sizeof(struct su_profile));
             memcpy(profile, &pos->profile, sizeof(struct su_profile));
             rcu_read_unlock();
             return profile;
@@ -102,7 +103,7 @@ int su_add_allow_uid(uid_t uid, struct su_profile *profile, int async)
             break;
         }
     }
-    struct allow_uid *new = (struct allow_uid *)kmalloc(sizeof(struct allow_uid), GFP_ATOMIC);
+    struct allow_uid *new = (struct allow_uid *)vmalloc(sizeof(struct allow_uid));
     new->uid = profile->uid;
     memcpy(&new->profile, profile, sizeof(struct su_profile));
     new->profile.scontext[sizeof(new->profile.scontext) - 1] = '\0';
@@ -123,7 +124,7 @@ int su_add_allow_uid(uid_t uid, struct su_profile *profile, int async)
             call_rcu(&old->rcu, allow_reclaim_callback);
         } else {
             synchronize_rcu();
-            kfree(old);
+            kvfree(old);
         }
     }
     return 0;
@@ -143,7 +144,7 @@ int su_remove_allow_uid(uid_t uid, int async)
                 call_rcu(&pos->rcu, allow_reclaim_callback);
             } else {
                 synchronize_rcu();
-                kfree(pos);
+                kvfree(pos);
             }
             return 0;
         }
@@ -219,8 +220,13 @@ out:
 // no free, no lock
 int su_reset_path(const char *path)
 {
-    if (!strcmp(current_su_path, path)) return 0;
-    char *new_su_path = kstrdup(path, GFP_ATOMIC);
+    if (!path) return -EINVAL;
+    int len = strlen(path);
+    if (len <= 0) return -EINVAL;
+    char *new_su_path = vmalloc(len + 1);
+    if (!new_su_path) return -ENOMEM;
+    strcpy(new_su_path, path);
+    new_su_path[len] = '\0';
     current_su_path = new_su_path;
     dsb(ishst);
     logkfi("%s\n", current_su_path);
@@ -229,7 +235,12 @@ int su_reset_path(const char *path)
 
 int su_get_path(char *__user ubuf, int buf_len)
 {
+    if (!current_su_path) {
+        logkfi("null su path\n");
+        current_su_path = default_su_path;
+    }
     int len = strnlen(current_su_path, SU_PATH_MAX_LEN);
+    if (len <= 0) return -EINVAL;
     if (buf_len < len) return -ENOBUFS;
     logkfi("%s\n", current_su_path);
     return seq_copy_to_user(ubuf, current_su_path, len + 1);
@@ -434,6 +445,7 @@ int su_compat_init()
     int rc = 0;
 
     current_su_path = default_su_path;
+
     INIT_LIST_HEAD(&allow_uid_list);
     spin_lock_init(&list_lock);
 

@@ -14,6 +14,7 @@
 #include "image.h"
 #include "common.h"
 #include "order.h"
+#include "preset.h"
 
 #define SZ_4K 0x1000
 
@@ -73,18 +74,6 @@ static int write_img(const char *path, char *img, int len)
     if (writelen != len) tools_error_exit("write file: %s incomplete\n", path);
     fclose(fout);
     return 0;
-}
-
-static void print_kpimg_info(preset_t *preset)
-{
-    setup_header_t *header = &preset->header;
-    version_t ver = header->kp_version;
-    uint32_t ver_num = (ver.major << 16) + (ver.minor << 8) + ver.patch;
-    bool is_android = header->config_flags | CONFIG_ANDROID;
-    bool is_debug = header->config_flags | CONFIG_DEBUG;
-    tools_logi("kpimg version: %x\n", ver_num);
-    tools_logi("kpimg compile time: %s\n", header->compile_time);
-    tools_logi("kpimg config: %s, %s\n", is_debug ? "debug" : "release", is_android ? "android" : "linux");
 }
 
 static int32_t relo_branch_func(const char *img, int32_t func_offset)
@@ -177,7 +166,8 @@ static int fillin_map_symbol(kallsym_t *kallsym, char *img_buf, map_symbol_t *sy
     return 0;
 }
 
-static int fillin_patch_symbol(kallsym_t *kallsym, char *img_buf, patch_symbol_t *symbol, int32_t target_is_be)
+static int fillin_patch_symbol(kallsym_t *kallsym, char *img_buf, patch_symbol_t *symbol, int32_t target_is_be,
+                               bool is_android)
 {
     symbol->panic = get_symbol_offset_zero(kallsym, img_buf, "panic");
 
@@ -217,7 +207,7 @@ static int fillin_patch_symbol(kallsym_t *kallsym, char *img_buf, patch_symbol_t
         // gcc -fipa-sra eg: avc_denied.isra.5
         symbol->avc_denied = find_suffixed_symbol(kallsym, img_buf, "avc_denied");
     }
-    if (!symbol->avc_denied) tools_error_exit("no symbol avc_denied");
+    if (!symbol->avc_denied && is_android) tools_error_exit("no symbol avc_denied");
 
     symbol->slow_avc_audit = get_symbol_offset_zero(kallsym, img_buf, "slow_avc_audit");
 
@@ -294,7 +284,15 @@ int patch_img(const char *k_img_path, const char *kp_img_path, const char *out_p
     if (analyze_kallsym_info(&kallsym, k_img, k_img_len, ARM64, 1)) tools_error_exit("analyze_kallsym_info error\n");
 
     preset_t *preset = (preset_t *)(out_img + align_k_img_len);
-    print_kpimg_info(preset);
+
+    setup_header_t *header = &preset->header;
+    version_t ver = header->kp_version;
+    uint32_t ver_num = (ver.major << 16) + (ver.minor << 8) + ver.patch;
+    bool is_android = header->config_flags | CONFIG_ANDROID;
+    bool is_debug = header->config_flags | CONFIG_DEBUG;
+    tools_logi("kpimg version: %x\n", ver_num);
+    tools_logi("kpimg compile time: %s\n", header->compile_time);
+    tools_logi("kpimg config: %s, %s\n", is_debug ? "debug" : "release", is_android ? "android" : "linux");
 
     setup_preset_t *setup = &preset->setup;
     memset(setup, 0, sizeof(preset->setup));
@@ -342,7 +340,7 @@ int patch_img(const char *k_img_path, const char *kp_img_path, const char *out_p
     memcpy(setup->header_backup, k_img, sizeof(setup->header_backup));
 
     // start symbol
-    fillin_patch_symbol(&kallsym, k_img, &setup->patch_symbol, kinfo.is_be);
+    fillin_patch_symbol(&kallsym, k_img, &setup->patch_symbol, kinfo.is_be, 0);
 
     // superkey
     strncpy((char *)setup->superkey, superkey, SUPER_KEY_LEN - 1);

@@ -12,7 +12,8 @@ struct task_struct;
 
 extern int thread_size;
 extern int thread_info_in_task;
-extern int current_is_sp_el0;
+extern int sp_el0_is_current;
+extern int sp_el0_is_thread_info;
 extern int task_in_thread_info_offset;
 extern int stack_in_task_offset;
 extern int stack_end_offset;
@@ -24,30 +25,34 @@ static __always_inline struct thread_info *current_thread_info_sp()
     return (struct thread_info *)(current_stack_pointer & ~(thread_size - 1));
 }
 
-static __always_inline struct thread_info *current_thread_info_sp_el0()
+static inline uint64_t current_sp_el0()
 {
     uint64_t sp_el0;
     asm volatile("mrs %0, sp_el0" : "=r"(sp_el0));
-    return (struct thread_info *)sp_el0;
+    return sp_el0;
+}
+
+static inline struct thread_info *current_thread_info_sp_el0()
+{
+    return (struct thread_info *)current_sp_el0;
 }
 
 static inline struct thread_info *current_thread_info()
 {
-    if (current_is_sp_el0 && !thread_info_in_task) return current_thread_info_sp();
-    return current_thread_info_sp_el0();
+    if (thread_info_in_task || sp_el0_is_thread_info) return (struct thread_info *)current_sp_el0();
+    return current_thread_info_sp();
 }
 
 static inline struct task_struct *get_current()
 {
-    uint64_t sp_el0;
-    asm volatile("mrs %0, sp_el0" : "=r"(sp_el0));
-    if (likely(current_is_sp_el0)) {
+    if (likely(sp_el0_is_current)) {
+        uint64_t sp_el0;
+        asm volatile("mrs %0, sp_el0" : "=r"(sp_el0));
         return (struct task_struct *)sp_el0;
     }
-    uint64_t addr = sp_el0 + task_in_thread_info_offset;
+    uint64_t addr = (uint64_t)current_thread_info() + task_in_thread_info_offset;
     return *(struct task_struct **)addr;
 }
-
 #define current get_current()
 
 static inline unsigned long *get_stack(const struct task_struct *task)
@@ -82,13 +87,13 @@ static inline struct task_ext *get_current_task_ext()
 
 static inline const struct task_struct *override_current(struct task_struct *task)
 {
-    uint64_t sp_el0;
-    asm volatile("mrs %0, sp_el0" : "=r"(sp_el0));
-    if (likely(current_is_sp_el0)) {
+    if (sp_el0_is_current) {
+        uint64_t sp_el0;
+        asm volatile("mrs %0, sp_el0" : "=r"(sp_el0));
         asm volatile("msr sp_el0, %0" ::"r"(task));
         return (struct task_struct *)sp_el0;
     }
-    uint64_t addr = sp_el0 + task_in_thread_info_offset;
+    uint64_t addr = (uint64_t)current_thread_info() + task_in_thread_info_offset;
     struct task_struct *old = *(struct task_struct **)addr;
     *(struct task_struct **)addr = (struct task_struct *)task;
     return old;
@@ -96,13 +101,11 @@ static inline const struct task_struct *override_current(struct task_struct *tas
 
 static inline void revert_current(const struct task_struct *old)
 {
-    if (likely(current_is_sp_el0)) {
+    if (sp_el0_is_current) {
         asm volatile("msr sp_el0, %0" ::"r"(old));
         return;
     }
-    uint64_t sp_el0;
-    asm volatile("mrs %0, sp_el0" : "=r"(sp_el0));
-    uint64_t addr = (uint64_t)sp_el0 + task_in_thread_info_offset;
+    uint64_t addr = (uint64_t)current_thread_info() + task_in_thread_info_offset;
     *(struct task_struct **)addr = (struct task_struct *)old;
 }
 

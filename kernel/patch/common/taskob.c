@@ -17,7 +17,7 @@
 #include <pgtable.h>
 #include <linux/fs.h>
 #include <linux/seccomp.h>
-#include <inlinestring.h>
+#include <baselib.h>
 #include <uapi/asm-generic/errno.h>
 #include <predata.h>
 

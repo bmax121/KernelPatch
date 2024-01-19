@@ -72,6 +72,10 @@ extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeSu(JNIEnv *
     profile.uid = getuid();
     profile.to_uid = (uid_t)to_uid;
     if (sctx) strncpy(profile.scontext, sctx, sizeof(profile.scontext) - 1);
+    profile.to_uid = (pid_t)to_uid;
+    if (sctx) {
+        strncpy(profile.scontext, sctx, sizeof(profile.scontext) - 1);
+    }
     long rc = sc_su(skey, &profile);
     env->ReleaseStringUTFChars(superKey, skey);
     if (sctx) env->ReleaseStringUTFChars(scontext, sctx);
