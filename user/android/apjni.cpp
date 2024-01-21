@@ -154,10 +154,25 @@ extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeLoadKernelP
     const char *skey = env->GetStringUTFChars(superKey, NULL);
     const char *path = env->GetStringUTFChars(modulePath, NULL);
     const char *args = env->GetStringUTFChars(jargs, NULL);
-    long rc = sc_kpm_load(skey, path, args);
+    long rc = sc_kpm_load(skey, path, args, 0);
     env->ReleaseStringUTFChars(superKey, skey);
     env->ReleaseStringUTFChars(modulePath, path);
     env->ReleaseStringUTFChars(jargs, args);
+    return rc;
+}
+
+extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeControlKernelPatchModule(JNIEnv *env, jclass clz,
+                                                                                              jstring superKey,
+                                                                                              jstring modName,
+                                                                                              jstring jctlargs)
+{
+    const char *skey = env->GetStringUTFChars(superKey, NULL);
+    const char *name = env->GetStringUTFChars(modName, NULL);
+    const char *ctlargs = env->GetStringUTFChars(jctlargs, NULL);
+    long rc = sc_kpm_control(skey, name, ctlargs, 0);
+    env->ReleaseStringUTFChars(superKey, skey);
+    env->ReleaseStringUTFChars(modName, name);
+    env->ReleaseStringUTFChars(jctlargs, ctlargs);
     return rc;
 }
 
@@ -167,7 +182,7 @@ extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeUnloadKerne
 {
     const char *skey = env->GetStringUTFChars(superKey, NULL);
     const char *name = env->GetStringUTFChars(modName, NULL);
-    long rc = sc_kpm_unload(skey, name);
+    long rc = sc_kpm_unload(skey, name, 0);
     env->ReleaseStringUTFChars(superKey, skey);
     env->ReleaseStringUTFChars(modName, name);
     return rc;

@@ -111,7 +111,7 @@ void kfunc_def(_raw_write_unlock_bh)(rwlock_t *lock) = 0;
 
 void _linux_locking_spinlock_sym_match(const char *name, unsigned long addr)
 {
-    // kfunc_match(_raw_spin_trylock, name, addr);
+    kfunc_match(_raw_spin_trylock, name, addr);
     // kfunc_match(_raw_spin_trylock_bh, name, addr);
     kfunc_match(_raw_spin_lock, name, addr);
     kfunc_match(_raw_spin_lock_irqsave, name, addr);

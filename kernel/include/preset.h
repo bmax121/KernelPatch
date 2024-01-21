@@ -10,6 +10,7 @@
 #include <stdint.h>
 #endif
 
+#define KP_MAGIC "KP1158"
 #define MAGIC_LEN 0x8
 #define KP_HEADER_SIZE 0x40
 #define SUPER_KEY_LEN 0x40

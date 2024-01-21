@@ -64,7 +64,7 @@ static inline long sc_su_task(const char *key, pid_t tid, struct su_profile *pro
     return ret;
 }
 
-static inline long sc_kpm_load(const char *key, const char *path, const char *args)
+static inline long sc_kpm_load(const char *key, const char *path, const char *args, void *reserved)
 {
     if (!key || !key[0]) return -EINVAL;
     if (!path || strlen(path) <= 0) return -EINVAL;
@@ -72,11 +72,20 @@ static inline long sc_kpm_load(const char *key, const char *path, const char *ar
     return ret;
 }
 
-static inline long sc_kpm_unload(const char *key, const char *name)
+static inline long sc_kpm_control(const char *key, const char *name, const char *ctl_args, void *reserved)
 {
     if (!key || !key[0]) return -EINVAL;
     if (!name || strlen(name) <= 0) return -EINVAL;
-    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_KPM_UNLOAD, name);
+    if (!ctl_args || strlen(ctl_args) <= 0) return -EINVAL;
+    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_KPM_LOAD, name, ctl_args, reserved);
+    return ret;
+}
+
+static inline long sc_kpm_unload(const char *key, const char *name, void *reserved)
+{
+    if (!key || !key[0]) return -EINVAL;
+    if (!name || strlen(name) <= 0) return -EINVAL;
+    long ret = syscall(__NR_supercall, key, hash_key(key), SUPERCALL_KPM_UNLOAD, name, reserved);
     return ret;
 }
 

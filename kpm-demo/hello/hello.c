@@ -14,17 +14,25 @@ KPM_LICENSE("GPL v2");
 KPM_AUTHOR("bmax121");
 KPM_DESCRIPTION("KernelPatch Module Example");
 
-int hello_init(const char *args)
+int hello_init(const char *args, void *__user reserved)
 {
     pr_info("kpm hello init, args: %s\n", args);
     pr_info("KernelPatch Version: %x\n", kpver);
     return 0;
 }
 
-void hello_exit()
+int hello_control(const char *args, void *__user reserved)
+{
+    pr_info("kpm hello control, args: %s\n", args);
+    return 0;
+}
+
+int hello_exit(void *__user reserved)
 {
     pr_info("kpm hello exit\n");
+    return 0;
 }
 
 KPM_INIT(hello_init);
+KPM_CTL(hello_control);
 KPM_EXIT(hello_exit);

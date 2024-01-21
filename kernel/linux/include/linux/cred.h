@@ -26,12 +26,13 @@ extern void groups_sort(struct group_info *);
 
 static inline void set_groups(struct cred *new, struct group_info *group_info)
 {
-    kfunc_direct_call(set_groups, new, group_info);
+    kfunc_call_void(set_groups, new, group_info);
 }
 
 static inline struct group_info *groups_alloc(int gidsetsize)
 {
-    kfunc_direct_call(groups_alloc, gidsetsize);
+    kfunc_call(groups_alloc, gidsetsize);
+    return 0;
 }
 
 struct cred_offset

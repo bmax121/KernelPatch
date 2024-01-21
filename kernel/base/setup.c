@@ -6,7 +6,7 @@
 #include "setup.h"
 #include "../version"
 
-setup_header_t header __section(.setup.header) = { .magic = "KP1158",
+setup_header_t header __section(.setup.header) = { .magic = KP_MAGIC,
                                                    .kp_version.major = MAJOR,
                                                    .kp_version.minor = MINOR,
                                                    .kp_version.patch = PATCH,

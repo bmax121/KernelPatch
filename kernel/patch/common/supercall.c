@@ -71,21 +71,30 @@ static long call_klog(const char __user *arg1)
     return 0;
 }
 
-static long call_kpm_load(const char __user *arg1, const char *__user arg2)
+static long call_kpm_load(const char __user *arg1, const char *__user arg2, void *__user reserved)
 {
-    char path[512], args[512];
+    char path[1024], args[KPM_ARGS_LEN];
     long pathlen = strncpy_from_user_nofault(path, arg1, sizeof(path));
     if (pathlen <= 0) return -EINVAL;
     long arglen = strncpy_from_user_nofault(args, arg2, sizeof(args));
-    return load_module_path(path, arglen <= 0 ? 0 : args);
+    return load_module_path(path, arglen <= 0 ? 0 : args, reserved);
 }
 
-static long call_kpm_unload(const char *__user arg1)
+static long call_kpm_control(const char __user *arg1, const char *__user arg2, void *__user reserved)
 {
-    char name[512];
+    char name[KPM_NAME_LEN], args[KPM_ARGS_LEN];
+    long namelen = strncpy_from_user_nofault(name, arg1, sizeof(name));
+    if (namelen <= 0) return -EINVAL;
+    long arglen = strncpy_from_user_nofault(args, arg2, sizeof(args));
+    return control_module(name, arglen <= 0 ? 0 : args, reserved);
+}
+
+static long call_kpm_unload(const char *__user arg1, void *__user reserved)
+{
+    char name[KPM_NAME_LEN];
     long len = strncpy_from_user_nofault(name, arg1, sizeof(name));
     if (len <= 0) return -EINVAL;
-    return unload_module(name);
+    return unload_module(name, reserved);
 }
 
 static long call_kpm_nums()
@@ -159,9 +168,11 @@ static long supercall(long cmd, long arg1, long arg2, long arg3)
     case SUPERCALL_SU_TASK:
         return call_su_task((pid_t)arg1, (struct su_profile * __user) arg2);
     case SUPERCALL_KPM_LOAD:
-        return call_kpm_load((const char *__user)arg1, (const char *__user)arg2);
+        return call_kpm_load((const char *__user)arg1, (const char *__user)arg2, (void *__user)arg3);
     case SUPERCALL_KPM_UNLOAD:
-        return call_kpm_unload((const char *__user)arg1);
+        return call_kpm_unload((const char *__user)arg1, (void *__user)arg2);
+    case SUPERCALL_KPM_CONTROL:
+        return call_kpm_control((const char *__user)arg1, (const char *__user)arg2, (void *__user)arg3);
     case SUPERCALL_KPM_NUMS:
         return call_kpm_nums();
     case SUPERCALL_KPM_LIST:

@@ -11,6 +11,7 @@ set(SOURCES
 	insn.c
 	patch.c
 	symbol.c
+	kpm.c
 )
 
 add_executable(

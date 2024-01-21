@@ -51,7 +51,7 @@ struct allow_uid
 };
 
 static struct list_head allow_uid_list;
-static spinlock_t list_lock;
+static spinlock_t module_lock;
 
 static void allow_reclaim_callback(struct rcu_head *rcu)
 {
@@ -108,7 +108,7 @@ int su_add_allow_uid(uid_t uid, struct su_profile *profile, int async)
     memcpy(&new->profile, profile, sizeof(struct su_profile));
     new->profile.scontext[sizeof(new->profile.scontext) - 1] = '\0';
 
-    spin_lock(&list_lock);
+    spin_lock(&module_lock);
     if (old) { // update
         list_replace_rcu(&old->list, &new->list);
         logkfi("update uid: %d, to_uid: %d, sctx: %s\n", uid, new->profile.to_uid, new->profile.scontext);
@@ -116,7 +116,7 @@ int su_add_allow_uid(uid_t uid, struct su_profile *profile, int async)
         list_add_rcu(&new->list, &allow_uid_list);
         logkfi("new uid: %d, to_uid: %d, sctx: %s\n", uid, new->profile.to_uid, new->profile.scontext);
     }
-    spin_unlock(&list_lock);
+    spin_unlock(&module_lock);
 
     rcu_read_unlock();
     if (old) {
@@ -133,12 +133,12 @@ int su_add_allow_uid(uid_t uid, struct su_profile *profile, int async)
 int su_remove_allow_uid(uid_t uid, int async)
 {
     struct allow_uid *pos;
-    spin_lock(&list_lock);
+    spin_lock(&module_lock);
     list_for_each_entry(pos, &allow_uid_list, list)
     {
         if (pos->uid == uid) {
             list_del_rcu(&pos->list);
-            spin_unlock(&list_lock);
+            spin_unlock(&module_lock);
             logkfi("uid: %d, to_uid: %d, sctx: %s\n", pos->uid, pos->profile.to_uid, pos->profile.scontext);
             if (async) {
                 call_rcu(&pos->rcu, allow_reclaim_callback);
@@ -149,7 +149,7 @@ int su_remove_allow_uid(uid_t uid, int async)
             return 0;
         }
     }
-    spin_unlock(&list_lock);
+    spin_unlock(&module_lock);
     return 0;
 }
 
@@ -447,7 +447,7 @@ int su_compat_init()
     current_su_path = default_su_path;
 
     INIT_LIST_HEAD(&allow_uid_list);
-    spin_lock_init(&list_lock);
+    spin_lock_init(&module_lock);
 
     // default shell
     struct su_profile default_shell_profile = {

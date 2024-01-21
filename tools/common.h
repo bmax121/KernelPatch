@@ -4,6 +4,7 @@
  */
 
 #include <stdlib.h>
+#include <stdio.h>
 
 #define tools_error_exit(fmt, ...)                                                                  \
     do {                                                                                            \

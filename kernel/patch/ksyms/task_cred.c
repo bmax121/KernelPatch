@@ -433,6 +433,10 @@ int resolve_current()
 
     init_task = (struct task_struct *)kallsyms_lookup_name("init_task");
     uint64_t init_thread_union_addr = kallsyms_lookup_name("init_thread_union");
+#if 0
+    init_task = 0;
+    init_thread_union_addr = 0;
+#endif
 
     log_boot("    init_task lookup: %llx\n", init_task);
     log_boot("    init_thread_union lookup: %llx\n", init_thread_union_addr);
