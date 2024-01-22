@@ -29,6 +29,7 @@ typedef struct
     int64_t map_offset;
     int64_t start_offset;
     int64_t start_size;
+    int64_t extra_size;
     int64_t alloc_size;
     uint64_t kernel_pa;
     uint64_t paging_init_relo;
@@ -45,11 +46,12 @@ typedef struct
 } map_data_t;
 #else
 #define map_paging_init_backup_offset 0
-#define map_map_offset_offset 0x8
-#define map_start_offset_offset 0x10
-#define map_start_size_offset 0x18
-#define map_alloc_size_offset 0x20
-#define map_kernel_pa_offset 0x28
+#define map_map_offset_offset (map_paging_init_backup_offset + 8)
+#define map_start_offset_offset (map_map_offset_offset + 8)
+#define map_start_size_offset (map_start_offset_offset + 8)
+#define map_extra_size_offset (map_start_size_offset + 8)
+#define map_alloc_size_offset (map_extra_size_offset + 8)
+#define map_kernel_pa_offset (map_alloc_size_offset + 8)
 #define map_paging_init_relo_offset (map_kernel_pa_offset + 8)
 #define map_map_symbol_offset (map_paging_init_relo_offset + 8)
 #ifdef MAP_DEBUG

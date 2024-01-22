@@ -47,30 +47,42 @@ start_prepare:
     // map_data
     adrp x9, map_data
     add x9, x9, :lo12:map_data
+
     // setup_preset
     adrp x10, setup_preset
     add x10, x10, :lo12:setup_preset
+
     // start_preset
     adrp x11, start_preset
     add x11, x11, :lo12:start_preset
+
     // header
     adrp x12, header
     add x12, x12, :lo12:header
+
     // start_preset.kernel_version = setup_preset.kernel_version;
     ldr w13, [x10, #setup_kernel_version_offset]
     str w13, [x11, #start_kernel_version_offset]
+
     // start_preset.kallsyms_lookup_name_offset = setup_preset.set.kallsyms_lookup_name_offset;
     ldr x13, [x10, #setup_kallsyms_lookup_name_offset_offset]
     str x13, [x11, #start_kallsyms_lookup_name_offset_offset]
     // start_preset.kernel_size = setup_preset.set.kernel_size;
     ldr x13, [x10, #setup_kernel_size_offset]
     str x13, [x11, #start_kernel_size_offset]
+
     // start_preset.start_offset = setup_preset.start_offset;
     ldr x13, [x10, #setup_start_offset_offset]
     str x13, [x11, #start_start_offset_offset]
     mov x21, x13
+
+    // start_preset.extra_size = setup_preset.extra_size;
+    ldr x13, [x10, #setup_extra_size_offset]
+    str x13, [x11, #start_extra_size_offset]
+
     // start_preset.kernel_pa = kernel_pa;
     str x19, [x11, #start_kernel_pa_offset]
+    
     // start_preset.map_offset = setup_preset.map_offset
     ldr x13, [x10, #setup_map_offset_offset]
     str x13, [x11, #start_map_offset_offset]
@@ -92,12 +104,6 @@ start_prepare:
     add x0, x11, #start_patch_symbol_offset;
     add x1, x10, #setup_patch_symbol_offset
     mov x2, #PATCH_SYMBOL_LEN
-    bl memcpy8
-
-    // memcpy(&start_preset.patch_config, &setup_preset.patch_config, sizeof(header.patch_config));
-    add x0, x11, #start_patch_config_offset;
-    add x1, x10, #setup_patch_config_offset
-    mov x2, #PATCH_EXTRA_LEN
     bl memcpy8
 
     // backup map area
@@ -143,16 +149,20 @@ map_prepare:
     // setup_preset
     adrp x10, setup_preset
     add x10, x10, :lo12:setup_preset
+
     // map_data.kernel_pa = kernel_pa;
     str x19, [x9, #map_kernel_pa_offset]
+
     // map_data.map_offset = setup_preset.map_offset;
     ldr x11, [x10, #setup_map_offset_offset]
     str x11, [x9, #map_map_offset_offset]
     mov x14, x11
+
     // map_data.paging_init_relo = setup_preset.paging_init_offset;
     ldr x11, [x10, #setup_paging_init_offset_offset]
     str x11, [x9, #map_paging_init_relo_offset]
     mov x15, x11
+
     // map_data.map_symbol = setup_preset.map_symbol
     add x0, x9, #map_map_symbol_offset
     add x1, x10, #setup_map_symbol_offset
@@ -168,6 +178,7 @@ map_prepare:
     // map_data.start_offset = setup_preset.start_offset;
     ldr x11, [x10, #setup_start_offset_offset]
     str x11, [x9, #map_start_offset_offset]
+
     // map_data.start_size = (int64_t)(_kp_end - _kp_start);
     adrp x11, _kp_end
     add x11, x11, :lo12:_kp_end
@@ -175,6 +186,11 @@ map_prepare:
     add x12, x12, :lo12:_kp_start
     sub x11, x11, x12
     str x11, [x9, #map_start_size_offset]
+    
+    // map_data.extra_size = setup_preset.extra_size;
+    ldr x11, [x10, #setup_extra_size_offset]
+    str x11, [x9, #map_extra_size_offset]
+
     // map_data.alloc_size = HOOK_ALLOC_SIZE + MEMORY_ROX_SIZE + MEMORY_RW_SIZE;
     mov x11, #HOOK_ALLOC_SIZE
     add x11, x11, #MEMORY_ROX_SIZE
@@ -188,6 +204,7 @@ map_prepare:
     ldr w12, [x13]
     str w12, [x9, #map_paging_init_backup_offset]
     dsb ish
+
     // uint64_t replace_offset = (uint64_t)(_paging_init - _map_start) + map_offset;
     adrp x11, _paging_init
     add x11, x11, :lo12:_paging_init
@@ -195,6 +212,7 @@ map_prepare:
     add x12, x12, :lo12:_map_start
     sub x11, x11, x12
     add x11, x11, x14
+
     // *(uint32_t *)paging_init_pa = B_REL(paging_init_offset, replace_offset);
     // #define B_REL(src, dst) (0x14000000u | (((dst - src) & 0x0FFFFFFFu) >> 2u))
     sub x15, x11, x15
@@ -240,12 +258,14 @@ setup:
     // _link_base
     adrp x9, _link_base
     add x9, x9, :lo12:_link_base
+
     // setup_preset
     adrp x10, setup_preset
     add x10, x10, :lo12:setup_preset
     mov x20, x10
-    // uint64 kernel_pa = (uint64_t)_link_base - setup_preset.kp_offset;
-    ldr x11, [x10, #setup_kp_offset_offset]
+
+    // uint64 kernel_pa = (uint64_t)_link_base - setup_preset.setup_offset;
+    ldr x11, [x10, #setup_setup_offset_offset]
     sub x12, x9, x11
     mov x19, x12
 

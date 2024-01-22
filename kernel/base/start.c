@@ -74,6 +74,8 @@ KP_EXPORT_SYMBOL(kpver);
 endian_t endian = little;
 KP_EXPORT_SYMBOL(endian);
 
+uint64_t _kp_extra_start = 0;
+uint64_t _kp_extra_end = 0;
 uint64_t _kp_hook_start = 0;
 uint64_t _kp_hook_end = 0;
 uint64_t _kp_rox_start = 0;
@@ -226,9 +228,23 @@ static void prot_myself()
     }
     flush_tlb_kernel_range(data_start, align_data_end);
 
+    // extra data
+    _kp_extra_start = (uint64_t)_kp_end;
+    _kp_extra_end = _kp_extra_start + start_preset.extra_size;
+    uint64_t align_extra_end = align_ceil(_kp_extra_end, page_size);
+    log_boot("Extra: %llx, %llx\n", _kp_extra_start, _kp_extra_end);
+
+    for (uint64_t i = _kp_extra_start; i < align_extra_end; i += page_size) {
+        uint64_t *pte = pgtable_entry_kernel(i);
+        *pte = (*pte | PTE_DBM | PTE_SHARED) & ~PTE_RDONLY;
+        if (has_vmalloc_area()) {
+            *pte |= PTE_PXN;
+        }
+    }
+    flush_tlb_kernel_range(_kp_extra_start, align_extra_end);
+
     // rwx for hook
-    // todo: remove
-    _kp_hook_start = (uint64_t)_kp_end;
+    _kp_hook_start = (uint64_t)align_extra_end;
     _kp_hook_end = _kp_hook_start + HOOK_ALLOC_SIZE;
     log_boot("Hook: %llx, %llx\n", _kp_hook_start, _kp_hook_end);
 

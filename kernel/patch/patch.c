@@ -117,6 +117,7 @@ int patch()
     // rest_init or cgroup_init
     unsigned long init_addr = get_preset_patch_sym()->rest_init;
     if (!init_addr) init_addr = get_preset_patch_sym()->cgroup_init;
+
     if (init_addr) {
         hook_err_t err = hook_wrap4((void *)init_addr, before_rest_init, 0, (void *)init_addr);
         if (err) {

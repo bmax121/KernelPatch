@@ -452,7 +452,9 @@ int resolve_current()
 
             log_boot("    sp_el0: current\n");
             log_boot("    init_task addr: %llx\n", init_task);
-            log_boot("    comm_offset of task: %x\n", task_struct_offset.comm_offset);
+            if (task_struct_offset.comm_offset > 0) {
+                log_boot("    comm_offset of task: %x\n", task_struct_offset.comm_offset);
+            }
         } else {
             sp_el0_is_thread_info = 1;
             log_boot("    sp_el0: current_thread_info\n");

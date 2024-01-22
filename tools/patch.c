@@ -318,12 +318,13 @@ int patch_img(const char *kimg_path, const char *kpimg_path, const char *out_pat
     setup->kernel_version.patch = kallsym.version.patch;
 
     setup->image_size = old_preset ? old_preset->setup.image_size : kimg_len;
-    printf("aaaaaaaaaaaaaa imagesize: %x\n", preset->setup.image_size);
+    printf("aaaaaaaaaaaaaa imagesize: %llx\n", preset->setup.image_size);
 
     setup->kernel_size = kinfo.kernel_size;
     setup->page_shift = kinfo.page_shift;
-    setup->kp_offset = align_kimg_len;
+    setup->setup_offset = align_kimg_len;
     setup->start_offset = align_kernel_size;
+    setup->extra_size = 1; // todo
 
     int map_start, map_max_size;
     select_map_area(&kallsym, kimg, &map_start, &map_max_size);
@@ -338,10 +339,10 @@ int patch_img(const char *kimg_path, const char *kpimg_path, const char *out_pat
     if (!setup->printk_offset) tools_error_exit("no symbol printk\n");
 
     if ((is_be() ^ kinfo.is_be)) {
-        setup->image_size = i32swp(setup->image_size);
+        setup->image_size = i64swp(setup->image_size);
         setup->kernel_size = i64swp(setup->kernel_size);
         setup->page_shift = i64swp(setup->page_shift);
-        setup->kp_offset = i64swp(setup->kp_offset);
+        setup->setup_offset = i64swp(setup->setup_offset);
         setup->map_offset = i64swp(setup->map_offset);
         setup->map_max_size = i64swp(setup->map_max_size);
         setup->kallsyms_lookup_name_offset = i64swp(setup->kallsyms_lookup_name_offset);

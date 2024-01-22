@@ -109,13 +109,6 @@ static map_data_t *mem_proc()
 // todo: 52-bits pa
 static uint64_t __noinline get_or_create_pte(map_data_t *data, uint64_t va, uint64_t pa, uint64_t attr_indx)
 {
-#ifdef MAP_DEBUG
-    printk_f printk = (printk_f)(data->printk_relo);
-#define map_debug(idx, val) printk(data->str_fmt_px, idx, val)
-#else
-#define map_debug(idx, val)
-#endif
-
     memblock_phys_alloc_try_nid_f memblock_phys_alloc_try_nid =
         (memblock_phys_alloc_try_nid_f)data->map_symbol.memblock_phys_alloc_relo;
 
@@ -190,19 +183,20 @@ void __noinline _paging_init()
 #define map_debug(idx, val)
 #endif
 
-    // reserve old start
+    uint64_t page_size = 1 << data->page_shift;
     uint64_t old_start_pa = data->start_offset + data->kernel_pa;
-    ((memblock_reserve_f)data->map_symbol.memblock_reserve_relo)(old_start_pa, data->start_size);
+    uint64_t aligh_extra_size = (data->extra_size + page_size - 1) & ~(page_size - 1);
+    uint64_t reserve_size = data->start_size + aligh_extra_size;
+    uint64_t all_size = reserve_size + data->alloc_size;
 
-    // // alloc new start
-    phys_addr_t page_size = 1 << data->page_shift;
-    phys_addr_t start_size = (data->start_size + page_size - 1) & ~(page_size - 1);
-    phys_addr_t alloc_size = start_size + data->alloc_size;
+    // reserve old start
+    ((memblock_reserve_f)data->map_symbol.memblock_reserve_relo)(old_start_pa, reserve_size);
+    // alloc
     uint64_t start_pa =
-        ((memblock_phys_alloc_try_nid_f)data->map_symbol.memblock_phys_alloc_relo)(alloc_size, page_size, 0);
-
+        ((memblock_phys_alloc_try_nid_f)data->map_symbol.memblock_phys_alloc_relo)(all_size, page_size, 0);
+    // mark all size nomap
     if (data->map_symbol.memblock_mark_nomap_relo)
-        ((memblock_mark_nomap_f)(data->map_symbol.memblock_mark_nomap_relo))(start_pa, start_size);
+        ((memblock_mark_nomap_f)(data->map_symbol.memblock_mark_nomap_relo))(start_pa, all_size);
 
     // paging_init
     uint64_t paging_init_va = data->paging_init_relo;
@@ -229,21 +223,22 @@ void __noinline _paging_init()
     // uint64_t vm_gurad_enough = page_size << 3;
     uint64_t start_va = start_pa + data->kimage_voffset;
 
-    for (uint64_t off = 0; off < alloc_size; off += page_size) {
+    for (uint64_t off = 0; off < all_size; off += page_size) {
         uint64_t entry = get_or_create_pte(data, start_va + off, start_pa + off, attr_indx);
         *(uint64_t *)entry = (*(uint64_t *)entry | 0x8000000000000) & 0xFFDFFFFFFFFFFF7F;
     }
     flush_tlb_all();
-    for (uint64_t i = start_va; i < start_va + alloc_size; i += 8) {
+
+    for (uint64_t i = start_va; i < start_va + all_size; i += 8) {
         *(uint64_t *)i = 0;
     }
-    for (uint64_t i = 0; i < data->start_size; i += 8) {
+    for (uint64_t i = 0; i < reserve_size; i += 8) {
         *(uint64_t *)(start_va + i) = *(uint64_t *)(old_start_va + i);
     }
     flush_icache_all();
 
     // free old start
-    ((memblock_free_f)data->map_symbol.memblock_free_relo)(old_start_pa, data->start_size);
+    ((memblock_free_f)data->map_symbol.memblock_free_relo)(old_start_pa, reserve_size);
 
     // start
     ((start_f)start_va)(data->kimage_voffset, data->linear_voffset);
