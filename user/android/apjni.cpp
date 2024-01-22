@@ -204,7 +204,7 @@ extern "C" JNIEXPORT jstring JNICALL Java_me_bmax_apatch_Natives_nativeKernelPat
     long rc = sc_kpm_nums(skey);
     char buf[4096] = { '\0' };
     rc = sc_kpm_list(skey, buf, sizeof(buf));
-    if (rc) {
+    if (rc < 0) {
         LOGE("nativeKernelPatchModuleList error: %ld\n", rc);
     }
     env->ReleaseStringUTFChars(superKey, skey);
@@ -217,9 +217,9 @@ extern "C" JNIEXPORT jstring JNICALL Java_me_bmax_apatch_Natives_nativeKernelPat
 {
     const char *skey = env->GetStringUTFChars(superKey, NULL);
     const char *name = env->GetStringUTFChars(modName, NULL);
-    char buf[512] = { '\0' };
+    char buf[1024] = { '\0' };
     long rc = sc_kpm_info(skey, name, buf, sizeof(buf));
-    if (rc) {
+    if (rc < 0) {
         LOGE("nativeKernelPatchModuleInfo error: %ld\n", rc);
     }
     env->ReleaseStringUTFChars(superKey, skey);

@@ -23,7 +23,7 @@ typedef struct
     uint8_t map_backup[MAP_MAX_SIZE];
     uint8_t superkey[SUPER_KEY_LEN];
     patch_symbol_t patch_symbol;
-    patch_config_t patch_config;
+    patch_extra_item_t patch_config;
 } start_preset_t;
 #else
 #define start_header_offset 0
@@ -38,7 +38,7 @@ typedef struct
 #define start_superkey_offset (start_map_backup_offset + MAP_MAX_SIZE)
 #define start_patch_symbol_offset (start_superkey_offset + SUPER_KEY_LEN)
 #define start_patch_config_offset (start_patch_symbol_offset + PATCH_SYMBOL_LEN)
-#define start_end (setup_patch_config_offset + PATCH_CONFIG_LEN)
+#define start_end (setup_patch_config_offset + PATCH_EXTRA_LEN)
 #endif
 
 #endif // _KP_START_H_

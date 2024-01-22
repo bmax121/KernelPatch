@@ -20,7 +20,7 @@ extern int kfunc_def(vsscanf)(const char *buf, const char *fmt, va_list args);
 #define snprintf(buf, size, fmt, ...) kfunc(snprintf)(buf, size, fmt, ##__VA_ARGS__)
 #define scnprintf(buf, size, fmt, ...) kfunc(scnprintf)(buf, size, fmt, ##__VA_ARGS__)
 #define kasprintf(buf, fmt, ...) kfunc(kasprintf)(buf, fmt, ##__VA_ARGS__)
-#define sscanf(buf, fmt, ...) kfunc(kasprintf)(buf, fmt, ##__VA_ARGS__)
+#define sscanf(buf, fmt, ...) kfunc(sscanf)(buf, fmt, ##__VA_ARGS__)
 
 static inline int vsprintf(char *buf, const char *fmt, va_list args)
 {

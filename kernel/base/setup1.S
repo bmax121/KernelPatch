@@ -97,7 +97,7 @@ start_prepare:
     // memcpy(&start_preset.patch_config, &setup_preset.patch_config, sizeof(header.patch_config));
     add x0, x11, #start_patch_config_offset;
     add x1, x10, #setup_patch_config_offset
-    mov x2, #PATCH_CONFIG_LEN
+    mov x2, #PATCH_EXTRA_LEN
     bl memcpy8
 
     // backup map area

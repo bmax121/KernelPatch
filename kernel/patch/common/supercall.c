@@ -109,8 +109,7 @@ static long call_kpm_list(char *__user names, int len)
     int sz = list_modules(buf, sizeof(buf));
     if (sz > len) return -ENOBUFS;
     sz = seq_copy_to_user(names, buf, len);
-    if (sz < 0) return sz;
-    return 0;
+    return sz;
 }
 
 static long call_kpm_info(const char *__user uname, char *__user out_info, int out_len)
@@ -124,8 +123,7 @@ static long call_kpm_info(const char *__user uname, char *__user out_info, int o
     if (sz < 0) return sz;
     if (sz > out_len) return -ENOBUFS;
     sz = seq_copy_to_user(out_info, buf, sz);
-    if (sz < 0) return sz;
-    return 0;
+    return sz;
 }
 
 static long call_su(struct su_profile *__user uprofile)

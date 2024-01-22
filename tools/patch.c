@@ -362,13 +362,7 @@ int patch_img(const char *kimg_path, const char *kpimg_path, const char *out_pat
     strncpy((char *)setup->superkey, superkey, SUPER_KEY_LEN - 1);
     tools_logi("superkey: %s\n", setup->superkey);
 
-    // config
-    patch_config_t *config = &setup->patch_config;
-    if (preset->header.config_flags | CONFIG_ANDROID) {
-        strncpy(config->config_reserved, "/data/adb/ap/init.ini", sizeof(config->config_reserved) - 1);
-    } else {
-        strncpy(config->config_reserved, "/etc/kp/init.ini", sizeof(config->config_reserved) - 1);
-    }
+    // extra
 
     // modify kernel entry
     int paging_init_offset = get_symbol_offset_exit(&kallsym, kimg, "paging_init");

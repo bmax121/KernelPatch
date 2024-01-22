@@ -14,7 +14,6 @@ extern start_preset_t start_preset;
 
 static char superkey[SUPER_KEY_LEN] = { '\0' };
 static int superkey_len = 0;
-static struct patch_config *patch_config = 0;
 static struct patch_symbol *patch_symbol = 0;
 
 int superkey_auth(const char *key, int len)
@@ -29,11 +28,6 @@ int superkey_auth(const char *key, int len)
 const char *get_superkey()
 {
     return superkey;
-}
-
-struct patch_config *get_preset_patch_cfg()
-{
-    return patch_config;
 }
 
 struct patch_symbol *get_preset_patch_sym()
@@ -57,5 +51,4 @@ void predata_init()
         uintptr_t *p = (uintptr_t *)addr;
         if (*p) *p += kernel_va;
     }
-    patch_config = &start_preset.patch_config;
 }

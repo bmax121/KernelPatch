@@ -559,6 +559,8 @@ out:
 
 int control_module(const char *name, const char *ctl_args, void *__user reserved)
 {
+    if (!ctl_args) return -EINVAL;
+
     int err = 0;
     rcu_read_lock();
 
@@ -567,11 +569,18 @@ int control_module(const char *name, const char *ctl_args, void *__user reserved
         err = -ENOENT;
         goto out;
     }
+
+    mod->ctl_args = vmalloc(strlen(ctl_args) + 1);
+    if (!mod->args) {
+        err = -ENOMEM;
+        goto out;
+    }
+
     if (mod->ctl_args) {
         kvfree(mod->ctl_args);
     }
 
-    mod->ctl_args = ctl_args;
+    strcpy(mod->ctl_args, ctl_args);
 
     err = (*mod->ctl)(ctl_args, reserved);
 

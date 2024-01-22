@@ -29,7 +29,8 @@
 #define MAP_SYMBOL_SIZE (MAP_SYMBOL_NUM * 8)
 
 #define PATCH_SYMBOL_LEN (512)
-#define PATCH_CONFIG_LEN (256)
+#define PATCH_EXTRA_LEN (64)
+#define PATCH_EXTRA_NUM (32)
 
 #define VERSION(major, minor, patch) (((major) << 16) + ((minor) << 8) + (patch))
 
@@ -133,16 +134,28 @@ _Static_assert(sizeof(patch_symbol_t) == PATCH_SYMBOL_LEN, "sizeof patch_symbol_
 #endif
 
 #ifndef __ASSEMBLY__
-struct patch_config
+
+typedef int32_t extra_item_type;
+
+#define EXTRA_TYPE_NONE 0
+#define EXTRA_TYPE_KPM 1
+#define EXTRA_TYPE_SHELL 2
+
+struct patch_extra_item
 {
     union
     {
-        char config_reserved[256];
-        char _cap[PATCH_CONFIG_LEN];
+        struct
+        {
+            char name[16];
+            int32_t size;
+            extra_item_type type;
+        };
+        char _cap[PATCH_EXTRA_LEN];
     };
 };
-typedef struct patch_config patch_config_t;
-_Static_assert(sizeof(patch_config_t) == PATCH_CONFIG_LEN, "sizeof patch_config_t mismatch");
+typedef struct patch_extra_item patch_extra_item_t;
+_Static_assert(sizeof(patch_extra_item_t) == PATCH_EXTRA_LEN, "sizeof patch_extra_item_t mismatch");
 #endif
 
 #ifndef __ASSEMBLY__
@@ -165,7 +178,10 @@ typedef struct _setup_preset_t
     uint8_t superkey[SUPER_KEY_LEN];
 
     patch_symbol_t patch_symbol;
-    patch_config_t patch_config;
+
+    int32_t patch_extra_offset;
+    int32_t patch_extra_size;
+
 } setup_preset_t;
 #else
 #define setup_kernel_version_offset 0
@@ -183,7 +199,7 @@ typedef struct _setup_preset_t
 #define setup_superkey_offset (setup_header_backup_offset + HDR_BACKUP_SIZE)
 #define setup_patch_symbol_offset (setup_superkey_offset + SUPER_KEY_LEN)
 #define setup_patch_config_offset (setup_patch_symbol_offset + PATCH_SYMBOL_LEN)
-#define setup_end (setup_patch_config_offset + PATCH_CONFIG_LEN)
+#define setup_end (setup_patch_config_offset + PATCH_EXTRA_LEN * PATCH_EXTRA_NUM)
 #endif
 
 #ifndef __ASSEMBLY__
