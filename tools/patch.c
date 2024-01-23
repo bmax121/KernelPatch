@@ -44,8 +44,8 @@ void print_preset_info(preset_t *preset)
     bool is_android = header->config_flags | CONFIG_ANDROID;
     bool is_debug = header->config_flags | CONFIG_DEBUG;
 
-    fprintf(stdout, "version:%x\n", ver_num);
-    fprintf(stdout, "compile_time:%s\n", header->compile_time);
+    fprintf(stdout, "version=%x\n", ver_num);
+    fprintf(stdout, "compile_time=%s\n", header->compile_time);
     fprintf(stdout, "config=%s,%s\n", is_debug ? "debug" : "release", is_android ? "android" : "linux");
     fprintf(stdout, "\n");
 }
