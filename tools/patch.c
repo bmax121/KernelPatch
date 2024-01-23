@@ -17,47 +17,6 @@
 #include "order.h"
 #include "preset.h"
 
-#define SZ_4K 0x1000
-
-#define align_floor(x, align) ((uint64_t)(x) & ~((uint64_t)(align)-1))
-#define align_ceil(x, align) (((uint64_t)(x) + (uint64_t)(align)-1) & ~((uint64_t)(align)-1))
-
-#define INSN_IS_B(inst) (((inst) & 0xFC000000) == 0x14000000)
-
-#define bits32(n, high, low) ((uint32_t)((n) << (31u - (high))) >> (31u - (high) + (low)))
-
-#define sign64_extend(n, len) \
-    (((uint64_t)((n) << (63u - (len - 1))) >> 63u) ? ((n) | (0xFFFFFFFFFFFFFFFF << (len))) : n)
-
-static int can_b_imm(uint64_t from, uint64_t to)
-{
-    // B: 128M
-    uint32_t imm26 = 1 << 25 << 2;
-    return (to >= from && to - from <= imm26) || (from >= to && from - to <= imm26);
-}
-
-static int b(uint32_t *buf, uint64_t from, uint64_t to)
-{
-    if (can_b_imm(from, to)) {
-        buf[0] = 0x14000000u | (((to - from) & 0x0FFFFFFFu) >> 2u);
-        return 4;
-    }
-    return 0;
-}
-
-static int32_t relo_branch_func(const char *img, int32_t func_offset)
-{
-    uint32_t inst = *(uint32_t *)(img + func_offset);
-    int32_t relo_offset = func_offset;
-    if (INSN_IS_B(inst)) {
-        uint64_t imm26 = bits32(inst, 25, 0);
-        uint64_t imm64 = sign64_extend(imm26 << 2u, 28u);
-        relo_offset = func_offset + (int32_t)imm64;
-        tools_logi("relocate branch function 0x%x to 0x%x\n", func_offset, relo_offset);
-    }
-    return relo_offset;
-}
-
 static int32_t get_symbol_offset_zero(kallsym_t *info, char *img, char *symbol)
 {
     int32_t offset = get_symbol_offset(info, img, symbol);
@@ -226,6 +185,8 @@ uint32_t get_kpimg_version(const char *kpimg_path)
     return version;
 }
 
+// int patch_parse_img(const char *kimg_patch)
+
 int patch_img(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey)
 {
     if (!kimg_path) tools_error_exit("empty kernel image\n");
@@ -241,7 +202,7 @@ int patch_img(const char *kimg_path, const char *kpimg_path, const char *out_pat
     int kimg_len = 0, kpimg_len = 0;
 
     read_img(kimg_path, &kimg, &kimg_len);
-    read_img(kpimg_path, &kpimg, &kpimg_len);
+    read_img_align(kpimg_path, &kpimg, &kpimg_len, 0x10);
 
     // kernel image infomation
     kernel_info_t kinfo;
@@ -255,24 +216,29 @@ int patch_img(const char *kimg_path, const char *kpimg_path, const char *out_pat
     preset_t *old_preset = get_preset(kimg, kimg_len);
     if (old_preset) {
         tools_logi("update image ...\n");
-        align_kimg_len = (char *)old_preset - kimg;
-        assert((align_kimg_len & (SZ_4K - 1)) == 0);
-        kimg_len = align_kimg_len;
+        kimg_len = (char *)old_preset - kimg;
+        // todo: next version
+        // kimg_len = old_preset->setup.kimg_size;
+        // revert
         memcpy(kimg, old_preset->setup.header_backup, sizeof(old_preset->setup.header_backup));
     } else {
         tools_logi("new image ...\n");
-        align_kimg_len = align_ceil(kimg_len, SZ_4K);
     }
+    align_kimg_len = align_ceil(kimg_len, SZ_4K);
 
     // copy to out image
     int out_img_len = align_kimg_len + kpimg_len;
+    //////////
+    out_img_len += 0x10;
     char *out_img = (char *)malloc(out_img_len);
     memcpy(out_img, kimg, kimg_len);
     memset(out_img + kimg_len, 0, align_kimg_len - kimg_len);
     memcpy(out_img + align_kimg_len, kpimg, kpimg_len);
 
+    memcpy(out_img + align_kimg_len + kpimg_len, "1111aaaa11\n", 10);
+
     // set preset
-    kallsym_t kallsym;
+    kallsym_t kallsym = { 0 };
     if (analyze_kallsym_info(&kallsym, kimg, kimg_len, ARM64, 1)) tools_error_exit("analyze_kallsym_info error\n");
 
     preset_t *preset = (preset_t *)(out_img + align_kimg_len);
@@ -293,14 +259,16 @@ int patch_img(const char *kimg_path, const char *kpimg_path, const char *out_pat
     setup->kernel_version.minor = kallsym.version.minor;
     setup->kernel_version.patch = kallsym.version.patch;
 
-    setup->image_size = old_preset ? old_preset->setup.image_size : kimg_len;
-    printf("aaaaaaaaaaaaaa imagesize: %llx\n", preset->setup.image_size);
+    setup->kimg_size = kimg_len;
+    printf("aaaaaaaaaaaaaa imagesize: %llx\n", preset->setup.kimg_size);
+    setup->kpimg_size = kpimg_len;
+    printf("aaaaaaaaaaaaaa kp imagesize: %llx\n", preset->setup.kpimg_size);
 
     setup->kernel_size = kinfo.kernel_size;
     setup->page_shift = kinfo.page_shift;
     setup->setup_offset = align_kimg_len;
     setup->start_offset = align_kernel_size;
-    setup->extra_size = 0; // todo
+    setup->extra_size = 0x10; // todo
 
     int map_start, map_max_size;
     select_map_area(&kallsym, kimg, &map_start, &map_max_size);
@@ -315,7 +283,7 @@ int patch_img(const char *kimg_path, const char *kpimg_path, const char *out_pat
     if (!setup->printk_offset) tools_error_exit("no symbol printk\n");
 
     if ((is_be() ^ kinfo.is_be)) {
-        setup->image_size = i64swp(setup->image_size);
+        setup->kimg_size = i64swp(setup->kimg_size);
         setup->kernel_size = i64swp(setup->kernel_size);
         setup->page_shift = i64swp(setup->page_shift);
         setup->setup_offset = i64swp(setup->setup_offset);
@@ -373,9 +341,9 @@ int unpatch_img(const char *kimg_path, const char *out_path)
     if (!preset) tools_error_exit("not patched kernel image\n");
 
     memcpy(kimg, preset->setup.header_backup, sizeof(preset->setup.header_backup));
-    int image_size = preset->setup.image_size ?: ((char *)preset - kimg);
+    int kimg_size = preset->setup.kimg_size ?: ((char *)preset - kimg);
 
-    write_img(out_path, kimg, image_size);
+    write_img(out_path, kimg, kimg_size);
     free(kimg);
     return 0;
 }

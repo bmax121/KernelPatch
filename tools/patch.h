@@ -3,6 +3,9 @@
  * Copyright (C) 2024 bmax121. All Rights Reserved.
  */
 
+#ifndef _KP_TOOL_PATCH_H_
+#define _KP_TOOL_PATCH_H_
+
 #include <stdint.h>
 #include <string.h>
 
@@ -32,3 +35,5 @@ int patch_img(const char *kimg_path, const char *kpimg_path, const char *out_pat
 int unpatch_img(const char *kimg_path, const char *out_path);
 int reset_key(const char *kimg_path, const char *out_path, const char *key);
 int dump_kallsym(const char *kimg_path);
+
+#endif

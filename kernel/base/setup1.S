@@ -42,8 +42,10 @@ start_prepare:
     stp x29, x30, [sp, -16]!
     stp x19, x20, [sp, -16]!
     stp x21, x22, [sp, -16]!
+    stp x23, x24, [sp, -16]!
     // kernel_pa
     mov x19, x0
+    
     // map_data
     adrp x9, map_data
     add x9, x9, :lo12:map_data
@@ -67,7 +69,8 @@ start_prepare:
     // start_preset.kallsyms_lookup_name_offset = setup_preset.set.kallsyms_lookup_name_offset;
     ldr x13, [x10, #setup_kallsyms_lookup_name_offset_offset]
     str x13, [x11, #start_kallsyms_lookup_name_offset_offset]
-    // start_preset.kernel_size = setup_preset.set.kernel_size;
+
+    // start_preset.kernel_size = setup_preset.kernel_size;
     ldr x13, [x10, #setup_kernel_size_offset]
     str x13, [x11, #start_kernel_size_offset]
 
@@ -120,17 +123,29 @@ start_prepare:
     add x1, x19, x20
     bl memcpy8
 
-    // finally relocate start
-    // memcpy(kernel_pa + start_offset, (uint64_t)_kp_start, (int64_t)(_kp_end - _kp_start))
+    // uint64_t start_img_size = setup_preset.kpimg_size - (_kp_start - _link_base)
+    ldr x22, [x10, #setup_kpimg_size_offset]
+    adrp x23, _kp_start
+    add x23, x23, :lo12:_kp_start
+    adrp x24, _link_base
+    add x24, x24, :lo12:_link_base
+    sub x23, x23, x24
+    sub x22, x22, x23
+
+    // map_data.start_img_size = start_img_size;
+    str x22, [x9, #map_start_img_size_offset]
+
+    // start and extra
+    // memcpy(kernel_pa + start_offset, (uint64_t)_kp_start, start_img_size + setup_preset.extra_size)
     add x0, x19, x21
     adrp x1, _kp_start
     add x1, x1, :lo12:_kp_start 
-    adrp x2, _kp_end
-    add x2, x2, :lo12:_kp_end 
-    sub x2, x2, x1
+    ldr x2, [x10, #setup_extra_size_offset]
+    add x2, x2, x22
     bl rmemcpy32
 
     // Restore
+    ldp x23, x24, [sp], 16 
     ldp x21, x22, [sp], 16 
     ldp x19, x20, [sp], 16 
     ldp x29, x30, [sp], 16
@@ -221,7 +236,7 @@ map_prepare:
     orr w15, w15, w12
     str w15, [x13]
 
-    // finally relocate map
+    // relocate map
     // memcpy(preset.map_offset + kernel_pa, (uint64_t)_map_start, (int64_t)(_map_end - _map_start));
     adrp x2, _map_end
     add x2, x2, :lo12:_map_end

@@ -3,6 +3,9 @@
  * Copyright (C) 2024 bmax121. All Rights Reserved.
  */
 
+#ifndef _KP_TOOL_KPM_H_
+#define _KP_TOOL_KPM_H_
+
 #define Elf_Shdr Elf64_Shdr
 #define Elf_Phdr Elf64_Phdr
 #define Elf_Sym Elf64_Sym
@@ -42,3 +45,5 @@ struct load_info
 
 int get_kpm_info_path(const char *kpm_path, char *out_info, int size);
 int get_kpm_info(const char *kpm, int len, char *out_info, int size);
+
+#endif

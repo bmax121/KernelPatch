@@ -185,9 +185,9 @@ void __noinline _paging_init()
 
     uint64_t page_size = 1 << data->page_shift;
     uint64_t old_start_pa = data->start_offset + data->kernel_pa;
-    uint64_t aligh_extra_size = (data->extra_size + page_size - 1) & ~(page_size - 1);
-    uint64_t reserve_size = data->start_size + aligh_extra_size;
-    uint64_t all_size = reserve_size + data->alloc_size;
+    uint64_t reserve_size = data->start_img_size + data->extra_size;
+    uint64_t align_extra_size = (data->extra_size + page_size - 1) & ~(page_size - 1);
+    uint64_t all_size = data->start_size + align_extra_size + data->alloc_size;
 
     // reserve old start
     ((memblock_reserve_f)data->map_symbol.memblock_reserve_relo)(old_start_pa, reserve_size);
@@ -232,9 +232,13 @@ void __noinline _paging_init()
     for (uint64_t i = start_va; i < start_va + all_size; i += 8) {
         *(uint64_t *)i = 0;
     }
-    for (uint64_t i = 0; i < reserve_size; i += 8) {
+    for (uint64_t i = 0; i < data->start_img_size; i += 8) {
         *(uint64_t *)(start_va + i) = *(uint64_t *)(old_start_va + i);
     }
+    for (uint64_t i = 0; i < data->extra_size; i += 8) {
+        *(uint64_t *)(start_va + data->start_size + i) = *(uint64_t *)(old_start_va + data->start_img_size + i);
+    }
+
     flush_icache_all();
 
     // free old start

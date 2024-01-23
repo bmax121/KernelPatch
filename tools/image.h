@@ -3,8 +3,8 @@
  * Copyright (C) 2023 bmax121. All Rights Reserved.
  */
 
-#ifndef _KP_IMAGE_H_
-#define _KP_IMAGE_H_
+#ifndef _KP_TOOL_IMAGE_H_
+#define _KP_TOOL_IMAGE_H_
 
 #include <stdint.h>
 

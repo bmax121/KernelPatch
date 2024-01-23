@@ -163,12 +163,13 @@ typedef struct _setup_preset_t
 {
     version_t kernel_version;
     int32_t _;
-    int64_t image_size;
-    int64_t kernel_size;
+    int64_t kimg_size; // must aligned
+    int64_t kpimg_size; // must aligned
+    int64_t kernel_size; // must aligned
     int64_t page_shift;
-    int64_t setup_offset;
-    int64_t start_offset;
-    int64_t extra_size;
+    int64_t setup_offset; // must aligned
+    int64_t start_offset; // must aligned
+    int64_t extra_size; // must aligned
     int64_t map_offset; // must aligned MAP_ALIGN
     int64_t map_max_size;
     int64_t kallsyms_lookup_name_offset;
@@ -181,8 +182,9 @@ typedef struct _setup_preset_t
 } setup_preset_t;
 #else
 #define setup_kernel_version_offset 0
-#define setup_image_size_offset (setup_kernel_version_offset + 8)
-#define setup_kernel_size_offset (setup_image_size_offset + 8)
+#define setup_kimg_size_offset (setup_kernel_version_offset + 8)
+#define setup_kpimg_size_offset (setup_kimg_size_offset + 8)
+#define setup_kernel_size_offset (setup_kpimg_size_offset + 8)
 #define setup_page_shift_offset (setup_kernel_size_offset + 8)
 #define setup_setup_offset_offset (setup_page_shift_offset + 8)
 #define setup_start_offset_offset (setup_setup_offset_offset + 8)
