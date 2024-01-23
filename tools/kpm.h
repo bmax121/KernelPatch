@@ -39,3 +39,6 @@ struct load_info
         unsigned int sym, str, mod, info;
     } index;
 };
+
+int get_kpm_info_path(const char *kpm_path, char *out_info, int size);
+int get_kpm_info(const char *kpm, int len, char *out_info, int size);

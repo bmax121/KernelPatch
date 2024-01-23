@@ -12,6 +12,7 @@ set(SOURCES
 	patch.c
 	symbol.c
 	kpm.c
+	common.c
 )
 
 add_executable(

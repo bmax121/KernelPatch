@@ -41,17 +41,6 @@ static char *get_next_modinfo(const struct load_info *info, const char *tag, cha
     return 0;
 }
 
-static int elf_header_check(struct load_info *info)
-{
-    if (info->len <= sizeof(*(info->hdr))) return -ENOEXEC;
-    if (memcmp(info->hdr->e_ident, ELFMAG, SELFMAG) || info->hdr->e_type != ET_REL || !elf_check_arch(info->hdr) ||
-        info->hdr->e_shentsize != sizeof(Elf_Shdr))
-        return -ENOEXEC;
-    if (info->hdr->e_shoff >= info->len || (info->hdr->e_shnum * sizeof(Elf_Shdr) > info->len - info->hdr->e_shoff))
-        return -ENOEXEC;
-    return 0;
-}
-
 static char *get_modinfo(const struct load_info *info, const char *tag)
 {
     return get_next_modinfo(info, tag, 0);
@@ -83,17 +72,19 @@ static unsigned long get_sh_size(struct load_info *info, const char *secname)
     return infosec->sh_entsize;
 }
 
-int get_kpm_info(const char *kpm, int len)
+int get_kpm_info(const char *kpm, int len, char *out_info, int size)
 {
     struct load_info load_info = { .len = len, .hdr = (Elf_Ehdr *)kpm };
     struct load_info *info = &load_info;
 
-    int rc = 0;
-    rc = elf_header_check(info);
-    if (rc) {
-        tools_loge("not elf\n");
-        return rc;
-    }
+    // header check
+    if (info->len <= sizeof(*(info->hdr))) return -ENOEXEC;
+    if (memcmp(info->hdr->e_ident, ELFMAG, SELFMAG) || info->hdr->e_type != ET_REL || !elf_check_arch(info->hdr) ||
+        info->hdr->e_shentsize != sizeof(Elf_Shdr))
+        return -ENOEXEC;
+    if (info->hdr->e_shoff >= info->len || (info->hdr->e_shnum * sizeof(Elf_Shdr) > info->len - info->hdr->e_shoff))
+        return -ENOEXEC;
+
     info->sechdrs = (void *)info->hdr + info->hdr->e_shoff;
     info->secstrings = (void *)info->hdr + info->sechdrs[info->hdr->e_shstrndx].sh_offset;
     info->sechdrs[0].sh_addr = 0;
@@ -102,12 +93,38 @@ int get_kpm_info(const char *kpm, int len)
         if (shdr->sh_type != SHT_NOBITS && info->len < shdr->sh_offset + shdr->sh_size) {
             return -ENOEXEC;
         }
-        /* Mark all sections sh_addr with their address in the temporary image. */
         shdr->sh_addr = (size_t)info->hdr + shdr->sh_offset;
+    }
+    info->index.info = find_sec(info, ".kpm.info");
+    if (!info->index.info) {
+        tools_loge("no .kpm.info section\n");
+        return -ENOEXEC;
     }
     info->info.base = get_sh_base(info, ".kpm.info");
     info->info.size = get_sh_size(info, ".kpm.info");
-    const char *name = get_modinfo(info, "name");
-    printf("aaaaaaaa name: %s\n", name);
+    info->info.name = get_modinfo(info, "name");
+    info->info.version = get_modinfo(info, "version");
+    info->info.license = get_modinfo(info, "license");
+    info->info.author = get_modinfo(info, "author");
+    info->info.description = get_modinfo(info, "description");
+
+    int sz = snprintf(out_info, size - 1,
+                      "name=%s\n"
+                      "version=%s\n"
+                      "license=%s\n"
+                      "author=%s\n"
+                      "description=%s\n",
+                      info->info.name, info->info.version, info->info.license, info->info.author,
+                      info->info.description);
     return 0;
+}
+
+int get_kpm_info_path(const char *kpm_path, char *out_info, int size)
+{
+    char *img;
+    int len = 0;
+    read_img(kpm_path, &img, &len);
+    int rc = get_kpm_info(img, len, out_info, size);
+    free(img);
+    return rc;
 }

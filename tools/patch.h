@@ -7,6 +7,23 @@
 #include <string.h>
 
 #include "preset.h"
+#include "image.h"
+
+#define KPM_MAX_NUM 32
+
+typedef struct
+{
+    //
+    const char *kimg_path;
+    const char *kimg;
+    int kimg_len;
+    kernel_info_t kinfo;
+    const char *embed[KPM_MAX_NUM];
+    preset_t *preset;
+
+    //
+
+} image_patch_t;
 
 preset_t *get_preset(const char *kimg, int kimg_len);
 

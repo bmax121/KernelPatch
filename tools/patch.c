@@ -45,30 +45,6 @@ static int b(uint32_t *buf, uint64_t from, uint64_t to)
     return 0;
 }
 
-static void read_img(const char *path, char **con, int *len)
-{
-    FILE *fp = fopen(path, "rb");
-    if (!fp) tools_error_exit("open file: %s, %s\n", path, strerror(errno));
-    fseek(fp, 0, SEEK_END);
-    long img_len = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    char *buf = (char *)malloc(img_len);
-    int readlen = fread(buf, 1, img_len, fp);
-    if (readlen != img_len) tools_error_exit("read file: %s incomplete\n", path);
-    fclose(fp);
-    *con = buf;
-    *len = img_len;
-}
-
-static void write_img(const char *path, char *img, int len)
-{
-    FILE *fout = fopen(path, "wb");
-    if (!fout) tools_error_exit("open %s %s\n", path, strerror(errno));
-    int writelen = fwrite(img, 1, len, fout);
-    if (writelen != len) tools_error_exit("write file: %s incomplete\n", path);
-    fclose(fout);
-}
-
 static int32_t relo_branch_func(const char *img, int32_t func_offset)
 {
     uint32_t inst = *(uint32_t *)(img + func_offset);
@@ -324,7 +300,7 @@ int patch_img(const char *kimg_path, const char *kpimg_path, const char *out_pat
     setup->page_shift = kinfo.page_shift;
     setup->setup_offset = align_kimg_len;
     setup->start_offset = align_kernel_size;
-    setup->extra_size = 1; // todo
+    setup->extra_size = 0; // todo
 
     int map_start, map_max_size;
     select_map_area(&kallsym, kimg, &map_start, &map_max_size);

@@ -23,8 +23,9 @@
 #include "kallsym.h"
 #include "patch.h"
 #include "common.h"
+#include "kpm.h"
 
-#define KPM_MAX_NUM 16
+#define KPM_MAX_NUM 32
 
 uint32_t version = 0;
 const char *program_name = NULL;
@@ -44,7 +45,7 @@ void print_usage(char **argv)
         "  -u, --unpatch                Unpatch patched kernel image(-i).\n"
         "  -r, --resetkey               Reset superkey of patched image(-i).\n"
         "  -d, --dump                   Dump kallsyms infomations of kernel image(-i).\n"
-        "  -l, --list-kpm               List all embeded KPM of patched kernel image. Print KPM informations if -M specified.\n"
+        "  -l, --list-kpm               List all embeded KPM of patched kernel image if -i specified. Print KPM informations if -M specified.\n"
 
         "Options:\n"
         "  -i, --image PATH             Kernel image path.\n"
@@ -81,17 +82,20 @@ int main(int argc, char *argv[])
                                  { "detach-kpm", required_argument, NULL, 'D' },
                                  { "kpm", required_argument, NULL, 'M' },
                                  { 0, 0, 0, 0 } };
-    char *optstr = "hvpurdi:s:k:o:";
+    char *optstr = "hvpurdli:s:k:o:E:D:M:";
 
     char *kimg_path = NULL;
     char *kpimg_path = NULL;
     char *out_path = NULL;
     char *superkey = NULL;
 
-    int kpm_num = 0;
-    char *embed_kpms_path[KPM_MAX_NUM] = { '\0' };
-    char *embed_kpms_name[KPM_MAX_NUM] = { '\0' };
-    char *kpm_path = NULL;
+    int embed_kpm_num = 0;
+    char *embed_kpms_path[KPM_MAX_NUM] = { 0 };
+
+    int detect_kpm_num = 0;
+    char *detect_kpms_name[KPM_MAX_NUM] = { 0 };
+
+    char *alone_kpm_path = NULL;
 
     char cmd = '\0';
     int opt = -1;
@@ -121,10 +125,13 @@ int main(int argc, char *argv[])
             out_path = optarg;
             break;
         case 'E':
+            embed_kpms_path[embed_kpm_num++] = optarg;
             break;
         case 'D':
+            detect_kpms_name[detect_kpm_num++] = optarg;
             break;
         case 'M':
+            alone_kpm_path = optarg;
             break;
         default:
             break;
@@ -147,7 +154,16 @@ int main(int argc, char *argv[])
         ret = unpatch_img(kimg_path, out_path);
     } else if (cmd == 'r') {
         ret = reset_key(kimg_path, out_path, superkey);
-    } else {
+    } else if (cmd == 'l') {
+        char buf[4096] = { '\0' };
+        int size = sizeof(buf);
+        if (alone_kpm_path) {
+            ret = get_kpm_info_path(alone_kpm_path, buf, size);
+        }
+        if (!ret) fprintf(stdout, "%s", buf);
+    }
+
+    else {
         print_usage(argv);
     }
     return ret;

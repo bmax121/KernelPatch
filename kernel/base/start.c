@@ -234,6 +234,8 @@ static void prot_myself()
     uint64_t align_extra_end = align_ceil(_kp_extra_end, page_size);
     log_boot("Extra: %llx, %llx\n", _kp_extra_start, _kp_extra_end);
 
+    log_boot("aaaaa %s\n", _kp_extra_start);
+
     for (uint64_t i = _kp_extra_start; i < align_extra_end; i += page_size) {
         uint64_t *pte = pgtable_entry_kernel(i);
         *pte = (*pte | PTE_DBM | PTE_SHARED) & ~PTE_RDONLY;
