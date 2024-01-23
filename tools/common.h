@@ -50,13 +50,13 @@ int can_b_imm(uint64_t from, uint64_t to);
 int b(uint32_t *buf, uint64_t from, uint64_t to);
 int32_t relo_branch_func(const char *img, int32_t func_offset);
 
-void write_img(const char *path, char *img, int len);
+void write_file(const char *path, char *img, int len);
 
-void read_img_align(const char *path, char **con, int *len, int align);
+void read_file_align(const char *path, char **con, int *len, int align);
 
-static inline void read_img(const char *path, char **con, int *len)
+static inline void read_file(const char *path, char **con, int *len)
 {
-    return read_img_align(path, con, len, 1);
+    return read_file_align(path, con, len, 1);
 }
 
 #endif

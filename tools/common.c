@@ -36,24 +36,24 @@ int32_t relo_branch_func(const char *img, int32_t func_offset)
     return relo_offset;
 }
 
-void read_img_align(const char *path, char **con, int *len, int align)
+void read_file_align(const char *path, char **con, int *len, int align)
 {
     FILE *fp = fopen(path, "rb");
     if (!fp) tools_error_exit("open file: %s, %s\n", path, strerror(errno));
     fseek(fp, 0, SEEK_END);
-    long img_len = ftell(fp);
+    long len = ftell(fp);
     fseek(fp, 0, SEEK_SET);
-    long align_img_len = align_ceil(img_len, align);
-    char *buf = (char *)malloc(align_img_len);
-    memset(buf + img_len, 0, align_img_len - img_len);
-    int readlen = fread(buf, 1, img_len, fp);
-    if (readlen != img_len) tools_error_exit("read file: %s incomplete\n", path);
+    long align_len = align_ceil(len, align);
+    char *buf = (char *)malloc(align_len);
+    memset(buf + len, 0, align_len - len);
+    int readlen = fread(buf, 1, len, fp);
+    if (readlen != len) tools_error_exit("read file: %s incomplete\n", path);
     fclose(fp);
     *con = buf;
-    *len = align_img_len;
+    *len = align_len;
 }
 
-void write_img(const char *path, char *img, int len)
+void write_file(const char *path, char *img, int len)
 {
     FILE *fout = fopen(path, "wb");
     if (!fout) tools_error_exit("open %s %s\n", path, strerror(errno));

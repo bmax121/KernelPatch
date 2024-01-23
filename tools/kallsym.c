@@ -753,8 +753,10 @@ static int correct_addresses_or_offsets_by_banner(kallsym_t *info, char *img, in
 
 static int correct_addresses_or_offsets(kallsym_t *info, char *img, int32_t imglen)
 {
-    int rc = correct_addresses_or_offsets_by_banner(info, img, imglen);
-    rc = -1;
+    int rc = 0;
+#if 1
+    rc = correct_addresses_or_offsets_by_banner(info, img, imglen);
+#endif
     if (rc) {
         tools_logw("no linux_banner? maybe CONFIG_KALLSYMS_ALL=n?\n");
     }

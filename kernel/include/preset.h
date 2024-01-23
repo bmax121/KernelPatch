@@ -147,9 +147,9 @@ struct patch_extra_item
     {
         struct
         {
-            char name[16];
-            int32_t size;
             extra_item_type type;
+            int32_t size;
+            int32_t priority;
         };
         char _cap[PATCH_EXTRA_ITEM_LEN];
     };

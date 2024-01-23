@@ -4,6 +4,7 @@
  */
 
 #include "symbol.h"
+#include "common.h"
 
 int32_t get_symbol_offset_zero(kallsym_t *info, char *img, char *symbol)
 {

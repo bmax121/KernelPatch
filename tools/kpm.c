@@ -126,7 +126,7 @@ void print_kpm_info_path(const char *kpm_path)
 
     char *img;
     int len = 0;
-    read_img(kpm_path, &img, &len);
+    read_file(kpm_path, &img, &len);
 
     char buf[4096] = { '\0' };
     int size = sizeof(buf);

@@ -92,8 +92,8 @@ int main(int argc, char *argv[])
     int embed_kpm_num = 0;
     char *embed_kpms_path[KPM_MAX_NUM] = { 0 };
 
-    int detect_kpm_num = 0;
-    char *detect_kpms_name[KPM_MAX_NUM] = { 0 };
+    int detach_kpm_num = 0;
+    char *detach_kpms_name[KPM_MAX_NUM] = { 0 };
 
     char *alone_kpm_path = NULL;
 
@@ -128,7 +128,7 @@ int main(int argc, char *argv[])
             embed_kpms_path[embed_kpm_num++] = optarg;
             break;
         case 'D':
-            detect_kpms_name[detect_kpm_num++] = optarg;
+            detach_kpms_name[detach_kpm_num++] = optarg;
             break;
         case 'M':
             alone_kpm_path = optarg;
@@ -147,7 +147,8 @@ int main(int argc, char *argv[])
         else
             fprintf(stdout, "%x\n", version);
     } else if (cmd == 'p') {
-        ret = patch_img(kimg_path, kpimg_path, out_path, superkey);
+        ret = patch_update_img(kimg_path, kpimg_path, out_path, superkey, embed_kpms_path, embed_kpm_num,
+                               detach_kpms_name, detach_kpm_num);
     } else if (cmd == 'd') {
         ret = dump_kallsym(kimg_path);
     } else if (cmd == 'u') {
