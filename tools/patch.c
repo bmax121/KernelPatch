@@ -185,14 +185,105 @@ uint32_t get_kpimg_version(const char *kpimg_path)
     return version;
 }
 
-// int patch_parse_img(const char *kimg_patch)
-
-int patch_img(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey)
+int parse_patched_img(patched_kimg_t *pimg)
 {
-    if (!kimg_path) tools_error_exit("empty kernel image\n");
+    if (!pimg->kimg_path) tools_error_exit("empty kernel image\n");
+
+    read_img(pimg->kimg_path, &pimg->kimg, &pimg->kimg_len);
+    char *kimg = pimg->kimg;
+    int kimg_len = pimg->kimg_len;
+
+    // kernel image infomation
+    kernel_info_t *kinfo = &pimg->kinfo;
+    if (get_kernel_info(kinfo, kimg, kimg_len)) tools_error_exit("get_kernel_info error\n");
+
+    // patched or new
+    preset_t *old_preset = get_preset(kimg, kimg_len);
+    pimg->preset = old_preset;
+    if (old_preset) {
+        tools_logi("patched image ...\n");
+        int saved_kimg_len = old_preset->setup.kimg_size;
+        int align_kimg_len = (char *)old_preset - kimg;
+        if (align_kimg_len == (int)align_ceil(saved_kimg_len, SZ_4K)) {
+            pimg->ori_kimg_len = saved_kimg_len;
+        } else {
+            pimg->ori_kimg_len = align_kimg_len;
+        }
+        memcpy(kimg, old_preset->setup.header_backup, sizeof(old_preset->setup.header_backup));
+    } else {
+        tools_logi("new image ...\n");
+        pimg->ori_kimg_len = pimg->kimg_len;
+    }
+
+    free(kimg);
+    return 0;
+}
+
+void print_kp_image_info(const char *kpimg_path)
+{
+    fprintf(stdout, "path=%s\n", kpimg_path);
+    char *kpimg;
+    int len = 0;
+    read_img(kpimg_path, &kpimg, &len);
+    preset_t *preset = (preset_t *)kpimg;
+
+    setup_header_t *header = &preset->header;
+    version_t ver = header->kp_version;
+    uint32_t ver_num = (ver.major << 16) + (ver.minor << 8) + ver.patch;
+    bool is_android = header->config_flags | CONFIG_ANDROID;
+    bool is_debug = header->config_flags | CONFIG_DEBUG;
+
+    fprintf(stdout, "version:%x\n", ver_num);
+    fprintf(stdout, "compile_time:%s\n", header->compile_time);
+    fprintf(stdout, "config=%s,%s\n", is_debug ? "debug" : "release", is_android ? "android" : "linux");
+    fprintf(stdout, "\n");
+
+    free(kpimg);
+}
+
+void print_patched_image_info(const char *kimg_path)
+{
+    fprintf(stdout, "path=%s\n", kimg_path);
+
+    patched_kimg_t *pimg = (patched_kimg_t *)malloc(sizeof(patched_kimg_t));
+    memset(pimg, 0, sizeof(*pimg));
+    pimg->kimg_path = kimg_path;
+    parse_patched_img(pimg);
+
+    fprintf(stdout, "len=0x%x\n", pimg->kimg_len);
+    preset_t *preset = pimg->preset;
+    fprintf(stdout, "patched=%s\n", preset ? "true" : "false");
+
+    if (preset) {
+    }
+
+    fprintf(stdout, "\n");
+    free(pimg);
+}
+
+int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey,
+                     char **embed_kpm, int embed_kpm_num, char **detach_kpm, int detach_kpm_num)
+{
+    set_log_enable(true);
+
     if (!kpimg_path) tools_error_exit("empty kpimg\n");
     if (!out_path) tools_error_exit("empty out image path\n");
     if (!superkey) tools_error_exit("empty superkey\n");
+
+    patched_kimg_t *pimg = (patched_kimg_t *)malloc(sizeof(patched_kimg_t));
+    memset(pimg, 0, sizeof(*pimg));
+    pimg->kimg_path = kimg_path;
+    parse_patched_img(pimg);
+
+    // int align_kimg_len = align_ceil(kimg_len, SZ_4K);
+
+    set_log_enable(false);
+    return 0;
+}
+
+int patch_img_xxx(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey)
+{
+    if (!kimg_path) tools_error_exit("empty kernel image\n");
 
     if (strlen(superkey) <= 0) tools_error_exit("empty superkey\n");
     if (strlen(superkey) >= SUPER_KEY_LEN) tools_error_exit("too long superkey\n");

@@ -109,6 +109,7 @@ int get_kpm_info(const char *kpm, int len, char *out_info, int size)
     info->info.description = get_modinfo(info, "description");
 
     int sz = snprintf(out_info, size - 1,
+
                       "name=%s\n"
                       "version=%s\n"
                       "license=%s\n"
@@ -119,12 +120,19 @@ int get_kpm_info(const char *kpm, int len, char *out_info, int size)
     return 0;
 }
 
-int get_kpm_info_path(const char *kpm_path, char *out_info, int size)
+void print_kpm_info_path(const char *kpm_path)
 {
+    fprintf(stdout, "path=%s\n", kpm_path);
+
     char *img;
     int len = 0;
     read_img(kpm_path, &img, &len);
-    int rc = get_kpm_info(img, len, out_info, size);
+
+    char buf[4096] = { '\0' };
+    int size = sizeof(buf);
+    int rc = get_kpm_info(img, len, buf, size);
+    if (!rc) fprintf(stdout, "%s", buf);
+    fprintf(stdout, "\n");
+
     free(img);
-    return rc;
 }

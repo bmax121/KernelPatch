@@ -5,6 +5,8 @@
 
 #include "common.h"
 
+bool log_enable = false;
+
 int can_b_imm(uint64_t from, uint64_t to)
 {
     // B: 128M

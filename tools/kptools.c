@@ -25,8 +25,6 @@
 #include "common.h"
 #include "kpm.h"
 
-#define KPM_MAX_NUM 32
-
 uint32_t version = 0;
 const char *program_name = NULL;
 
@@ -45,7 +43,9 @@ void print_usage(char **argv)
         "  -u, --unpatch                Unpatch patched kernel image(-i).\n"
         "  -r, --resetkey               Reset superkey of patched image(-i).\n"
         "  -d, --dump                   Dump kallsyms infomations of kernel image(-i).\n"
-        "  -l, --list-kpm               List all embeded KPM of patched kernel image if -i specified. Print KPM informations if -M specified.\n"
+        "  -l, --list                   Print all patch informations of kernel image if -i specified.\n"
+        "                               Print KPM informations if -M specified.\n"
+        "                               Print KernelPatch image informations if -k specified.\n"
 
         "Options:\n"
         "  -i, --image PATH             Kernel image path.\n"
@@ -71,7 +71,7 @@ int main(int argc, char *argv[])
                                  { "unpatch", no_argument, NULL, 'u' },
                                  { "resetkey", no_argument, NULL, 'r' },
                                  { "dump", no_argument, NULL, 'd' },
-                                 { "list-kpm", no_argument, NULL, 'l' },
+                                 { "list", no_argument, NULL, 'l' },
 
                                  { "image", required_argument, NULL, 'i' },
                                  { "kpimg", required_argument, NULL, 'k' },
@@ -155,12 +155,9 @@ int main(int argc, char *argv[])
     } else if (cmd == 'r') {
         ret = reset_key(kimg_path, out_path, superkey);
     } else if (cmd == 'l') {
-        char buf[4096] = { '\0' };
-        int size = sizeof(buf);
-        if (alone_kpm_path) {
-            ret = get_kpm_info_path(alone_kpm_path, buf, size);
-        }
-        if (!ret) fprintf(stdout, "%s", buf);
+        if (kimg_path) print_patched_image_info(kimg_path);
+        if (alone_kpm_path) print_kpm_info_path(alone_kpm_path);
+        if (kpimg_path) print_kp_image_info(kpimg_path);
     }
 
     else {

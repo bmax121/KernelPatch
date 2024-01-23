@@ -10,10 +10,19 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <stdbool.h>
 
-#define tools_logi(fmt, ...) fprintf(stdout, "[+] %s; " fmt, __FILE__, ##__VA_ARGS__);
-#define tools_logw(fmt, ...) fprintf(stdout, "[?] %s; " fmt, __FILE__, ##__VA_ARGS__);
-#define tools_loge(fmt, ...) fprintf(stdout, "[-] error %s:%d/%s(); " fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__);
+extern bool log_enable;
+
+#define tools_logi(fmt, ...) \
+    if (log_enable) fprintf(stdout, "[+] %s; " fmt, __FILE__, ##__VA_ARGS__);
+
+#define tools_logw(fmt, ...) \
+    if (log_enable) fprintf(stdout, "[?] %s; " fmt, __FILE__, ##__VA_ARGS__);
+
+#define tools_loge(fmt, ...) \
+    if (log_enable) fprintf(stdout, "[-] error %s:%d/%s(); " fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__);
+
 #define tools_error_exit(fmt, ...)                                                                  \
     do {                                                                                            \
         fprintf(stdout, "[-] error %s:%d/%s(); " fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
@@ -31,6 +40,11 @@
 
 #define sign64_extend(n, len) \
     (((uint64_t)((n) << (63u - (len - 1))) >> 63u) ? ((n) | (0xFFFFFFFFFFFFFFFF << (len))) : n)
+
+static inline void set_log_enable(bool enable)
+{
+    log_enable = enable;
+}
 
 int can_b_imm(uint64_t from, uint64_t to);
 int b(uint32_t *buf, uint64_t from, uint64_t to);
