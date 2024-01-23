@@ -36,7 +36,7 @@ int32_t relo_branch_func(const char *img, int32_t func_offset)
     return relo_offset;
 }
 
-void read_file_align(const char *path, char **con, int *len, int align)
+void read_file_align(const char *path, char **con, int *out_len, int align)
 {
     FILE *fp = fopen(path, "rb");
     if (!fp) tools_error_exit("open file: %s, %s\n", path, strerror(errno));
@@ -50,7 +50,7 @@ void read_file_align(const char *path, char **con, int *len, int align)
     if (readlen != len) tools_error_exit("read file: %s incomplete\n", path);
     fclose(fp);
     *con = buf;
-    *len = align_len;
+    *out_len = align_len;
 }
 
 void write_file(const char *path, char *img, int len)

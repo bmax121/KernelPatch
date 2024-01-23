@@ -36,14 +36,8 @@ uint32_t get_kpimg_version(const char *kpimg_path)
     return version;
 }
 
-void print_kp_image_info(const char *kpimg_path)
+void print_preset_info(preset_t *preset)
 {
-    fprintf(stdout, "path=%s\n", kpimg_path);
-    char *kpimg;
-    int len = 0;
-    read_file(kpimg_path, &kpimg, &len);
-    preset_t *preset = (preset_t *)kpimg;
-
     setup_header_t *header = &preset->header;
     version_t ver = header->kp_version;
     uint32_t ver_num = (ver.major << 16) + (ver.minor << 8) + ver.patch;
@@ -54,7 +48,16 @@ void print_kp_image_info(const char *kpimg_path)
     fprintf(stdout, "compile_time:%s\n", header->compile_time);
     fprintf(stdout, "config=%s,%s\n", is_debug ? "debug" : "release", is_android ? "android" : "linux");
     fprintf(stdout, "\n");
+}
 
+void print_kp_image_info(const char *kpimg_path)
+{
+    fprintf(stdout, "path=%s\n", kpimg_path);
+    char *kpimg;
+    int len = 0;
+    read_file(kpimg_path, &kpimg, &len);
+    preset_t *preset = (preset_t *)kpimg;
+    print_preset_info(preset);
     free(kpimg);
 }
 
@@ -106,6 +109,7 @@ void print_patched_image_info(const char *kimg_path)
     fprintf(stdout, "patched=%s\n", preset ? "true" : "false");
 
     if (preset) {
+        print_preset_info(preset);
     }
 
     fprintf(stdout, "\n");
