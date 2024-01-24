@@ -33,6 +33,9 @@ extern void _kp_end();
 extern uint64_t _kp_hook_start;
 extern uint64_t _kp_hook_end;
 
+extern uint64_t _kp_extra_start;
+extern uint64_t _kp_extra_end;
+
 extern uint64_t _kp_rox_start;
 extern uint64_t _kp_rox_end;
 extern uint64_t _kp_rw_start;

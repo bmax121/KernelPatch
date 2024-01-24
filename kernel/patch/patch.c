@@ -12,6 +12,7 @@
 #include <syscall.h>
 #include <module.h>
 #include <predata.h>
+#include <extrainit.h>
 
 int linux_misc_symbol_init();
 int linux_libs_symbol_init();
@@ -85,6 +86,9 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
     if ((rc = su_compat_init())) goto out;
     log_boot("su_compat_init done: %d\n", rc);
 #endif
+
+    if ((rc = extra_init())) goto out;
+    log_boot("supercall_install done: %d\n", rc);
 
 out:
     return;

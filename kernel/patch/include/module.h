@@ -17,7 +17,7 @@ struct load_info
         unsigned long size;
         const char *name, *version, *license, *author, *description;
     } info;
-    Elf_Ehdr *hdr;
+    const Elf_Ehdr *hdr;
     unsigned long len;
     Elf_Shdr *sechdrs;
     char *secstrings, *strtab;
@@ -50,7 +50,7 @@ struct module
     struct list_head list;
 };
 
-int load_module(void *data, int len, const char *args, void *__user reserved);
+int load_module(const void *data, int len, const char *args, void *__user reserved);
 int load_module_path(const char *path, const char *args, void *__user reserved);
 int control_module(const char *name, const char *ctl_args, void *__user reserved);
 int unload_module(const char *name, void *__user reserved);

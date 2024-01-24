@@ -53,11 +53,11 @@ void read_file_align(const char *path, char **con, int *out_len, int align)
     *out_len = align_len;
 }
 
-void write_file(const char *path, char *img, int len)
+void write_file(const char *path, const char *con, int len, bool append)
 {
-    FILE *fout = fopen(path, "wb");
+    FILE *fout = fopen(path, append ? "a" : "w");
     if (!fout) tools_error_exit("open %s %s\n", path, strerror(errno));
-    int writelen = fwrite(img, 1, len, fout);
+    int writelen = fwrite(con, 1, len, fout);
     if (writelen != len) tools_error_exit("write file: %s incomplete\n", path);
     fclose(fout);
 }

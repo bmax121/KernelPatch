@@ -43,7 +43,12 @@ struct load_info
     } index;
 };
 
-int get_kpm_info(const char *kpm, int len, char *out_info, int size);
+typedef struct
+{
+    const char *name, *version, *license, *author, *description;
+} kpm_info_t;
+
+int get_kpm_info(const char *kpm, int len, kpm_info_t *info);
 
 void print_kpm_info_path(const char *kpm_path);
 

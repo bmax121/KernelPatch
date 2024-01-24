@@ -50,7 +50,7 @@ int can_b_imm(uint64_t from, uint64_t to);
 int b(uint32_t *buf, uint64_t from, uint64_t to);
 int32_t relo_branch_func(const char *img, int32_t func_offset);
 
-void write_file(const char *path, char *img, int len);
+void write_file(const char *path, const char *con, int len, bool append);
 
 void read_file_align(const char *path, char **con, int *len, int align);
 

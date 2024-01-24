@@ -135,26 +135,29 @@ _Static_assert(sizeof(patch_symbol_t) == PATCH_SYMBOL_LEN, "sizeof patch_symbol_
 
 #ifndef __ASSEMBLY__
 
+#define EXTRA_ALIGN 0x10
+
 typedef int32_t extra_item_type;
 
 #define EXTRA_TYPE_NONE 0
 #define EXTRA_TYPE_KPM 1
 #define EXTRA_TYPE_SHELL 2
 
-struct patch_extra_item
+struct _patch_extra_item
 {
     union
     {
         struct
         {
             extra_item_type type;
-            int32_t size;
             int32_t priority;
+            int32_t con_size;
+            int32_t args_size;
         };
         char _cap[PATCH_EXTRA_ITEM_LEN];
     };
 };
-typedef struct patch_extra_item patch_extra_item_t;
+typedef struct _patch_extra_item patch_extra_item_t;
 _Static_assert(sizeof(patch_extra_item_t) == PATCH_EXTRA_ITEM_LEN, "sizeof patch_extra_item_t mismatch");
 #endif
 

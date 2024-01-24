@@ -17,6 +17,7 @@
 #include "order.h"
 #include "preset.h"
 #include "symbol.h"
+#include "kpm.h"
 
 preset_t *get_preset(const char *kimg, int kimg_len)
 {
@@ -47,7 +48,6 @@ void print_preset_info(preset_t *preset)
     fprintf(stdout, "version=%x\n", ver_num);
     fprintf(stdout, "compile_time=%s\n", header->compile_time);
     fprintf(stdout, "config=%s,%s\n", is_debug ? "debug" : "release", is_android ? "android" : "linux");
-    fprintf(stdout, "\n");
 }
 
 void print_kp_image_info(const char *kpimg_path)
@@ -58,6 +58,7 @@ void print_kp_image_info(const char *kpimg_path)
     read_file(kpimg_path, &kpimg, &len);
     preset_t *preset = (preset_t *)kpimg;
     print_preset_info(preset);
+    fprintf(stdout, "\n");
     free(kpimg);
 }
 
@@ -104,7 +105,6 @@ void print_patched_image_info(const char *kimg_path)
     pimg->kimg_path = kimg_path;
     parse_patched_img(pimg);
 
-    fprintf(stdout, "len=0x%x\n", pimg->kimg_len);
     preset_t *preset = pimg->preset;
     fprintf(stdout, "patched=%s\n", preset ? "true" : "false");
 
@@ -116,8 +116,10 @@ void print_patched_image_info(const char *kimg_path)
     free(pimg);
 }
 
+// todo: opt
 int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey,
-                     char **embed_kpm_path, int embed_kpm_num, char **detach_kpm_names, int detach_kpm_num)
+                     char **embed_kpm_path, char **embed_kpm_args, int embed_kpm_num, char **detach_kpm_names,
+                     int detach_kpm_num)
 {
     set_log_enable(true);
 
@@ -150,6 +152,58 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
 
     // extra
     int extra_size = 0;
+    int extra_num = 0;
+
+    struct extra_items_wrap
+    {
+        patch_extra_item_t item;
+        const char *data;
+        const char *args;
+        int len;
+    } *extra_items = (struct extra_items_wrap *)malloc(sizeof(struct extra_items_wrap) * EXTRA_ITEM_MAX_NUM);
+
+    memset(extra_items, 0, sizeof(struct extra_items_wrap) * EXTRA_ITEM_MAX_NUM);
+
+    for (int i = 0; i < embed_kpm_num && extra_num < EXTRA_ITEM_MAX_NUM; i++) {
+        char *kpm_data;
+        int kpm_len;
+        read_file_align(embed_kpm_path[i], &kpm_data, &kpm_len, EXTRA_ALIGN);
+
+        kpm_info_t kpm_info = { 0 };
+        int rc = get_kpm_info(kpm_data, kpm_len, &kpm_info);
+        if (rc) tools_error_exit("can get infomation of kpm, path: %s\n", embed_kpm_path[i]);
+
+        struct extra_items_wrap *item_wrap = extra_items + extra_num;
+        patch_extra_item_t *kpm_item = &item_wrap->item;
+
+        kpm_item->type = EXTRA_TYPE_KPM;
+        kpm_item->con_size = kpm_len;
+        const char *args = embed_kpm_args[i];
+        if (args) {
+            item_wrap->args = args;
+            kpm_item->args_size = align_ceil(strlen(args), EXTRA_ALIGN);
+        }
+        // todo:
+        kpm_item->priority = 0;
+
+        item_wrap->data = kpm_data;
+        item_wrap->len = kpm_len;
+
+        if ((is_be() ^ kinfo->is_be)) {
+            kpm_item->priority = i32swp(kpm_item->priority);
+            kpm_item->type = i32swp(kpm_item->type);
+            kpm_item->con_size = i32swp(kpm_item->con_size);
+            kpm_item->args_size = i32swp(kpm_item->args_size);
+        }
+        tools_logi("embedding kpm: %s, args: %s\n", kpm_info.name, item_wrap->args);
+
+        extra_size += sizeof(patch_extra_item_t);
+        extra_size += kpm_len;
+        extra_size += kpm_item->args_size;
+        extra_num++;
+    }
+    extra_size += sizeof(patch_extra_item_t);
+    tools_logi("embed kpm num: %d, size: 0x%x\n", embed_kpm_num, extra_size);
 
     // copy to out image
     int ori_kimg_len = pimg->ori_kimg_len;
@@ -185,7 +239,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     setup->page_shift = kinfo->page_shift;
     setup->setup_offset = align_kimg_len;
     setup->start_offset = align_kernel_size;
-    setup->extra_size = extra_size;
+    setup->extra_size = extra_size; // ending with empty item
 
     int map_start, map_max_size;
     select_map_area(&kallsym, kallsym_kimg, &map_start, &map_max_size);
@@ -224,8 +278,6 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     strncpy((char *)setup->superkey, superkey, SUPER_KEY_LEN - 1);
     tools_logi("superkey: %s\n", setup->superkey);
 
-    // extra
-
     // modify kernel entry
     int paging_init_offset = get_symbol_offset_exit(&kallsym, kallsym_kimg, "paging_init");
     setup->paging_init_offset = relo_branch_func(kallsym_kimg, paging_init_offset);
@@ -233,9 +285,32 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     b((uint32_t *)(out_img + kinfo->b_stext_insn_offset), kinfo->b_stext_insn_offset, text_offset);
 
     // write out
-    write_file(out_path, out_img, out_img_len);
+    write_file(out_path, out_img, out_img_len, false);
+
+    // extra
+    for (int i = 0; i < extra_num; i++) {
+        struct extra_items_wrap *item_wrap = &extra_items[i];
+        write_file(out_path, (void *)&item_wrap->item, sizeof(item_wrap->item), true);
+        int args_size = item_wrap->item.args_size;
+        if (args_size > 0) {
+            char *args = (char *)malloc(args_size);
+            memset(args + args_size - EXTRA_ALIGN, 0, EXTRA_ALIGN);
+            strcpy(args, item_wrap->args);
+            write_file(out_path, (void *)item_wrap->args, args_size, true);
+            free(args);
+        }
+        write_file(out_path, (void *)item_wrap->data, item_wrap->len, true);
+    }
+
+    patch_extra_item_t empty_item = {
+        .type = EXTRA_TYPE_NONE,
+        .priority = 0,
+        .con_size = 0,
+    };
+    write_file(out_path, (void *)&empty_item, sizeof(empty_item), true);
 
     // free
+    free(extra_items);
     free(kallsym_kimg);
     free(kpimg);
     free(out_img);
@@ -261,7 +336,7 @@ int unpatch_img(const char *kimg_path, const char *out_path)
     memcpy(kimg, preset->setup.header_backup, sizeof(preset->setup.header_backup));
     int kimg_size = preset->setup.kimg_size ?: ((char *)preset - kimg);
 
-    write_file(out_path, kimg, kimg_size);
+    write_file(out_path, kimg, kimg_size, false);
     free(kimg);
     return 0;
 }
@@ -286,7 +361,7 @@ int reset_key(const char *kimg_path, const char *out_path, const char *superkey)
     strcpy((char *)preset->setup.superkey, superkey);
     tools_logi("reset superkey: %s -> %s\n", origin_key, preset->setup.superkey);
 
-    write_file(out_path, kimg, kimg_len);
+    write_file(out_path, kimg, kimg_len, false);
 
     free(origin_key);
     free(kimg);

@@ -72,7 +72,7 @@ static unsigned long get_sh_size(struct load_info *info, const char *secname)
     return infosec->sh_entsize;
 }
 
-int get_kpm_info(const char *kpm, int len, char *out_info, int size)
+int get_kpm_info(const char *kpm, int len, kpm_info_t *out_info)
 {
     struct load_info load_info = { .len = len, .hdr = (Elf_Ehdr *)kpm };
     struct load_info *info = &load_info;
@@ -102,21 +102,13 @@ int get_kpm_info(const char *kpm, int len, char *out_info, int size)
     }
     info->info.base = get_sh_base(info, ".kpm.info");
     info->info.size = get_sh_size(info, ".kpm.info");
-    info->info.name = get_modinfo(info, "name");
-    info->info.version = get_modinfo(info, "version");
-    info->info.license = get_modinfo(info, "license");
-    info->info.author = get_modinfo(info, "author");
-    info->info.description = get_modinfo(info, "description");
 
-    int sz = snprintf(out_info, size - 1,
+    out_info->name = get_modinfo(info, "name");
+    out_info->version = get_modinfo(info, "version");
+    out_info->license = get_modinfo(info, "license");
+    out_info->author = get_modinfo(info, "author");
+    out_info->description = get_modinfo(info, "description");
 
-                      "name=%s\n"
-                      "version=%s\n"
-                      "license=%s\n"
-                      "author=%s\n"
-                      "description=%s\n",
-                      info->info.name, info->info.version, info->info.license, info->info.author,
-                      info->info.description);
     return 0;
 }
 
@@ -128,11 +120,14 @@ void print_kpm_info_path(const char *kpm_path)
     int len = 0;
     read_file(kpm_path, &img, &len);
 
-    char buf[4096] = { '\0' };
-    int size = sizeof(buf);
-    int rc = get_kpm_info(img, len, buf, size);
-    if (!rc) fprintf(stdout, "%s", buf);
-    fprintf(stdout, "\n");
-
+    kpm_info_t kpm_info = { 0 };
+    int rc = get_kpm_info(img, len, &kpm_info);
+    if (!rc) {
+        fprintf(stdout, "name=%s\n", kpm_info.name);
+        fprintf(stdout, "version=%s\n", kpm_info.version);
+        fprintf(stdout, "license=%s\n", kpm_info.license);
+        fprintf(stdout, "author=%s\n", kpm_info.author);
+        fprintf(stdout, "description=%s\n", kpm_info.description);
+    }
     free(img);
 }
