@@ -69,6 +69,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}-dev
+          commit: dev
           artifacts: |
             kernel/kpimg-linux
             kernel/kpimg-android
@@ -107,6 +108,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}-dev
+          commit: dev
           artifacts: |
             kpuser.zip
           allowUpdates: true
@@ -179,6 +181,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}-dev
+          commit: dev
           artifacts: |
             user/build/android/kpatch-android
             user/build/android/libapjni.so
@@ -224,6 +227,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}-dev
+          commit: dev
           artifacts: |
             tools/build/kptools-linux
           allowUpdates: true
@@ -266,6 +270,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}-dev
+          commit: dev
           artifacts: |
             tools/build/kptools-mac
           allowUpdates: true
