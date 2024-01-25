@@ -20,7 +20,9 @@ int kpm_load(const char *key, const char *path, const char *args)
 
 int kpm_control(const char *key, const char *name, const char *ctl_args)
 {
-    int rc = sc_kpm_control(key, name, ctl_args, 0);
+    char buf[4096] = { '\0' };
+    int rc = sc_kpm_control(key, name, ctl_args, buf, sizeof(buf));
+    fprintf(stdout, "%s", buf);
     return rc;
 }
 
@@ -73,7 +75,7 @@ static void usage(int status)
                         "\n"
                         "help                           Print this help message. \n"
                         "load <KPM_PATH> [KPM_ARGS]     Load KernelPatch Module with KPM_PATH and KPM_ARGS.\n"
-                        "control <KPM_NAME> <CTL_ARGS>  Control KernelPatch Module named KPM_PATH with CTL_ARGS.\n"
+                        "ctl <KPM_NAME> <CTL_ARGS>  Control KernelPatch Module named KPM_PATH with CTL_ARGS.\n"
                         "unload <KPM_NAME>              Unload KernelPatch Module named KPM_NAME.\n"
                         "num                            Get the number of modules that have been loaded.\n"
                         "list                           List names of all loaded modules.\n"
@@ -96,7 +98,7 @@ int kpm_main(int argc, char **argv)
         int cmd;
     } cmd_arr[] = {
         { "load", SUPERCALL_KPM_LOAD },
-        { "control", SUPERCALL_KPM_CONTROL },
+        { "ctl", SUPERCALL_KPM_CONTROL },
         { "unload", SUPERCALL_KPM_UNLOAD },
         { "num", SUPERCALL_KPM_NUMS },
         { "list", SUPERCALL_KPM_LIST },

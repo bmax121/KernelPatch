@@ -25,7 +25,7 @@
 #define KPM_DESCRIPTION(x) KPM_INFO(description, x, KPM_DESCRIPTION_LEN)
 
 typedef int (*mod_initcall_t)(const char *args, void *reserved);
-typedef int (*mod_ctlcall_t)(const char *ctl_args, void *reserved);
+typedef int (*mod_ctlcall_t)(const char *ctl_args, char *__user out_msg, int outlen);
 typedef int (*mod_exitcall_t)(void *reserved);
 
 #define KPM_INIT(fn) \

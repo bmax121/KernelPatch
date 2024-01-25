@@ -472,11 +472,11 @@ int load_module(const void *data, int len, const char *args, void *__user reserv
     err = (*mod->init)(mod->args, reserved);
 
     if (!err) {
-        logkfi(" [%s] succeed with [%s] \n", mod->info.name, args);
+        logkfi("[%s] succeed with [%s] \n", mod->info.name, args);
         list_add_tail(&mod->list, &modules.list);
         goto out;
     } else {
-        logkfi(" [%s] failed with [%s] error: %d, try exit ...\n", mod->info.name, args, err);
+        logkfi("[%s] failed with [%s] error: %d, try exit ...\n", mod->info.name, args, err);
         (*mod->exit)(reserved);
     }
 
@@ -494,7 +494,7 @@ out:
 // lock
 int unload_module(const char *name, void *__user reserved)
 {
-    logkfe("%s\n", name);
+    logkfe("name: %s\n", name);
 
     rcu_read_lock();
     int err = 0;
@@ -513,7 +513,7 @@ int unload_module(const char *name, void *__user reserved)
     kp_free_exec(mod->start);
     kvfree(mod);
 
-    logkfi("%s rc: %d\n", name, err);
+    logkfi("name: %s, rc: %d\n", name, err);
 
 out:
     rcu_read_unlock();
@@ -561,9 +561,11 @@ out:
     return err;
 }
 
-int control_module(const char *name, const char *ctl_args, void *__user reserved)
+int control_module(const char *name, const char *ctl_args, char *__user out_msg, int outlen)
 {
     if (!ctl_args) return -EINVAL;
+    int args_len = strlen(ctl_args);
+    if (args_len <= 0) return -EINVAL;
 
     logkfi("name %s, args: %s\n", name, ctl_args);
 
@@ -576,21 +578,21 @@ int control_module(const char *name, const char *ctl_args, void *__user reserved
         goto out;
     }
 
-    mod->ctl_args = vmalloc(strlen(ctl_args) + 1);
+    if (mod->ctl_args) {
+        kvfree(mod->ctl_args);
+    }
+
+    mod->ctl_args = vmalloc(args_len + 1);
     if (!mod->args) {
         err = -ENOMEM;
         goto out;
     }
 
-    if (mod->ctl_args) {
-        kvfree(mod->ctl_args);
-    }
-
     strcpy(mod->ctl_args, ctl_args);
 
-    err = (*mod->ctl)(ctl_args, reserved);
+    err = (*mod->ctl)(mod->ctl_args, out_msg, outlen);
 
-    logkfi("%s rc: %d\n", name, err);
+    logkfi("name: %s, rc: %d\n", name, err);
 
 out:
     rcu_read_unlock();

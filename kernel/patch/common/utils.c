@@ -52,7 +52,6 @@ KP_EXPORT_SYMBOL(seq_copy_to_user);
 
 #include <linux/uaccess.h>
 
-// todo:
 long strncpy_from_user_nofault(char *dest, const char __user *src, long count)
 {
     if (kfunc(strncpy_from_user)) {

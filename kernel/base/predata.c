@@ -9,20 +9,16 @@
 
 #include "start.h"
 #include "pgtable.h"
+#include "baselib.h"
 
 extern start_preset_t start_preset;
 
-static char superkey[SUPER_KEY_LEN] = { '\0' };
-static int superkey_len = 0;
+static char *superkey = 0;
 static struct patch_symbol *patch_symbol = 0;
 
-int superkey_auth(const char *key, int len)
+int superkey_auth(const char *key)
 {
-    if (!key || len <= 0 || superkey_len != len) return -1;
-    for (int i = 0; i < len; i++) {
-        if (superkey[i] != key[i]) return -1;
-    }
-    return 0;
+    return lib_strncmp(superkey, key, SUPER_KEY_LEN);
 }
 
 const char *get_superkey()
@@ -55,14 +51,8 @@ int on_each_extra_item(int (*callback)(const patch_extra_item_t *extra, const ch
 
 void predata_init()
 {
-    for (int i = 0; i < SUPER_KEY_LEN - 1; i++) {
-        char c = start_preset.superkey[i];
-        if (!c) {
-            superkey_len = i;
-            break;
-        }
-        superkey[i] = c;
-    }
+    superkey = (char *)start_preset.superkey;
+
     patch_symbol = &start_preset.patch_symbol;
 
     for (uintptr_t addr = (uint64_t)patch_symbol; addr < (uintptr_t)patch_symbol + PATCH_SYMBOL_LEN;

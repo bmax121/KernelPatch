@@ -318,7 +318,7 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
         if (!p1 || IS_ERR(p1)) return;
         char arg1[SUPER_KEY_LEN];
         if (strncpy_from_user_nofault(arg1, p1, sizeof(arg1)) <= 0) return;
-        if (superkey_auth(arg1, strlen(arg1))) return;
+        if (superkey_auth(arg1)) return;
         commit_su(0, 0);
         strcpy((char *)filename->name, kpatch_path);
         // log

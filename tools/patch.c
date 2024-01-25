@@ -160,6 +160,10 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
         const char *data;
         const char *args;
         int len;
+        union
+        {
+            const char *name;
+        };
     } *extra_items = (struct extra_items_wrap *)malloc(sizeof(struct extra_items_wrap) * EXTRA_ITEM_MAX_NUM);
 
     memset(extra_items, 0, sizeof(struct extra_items_wrap) * EXTRA_ITEM_MAX_NUM);
@@ -188,6 +192,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
 
         item_wrap->data = kpm_data;
         item_wrap->len = kpm_len;
+        item_wrap->name = kpm_info.name;
 
         if ((is_be() ^ kinfo->is_be)) {
             kpm_item->priority = i32swp(kpm_item->priority);
@@ -195,15 +200,12 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
             kpm_item->con_size = i32swp(kpm_item->con_size);
             kpm_item->args_size = i32swp(kpm_item->args_size);
         }
-        tools_logi("embedding kpm: %s, args: %s\n", kpm_info.name, item_wrap->args);
-
         extra_size += sizeof(patch_extra_item_t);
         extra_size += kpm_len;
         extra_size += kpm_item->args_size;
         extra_num++;
     }
     extra_size += sizeof(patch_extra_item_t);
-    tools_logi("embed kpm num: %d, size: 0x%x\n", embed_kpm_num, extra_size);
 
     // copy to out image
     int ori_kimg_len = pimg->ori_kimg_len;
@@ -290,6 +292,20 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     // extra
     for (int i = 0; i < extra_num; i++) {
         struct extra_items_wrap *item_wrap = &extra_items[i];
+        const char *type = EXTRA_TYPE_NONE;
+        switch (item_wrap->item.type) {
+        case EXTRA_TYPE_KPM:
+            type = "kpm";
+            break;
+        case EXTRA_TYPE_SHELL:
+            type = "shell";
+            break;
+        default:
+            break;
+        }
+        tools_logi("embedding %s name: %s, size: 0x%x, args: %s\n", type, item_wrap->name, item_wrap->len,
+                   item_wrap->args);
+
         write_file(out_path, (void *)&item_wrap->item, sizeof(item_wrap->item), true);
         int args_size = item_wrap->item.args_size;
         if (args_size > 0) {

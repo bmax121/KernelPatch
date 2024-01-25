@@ -80,13 +80,13 @@ static long call_kpm_load(const char __user *arg1, const char *__user arg2, void
     return load_module_path(path, arglen <= 0 ? 0 : args, reserved);
 }
 
-static long call_kpm_control(const char __user *arg1, const char *__user arg2, void *__user reserved)
+static long call_kpm_control(const char __user *arg1, const char *__user arg2, void *__user out_msg, int outlen)
 {
     char name[KPM_NAME_LEN], args[KPM_ARGS_LEN];
     long namelen = strncpy_from_user_nofault(name, arg1, sizeof(name));
     if (namelen <= 0) return -EINVAL;
     long arglen = strncpy_from_user_nofault(args, arg2, sizeof(args));
-    return control_module(name, arglen <= 0 ? 0 : args, reserved);
+    return control_module(name, arglen <= 0 ? 0 : args, out_msg, outlen);
 }
 
 static long call_kpm_unload(const char *__user arg1, void *__user reserved)
@@ -146,7 +146,7 @@ static long call_su_task(pid_t pid, struct su_profile *__user uprofile)
     return rc;
 }
 
-static long supercall(long cmd, long arg1, long arg2, long arg3)
+static long supercall(long cmd, long arg1, long arg2, long arg3, long arg4)
 {
     switch (cmd) {
     case SUPERCALL_HELLO:
@@ -170,7 +170,7 @@ static long supercall(long cmd, long arg1, long arg2, long arg3)
     case SUPERCALL_KPM_UNLOAD:
         return call_kpm_unload((const char *__user)arg1, (void *__user)arg2);
     case SUPERCALL_KPM_CONTROL:
-        return call_kpm_control((const char *__user)arg1, (const char *__user)arg2, (void *__user)arg3);
+        return call_kpm_control((const char *__user)arg1, (const char *__user)arg2, (char *__user)arg3, (int)arg4);
     case SUPERCALL_KPM_NUMS:
         return call_kpm_nums();
     case SUPERCALL_KPM_LIST:
@@ -193,20 +193,24 @@ static long supercall(long cmd, long arg1, long arg2, long arg3)
 static void before(hook_fargs6_t *args, void *udata)
 {
     const char *__user ukey = (const char *__user)syscall_argn(args, 0);
-    long hash = (long)syscall_argn(args, 1);
-    long cmd = (long)syscall_argn(args, 2);
-    long a1 = (long)syscall_argn(args, 3);
-    long a2 = (long)syscall_argn(args, 4);
-    long a3 = (long)syscall_argn(args, 5);
+    long hash_cmd = (long)syscall_argn(args, 1);
+    long a1 = (long)syscall_argn(args, 2);
+    long a2 = (long)syscall_argn(args, 3);
+    long a3 = (long)syscall_argn(args, 4);
+    long a4 = (long)syscall_argn(args, 5);
+
+    long cmd = hash_cmd & 0xFFFF;
+    long hash = hash_cmd & 0xFFFF0000;
 
     char key[MAX_KEY_LEN];
     long len = strncpy_from_user_nofault(key, ukey, MAX_KEY_LEN);
+
     if (len <= 0) return;
-    if (superkey_auth(key, len - 1)) return;
-    if (hash_key(key) != hash) return;
+    if (superkey_auth(key)) return;
+    if ((hash_key(key) & 0xFFFF0000) != hash) return;
 
     args->skip_origin = 1;
-    args->ret = supercall(cmd, a1, a2, a3);
+    args->ret = supercall(cmd, a1, a2, a3, a4);
 }
 
 int supercall_install()

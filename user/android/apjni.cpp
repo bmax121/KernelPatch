@@ -161,19 +161,31 @@ extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeLoadKernelP
     return rc;
 }
 
-extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeControlKernelPatchModule(JNIEnv *env, jclass clz,
-                                                                                              jstring superKey,
-                                                                                              jstring modName,
-                                                                                              jstring jctlargs)
+extern "C" JNIEXPORT jobject JNICALL Java_me_bmax_apatch_Natives_nativeControlKernelPatchModule(JNIEnv *env, jclass clz,
+                                                                                                jstring superKey,
+                                                                                                jstring modName,
+                                                                                                jstring jctlargs)
 {
     const char *skey = env->GetStringUTFChars(superKey, NULL);
     const char *name = env->GetStringUTFChars(modName, NULL);
     const char *ctlargs = env->GetStringUTFChars(jctlargs, NULL);
-    long rc = sc_kpm_control(skey, name, ctlargs, 0);
+
+    char buf[4096] = { '\0' };
+    long rc = sc_kpm_control(skey, name, ctlargs, buf, sizeof(buf));
+
+    jclass cls = env->FindClass("me/bmax/apatch/Natives$KPMCtlRes");
+    jmethodID constructor = env->GetMethodID(cls, "<init>", "()V");
+    jfieldID rcField = env->GetFieldID(cls, "rc", "J");
+    jfieldID outMsg = env->GetFieldID(cls, "outMsg", "Ljava/lang/String;");
+
+    jobject obj = env->NewObject(cls, constructor);
+    env->SetLongField(obj, rcField, rc);
+    env->SetObjectField(obj, outMsg, env->NewStringUTF(buf));
+
     env->ReleaseStringUTFChars(superKey, skey);
     env->ReleaseStringUTFChars(modName, name);
     env->ReleaseStringUTFChars(jctlargs, ctlargs);
-    return rc;
+    return obj;
 }
 
 extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeUnloadKernelPatchModule(JNIEnv *env, jclass clz,

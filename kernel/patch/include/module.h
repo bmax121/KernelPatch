@@ -52,7 +52,7 @@ struct module
 
 int load_module(const void *data, int len, const char *args, void *__user reserved);
 int load_module_path(const char *path, const char *args, void *__user reserved);
-int control_module(const char *name, const char *ctl_args, void *__user reserved);
+int control_module(const char *name, const char *ctl_args, char *__user out_msg, int outlen);
 int unload_module(const char *name, void *__user reserved);
 struct module *find_module(const char *name);
 
