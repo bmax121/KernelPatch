@@ -54,7 +54,7 @@ typedef struct
     } pe;
 } arm64_hdr_t;
 
-int32_t get_kernel_info(kernel_info_t *kinfo, char *img, int32_t imglen)
+int32_t get_kernel_info(kernel_info_t *kinfo, const char *img, int32_t imglen)
 {
     kinfo->img_offset = 0;
 

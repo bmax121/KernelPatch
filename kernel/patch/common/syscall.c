@@ -18,11 +18,11 @@
 #include <uapi/asm-generic/errno.h>
 #include <predata.h>
 
-uintptr_t kvar_def(sys_call_table) = 0;
-KP_EXPORT_SYMBOL(kvar(sys_call_table));
+uintptr_t *sys_call_table = 0;
+KP_EXPORT_SYMBOL(sys_call_table);
 
-int syscall_has_wrapper = 0;
-KP_EXPORT_SYMBOL(syscall_has_wrapper);
+int has_syscall_wrapper = 0;
+KP_EXPORT_SYMBOL(has_syscall_wrapper);
 
 int has_config_compat = 0;
 KP_EXPORT_SYMBOL(has_config_compat);
@@ -78,8 +78,8 @@ typedef long (*raw_syscall6_f)(long arg0, long arg1, long arg2, long arg3, long 
 
 long raw_syscall0(long nr)
 {
-    uintptr_t addr = kvar(sys_call_table)[nr];
-    if (syscall_has_wrapper) {
+    uintptr_t addr = sys_call_table[nr];
+    if (has_syscall_wrapper) {
         struct pt_regs regs;
         memset(&regs, 0, sizeof(regs));
         return ((warp_raw_syscall_f)addr)(&regs);
@@ -90,8 +90,8 @@ long raw_syscall0(long nr)
 
 long raw_syscall1(long nr, long arg0)
 {
-    uintptr_t addr = kvar(sys_call_table)[nr];
-    if (syscall_has_wrapper) {
+    uintptr_t addr = sys_call_table[nr];
+    if (has_syscall_wrapper) {
         struct pt_regs regs;
         memset(&regs, 0, sizeof(regs));
         return ((warp_raw_syscall_f)addr)(&regs);
@@ -101,8 +101,8 @@ long raw_syscall1(long nr, long arg0)
 
 long raw_syscall2(long nr, long arg0, long arg1)
 {
-    uintptr_t addr = kvar(sys_call_table)[nr];
-    if (syscall_has_wrapper) {
+    uintptr_t addr = sys_call_table[nr];
+    if (has_syscall_wrapper) {
         struct pt_regs regs;
         memset(&regs, 0, sizeof(regs));
         regs.regs[0] = arg0;
@@ -114,8 +114,8 @@ long raw_syscall2(long nr, long arg0, long arg1)
 
 long raw_syscall3(long nr, long arg0, long arg1, long arg2)
 {
-    uintptr_t addr = kvar(sys_call_table)[nr];
-    if (syscall_has_wrapper) {
+    uintptr_t addr = sys_call_table[nr];
+    if (has_syscall_wrapper) {
         struct pt_regs regs;
         memset(&regs, 0, sizeof(regs));
         regs.regs[0] = arg0;
@@ -128,8 +128,8 @@ long raw_syscall3(long nr, long arg0, long arg1, long arg2)
 
 long raw_syscall4(long nr, long arg0, long arg1, long arg2, long arg3)
 {
-    uintptr_t addr = kvar(sys_call_table)[nr];
-    if (syscall_has_wrapper) {
+    uintptr_t addr = sys_call_table[nr];
+    if (has_syscall_wrapper) {
         struct pt_regs regs;
         memset(&regs, 0, sizeof(regs));
         regs.regs[0] = arg0;
@@ -143,8 +143,8 @@ long raw_syscall4(long nr, long arg0, long arg1, long arg2, long arg3)
 
 long raw_syscall5(long nr, long arg0, long arg1, long arg2, long arg3, long arg4)
 {
-    uintptr_t addr = kvar(sys_call_table)[nr];
-    if (syscall_has_wrapper) {
+    uintptr_t addr = sys_call_table[nr];
+    if (has_syscall_wrapper) {
         struct pt_regs regs;
         memset(&regs, 0, sizeof(regs));
         regs.regs[0] = arg0;
@@ -159,8 +159,8 @@ long raw_syscall5(long nr, long arg0, long arg1, long arg2, long arg3, long arg4
 
 long raw_syscall6(long nr, long arg0, long arg1, long arg2, long arg3, long arg4, long arg5)
 {
-    uintptr_t addr = kvar(sys_call_table)[nr];
-    if (syscall_has_wrapper) {
+    uintptr_t addr = sys_call_table[nr];
+    if (has_syscall_wrapper) {
         struct pt_regs regs;
         memset(&regs, 0, sizeof(regs));
         regs.regs[0] = arg0;
@@ -230,35 +230,35 @@ static uint64_t search_sys_call_table_addr()
 int syscall_init()
 {
     int rc = 0;
-    kvar(sys_call_table) = (typeof(kvar(sys_call_table)))kallsyms_lookup_name("sys_call_table");
-    if (!kvar(sys_call_table)) {
-        kvar(sys_call_table) = (typeof(kvar(sys_call_table)))search_sys_call_table_addr();
+    sys_call_table = (typeof(sys_call_table))kallsyms_lookup_name("sys_call_table");
+    if (!sys_call_table) {
+        sys_call_table = (typeof(sys_call_table))search_sys_call_table_addr();
     }
-    if (!kvar(sys_call_table)) {
+    if (!sys_call_table) {
         rc = -ENOENT;
         log_boot("no symbol sys_call_table\n");
         goto out;
     }
-    log_boot("sys_call_table addr: %llx\n", kvar(sys_call_table));
+    log_boot("sys_call_table addr: %llx\n", sys_call_table);
 
     has_config_compat = 0;
-    syscall_has_wrapper = 0;
+    has_syscall_wrapper = 0;
 
     if (kallsyms_lookup_name("__arm64_compat_sys_openat")) {
         has_config_compat = 1;
-        syscall_has_wrapper = 1;
+        has_syscall_wrapper = 1;
     } else {
         if (kallsyms_lookup_name("compat_sys_call_table") || kallsyms_lookup_name("compat_sys_openat")) {
             has_config_compat = 1;
         }
         if (kallsyms_lookup_name("__arm64_sys_openat")) {
-            syscall_has_wrapper = 1;
+            has_syscall_wrapper = 1;
         }
     }
 
     log_boot("syscall config_compat: %d\n", has_config_compat);
 
-    log_boot("syscall has_wrapper: %d\n", syscall_has_wrapper);
+    log_boot("syscall has_wrapper: %d\n", has_syscall_wrapper);
 
 out:
     return rc;

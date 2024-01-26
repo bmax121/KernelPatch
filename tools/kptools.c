@@ -54,7 +54,7 @@ void print_usage(char **argv)
 
         "  -E, --embed-kpm PATH         Embed KPM into patches.\n"
         "  -A, --embed-kpm-args ARGS    KPM args will be passed to previous KPM(-E).\n"
-        "  -D, --detach-kpm NAME        Detach embeded KPM from patches.\n"
+        "  -D, --detach-kpm NAME        (not implemented) Detach embeded KPM from patches.\n"
         "  -M, --kpm PATH               Specify KPM path.\n"
         "\n";
     fprintf(stdout, c, version, program_name);
@@ -162,7 +162,7 @@ int main(int argc, char *argv[])
     } else if (cmd == 'r') {
         ret = reset_key(kimg_path, out_path, superkey);
     } else if (cmd == 'l') {
-        if (kimg_path) print_patched_image_info(kimg_path);
+        if (kimg_path) print_image_patch_info(kimg_path);
         if (alone_kpm_path) print_kpm_info_path(alone_kpm_path);
         if (kpimg_path) print_kp_image_info(kpimg_path);
     }

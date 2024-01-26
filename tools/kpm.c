@@ -112,6 +112,15 @@ int get_kpm_info(const char *kpm, int len, kpm_info_t *out_info)
     return 0;
 }
 
+void print_kpm_info(kpm_info_t *info)
+{
+    fprintf(stdout, "name=%s\n", info->name);
+    fprintf(stdout, "version=%s\n", info->version);
+    fprintf(stdout, "license=%s\n", info->license);
+    fprintf(stdout, "author=%s\n", info->author);
+    fprintf(stdout, "description=%s\n", info->description);
+}
+
 void print_kpm_info_path(const char *kpm_path)
 {
     fprintf(stdout, "path=%s\n", kpm_path);
@@ -123,11 +132,7 @@ void print_kpm_info_path(const char *kpm_path)
     kpm_info_t kpm_info = { 0 };
     int rc = get_kpm_info(img, len, &kpm_info);
     if (!rc) {
-        fprintf(stdout, "name=%s\n", kpm_info.name);
-        fprintf(stdout, "version=%s\n", kpm_info.version);
-        fprintf(stdout, "license=%s\n", kpm_info.license);
-        fprintf(stdout, "author=%s\n", kpm_info.author);
-        fprintf(stdout, "description=%s\n", kpm_info.description);
+        print_kpm_info(&kpm_info);
     }
     free(img);
 }

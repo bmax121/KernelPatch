@@ -50,6 +50,7 @@ typedef struct
 
 int get_kpm_info(const char *kpm, int len, kpm_info_t *info);
 
+void print_kpm_info(kpm_info_t *info);
 void print_kpm_info_path(const char *kpm_path);
 
 #endif

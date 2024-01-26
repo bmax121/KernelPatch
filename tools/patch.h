@@ -16,17 +16,13 @@
 
 typedef struct
 {
-    // in
-    const char *kimg_path;
-
-    // out
-    char *kimg;
+    const char *kimg;
     int kimg_len;
     int ori_kimg_len;
     kernel_info_t kinfo;
     preset_t *preset;
     int embed_item_num;
-    const char *embed_item[EXTRA_ITEM_MAX_NUM];
+    patch_extra_item_t *embed_item[EXTRA_ITEM_MAX_NUM];
 } patched_kimg_t;
 
 preset_t *get_preset(const char *kimg, int kimg_len);
@@ -39,6 +35,6 @@ int reset_key(const char *kimg_path, const char *out_path, const char *key);
 int dump_kallsym(const char *kimg_path);
 
 void print_kp_image_info(const char *kpimg_path);
-void print_patched_image_info(const char *kimg_path);
+void print_image_patch_info(const char *kimg_path);
 
 #endif
