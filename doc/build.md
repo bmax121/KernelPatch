@@ -2,8 +2,8 @@
 
 ## Build kpimg
 
-Need to use a bare-metal cross-compiler.  
-[Download](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)
+Require a bare-metal cross compiler  
+[Download here](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)
 
 ```shell
 export TARGET_COMPILE=aarch64-none-elf-

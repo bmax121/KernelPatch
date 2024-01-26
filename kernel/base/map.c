@@ -97,10 +97,12 @@ static map_data_t *mem_proc()
     }
     data->page_shift = page_shift;
 
+    uint64_t page_size = 1 << page_shift;
+
     // linear
-    uint64_t detect_phys = ((memblock_phys_alloc_try_nid_f)data->map_symbol.memblock_phys_alloc_relo)(0, 0, -1);
+    uint64_t detect_phys = ((memblock_phys_alloc_try_nid_f)data->map_symbol.memblock_phys_alloc_relo)(0, page_size, -1);
     uint64_t detect_virt = (uint64_t)((memblock_virt_alloc_try_nid_f)data->map_symbol.memblock_virt_alloc_relo)(
-        0, 0, detect_phys, detect_phys, -1);
+        0, page_size, detect_phys, detect_phys, -1);
     data->linear_voffset = detect_virt - detect_phys;
 
     return data;

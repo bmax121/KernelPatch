@@ -21,7 +21,6 @@ If you are using Android, [APatch](https://github.com/bmax121/APatch) would be a
 ## Requirement
 
 CONFIG_KALLSYMS=y  
-CONFIG_KALLSYMS_ALL=y (CONFIG_KALLSYMS_ALL=n, Planned support)
 
 ## Supported Versions
 
