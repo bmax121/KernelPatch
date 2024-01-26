@@ -28,6 +28,7 @@ size_t lib_strlcpy(char *dst, const char *src, size_t size);
 size_t lib_strlen(const char *s);
 int lib_strncasecmp(const char *s1, const char *s2, size_t n);
 char *lib_strncat(char *dst, const char *src, size_t n);
+char *lib_strcat(char *dst, const char *src);
 int lib_strncmp(const char *s1, const char *s2, size_t n);
 char *lib_strncpy(char *dst, const char *src, size_t n);
 size_t lib_strnlen(const char *s, size_t maxlen);

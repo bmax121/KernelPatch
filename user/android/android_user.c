@@ -208,21 +208,21 @@ static void init()
     struct su_profile profile = { .uid = getuid() };
     sc_su(key, &profile);
 
-    log_kernel("%d ==== starting android user init, from kernel: %d\n", getpid(), from_kernel);
+    log_kernel("%d starting android user init, from kernel: %d\n", getpid(), from_kernel);
 
     if (!opendir(APATCH_FLODER)) mkdir(APATCH_FLODER, 0700);
     if (!opendir(APATCH_LOG_FLODER)) mkdir(APATCH_LOG_FLODER, 0700);
 
     if (from_kernel) save_dmegs(boot0_log_path);
 
-    log_kernel("%d ==== load selinxu policy.\n", getpid());
+    log_kernel("%d load selinux policy.\n", getpid());
     load_magisk_policy();
-    log_kernel("%d ==== reset su path.\n", getpid());
+    log_kernel("%d reset su path.\n", getpid());
     load_config_su_path();
-    log_kernel("%d ==== load allow uids.\n", getpid());
+    log_kernel("%d load allow uids.\n", getpid());
     load_config_allow_uids();
 
-    log_kernel("%d ==== finished android user init.\n", getpid());
+    log_kernel("%d finished android user init.\n", getpid());
 
     if (from_kernel) save_dmegs(boot1_log_path);
 }

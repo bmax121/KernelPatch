@@ -108,7 +108,7 @@ out:
     return 0;
 }
 
-int syscall_hook_control(const char *args, void *__user reserved)
+int syscall_hook_control(const char *args, char *__user out_msg, int outlen)
 {
     pr_info("syscall_hook control, args: %s\n", args);
     return 0;
@@ -125,6 +125,7 @@ int syscall_hook_demo_exit(void *__user reserved)
         fp_unhook_syscall(__NR_openat, before_openat_1, after_openat_1);
     } else {
     }
+    return 0;
 }
 
 KPM_INIT(syscall_hook_demo_init);

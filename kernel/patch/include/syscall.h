@@ -13,8 +13,7 @@
 #include <uapi/asm-generic/unistd.h>
 
 extern uintptr_t kvar_def(sys_call_table);
-extern uintptr_t kvar_def(compat_sys_call_table);
-extern bool syscall_has_wrapper;
+extern int syscall_has_wrapper;
 
 const char __user *get_user_arg_ptr(void *a0, void *a1, int nr);
 

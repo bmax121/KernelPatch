@@ -16,17 +16,15 @@
 #include <linux/slab.h>
 #include <linux/err.h>
 #include <uapi/asm-generic/errno.h>
+#include <predata.h>
 
 uintptr_t kvar_def(sys_call_table) = 0;
 KP_EXPORT_SYMBOL(kvar(sys_call_table));
 
-uintptr_t kvar_def(compat_sys_call_table) = 0;
-KP_EXPORT_SYMBOL(kvar(compat_sys_call_table));
-
-bool syscall_has_wrapper = false;
+int syscall_has_wrapper = 0;
 KP_EXPORT_SYMBOL(syscall_has_wrapper);
 
-bool has_config_compat = false;
+int has_config_compat = 0;
 KP_EXPORT_SYMBOL(has_config_compat);
 
 struct user_arg_ptr
@@ -176,21 +174,90 @@ long raw_syscall6(long nr, long arg0, long arg1, long arg2, long arg3, long arg4
     return ((raw_syscall6_f)addr)(arg0, arg1, arg2, arg3, arg4, arg5);
 }
 
+static uint64_t search_sys_call_table_addr()
+{
+    uint64_t addr = kernel_va;
+    uint64_t _etext = kallsyms_lookup_name("_etext");
+    addr = addr > _etext ? addr : _etext;
+
+    char *prefix[2];
+    prefix[0] = "__arm64_";
+    prefix[1] = "";
+
+    char *io_setup = "sys_io_setup";
+    char *io_destory = "sys_io_destroy";
+
+    char *suffix[3];
+    suffix[0] = ".cfi_jt";
+    suffix[1] = ".cfi";
+    suffix[2] = "";
+
+    char buf[128];
+
+    uint64_t sc0_addr = 0;
+    uint64_t sc1_addr = 0;
+
+    int i = 0, k = 0;
+
+    for (; k < 3; k++) {
+        i = 0;
+        for (; i < 2; i++) {
+            buf[0] = '\0';
+            strcat(buf, prefix[i]);
+            strcat(buf, io_setup);
+            strcat(buf, suffix[k]);
+            sc0_addr = kallsyms_lookup_name(buf);
+            if (!sc0_addr) continue;
+
+            buf[0] = '\0';
+            strcat(buf, prefix[i]);
+            strcat(buf, io_destory);
+            strcat(buf, suffix[k]);
+            sc1_addr = kallsyms_lookup_name(buf);
+            if (!sc1_addr) return 0;
+        }
+    }
+
+    for (; addr < kernel_va + kernel_size; addr += 8) {
+        uint64_t val0 = *(uint64_t *)addr;
+        if (val0 != sc0_addr) continue;
+        uint64_t val1 = *(uint64_t *)(addr + 8);
+        if (val1 == sc1_addr) return addr;
+    }
+    return 0;
+}
+
 int syscall_init()
 {
     int rc = 0;
     kvar(sys_call_table) = (typeof(kvar(sys_call_table)))kallsyms_lookup_name("sys_call_table");
     if (!kvar(sys_call_table)) {
+        kvar(sys_call_table) = (typeof(kvar(sys_call_table)))search_sys_call_table_addr();
+    }
+    if (!kvar(sys_call_table)) {
         rc = -ENOENT;
         log_boot("no symbol sys_call_table\n");
         goto out;
     }
-    kvar(compat_sys_call_table) = (typeof(kvar(compat_sys_call_table)))kallsyms_lookup_name("compat_sys_call_table");
+    log_boot("sys_call_table addr: %llx\n", kvar(sys_call_table));
 
-    has_config_compat = !!kvar(compat_sys_call_table);
+    has_config_compat = 0;
+    syscall_has_wrapper = 0;
+
+    if (kallsyms_lookup_name("__arm64_compat_sys_openat")) {
+        has_config_compat = 1;
+        syscall_has_wrapper = 1;
+    } else {
+        if (kallsyms_lookup_name("compat_sys_call_table") || kallsyms_lookup_name("compat_sys_openat")) {
+            has_config_compat = 1;
+        }
+        if (kallsyms_lookup_name("__arm64_sys_openat")) {
+            syscall_has_wrapper = 1;
+        }
+    }
+
     log_boot("syscall config_compat: %d\n", has_config_compat);
 
-    syscall_has_wrapper = !!kallsyms_lookup_name("__arm64_sys_openat");
     log_boot("syscall has_wrapper: %d\n", syscall_has_wrapper);
 
 out:

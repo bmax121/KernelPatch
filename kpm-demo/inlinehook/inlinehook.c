@@ -52,9 +52,9 @@ int inline_hook_demo_init(const char *args, void *__user reserved)
     return 0;
 }
 
-int inline_hook_control(const char *args, void *__user reserved)
+int inline_hook_control(const char *args, char *__user out_msg, int outlen)
 {
-    pr_info("kpm hello control, args: %s\n", args);
+    pr_info("kpm control, args: %s\n", args);
     return 0;
 }
 

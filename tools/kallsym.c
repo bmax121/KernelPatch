@@ -16,49 +16,6 @@
 #include "insn.h"
 #include "common.h"
 
-#define align_floor(x, align) ((uint64_t)(x) & ~((uint64_t)(align)-1))
-#define align_ceil(x, align) (((uint64_t)(x) + (uint64_t)(align)-1) & ~((uint64_t)(align)-1))
-
-static int64_t int_unpack(void *ptr, int32_t size, int32_t is_be)
-{
-    int16_t res16;
-    int32_t res32;
-    int64_t res64;
-    switch (size) {
-    case 8:
-        res64 = *(int64_t *)ptr;
-        return is_be ? i64be(res64) : i64le(res64);
-    case 4:
-        res32 = *(int32_t *)ptr;
-        return is_be ? i32be(res32) : i32le(res32);
-    case 2:
-        res16 = *(int16_t *)ptr;
-        return is_be ? i16be(res16) : i16le(res16);
-    default:
-        return *(int8_t *)ptr;
-    }
-}
-
-static uint64_t uint_unpack(void *ptr, int32_t size, int32_t is_be)
-{
-    uint16_t res16;
-    uint32_t res32;
-    uint64_t res64;
-    switch (size) {
-    case 8:
-        res64 = *(uint64_t *)ptr;
-        return is_be ? u64be(res64) : u64le(res64);
-    case 4:
-        res32 = *(uint32_t *)ptr;
-        return is_be ? u32be(res32) : u32le(res32);
-    case 2:
-        res16 = *(uint16_t *)ptr;
-        return is_be ? u16be(res16) : u16le(res16);
-    default:
-        return *(uint8_t *)ptr;
-    }
-}
-
 static int find_linux_banner(kallsym_t *info, char *img, int32_t imglen)
 {
     /*

@@ -54,6 +54,9 @@ void write_file(const char *path, const char *con, int len, bool append);
 
 void read_file_align(const char *path, char **con, int *len, int align);
 
+int64_t int_unpack(void *ptr, int32_t size, int32_t is_be);
+uint64_t uint_unpack(void *ptr, int32_t size, int32_t is_be);
+
 static inline void read_file(const char *path, char **con, int *len)
 {
     return read_file_align(path, con, len, 1);

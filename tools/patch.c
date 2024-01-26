@@ -274,7 +274,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     memcpy(setup->header_backup, kallsym_kimg, sizeof(setup->header_backup));
 
     // start symbol
-    fillin_patch_symbol(&kallsym, kallsym_kimg, &setup->patch_symbol, kinfo->is_be, 0);
+    fillin_patch_symbol(&kallsym, kallsym_kimg, ori_kimg_len, &setup->patch_symbol, kinfo->is_be, 0);
 
     // superkey
     strncpy((char *)setup->superkey, superkey, SUPER_KEY_LEN - 1);
@@ -388,7 +388,7 @@ int reset_key(const char *kimg_path, const char *out_path, const char *superkey)
 int dump_kallsym(const char *kimg_path)
 {
     if (!kimg_path) tools_error_exit("empty kernel image\n");
-
+    set_log_enable(true);
     // read image files
     char *kimg = NULL;
     int kimg_len = 0;
@@ -400,6 +400,7 @@ int dump_kallsym(const char *kimg_path)
         return -1;
     }
     dump_all_symbols(&kallsym, kimg);
+    set_log_enable(false);
     free(kimg);
     return 0;
 }

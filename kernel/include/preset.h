@@ -125,6 +125,7 @@ struct patch_symbol
             uint64_t do_faccessat;
             uint64_t sys_faccessat;
             uint64_t sys_call_table;
+            uint64_t compat_sys_call_table;
         };
         char _cap[PATCH_SYMBOL_LEN];
     };

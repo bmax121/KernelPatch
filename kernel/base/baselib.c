@@ -248,6 +248,12 @@ char *lib_strncat(char *dst, const char *src, size_t n)
     return dst;
 }
 
+char *lib_strcat(char *dst, const char *src)
+{
+    lib_strcpy(lib_strchr(dst, '\0'), src);
+    return dst;
+}
+
 int lib_strncmp(const char *s1, const char *s2, size_t n)
 {
     const unsigned char *c1 = (const unsigned char *)s1;
