@@ -93,51 +93,6 @@ static int get_cand_arr_symbol_offset_zero(kallsym_t *kallsym, char *img_buf, ch
     return offset;
 }
 
-static int find_sys_call_table(kallsym_t *kallsym, char *img_buf, int imglen, bool is_be)
-{
-    static char *s0ss[] = {
-        "__arm64_sys_io_setup.cfi_jt", "SyS_io_setup.cfi", "__arm64_sys_io_setup", "sys_io_setup", "SyS_io_setup",
-    };
-    static char *s1ss[] = {
-        "__arm64_sys_io_destroy.cfi_jt",
-        "SyS_io_destroy.cfi",
-        "__arm64_sys_io_destroy",
-        "sys_io_destroy",
-        "SyS_io_destroy",
-    };
-    static char *s2ss[] = {
-        "__arm64_sys_io_submit.cfi_jt", "SyS_io_submit.cfi", "__arm64_sys_io_submit", "sys_io_submit", "SyS_io_submit",
-    };
-    static char *s3ss[] = {
-        "__arm64_sys_io_cancel.cfi_jt", "SyS_io_cancel.cfi", "__arm64_sys_io_cancel", "sys_io_cancel", "SyS_io_cancel",
-    };
-
-    int offsetes[4] = { 0 };
-    offsetes[0] = get_cand_arr_symbol_offset_zero(kallsym, img_buf, s0ss, 5);
-    offsetes[1] = get_cand_arr_symbol_offset_zero(kallsym, img_buf, s1ss, 5);
-    offsetes[2] = get_cand_arr_symbol_offset_zero(kallsym, img_buf, s2ss, 5);
-    offsetes[3] = get_cand_arr_symbol_offset_zero(kallsym, img_buf, s3ss, 5);
-
-    for (int i = 0; i < 4; i++) {
-        if (!offsetes[0]) tools_error_exit("can't find syscall for find sys_call_table\n");
-    }
-
-    int cand_off = 0;
-    for (int i = 0; i < imglen - 200 * 8; i += 8) {
-        uint64_t sys0_addr = uint_unpack(img_buf + i, 8, is_be);
-        if ((sys0_addr & 0xffff000000000000) != 0xffff000000000000) continue;
-        uint64_t sys1_addr = uint_unpack(img_buf + i + 8, 8, is_be);
-        if (sys0_addr + (offsetes[1] - offsetes[0]) != sys1_addr) continue;
-        uint64_t sys2_addr = uint_unpack(img_buf + i + 16, 8, is_be);
-        if (sys0_addr + (offsetes[2] - offsetes[0]) != sys2_addr) continue;
-        uint64_t sys3_addr = uint_unpack(img_buf + i + 24, 8, is_be);
-        if (sys0_addr + (offsetes[3] - offsetes[0]) != sys3_addr) continue;
-        cand_off = i;
-        break;
-    }
-    return cand_off;
-}
-
 int fillin_patch_symbol(kallsym_t *kallsym, char *img_buf, int imglen, patch_symbol_t *symbol, int32_t target_is_be,
                         bool is_android)
 {

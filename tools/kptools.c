@@ -162,7 +162,7 @@ int main(int argc, char *argv[])
     } else if (cmd == 'r') {
         ret = reset_key(kimg_path, out_path, superkey);
     } else if (cmd == 'l') {
-        if (kimg_path) print_image_patch_info(kimg_path);
+        if (kimg_path) print_image_patch_info_path(kimg_path);
         if (alone_kpm_path) print_kpm_info_path(alone_kpm_path);
         if (kpimg_path) print_kp_image_info(kpimg_path);
     }
