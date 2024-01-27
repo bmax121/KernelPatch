@@ -4,7 +4,7 @@ on:
   push:
     branches: ["dev"]
     paths:
-      - ".github/workflows/build.yml"
+      - ".github/workflows/build_dev.yml"
       - "kernel/**"
       - "user/**"
       - "tools/**"
@@ -12,7 +12,7 @@ on:
   pull_request:
     branches: ["dev"]
     paths:
-      - ".github/workflows/build.yml"
+      - ".github/workflows/build_dev.yml"
       - "kernel/**"
       - "user/**"
       - "tools/**"
@@ -54,7 +54,18 @@ jobs:
           make
           mv kpimg kpimg-android
           mv kpimg.elf kpimg.elf-android
-          unset ANDROID
+
+          cd ..
+          cd kpm-demo
+          cd hello
+          make
+          mv hello.kpm demo-hello.kpm
+          cd ../inlinehook
+          make
+          mv inlinehook.kpm demo-inlinehook.kpm
+          cd ../syscallhook
+          make
+          mv syscallhook.kpm demo-syscallhook.kpm
 
       - name: Upload elf
         uses: actions/upload-artifact@v3
@@ -73,6 +84,10 @@ jobs:
           artifacts: |
             kernel/kpimg-linux
             kernel/kpimg-android
+
+            kpm-demo/hello/demo-hello.kpm
+            kpm-demo/inlinehook/demo-inlinehook.kpm
+            kpm-demo/syscallhook/demo-syscallhook.kpm
           generateReleaseNotes: true
           allowUpdates: true
           replacesArtifacts: true
