@@ -123,21 +123,16 @@ int parse_image_patch_info_path(const char *kimg_path, patched_kimg_t *pimg)
     return parse_image_patch_info(kimg, kimg_len, pimg);
 }
 
-void print_image_patch_info(const char *kimg_path)
+void print_image_patch_info(patched_kimg_t *pimg)
 {
-    fprintf(stdout, "path=%s\n", kimg_path);
-
-    patched_kimg_t pimg = { 0 };
-    parse_image_patch_info_path(kimg_path, &pimg);
-
-    preset_t *preset = pimg.preset;
+    preset_t *preset = pimg->preset;
     fprintf(stdout, "patched=%s\n", preset ? "true" : "false");
 
     if (preset) {
         print_preset_info(preset);
-        fprintf(stdout, "extra_item_num=%d\n", pimg.embed_item_num);
-        for (int i = 0; i < pimg.embed_item_num; i++) {
-            patch_extra_item_t *item = pimg.embed_item[i];
+        fprintf(stdout, "extra_item_num=%d\n", pimg->embed_item_num);
+        for (int i = 0; i < pimg->embed_item_num; i++) {
+            patch_extra_item_t *item = pimg->embed_item[i];
             const char *type = "none";
             switch (item->type) {
             case EXTRA_TYPE_KPM:
@@ -147,7 +142,6 @@ void print_image_patch_info(const char *kimg_path)
                 type = "shell";
                 break;
             }
-            fprintf(stdout, "\n");
             fprintf(stdout, "extra_index=%d\n", i);
             fprintf(stdout, "type=%s\n", type);
             fprintf(stdout, "con_size=0x%x\n", item->con_size);
@@ -161,8 +155,15 @@ void print_image_patch_info(const char *kimg_path)
             }
         }
     }
-    fprintf(stdout, "\n");
     // free((void *)pimg.kimg);
+}
+
+void print_image_patch_info_path(const char *kimg_path)
+{
+    fprintf(stdout, "path=%s\n", kimg_path);
+    patched_kimg_t pimg = { 0 };
+    parse_image_patch_info_path(kimg_path, &pimg);
+    print_image_patch_info(&pimg);
 }
 
 // todo: opt
@@ -178,6 +179,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
 
     patched_kimg_t pimg = { 0 };
     parse_image_patch_info_path(kimg_path, &pimg);
+    // print_image_patch_info(&pimg);
 
     // kimg base info
     kernel_info_t *kinfo = &pimg.kinfo;
@@ -349,7 +351,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
         default:
             break;
         }
-        tools_logi("embedding %s name: %s, size: 0x%x, args: %s\n", type, item_wrap->name, item_wrap->len,
+        tools_logi("embedding %s, name: %s, size: 0x%x, args: %s\n", type, item_wrap->name, item_wrap->len,
                    item_wrap->args);
 
         write_file(out_path, (void *)&item_wrap->item, sizeof(item_wrap->item), true);

@@ -35,6 +35,7 @@ int reset_key(const char *kimg_path, const char *out_path, const char *key);
 int dump_kallsym(const char *kimg_path);
 
 void print_kp_image_info(const char *kpimg_path);
-void print_image_patch_info(const char *kimg_path);
+void print_image_patch_info(patched_kimg_t *pimg);
+void print_image_patch_info_path(const char *kimg_path);
 
 #endif
