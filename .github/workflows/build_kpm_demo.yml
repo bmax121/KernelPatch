@@ -67,7 +67,7 @@ jobs:
         uses: ncipollo/release-action@v1.12.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ steps.parse_version.outputs.VERSION }}-${{ steps.extract_branch.outputs.branch }}
+          tag: ${{ steps.parse_version.outputs.VERSION }}${{ steps.extract_branch.outputs.release_branch }}
           artifacts: |
             kpm-demo/hello/hello-demo.kpm
             kpm-demo/inlinehook/inlinehook-demo.kpm
