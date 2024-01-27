@@ -1,17 +1,17 @@
-name: Build CI
+name: Build KPM-DEMO CI
 
 on:
   push:
     branches: ["main", "dev"]
     paths:
-      - ".github/workflows/build-kpm-demo.yml"
+      - ".github/workflows/build_kpm_demo.yml"
       - "kernel/**"
       - "kpm-demo/**"
       - "version"
   pull_request:
     branches: ["main", "dev"]
     paths:
-      - ".github/workflows/build-kpm-demo.yml"
+      - ".github/workflows/build_kpm_demo.yml"
       - "kernel/**"
       - "kpm-demo/**"
       - "version"

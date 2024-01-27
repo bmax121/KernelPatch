@@ -5,6 +5,8 @@
 
 #include "setup.h"
 
+#define NUMA_NO_NODE (-1)
+
 typedef uint64_t phys_addr_t;
 typedef int (*memblock_reserve_f)(phys_addr_t base, phys_addr_t size);
 typedef phys_addr_t (*memblock_phys_alloc_try_nid_f)(phys_addr_t size, phys_addr_t align, int nid);
@@ -97,12 +99,11 @@ static map_data_t *mem_proc()
     }
     data->page_shift = page_shift;
 
-    uint64_t page_size = 1 << page_shift;
-
     // linear
-    uint64_t detect_phys = ((memblock_phys_alloc_try_nid_f)data->map_symbol.memblock_phys_alloc_relo)(0, page_size, -1);
+    uint64_t detect_phys =
+        ((memblock_phys_alloc_try_nid_f)data->map_symbol.memblock_phys_alloc_relo)(0, 0x10, NUMA_NO_NODE);
     uint64_t detect_virt = (uint64_t)((memblock_virt_alloc_try_nid_f)data->map_symbol.memblock_virt_alloc_relo)(
-        0, page_size, detect_phys, detect_phys, -1);
+        0, 0x10, detect_phys, detect_phys, NUMA_NO_NODE);
     data->linear_voffset = detect_virt - detect_phys;
 
     return data;
