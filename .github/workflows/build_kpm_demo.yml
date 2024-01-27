@@ -41,9 +41,9 @@ jobs:
         shell: bash
         id: extract_branch
         run: |
-          echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
-          if [ "$branch" = "main" ]; then release_branch=""; else release_branch="-""$branch"; fi;
-          echo "release_branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+          echo "BRANCH=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+          if [ "$BRANCH" = "main" ]; then RELEASE_BRANCH=""; else RELEASE_BRANCH="-""$BRANCH"; fi;
+          echo "RELEASE_BRANCH=$RELEASE_BRANCH" >> $GITHUB_OUTPUT
 
       - name: Install Compiler
         run: |
@@ -67,7 +67,7 @@ jobs:
         uses: ncipollo/release-action@v1.12.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ steps.parse_version.outputs.VERSION }}${{ steps.extract_branch.outputs.release_branch }}
+          tag: ${{ steps.parse_version.outputs.VERSION }}${{ steps.extract_branch.outputs.RELEASE_BRANCH }}
           artifacts: |
             kpm-demo/hello/hello-demo.kpm
             kpm-demo/inlinehook/inlinehook-demo.kpm
