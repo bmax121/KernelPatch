@@ -44,6 +44,16 @@ void kv(const char *key)
     fprintf(stdout, "%x\n", kv);
 }
 
+void bootlog(const char *key)
+{
+    sc_bootlog(key);
+}
+
+void panic(const char *key)
+{
+    sc_panic(key);
+}
+
 int __test(const char *key)
 {
     return __sc_test(key, 0, 0, 0);

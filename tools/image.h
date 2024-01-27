@@ -3,8 +3,8 @@
  * Copyright (C) 2023 bmax121. All Rights Reserved.
  */
 
-#ifndef _IMAGE_H_
-#define _IMAGE_H_
+#ifndef _KP_TOOL_IMAGE_H_
+#define _KP_TOOL_IMAGE_H_
 
 #include <stdint.h>
 
@@ -22,7 +22,7 @@ typedef struct
     int32_t primary_entry_offset;
 } kernel_info_t;
 
-int32_t get_kernel_info(kernel_info_t *kinfo, char *img, int32_t imglen);
+int32_t get_kernel_info(kernel_info_t *kinfo, const char *img, int32_t imglen);
 int32_t kernel_resize(kernel_info_t *kinfo, char *img, int32_t size);
 
 #endif

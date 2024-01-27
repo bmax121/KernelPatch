@@ -111,7 +111,7 @@ void kfunc_def(_raw_write_unlock_bh)(rwlock_t *lock) = 0;
 
 void _linux_locking_spinlock_sym_match(const char *name, unsigned long addr)
 {
-    // kfunc_match(_raw_spin_trylock, name, addr);
+    kfunc_match(_raw_spin_trylock, name, addr);
     // kfunc_match(_raw_spin_trylock_bh, name, addr);
     kfunc_match(_raw_spin_lock, name, addr);
     kfunc_match(_raw_spin_lock_irqsave, name, addr);
@@ -580,8 +580,8 @@ int kfunc_def(security_sidtab_hash_stats)(char *page) = 0;
 static void _linux_security_selinux_sym_match(const char *name, unsigned long addr)
 {
     // kvar_match(selinux_enabled_boot, name, addr);
-    kvar_match(selinux_enabled, name, addr);
-    kvar_match(selinux_state, name, addr);
+    // kvar_match(selinux_enabled, name, addr);
+    // kvar_match(selinux_state, name, addr);
     // kvar_match(secclass_map, name, addr);
     // kfunc_match(security_mls_enabled, name, addr);
     // kfunc_match(security_load_policy, name, addr);

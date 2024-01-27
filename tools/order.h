@@ -3,12 +3,11 @@
  * Copyright (C) 2023 bmax121. All Rights Reserved.
  */
 
-#ifndef _ORDER_H_
-#define _ORDER_H_
+#ifndef _KP_TOOL_ORDER_H_
+#define _KP_TOOL_ORDER_H_
 
 #include <stdint.h>
 
-// todo
 #define is_be() (*(unsigned char *)&(uint16_t){ 1 } ? 0 : 1)
 
 int16_t i16swp(int16_t val);

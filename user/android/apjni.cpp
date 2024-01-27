@@ -70,6 +70,8 @@ extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeSu(JNIEnv *
     if (scontext) sctx = env->GetStringUTFChars(scontext, NULL);
     struct su_profile profile = { 0 };
     profile.uid = getuid();
+    profile.to_uid = (uid_t)to_uid;
+    if (sctx) strncpy(profile.scontext, sctx, sizeof(profile.scontext) - 1);
     profile.to_uid = (pid_t)to_uid;
     if (sctx) {
         strncpy(profile.scontext, sctx, sizeof(profile.scontext) - 1);
@@ -88,10 +90,8 @@ extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeThreadSu(JN
     if (scontext) sctx = env->GetStringUTFChars(scontext, NULL);
     struct su_profile profile = { 0 };
     profile.uid = getuid();
-    profile.to_uid = (pid_t)to_uid;
-    if (sctx) {
-        strncpy(profile.scontext, sctx, sizeof(profile.scontext) - 1);
-    }
+    profile.to_uid = (uid_t)to_uid;
+    if (sctx) strncpy(profile.scontext, sctx, sizeof(profile.scontext) - 1);
     long rc = sc_su_task(skey, tid, &profile);
     env->ReleaseStringUTFChars(superKey, skey);
     env->ReleaseStringUTFChars(scontext, sctx);
@@ -154,11 +154,38 @@ extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeLoadKernelP
     const char *skey = env->GetStringUTFChars(superKey, NULL);
     const char *path = env->GetStringUTFChars(modulePath, NULL);
     const char *args = env->GetStringUTFChars(jargs, NULL);
-    long rc = sc_kpm_load(skey, path, args);
+    long rc = sc_kpm_load(skey, path, args, 0);
     env->ReleaseStringUTFChars(superKey, skey);
     env->ReleaseStringUTFChars(modulePath, path);
     env->ReleaseStringUTFChars(jargs, args);
     return rc;
+}
+
+extern "C" JNIEXPORT jobject JNICALL Java_me_bmax_apatch_Natives_nativeControlKernelPatchModule(JNIEnv *env, jclass clz,
+                                                                                                jstring superKey,
+                                                                                                jstring modName,
+                                                                                                jstring jctlargs)
+{
+    const char *skey = env->GetStringUTFChars(superKey, NULL);
+    const char *name = env->GetStringUTFChars(modName, NULL);
+    const char *ctlargs = env->GetStringUTFChars(jctlargs, NULL);
+
+    char buf[4096] = { '\0' };
+    long rc = sc_kpm_control(skey, name, ctlargs, buf, sizeof(buf));
+
+    jclass cls = env->FindClass("me/bmax/apatch/Natives$KPMCtlRes");
+    jmethodID constructor = env->GetMethodID(cls, "<init>", "()V");
+    jfieldID rcField = env->GetFieldID(cls, "rc", "J");
+    jfieldID outMsg = env->GetFieldID(cls, "outMsg", "Ljava/lang/String;");
+
+    jobject obj = env->NewObject(cls, constructor);
+    env->SetLongField(obj, rcField, rc);
+    env->SetObjectField(obj, outMsg, env->NewStringUTF(buf));
+
+    env->ReleaseStringUTFChars(superKey, skey);
+    env->ReleaseStringUTFChars(modName, name);
+    env->ReleaseStringUTFChars(jctlargs, ctlargs);
+    return obj;
 }
 
 extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeUnloadKernelPatchModule(JNIEnv *env, jclass clz,
@@ -167,7 +194,7 @@ extern "C" JNIEXPORT jlong JNICALL Java_me_bmax_apatch_Natives_nativeUnloadKerne
 {
     const char *skey = env->GetStringUTFChars(superKey, NULL);
     const char *name = env->GetStringUTFChars(modName, NULL);
-    long rc = sc_kpm_unload(skey, name);
+    long rc = sc_kpm_unload(skey, name, 0);
     env->ReleaseStringUTFChars(superKey, skey);
     env->ReleaseStringUTFChars(modName, name);
     return rc;
@@ -189,7 +216,7 @@ extern "C" JNIEXPORT jstring JNICALL Java_me_bmax_apatch_Natives_nativeKernelPat
     long rc = sc_kpm_nums(skey);
     char buf[4096] = { '\0' };
     rc = sc_kpm_list(skey, buf, sizeof(buf));
-    if (rc) {
+    if (rc < 0) {
         LOGE("nativeKernelPatchModuleList error: %ld\n", rc);
     }
     env->ReleaseStringUTFChars(superKey, skey);
@@ -202,9 +229,9 @@ extern "C" JNIEXPORT jstring JNICALL Java_me_bmax_apatch_Natives_nativeKernelPat
 {
     const char *skey = env->GetStringUTFChars(superKey, NULL);
     const char *name = env->GetStringUTFChars(modName, NULL);
-    char buf[512] = { '\0' };
+    char buf[1024] = { '\0' };
     long rc = sc_kpm_info(skey, name, buf, sizeof(buf));
-    if (rc) {
+    if (rc < 0) {
         LOGE("nativeKernelPatchModuleInfo error: %ld\n", rc);
     }
     env->ReleaseStringUTFChars(superKey, skey);

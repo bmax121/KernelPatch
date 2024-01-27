@@ -17,7 +17,7 @@
 #include <pgtable.h>
 #include <linux/fs.h>
 #include <linux/seccomp.h>
-#include <inlinestring.h>
+#include <baselib.h>
 #include <uapi/asm-generic/errno.h>
 #include <predata.h>
 
@@ -90,7 +90,7 @@ int task_observer()
 {
     int rc = 0;
 
-    prepare_init_ext(kvar(init_task));
+    prepare_init_ext(init_task);
 
     // __switch_to
     unsigned long copy_process_addr = get_preset_patch_sym()->copy_process;

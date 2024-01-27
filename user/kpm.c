@@ -14,13 +14,21 @@
 
 int kpm_load(const char *key, const char *path, const char *args)
 {
-    int rc = sc_kpm_load(key, path, args);
+    int rc = sc_kpm_load(key, path, args, 0);
+    return rc;
+}
+
+int kpm_control(const char *key, const char *name, const char *ctl_args)
+{
+    char buf[4096] = { '\0' };
+    int rc = sc_kpm_control(key, name, ctl_args, buf, sizeof(buf));
+    fprintf(stdout, "%s", buf);
     return rc;
 }
 
 int kpm_unload(const char *key, const char *name)
 {
-    int rc = sc_kpm_unload(key, name);
+    int rc = sc_kpm_unload(key, name, 0);
     return rc;
 }
 
@@ -44,7 +52,7 @@ int kpm_list(const char *key)
 
 int kpm_info(const char *key, const char *name)
 {
-    char buf[2048];
+    char buf[4096];
     int rc = sc_kpm_info(key, name, buf, sizeof(buf));
     if (rc > 0) {
         fprintf(stdout, "%s", buf);
@@ -65,12 +73,13 @@ static void usage(int status)
         fprintf(stdout, ""
                         "KernelPatch Module command set.\n"
                         "\n"
-                        "help                          Print this help message. \n"
-                        "load <KPM_PATH> [KPM_ARGS]    Load KernelPatch Module with KPM_PATH and KPM_ARGS.\n"
-                        "unload <KPM_NAME>             Unload KernelPatch Module named KPM_NAME.\n"
-                        "num                           Get the number of modules that have been loaded.\n"
-                        "list                          List names of all loaded modules.\n"
-                        "info <KPM_NAME>               Get detailed information about module named KPM_NAME.\n"
+                        "help                           Print this help message. \n"
+                        "load <KPM_PATH> [KPM_ARGS]     Load KernelPatch Module with KPM_PATH and KPM_ARGS.\n"
+                        "ctl <KPM_NAME> <CTL_ARGS>  Control KernelPatch Module named KPM_PATH with CTL_ARGS.\n"
+                        "unload <KPM_NAME>              Unload KernelPatch Module named KPM_NAME.\n"
+                        "num                            Get the number of modules that have been loaded.\n"
+                        "list                           List names of all loaded modules.\n"
+                        "info <KPM_NAME>                Get detailed information about module named KPM_NAME.\n"
                         "");
     }
     exit(status);
@@ -88,8 +97,13 @@ int kpm_main(int argc, char **argv)
         const char *scmd;
         int cmd;
     } cmd_arr[] = {
-        { "load", SUPERCALL_KPM_LOAD }, { "unload", SUPERCALL_KPM_UNLOAD }, { "num", SUPERCALL_KPM_NUMS },
-        { "list", SUPERCALL_KPM_LIST }, { "info", SUPERCALL_KPM_INFO },     { "help", 0 },
+        { "load", SUPERCALL_KPM_LOAD },
+        { "ctl", SUPERCALL_KPM_CONTROL },
+        { "unload", SUPERCALL_KPM_UNLOAD },
+        { "num", SUPERCALL_KPM_NUMS },
+        { "list", SUPERCALL_KPM_LIST },
+        { "info", SUPERCALL_KPM_INFO },
+        { "help", 0 },
     };
 
     for (int i = 0; i < sizeof(cmd_arr) / sizeof(cmd_arr[0]); i++) {
@@ -102,6 +116,7 @@ int kpm_main(int argc, char **argv)
 
     const char *path = NULL;
     const char *mod_args = NULL;
+    const char *ctl_args = NULL;
     const char *name = NULL;
 
     switch (cmd) {
@@ -110,6 +125,12 @@ int kpm_main(int argc, char **argv)
         path = argv[2];
         mod_args = argc < 4 ? NULL : argv[3];
         return kpm_load(key, path, mod_args);
+    case SUPERCALL_KPM_CONTROL:
+        if (argc < 3) error(-EINVAL, 0, "module name does not exist");
+        if (argc < 4) error(-EINVAL, 0, "control argument does not exist");
+        name = argv[2];
+        ctl_args = argv[3];
+        return kpm_control(key, name, ctl_args);
     case SUPERCALL_KPM_UNLOAD:
         if (argc < 3) error(-EINVAL, 0, "module name does not exist");
         name = argv[2];

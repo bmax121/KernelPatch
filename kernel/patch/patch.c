@@ -12,8 +12,8 @@
 #include <syscall.h>
 #include <module.h>
 #include <predata.h>
+#include <extrainit.h>
 
-int linux_sybmol_len_init();
 int linux_misc_symbol_init();
 int linux_libs_symbol_init();
 
@@ -21,10 +21,8 @@ int resolve_struct();
 int task_observer();
 int bypass_kcfi();
 
-void before_panic(hook_fargs12_t *args, void *udata)
+void print_bootlog()
 {
-    printk("==== Start KernelPatch for Kernel panic ====\n");
-
     const char *log = get_boot_log();
     char buf[1024];
     int off = 0;
@@ -40,7 +38,12 @@ void before_panic(hook_fargs12_t *args, void *udata)
             buf[off++] = log[i];
         }
     }
+}
 
+void before_panic(hook_fargs12_t *args, void *udata)
+{
+    printk("==== Start KernelPatch for Kernel panic ====\n");
+    print_bootlog();
     printk("==== End KernelPatch for Kernel panic ====\n");
 }
 
@@ -48,9 +51,6 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
 {
     int rc = 0;
     log_boot("entering init ...\n");
-
-    if ((rc = linux_sybmol_len_init())) goto out;
-    log_boot("linux_sybmol_len_init done: %d\n", rc);
 
     if ((rc = linux_libs_symbol_init())) goto out;
     log_boot("linux_libs_symbol_init done: %d\n", rc);
@@ -87,6 +87,9 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
     log_boot("su_compat_init done: %d\n", rc);
 #endif
 
+    if ((rc = extra_init())) goto out;
+    log_boot("supercall_install done: %d\n", rc);
+
 out:
     return;
 }
@@ -118,6 +121,7 @@ int patch()
     // rest_init or cgroup_init
     unsigned long init_addr = get_preset_patch_sym()->rest_init;
     if (!init_addr) init_addr = get_preset_patch_sym()->cgroup_init;
+
     if (init_addr) {
         hook_err_t err = hook_wrap4((void *)init_addr, before_rest_init, 0, (void *)init_addr);
         if (err) {

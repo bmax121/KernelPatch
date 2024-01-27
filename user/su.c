@@ -155,23 +155,25 @@ static void usage(int status)
         fprintf(stdout, "Change the user id, group id and security context.\n"
                         "If USER not given, assume root.\n\n");
         fprintf(stdout, "Usage: %s [OPTION]... [USER [ARG]...]\n\n", program_name);
-        fprintf(stdout,
-                "-h, --help                   Print this help message. \n"
-                "-c, --command=COMMAND        pass a single COMMAND to the shell with -c\n"
-                "-m, -p, --preserve-environment   do not reset environment variables\n"
-                "-g, --group GROUP            Specify the primary group\n"
-                "-G, --supp-group GROUP       Specify a supplementary group.\n"
-                "                                The first specified supplementary group is also used\n"
-                "                                as a primary group if the option -g is not specified.\n"
-                "-t, --target PID             PID to take mount namespace from\n "
-                "-s, --shell SHELL            use SHELL instead of the default\n"
-                "-, -l, --login               Pretend the shell to be a login shell\n"
-                "-Z, -x, --context SCONTEXT   Switch security context to SCONTEXT, If SCONTEXT is not specified\n"
-                "                             or specified with a non-existent value, bypass all selinux permission\n"
-                "                             checks for all calls initiated by this task using hooks, \n"
-                "                             but the permission determined by other task remain unchanged. \n"
-                "-M, --mount-master           force run in the global mount namespace\n"
-                "");
+        fprintf(
+            stdout,
+            "-h, --help                         Print this help message. \n"
+            "-c, --command=COMMAND              pass a single COMMAND to the shell with -c\n"
+            "-m, -p, --preserve-environment     do not reset environment variables\n"
+            "-g, --group GROUP                  Specify the primary group\n"
+            "-G, --supp-group GROUP             Specify a supplementary group.\n"
+            "                                       The first specified supplementary group is also used\n"
+            "                                       as a primary group if the option -g is not specified.\n"
+            "-t, --target PID                   PID to take mount namespace from\n "
+            "-i, --target-isolate               Use new isolated namespace if -t is specified.\n "
+            "-s, --shell SHELL                  use SHELL instead of the default\n"
+            "-, -l, --login                     Pretend the shell to be a login shell\n"
+            "-Z, -x, --context SCONTEXT         Switch security context to SCONTEXT, If SCONTEXT is not specified\n"
+            "                                   or specified with a non-existent value, bypass all selinux permission\n"
+            "                                   checks for all calls initiated by this task using hooks, \n"
+            "                                   but the permission determined by other task remain unchanged. \n"
+            "-M, --mount-master                 force run in the global mount namespace\n"
+            "");
     }
     exit(status);
 }
@@ -185,6 +187,7 @@ static struct option const longopts[] = { { "command", required_argument, 0, 'c'
                                           { "context", required_argument, 0, 'Z' },
                                           { "mount-master", no_argument, 0, 'M' },
                                           { "target", required_argument, 0, 't' },
+                                          { "target-isolate", required_argument, 0, 'i' },
                                           { "group", required_argument, 0, 'g' },
                                           { "supp-group", required_argument, 0, 'G' },
                                           { 0, 0, 0, 0 },
@@ -248,6 +251,9 @@ int su_main(int argc, char **argv)
                 }
             }
             break;
+        case 'i':
+            isolated = true;
+            break;
         case 'g':
         case 'G':
             if (atol(optarg) >= 0) {
@@ -290,7 +296,7 @@ int su_main(int argc, char **argv)
     if (sc_su(key, &profile)) error(-EACCES, 0, "incorrect super key");
 
     // session leader
-    setsid();
+    // setsid();
 
     // namespaces
     if (target > 0) { // namespace of pid

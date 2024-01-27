@@ -71,9 +71,7 @@ out:
 static void load_config()
 {
     set_priv_selinx_allow(current, 1);
-    patch_config_t *config = get_preset_patch_cfg();
-    const char *reserved = config->config_reserved;
-    log_boot("config_reserved: %s\n", reserved);
+
     set_priv_selinx_allow(current, 0);
 }
 

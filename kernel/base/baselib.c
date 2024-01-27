@@ -3,13 +3,9 @@
  * Copyright (C) 2023 bmax121. All Rights Reserved.
  */
 
-#ifndef _KP_INLINESTRING_H_
-#define _KP_INLINESTRING_H_
+#include <baselib.h>
 
-#include <stdint.h>
-#include <ctype.h>
-
-static inline void *inline_memccpy(void *dst, const void *src, int c, size_t n)
+void *lib_memccpy(void *dst, const void *src, int c, size_t n)
 {
     char *q = (char *)dst;
     const char *p = (const char *)src;
@@ -21,7 +17,7 @@ static inline void *inline_memccpy(void *dst, const void *src, int c, size_t n)
     return 0;
 }
 
-static inline void *inline_memchr(const void *s, int c, size_t n)
+void *lib_memchr(const void *s, int c, size_t n)
 {
     const unsigned char *sp = (const unsigned char *)s;
     while (n--) {
@@ -31,7 +27,7 @@ static inline void *inline_memchr(const void *s, int c, size_t n)
     return 0;
 }
 
-static inline int inline_memcmp(const void *s1, const void *s2, size_t n)
+int lib_memcmp(const void *s1, const void *s2, size_t n)
 {
     const unsigned char *c1 = (const unsigned char *)s1;
     const unsigned char *c2 = (const unsigned char *)s2;
@@ -43,7 +39,7 @@ static inline int inline_memcmp(const void *s1, const void *s2, size_t n)
     return d;
 }
 
-static inline void *inline_memcpy(void *dst, const void *src, size_t n)
+void *lib_memcpy(void *dst, const void *src, size_t n)
 {
     const char *p = (const char *)src;
     char *q = (char *)dst;
@@ -53,7 +49,7 @@ static inline void *inline_memcpy(void *dst, const void *src, size_t n)
     return dst;
 }
 
-static inline void *inline_memmove(void *dst, const void *src, size_t n)
+void *lib_memmove(void *dst, const void *src, size_t n)
 {
     const char *p = (const char *)src;
     char *q = (char *)dst;
@@ -72,7 +68,7 @@ static inline void *inline_memmove(void *dst, const void *src, size_t n)
     return dst;
 }
 
-static inline void *inline_memrchr(const void *s, int c, size_t n)
+void *lib_memrchr(const void *s, int c, size_t n)
 {
     const unsigned char *sp = (const unsigned char *)s + n - 1;
 
@@ -84,7 +80,7 @@ static inline void *inline_memrchr(const void *s, int c, size_t n)
     return 0;
 }
 
-static inline void *inline_memset(void *dst, int c, size_t n)
+void *lib_memset(void *dst, int c, size_t n)
 {
     char *q = (char *)dst;
     while (n--) {
@@ -93,7 +89,7 @@ static inline void *inline_memset(void *dst, int c, size_t n)
     return dst;
 }
 
-static inline void inline_memswap(void *m1, void *m2, size_t n)
+void lib_memswap(void *m1, void *m2, size_t n)
 {
     char *p = (char *)m1;
     char *q = (char *)m2;
@@ -109,7 +105,53 @@ static inline void inline_memswap(void *m1, void *m2, size_t n)
     }
 }
 
-static inline int inline_strcasecmp(const char *s1, const char *s2)
+int min_memcmp(const void *s1, const void *s2, size_t n)
+{
+    const unsigned char *c1 = s1, *c2 = s2;
+    int d = 0;
+    while (n--) {
+        d = (int)*c1++ - (int)*c2++;
+        if (d) break;
+    }
+    return d;
+}
+
+void *lib_memmem(const void *haystack, size_t n, const void *needle, size_t m)
+{
+    const unsigned char *y = (const unsigned char *)haystack;
+    const unsigned char *x = (const unsigned char *)needle;
+
+    size_t j, k, l;
+
+    if (m > n || !m || !n) return 0;
+
+    if (1 != m) {
+        if (x[0] == x[1]) {
+            k = 2;
+            l = 1;
+        } else {
+            k = 1;
+            l = 2;
+        }
+
+        j = 0;
+        while (j <= n - m) {
+            if (x[1] != y[j + 1]) {
+                j += k;
+            } else {
+                if (!lib_memcmp(x + 2, y + j + 2, m - 2) && x[0] == y[j]) return (void *)&y[j];
+                j += l;
+            }
+        }
+    } else
+        do {
+            if (*y == *x) return (void *)y;
+            y++;
+        } while (--n);
+    return 0;
+}
+
+int lib_strcasecmp(const char *s1, const char *s2)
 {
     const unsigned char *c1 = (const unsigned char *)s1;
     const unsigned char *c2 = (const unsigned char *)s2;
@@ -122,7 +164,7 @@ static inline int inline_strcasecmp(const char *s1, const char *s2)
     return d;
 }
 
-static inline char *inline_strchr(const char *s, int c)
+char *lib_strchr(const char *s, int c)
 {
     while (*s != (char)c) {
         if (!*s) return 0;
@@ -131,7 +173,7 @@ static inline char *inline_strchr(const char *s, int c)
     return (char *)s;
 }
 
-static inline int inline_strcmp(const char *s1, const char *s2)
+int lib_strcmp(const char *s1, const char *s2)
 {
     const unsigned char *c1 = (const unsigned char *)s1;
     const unsigned char *c2 = (const unsigned char *)s2;
@@ -144,7 +186,7 @@ static inline int inline_strcmp(const char *s1, const char *s2)
     return d;
 }
 
-static inline char *inline_strcpy(char *dst, const char *src)
+char *lib_strcpy(char *dst, const char *src)
 {
     char *q = dst;
     const char *p = src;
@@ -156,7 +198,7 @@ static inline char *inline_strcpy(char *dst, const char *src)
     return dst;
 }
 
-static inline size_t inline_strlcpy(char *dst, const char *src, size_t size)
+size_t lib_strlcpy(char *dst, const char *src, size_t size)
 {
     size_t bytes = 0;
     char *q = dst;
@@ -172,7 +214,7 @@ static inline size_t inline_strlcpy(char *dst, const char *src, size_t size)
     return bytes;
 }
 
-static inline size_t inline_strlen(const char *s)
+size_t lib_strlen(const char *s)
 {
     const char *ss = s;
     while (*ss)
@@ -180,7 +222,7 @@ static inline size_t inline_strlen(const char *s)
     return ss - s;
 }
 
-static inline int inline_strncasecmp(const char *s1, const char *s2, size_t n)
+int lib_strncasecmp(const char *s1, const char *s2, size_t n)
 {
     const unsigned char *c1 = (const unsigned char *)s1;
     const unsigned char *c2 = (const unsigned char *)s2;
@@ -193,9 +235,9 @@ static inline int inline_strncasecmp(const char *s1, const char *s2, size_t n)
     return d;
 }
 
-static inline char *inline_strncat(char *dst, const char *src, size_t n)
+char *lib_strncat(char *dst, const char *src, size_t n)
 {
-    char *q = inline_strchr(dst, '\0');
+    char *q = lib_strchr(dst, '\0');
     const char *p = src;
     char ch;
     while (n--) {
@@ -206,7 +248,13 @@ static inline char *inline_strncat(char *dst, const char *src, size_t n)
     return dst;
 }
 
-static inline int inline_strncmp(const char *s1, const char *s2, size_t n)
+char *lib_strcat(char *dst, const char *src)
+{
+    lib_strcpy(lib_strchr(dst, '\0'), src);
+    return dst;
+}
+
+int lib_strncmp(const char *s1, const char *s2, size_t n)
 {
     const unsigned char *c1 = (const unsigned char *)s1;
     const unsigned char *c2 = (const unsigned char *)s2;
@@ -219,7 +267,7 @@ static inline int inline_strncmp(const char *s1, const char *s2, size_t n)
     return d;
 }
 
-static inline char *inline_strncpy(char *dst, const char *src, size_t n)
+char *lib_strncpy(char *dst, const char *src, size_t n)
 {
     char *q = dst;
     const char *p = src;
@@ -229,11 +277,11 @@ static inline char *inline_strncpy(char *dst, const char *src, size_t n)
         *q++ = ch = *p++;
         if (!ch) break;
     }
-    inline_memset(q, 0, n);
+    lib_memset(q, 0, n);
     return dst;
 }
 
-static inline size_t inline_strnlen(const char *s, size_t maxlen)
+size_t lib_strnlen(const char *s, size_t maxlen)
 {
     const char *ss = s;
     while ((maxlen > 0) && *ss) {
@@ -243,7 +291,7 @@ static inline size_t inline_strnlen(const char *s, size_t maxlen)
     return ss - s;
 }
 
-static inline char *inline_strpbrk(const char *s1, const char *s2)
+char *lib_strpbrk(const char *s1, const char *s2)
 {
     const char *c = s2;
     if (!*s1) return (char *)0;
@@ -258,7 +306,7 @@ static inline char *inline_strpbrk(const char *s1, const char *s2)
     return (char *)s1;
 }
 
-static inline char *inline_strrchr(const char *s, int c)
+char *lib_strrchr(const char *s, int c)
 {
     const char *found = 0;
     while (*s) {
@@ -268,18 +316,18 @@ static inline char *inline_strrchr(const char *s, int c)
     return (char *)found;
 }
 
-static inline char *inline_strsep(char **stringp, const char *delim)
+char *lib_strsep(char **stringp, const char *delim)
 {
     char *s = *stringp;
     char *e;
     if (!s) return 0;
-    e = inline_strpbrk(s, delim);
+    e = lib_strpbrk(s, delim);
     if (e) *e++ = '\0';
     *stringp = e;
     return s;
 }
 
-static inline size_t inline_strspn(const char *s1, const char *s2)
+size_t lib_strspn(const char *s1, const char *s2)
 {
     const char *s = s1;
     const char *c;
@@ -293,4 +341,7 @@ static inline size_t inline_strspn(const char *s1, const char *s2)
     return s1 - s;
 }
 
-#endif
+char *lib_strstr(const char *haystack, const char *needle)
+{
+    return (char *)lib_memmem(haystack, lib_strlen(haystack), needle, lib_strlen(needle));
+}

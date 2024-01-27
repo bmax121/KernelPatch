@@ -3,8 +3,8 @@
  * Copyright (C) 2023 bmax121. All Rights Reserved.
  */
 
-#ifndef _KALLSYM_H_
-#define _KALLSYM_H_
+#ifndef _KP_TOOL_KALLSYM_H_
+#define _KP_TOOL_KALLSYM_H_
 
 #include <stdint.h>
 
@@ -54,6 +54,9 @@ enum arch_type
     X86
 };
 
+#define ELF64_KERNEL_MIN_VA 0xffffff8008080000
+#define ELF64_KERNEL_MAX_VA 0xffffffffffffffff
+
 typedef struct
 {
     enum arch_type arch;
@@ -73,9 +76,6 @@ typedef struct
     int32_t banner_num;
     int32_t linux_banner_offset[4];
     int32_t symbol_banner_idx;
-
-    int32_t vectors_offset;
-    int32_t vectors_index;
 
     char *kallsyms_token_table[KSYM_TOKEN_NUMS];
     int32_t asm_long_size;
@@ -102,24 +102,23 @@ typedef struct
     int32_t relo_applied;
     int32_t elf64_rela_num;
     int32_t elf64_rela_offset;
+    uint64_t elf64_kernel_base;
+    int32_t elf64_current_heuris;
 
 } kallsym_t;
 
 #ifdef _WIN32
 #include <string.h>
-static void *memmem(const void *haystack, size_t haystack_len, 
-    const void * const needle, const size_t needle_len)
+static void *memmem(const void *haystack, size_t haystack_len, const void *const needle, const size_t needle_len)
 {
     if (haystack == NULL) return NULL; // or assert(haystack != NULL);
     if (haystack_len == 0) return NULL;
     if (needle == NULL) return NULL; // or assert(needle != NULL);
     if (needle_len == 0) return NULL;
 
-    for (const char *h = haystack;
-            haystack_len >= needle_len;
-            ++h, --haystack_len) {
+    for (const char *h = haystack; haystack_len >= needle_len; ++h, --haystack_len) {
         if (!memcmp(h, needle, needle_len)) {
-            return (void*)h;
+            return (void *)h;
         }
     }
     return NULL;
@@ -129,7 +128,8 @@ static void *memmem(const void *haystack, size_t haystack_len,
 int analyze_kallsym_info(kallsym_t *info, char *img, int32_t imglen, enum arch_type arch, int32_t is_64);
 int dump_all_symbols(kallsym_t *info, char *img);
 int get_symbol_index_offset(kallsym_t *info, char *img, int32_t index);
-int32_t get_symbol_offset(kallsym_t *info, char *img, char *symbol);
+int get_symbol_offset_and_size(kallsym_t *info, char *img, char *symbol, int32_t *size);
+int get_symbol_offset(kallsym_t *info, char *img, char *symbol);
 int on_each_symbol(kallsym_t *info, char *img, void *userdata,
                    int32_t (*fn)(int32_t index, char type, const char *symbol, int32_t offset, void *userdata));
 

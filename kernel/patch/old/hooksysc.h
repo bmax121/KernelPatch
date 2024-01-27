@@ -76,12 +76,12 @@
 #define HOOK_SYSCALL_DEFINE6(nr, ...) HOOK_SYSCALL_DEFINE(6, nr, __VA_ARGS__)
 
 #define __HOOK_SYSCALL_CALL_ORIGIN(nr, ...) \
-    (syscall_has_wrapper ? __hook_sys_wrap_backup_##nr(regs) : __hook_sys_backup_##nr(__VA_ARGS__));
+    (has_syscall_wrapper ? __hook_sys_wrap_backup_##nr(regs) : __hook_sys_backup_##nr(__VA_ARGS__));
 
 #define HOOK_SYSCALL_CALL_ORIGIN(nr, ...) __HOOK_SYSCALL_CALL_ORIGIN(nr, __VA_ARGS__)
 
 #define __REPLACE_SYSCALL_INSTALL(nr)                                                                         \
-    if (syscall_has_wrapper) {                                                                                \
+    if (has_syscall_wrapper) {                                                                                \
         replace_syscall_with(nr, (uintptr_t *)&__hook_sys_wrap_backup_##nr, (uintptr_t)__hook_sys_wrap_##nr); \
     } else {                                                                                                  \
         replace_syscall_with(nr, (uintptr_t *)&__hook_sys_backup_##nr, (uintptr_t)__hook_sys_##nr);           \
@@ -89,7 +89,7 @@
 #define REPLACE_SYSCALL_INSTALL(nr) __REPLACE_SYSCALL_INSTALL(nr)
 
 #define __INLINE_SYSCALL_INSTALL(nr)                                                                         \
-    if (syscall_has_wrapper) {                                                                               \
+    if (has_syscall_wrapper) {                                                                               \
         inline_syscall_with(nr, (uintptr_t *)&__hook_sys_wrap_backup_##nr, (uintptr_t)__hook_sys_wrap_##nr); \
     } else {                                                                                                 \
         inline_syscall_with(nr, (uintptr_t *)&__hook_sys_backup_##nr, (uintptr_t)__hook_sys_##nr);           \
@@ -104,7 +104,7 @@
 
 #define ARGS_TO_REGS(regs, ...) _ARGS_TO_REGS(regs, 0, __VA_ARGS__)
 
-extern bool syscall_has_wrapper;
+extern bool has_syscall_wrapper;
 extern uintptr_t syscall_table_addr;
 extern uintptr_t compat_syscall_table_addr;
 

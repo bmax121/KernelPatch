@@ -571,9 +571,10 @@ void hook_install(hook_t *hook)
     uint64_t va = hook->origin_addr;
     uint64_t *entry = pgtable_entry_kernel(va);
     uint64_t ori_prot = *entry;
-    *entry = (ori_prot | PTE_DBM) & ~PTE_RDONLY;
+    *entry = (ori_prot | PTE_DBM) & ~PTE_RDONLY & 0xFFFBFFFFFFFFFFFF;
     flush_tlb_kernel_page(va);
     // todo:
+    // todo: can use aarch64_insn_patch_text_nosync, aarch64_insn_patch_text directly?
     for (int32_t i = 0; i < hook->tramp_insts_len; i++) {
         *((uint32_t *)hook->origin_addr + i) = hook->tramp_insts[i];
     }

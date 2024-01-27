@@ -33,7 +33,7 @@ void after_add(hook_fargs2_t *args, void *udata)
     args->ret = 100;
 }
 
-int inline_hook_demo_init()
+int inline_hook_demo_init(const char *args, void *__user reserved)
 {
     logkd("kpm inline-hook-demo init\n");
 
@@ -52,7 +52,13 @@ int inline_hook_demo_init()
     return 0;
 }
 
-void inline_hook_demo_exit()
+int inline_hook_control(const char *args, char *__user out_msg, int outlen)
+{
+    pr_info("kpm control, args: %s\n", args);
+    return 0;
+}
+
+int inline_hook_demo_exit(void *__user reserved)
 {
     unhook((void *)add);
 
@@ -66,4 +72,5 @@ void inline_hook_demo_exit()
 }
 
 KPM_INIT(inline_hook_demo_init);
+KPM_CTL(inline_hook_control);
 KPM_EXIT(inline_hook_demo_exit);

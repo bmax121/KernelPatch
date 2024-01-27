@@ -40,7 +40,7 @@ void before_openat_0(hook_fargs4_t *args, void *udata)
     umode_t mode = (int)syscall_argn(args, 3);
 
     char buf[1024];
-    strncpy_from_user_nofault(buf, filename, 1024);
+    strncpy_from_user_nofault(buf, filename, sizeof(buf));
 
     struct task_struct *task = current;
     pid_t pid = -1, tgid = -1;
@@ -69,7 +69,7 @@ void after_openat_1(hook_fargs4_t *args, void *udata)
     pr_info("hook_chain_1 after openat task: %llx\n", args->local.data0);
 }
 
-int syscall_hook_demo_init(const char *args)
+int syscall_hook_demo_init(const char *args, void *__user reserved)
 {
     margs = args;
     pr_info("kpm-syscall-hook-demo init ..., args: %s\n", margs);
@@ -108,7 +108,13 @@ out:
     return 0;
 }
 
-void syscall_hook_demo_exit()
+int syscall_hook_control(const char *args, char *__user out_msg, int outlen)
+{
+    pr_info("syscall_hook control, args: %s\n", args);
+    return 0;
+}
+
+int syscall_hook_demo_exit(void *__user reserved)
 {
     pr_info("kpm-syscall-hook-demo exit ...\n");
 
@@ -119,7 +125,9 @@ void syscall_hook_demo_exit()
         fp_unhook_syscall(__NR_openat, before_openat_1, after_openat_1);
     } else {
     }
+    return 0;
 }
 
 KPM_INIT(syscall_hook_demo_init);
+KPM_CTL(syscall_hook_control);
 KPM_EXIT(syscall_hook_demo_exit);

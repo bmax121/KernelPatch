@@ -95,7 +95,6 @@ static char *csv_val(const char *header, const char *line, const char *key)
     for (c = header; c < kpos; c++) {
         if (*c == ',') kidx++;
     }
-    printf("index: %d\n", kidx);
     for (c = line; kidx; c++) {
         if (*c == ',') kidx--;
     }
@@ -129,6 +128,8 @@ static void load_config_allow_uids()
         log_kernel("pkg config line: %s\n", line);
 
         char *sallow = csv_val(header, line, "allow");
+        if (!sallow) continue;
+
         if (!atol(sallow)) {
             free(sallow);
             continue;
@@ -139,7 +140,9 @@ static void load_config_allow_uids()
         char *sto_uid = csv_val(header, line, "to_uid");
         char *ssctx = csv_val(header, line, "sctx");
 
-        log_kernel("grant pkg: %s, uid: %d, to_uid: %d, sctx: %s\n", spkg, suid, sto_uid, ssctx);
+        if (!spkg || !suid || !sto_uid || !ssctx) continue;
+
+        log_kernel("grant pkg: %s, uid: %s, to_uid: %s, sctx: %s\n", spkg, suid, sto_uid, ssctx);
 
         uid_t to_uid = atol(sto_uid);
         struct su_profile profile = { 0 };
@@ -205,21 +208,21 @@ static void init()
     struct su_profile profile = { .uid = getuid() };
     sc_su(key, &profile);
 
-    log_kernel("%d ==== starting android user init, from kernel: %d\n", getpid(), from_kernel);
+    log_kernel("%d starting android user init, from kernel: %d\n", getpid(), from_kernel);
 
     if (!opendir(APATCH_FLODER)) mkdir(APATCH_FLODER, 0700);
     if (!opendir(APATCH_LOG_FLODER)) mkdir(APATCH_LOG_FLODER, 0700);
 
     if (from_kernel) save_dmegs(boot0_log_path);
 
-    log_kernel("%d ==== load selinxu policy.\n", getpid());
+    log_kernel("%d load selinux policy.\n", getpid());
     load_magisk_policy();
-    log_kernel("%d ==== reset su path.\n", getpid());
+    log_kernel("%d reset su path.\n", getpid());
     load_config_su_path();
-    log_kernel("%d ==== load allow uids.\n", getpid());
+    log_kernel("%d load allow uids.\n", getpid());
     load_config_allow_uids();
 
-    log_kernel("%d ==== finished android user init.\n", getpid());
+    log_kernel("%d finished android user init.\n", getpid());
 
     if (from_kernel) save_dmegs(boot1_log_path);
 }

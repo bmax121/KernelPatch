@@ -25,6 +25,7 @@
 #include <kputils.h>
 #include <linux/err.h>
 #include <linux/slab.h>
+#include <kputils.h>
 
 #define MAX_KEY_LEN 128
 
@@ -48,6 +49,19 @@ static long call_test(long arg1, long arg2, long arg3)
     return 0;
 }
 
+static long call_bootlog()
+{
+    print_bootlog();
+    return 0;
+}
+
+static long call_panic()
+{
+    unsigned long panic_addr = kallsyms_lookup_name("panic");
+    ((void (*)(const char *fmt, ...))panic_addr)("!!!! kernel_patch panic !!!!");
+    return 0;
+}
+
 static long call_klog(const char __user *arg1)
 {
     char buf[1024];
@@ -57,21 +71,30 @@ static long call_klog(const char __user *arg1)
     return 0;
 }
 
-static long call_kpm_load(const char __user *arg1, const char *__user arg2)
+static long call_kpm_load(const char __user *arg1, const char *__user arg2, void *__user reserved)
 {
-    char path[512], args[512];
+    char path[1024], args[KPM_ARGS_LEN];
     long pathlen = strncpy_from_user_nofault(path, arg1, sizeof(path));
     if (pathlen <= 0) return -EINVAL;
     long arglen = strncpy_from_user_nofault(args, arg2, sizeof(args));
-    return load_module_path(path, arglen <= 0 ? 0 : args);
+    return load_module_path(path, arglen <= 0 ? 0 : args, reserved);
 }
 
-static long call_kpm_unload(const char *__user arg1)
+static long call_kpm_control(const char __user *arg1, const char *__user arg2, void *__user out_msg, int outlen)
 {
-    char name[512];
+    char name[KPM_NAME_LEN], args[KPM_ARGS_LEN];
+    long namelen = strncpy_from_user_nofault(name, arg1, sizeof(name));
+    if (namelen <= 0) return -EINVAL;
+    long arglen = strncpy_from_user_nofault(args, arg2, sizeof(args));
+    return control_module(name, arglen <= 0 ? 0 : args, out_msg, outlen);
+}
+
+static long call_kpm_unload(const char *__user arg1, void *__user reserved)
+{
+    char name[KPM_NAME_LEN];
     long len = strncpy_from_user_nofault(name, arg1, sizeof(name));
     if (len <= 0) return -EINVAL;
-    return unload_module(name);
+    return unload_module(name, reserved);
 }
 
 static long call_kpm_nums()
@@ -86,8 +109,7 @@ static long call_kpm_list(char *__user names, int len)
     int sz = list_modules(buf, sizeof(buf));
     if (sz > len) return -ENOBUFS;
     sz = seq_copy_to_user(names, buf, len);
-    if (sz < 0) return sz;
-    return 0;
+    return sz;
 }
 
 static long call_kpm_info(const char *__user uname, char *__user out_info, int out_len)
@@ -101,8 +123,7 @@ static long call_kpm_info(const char *__user uname, char *__user out_info, int o
     if (sz < 0) return sz;
     if (sz > out_len) return -ENOBUFS;
     sz = seq_copy_to_user(out_info, buf, sz);
-    if (sz < 0) return sz;
-    return 0;
+    return sz;
 }
 
 static long call_su(struct su_profile *__user uprofile)
@@ -125,7 +146,7 @@ static long call_su_task(pid_t pid, struct su_profile *__user uprofile)
     return rc;
 }
 
-static long supercall(long cmd, long arg1, long arg2, long arg3)
+static long supercall(long cmd, long arg1, long arg2, long arg3, long arg4)
 {
     switch (cmd) {
     case SUPERCALL_HELLO:
@@ -145,15 +166,21 @@ static long supercall(long cmd, long arg1, long arg2, long arg3)
     case SUPERCALL_SU_TASK:
         return call_su_task((pid_t)arg1, (struct su_profile * __user) arg2);
     case SUPERCALL_KPM_LOAD:
-        return call_kpm_load((const char *__user)arg1, (const char *__user)arg2);
+        return call_kpm_load((const char *__user)arg1, (const char *__user)arg2, (void *__user)arg3);
     case SUPERCALL_KPM_UNLOAD:
-        return call_kpm_unload((const char *__user)arg1);
+        return call_kpm_unload((const char *__user)arg1, (void *__user)arg2);
+    case SUPERCALL_KPM_CONTROL:
+        return call_kpm_control((const char *__user)arg1, (const char *__user)arg2, (char *__user)arg3, (int)arg4);
     case SUPERCALL_KPM_NUMS:
         return call_kpm_nums();
     case SUPERCALL_KPM_LIST:
         return call_kpm_list((char *__user)arg1, (int)arg2);
     case SUPERCALL_KPM_INFO:
         return call_kpm_info((const char *__user)arg1, (char *__user)arg2, (int)arg3);
+    case SUPERCALL_BOOTLOG:
+        return call_bootlog();
+    case SUPERCALL_PANIC:
+        return call_panic();
     case SUPERCALL_TEST:
         return call_test(arg1, arg2, arg3);
     }
@@ -166,20 +193,24 @@ static long supercall(long cmd, long arg1, long arg2, long arg3)
 static void before(hook_fargs6_t *args, void *udata)
 {
     const char *__user ukey = (const char *__user)syscall_argn(args, 0);
-    long hash = (long)syscall_argn(args, 1);
-    long cmd = (long)syscall_argn(args, 2);
-    long a1 = (long)syscall_argn(args, 3);
-    long a2 = (long)syscall_argn(args, 4);
-    long a3 = (long)syscall_argn(args, 5);
+    long hash_cmd = (long)syscall_argn(args, 1);
+    long a1 = (long)syscall_argn(args, 2);
+    long a2 = (long)syscall_argn(args, 3);
+    long a3 = (long)syscall_argn(args, 4);
+    long a4 = (long)syscall_argn(args, 5);
+
+    long cmd = hash_cmd & 0xFFFF;
+    long hash = hash_cmd & 0xFFFF0000;
 
     char key[MAX_KEY_LEN];
     long len = strncpy_from_user_nofault(key, ukey, MAX_KEY_LEN);
+
     if (len <= 0) return;
-    if (superkey_auth(key, len - 1)) return;
-    if (hash_key(key) != hash) return;
+    if (superkey_auth(key)) return;
+    if ((hash_key(key) & 0xFFFF0000) != hash) return;
 
     args->skip_origin = 1;
-    args->ret = supercall(cmd, a1, a2, a3);
+    args->ret = supercall(cmd, a1, a2, a3, a4);
 }
 
 int supercall_install()

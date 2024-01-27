@@ -94,27 +94,24 @@ static inline uint64_t tlbi_vaddr(uint64_t addr, uint64_t asid)
     return x;
 }
 
-extern int64_t memstart_addr;
 extern uint64_t kimage_voffset;
-extern uint64_t page_offset;
-extern uint64_t vabits_actual;
+extern uint64_t linear_voffset;
 extern uint64_t kernel_va;
 extern uint64_t kernel_pa;
 extern int64_t kernel_size;
 extern int64_t page_shift;
 extern int64_t page_size;
 extern int64_t va_bits;
-extern uint64_t kp_kimg_offset;
 // extern int64_t pa_bits;
 
 static inline uint64_t phys_to_virt(uint64_t phys)
 {
-    return kimage_voffset ? (phys - memstart_addr) | page_offset : phys - memstart_addr + page_offset;
+    return phys + linear_voffset;
 }
 
 static inline uint64_t virt_to_phys(uint64_t virt)
 {
-    return kimage_voffset ? (virt & ~page_offset) + memstart_addr : virt - page_offset + memstart_addr;
+    return virt - linear_voffset;
 }
 
 static inline uint64_t phys_to_kimg(uint64_t phys)
@@ -127,9 +124,14 @@ static inline uint64_t kimg_to_phys(uint64_t addr)
     return addr - kimage_voffset;
 }
 
+static inline int has_vmalloc_area()
+{
+    return kimage_voffset != linear_voffset;
+}
+
 static inline uint64_t kp_kimg_to_phys(uint64_t addr)
 {
-    return addr - kp_kimg_offset - kimage_voffset;
+    return addr - kimage_voffset;
 }
 
 static inline void flush_tlb_kernel_range(uint64_t start, uint64_t end)
@@ -154,7 +156,7 @@ static inline void flush_tlb_kernel_page(uint64_t addr)
 
 static inline int is_kimg_range(uint64_t addr)
 {
-    return addr > kernel_va && addr < (kernel_va + kernel_size);
+    return addr >= kernel_va && addr < (kernel_va + kernel_size);
 }
 
 uint64_t *pgtable_entry_kernel(uint64_t va);

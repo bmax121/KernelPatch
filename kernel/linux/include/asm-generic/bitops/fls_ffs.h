@@ -1,4 +1,4 @@
-#ifndef _ASM_GENERIC_BITOPS_FLS_FSS_H_
+#ifndef _ASM_GENERIC_BITOPS_FLS_FFS_H_
 #define _ASM_GENERIC_BITOPS_FLS_FFS_H_
 
 #include <ktypes.h>
