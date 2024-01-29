@@ -256,6 +256,16 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v3
+    - name: Generate version
+      shell: pwsh
+      run: |
+        $MAJOR = (Select-String -Path version -Pattern '#define MAJOR').Line.Split(' ')[2]
+        $MINOR = (Select-String -Path version -Pattern '#define MINOR').Line.Split(' ')[2]
+        $PATCH = (Select-String -Path version -Pattern '#define PATCH').Line.Split(' ')[2]
+        $VERSION = "$MAJOR.$MINOR.$PATCH"
+        Write-Output "Generated Version: $VERSION"
+        "VERSION=$VERSION" | Out-File -FilePath $env:GITHUB_ENV -Append
+        Add-Content -Path $env:GITHUB_OUTPUT -Value "VERSION=$VERSION"
     - uses: msys2/setup-msys2@v2
       with:
         update: true
@@ -264,15 +274,13 @@ jobs:
         install: >-
           msys/make
           msys/gcc
-    - name: copyfile
+    - name: Copyfile
       shell: pwsh
       run: |
-        D:\a\_temp\msys64\usr\bin\x86_64-pc-msys-gcc.exe --version
-        ls D:\a\_temp\msys64\usr\bin\
         cp .\kernel\include\preset.h .\tools\
         cd tools
-        (Get-Content -Path "Makefile") -replace '\$\(CC\)', " D:\a\_temp\msys64\usr\bin\x86_64-pc-msys-gcc.exe" | Set-Content -Path "Makefile"
-        (Get-Content -Path "Makefile") -replace '\${CC}', "D:\a\_temp\msys64\usr\bin\x86_64-pc-msys-gcc.exe" | Set-Content -Path "Makefile"
+        (Get-Content -Path "Makefile") -replace '\$\(CC\)', " x86_64-pc-msys-gcc.exe" | Set-Content -Path "Makefile"
+        (Get-Content -Path "Makefile") -replace '\${CC}', "x86_64-pc-msys-gcc.exe" | Set-Content -Path "Makefile"
     - name: build
       shell: cmd
       run: |
@@ -283,7 +291,7 @@ jobs:
       uses: ncipollo/release-action@v1.12.0
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
-        tag: ${{ steps.parse_version.outputs.VERSION }}
+        tag: ${{ env.VERSION }}
         artifacts: |
           .\tools\kptools.exe
         allowUpdates: true
