@@ -7,11 +7,9 @@ assignees: bmax121
 
 ---
 
-**First, confirm whether your kernel has CONFIG_KALLSYMS_ALL=y enabled. If not or cannot be sure, please wait for support.**
-
 The following two information are what I need to fix the problem
 
-1. Your boot.img or kernel image
+1. Your kernel image. boot.img is too big, you can use 'magiskboot unpack boot.img' to get kernel image (which named 'kernel' after unpack)
 
 Upload to here or file download path
 

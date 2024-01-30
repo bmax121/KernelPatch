@@ -580,10 +580,11 @@ int control_module(const char *name, const char *ctl_args, char *__user out_msg,
 
     if (mod->ctl_args) {
         kvfree(mod->ctl_args);
+        mod->ctl_args = NULL;
     }
 
     mod->ctl_args = vmalloc(args_len + 1);
-    if (!mod->args) {
+    if (!mod->ctl_args) {
         err = -ENOMEM;
         goto out;
     }
