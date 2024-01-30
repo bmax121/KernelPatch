@@ -294,6 +294,7 @@ jobs:
         tag: ${{ env.VERSION }}
         artifacts: |
           .\tools\kptools.exe
+          D:\a\_temp\msys64\usr\bin\msys-2.0.dll
         allowUpdates: true
         replacesArtifacts: true
 
