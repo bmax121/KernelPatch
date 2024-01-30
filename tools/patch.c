@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <string.h>
+#include <ctype.h>
 
 #define _GNU_SOURCE
 #define __USE_GNU
@@ -74,6 +75,19 @@ int parse_image_patch_info(const char *kimg, int kimg_len, patched_kimg_t *pimg)
     kernel_info_t *kinfo = &pimg->kinfo;
     if (get_kernel_info(kinfo, kimg, kimg_len)) tools_error_exit("get_kernel_info error\n");
 
+    // find banner
+    char linux_banner_prefix[] = "Linux version ";
+    size_t prefix_len = strlen(linux_banner_prefix);
+    const char *imgend = pimg->kimg + pimg->kimg_len;
+    const char *banner = (char *)pimg->kimg;
+    while ((banner = (char *)memmem(banner + 1, imgend - banner, linux_banner_prefix, prefix_len)) != NULL) {
+        if (isdigit(*(banner + prefix_len)) && *(banner + prefix_len + 1) == '.') {
+            pimg->banner = banner;
+            break;
+        }
+    }
+    if (!pimg->banner) tools_error_exit("can't find linux banner\n");
+
     // patched or new
     preset_t *old_preset = get_preset(kimg, kimg_len);
     pimg->preset = old_preset;
@@ -92,6 +106,7 @@ int parse_image_patch_info(const char *kimg, int kimg_len, patched_kimg_t *pimg)
 
     memcpy((char *)kimg, old_preset->setup.header_backup, sizeof(old_preset->setup.header_backup));
 
+    // extra
     int extra_offset = align_kimg_len + old_preset->setup.kpimg_size;
     int extra_size = old_preset->setup.extra_size;
 
@@ -124,6 +139,10 @@ int parse_image_patch_info_path(const char *kimg_path, patched_kimg_t *pimg)
 void print_image_patch_info(patched_kimg_t *pimg)
 {
     preset_t *preset = pimg->preset;
+
+    fprintf(stdout, "linux_banner=%s", pimg->banner);
+    if (pimg->banner[strlen(pimg->banner) - 1] != '\n') fprintf(stdout, "\n");
+
     fprintf(stdout, "patched=%s\n", preset ? "true" : "false");
 
     if (preset) {

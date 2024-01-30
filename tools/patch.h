@@ -18,6 +18,7 @@ typedef struct
 {
     const char *kimg;
     int kimg_len;
+    const char *banner;
     int ori_kimg_len;
     kernel_info_t kinfo;
     preset_t *preset;

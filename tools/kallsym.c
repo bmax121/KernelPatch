@@ -49,7 +49,7 @@ static int find_linux_banner(kallsym_t *info, char *img, int32_t imglen)
     char *space = strchr(banner + prefix_len, ' ');
 
     char *dot = NULL;
-    // todo:
+
     // VERSION
     info->version.major = (uint8_t)strtoul(uts_release_start, &dot, 10);
     // PATCHLEVEL
