@@ -8,6 +8,7 @@
 #include <linux/printk.h>
 #include <common.h>
 #include <kputils.h>
+#include <linux/string.h>
 
 ///< The name of the module, each KPM must has a unique name.
 KPM_NAME("kpm-hello-demo");
@@ -42,7 +43,8 @@ static int hello_init(const char *args, void *__user reserved)
 static int hello_control(const char *args, char *__user out_msg, int outlen)
 {
     pr_info("kpm hello control, args: %s\n", args);
-    char echo[] = "hello kpm\n";
+    char echo[64] = "echo: ";
+    strncat(echo, args, 32);
     seq_copy_to_user(out_msg, echo, sizeof(echo));
     return 0;
 }
