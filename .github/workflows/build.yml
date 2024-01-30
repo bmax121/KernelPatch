@@ -291,14 +291,14 @@ jobs:
       shell: pwsh
       run: |
         cp .\tools\kptools.exe .\tools\kptools-msys2.exe
+        7z a kptools-msys2-win .\tools\kptools-msys2.exe D:\a\_temp\msys64\usr\bin\msys-2.0.dll
     - name: Release
       uses: ncipollo/release-action@v1.12.0
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         tag: ${{ env.VERSION }}
         artifacts: |
-          .\tools\kptools-msys2.exe
-          D:\a\_temp\msys64\usr\bin\msys-2.0.dll
+          kptools-msys2-win.7z
         allowUpdates: true
         replacesArtifacts: true
 
