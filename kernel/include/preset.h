@@ -135,12 +135,15 @@ _Static_assert(sizeof(patch_symbol_t) == PATCH_SYMBOL_LEN, "sizeof patch_symbol_
 #ifndef __ASSEMBLY__
 
 #define EXTRA_ALIGN 0x10
+#define EXTRA_NAME_LEN 0x20
 
 typedef int32_t extra_item_type;
 
 #define EXTRA_TYPE_NONE 0
 #define EXTRA_TYPE_KPM 1
 #define EXTRA_TYPE_SHELL 2
+#define EXTRA_TYPE_EXEC 3
+#define EXTRA_TYPE_RAW 4
 
 struct _patch_extra_item
 {
@@ -148,6 +151,7 @@ struct _patch_extra_item
     {
         struct
         {
+            char name[EXTRA_NAME_LEN];
             extra_item_type type;
             int32_t priority;
             int32_t con_size;

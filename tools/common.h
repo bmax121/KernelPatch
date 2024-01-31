@@ -17,18 +17,18 @@
 extern bool log_enable;
 
 #define tools_logi(fmt, ...) \
-    if (log_enable) fprintf(stdout, "[+] %s; " fmt, __FILE__, ##__VA_ARGS__);
+    if (log_enable) fprintf(stdout, "[+] " fmt, ##__VA_ARGS__);
 
 #define tools_logw(fmt, ...) \
-    if (log_enable) fprintf(stdout, "[?] %s; " fmt, __FILE__, ##__VA_ARGS__);
+    if (log_enable) fprintf(stdout, "[?] " fmt, ##__VA_ARGS__);
 
 #define tools_loge(fmt, ...) \
-    if (log_enable) fprintf(stdout, "[-] error %s:%d/%s(); " fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__);
+    if (log_enable) fprintf(stdout, "[-] %s:%d/%s(); " fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__);
 
-#define tools_error_exit(fmt, ...)                                                                  \
-    do {                                                                                            \
-        fprintf(stdout, "[-] error %s:%d/%s(); " fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
-        exit(EXIT_FAILURE);                                                                         \
+#define tools_error_exit(fmt, ...)                                                            \
+    do {                                                                                      \
+        fprintf(stderr, "[-] %s:%d/%s(); " fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
+        exit(EXIT_FAILURE);                                                                   \
     } while (0)
 
 #define SZ_4K 0x1000

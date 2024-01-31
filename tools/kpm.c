@@ -123,8 +123,6 @@ void print_kpm_info(kpm_info_t *info)
 
 void print_kpm_info_path(const char *kpm_path)
 {
-    fprintf(stdout, "path=%s\n", kpm_path);
-
     char *img;
     int len = 0;
     read_file(kpm_path, &img, &len);

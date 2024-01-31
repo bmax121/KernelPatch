@@ -56,11 +56,11 @@ void print_preset_info(preset_t *preset)
 
 void print_kp_image_info_path(const char *kpimg_path)
 {
-    fprintf(stdout, "path=%s\n", kpimg_path);
     char *kpimg;
     int len = 0;
     read_file(kpimg_path, &kpimg, &len);
     preset_t *preset = (preset_t *)kpimg;
+    fprintf(stdout, INFO_KP_IMG_SESSION "\n");
     print_preset_info(preset);
     fprintf(stdout, "\n");
     free(kpimg);
@@ -140,14 +140,17 @@ void print_image_patch_info(patched_kimg_t *pimg)
 {
     preset_t *preset = pimg->preset;
 
+    fprintf(stdout, INFO_KERNEL_IMG_SESSION "\n");
     fprintf(stdout, "linux_banner=%s", pimg->banner);
-    if (pimg->banner[strlen(pimg->banner) - 1] != '\n') fprintf(stdout, "\n");
 
+    if (pimg->banner[strlen(pimg->banner) - 1] != '\n') fprintf(stdout, "\n");
     fprintf(stdout, "patched=%s\n", preset ? "true" : "false");
 
     if (preset) {
+        fprintf(stdout, INFO_KP_IMG_SESSION "\n");
         print_preset_info(preset);
-        fprintf(stdout, "extra_item_num=%d\n", pimg->embed_item_num);
+        fprintf(stdout, "extra_num=%d\n", pimg->embed_item_num);
+
         for (int i = 0; i < pimg->embed_item_num; i++) {
             patch_extra_item_t *item = pimg->embed_item[i];
             const char *type = "none";
@@ -158,8 +161,15 @@ void print_image_patch_info(patched_kimg_t *pimg)
             case EXTRA_TYPE_SHELL:
                 type = "shell";
                 break;
+            case EXTRA_TYPE_EXEC:
+                type = "exec";
+                break;
+            case EXTRA_TYPE_RAW:
+                type = "raw";
+                break;
             }
-            fprintf(stdout, "extra_index=%d\n", i);
+            fprintf(stdout, INFO_EXTRA_SESSION_N "\n", i);
+            fprintf(stdout, "index=%d\n", i);
             fprintf(stdout, "type=%s\n", type);
             fprintf(stdout, "con_size=0x%x\n", item->con_size);
             fprintf(stdout, "args_size=0x%x\n", item->args_size);
@@ -176,7 +186,6 @@ void print_image_patch_info(patched_kimg_t *pimg)
 
 void print_image_patch_info_path(const char *kimg_path)
 {
-    fprintf(stdout, "path=%s\n", kimg_path);
     patched_kimg_t pimg = { 0 };
     char *kimg;
     int kimg_len;
@@ -229,15 +238,12 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     struct extra_items_wrap
     {
         patch_extra_item_t item;
+        const char *name;
         extra_item_type type;
         const char *data;
         const char *args;
         int data_len;
         int args_len;
-        union
-        {
-            const char *name;
-        };
     } *extra_items = (struct extra_items_wrap *)malloc(sizeof(struct extra_items_wrap) * EXTRA_ITEM_MAX_NUM);
 
     memset(extra_items, 0, sizeof(struct extra_items_wrap) * EXTRA_ITEM_MAX_NUM);
@@ -267,6 +273,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
         item_wrap->name = kpm_info.name;
 
         // set runtime item
+        strcpy(item->name, kpm_info.name);
         item->priority = 0;
         item->type = EXTRA_TYPE_KPM;
         item->con_size = kpm_len;
@@ -429,7 +436,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
 
         patch_extra_item_t *item = &item_wrap->item;
         tools_logi("embedding %s, name: %s, size: 0x%x + 0x%x + 0x%x\n", type, item_wrap->name, (int)sizeof(*item),
-                   item_wrap->data_len, item_wrap->args_len);
+                   item_wrap->args_len, item_wrap->data_len);
 
         write_file(out_path, (void *)item, sizeof(*item), true);
         if (item_wrap->args_len > 0) write_file(out_path, (void *)item_wrap->args, item_wrap->args_len, true);
