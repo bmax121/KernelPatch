@@ -6,6 +6,9 @@
 #ifndef _KP_TOOL_KPM_H_
 #define _KP_TOOL_KPM_H_
 
+#include "elf/elf.h"
+#include "common.h"
+
 #define Elf_Shdr Elf64_Shdr
 #define Elf_Phdr Elf64_Phdr
 #define Elf_Sym Elf64_Sym
@@ -21,8 +24,7 @@
 #define ELF_R_TYPE(X) ELF64_R_TYPE(X)
 #define ELF_R_SYM(X) ELF64_R_SYM(X)
 
-#include "elf/elf.h"
-#include "common.h"
+#define INFO_EXTRA_KPM_SESSION "[kpm]"
 
 struct load_info
 {

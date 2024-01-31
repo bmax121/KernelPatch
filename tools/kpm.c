@@ -126,7 +126,7 @@ void print_kpm_info_path(const char *kpm_path)
     char *img;
     int len = 0;
     read_file(kpm_path, &img, &len);
-
+    fprintf(stdout, INFO_EXTRA_KPM_SESSION "\n");
     kpm_info_t kpm_info = { 0 };
     int rc = get_kpm_info(img, len, &kpm_info);
     if (!rc) {
