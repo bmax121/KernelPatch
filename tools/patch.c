@@ -46,8 +46,8 @@ void print_preset_info(preset_t *preset)
     setup_header_t *header = &preset->header;
     version_t ver = header->kp_version;
     uint32_t ver_num = (ver.major << 16) + (ver.minor << 8) + ver.patch;
-    bool is_android = header->config_flags | CONFIG_ANDROID;
-    bool is_debug = header->config_flags | CONFIG_DEBUG;
+    bool is_android = !!(header->config_flags & CONFIG_ANDROID);
+    bool is_debug = !!(header->config_flags & CONFIG_DEBUG);
 
     fprintf(stdout, "version=0x%x\n", ver_num);
     fprintf(stdout, "compile_time=%s\n", header->compile_time);
@@ -168,7 +168,7 @@ void print_image_patch_info(patched_kimg_t *pimg)
                 type = "raw";
                 break;
             }
-            fprintf(stdout, INFO_EXTRA_SESSION_N "\n", i);
+            fprintf(stdout, INFO_EXTRA_SESSION "\n");
             fprintf(stdout, "index=%d\n", i);
             fprintf(stdout, "type=%s\n", type);
             fprintf(stdout, "con_size=0x%x\n", item->con_size);
