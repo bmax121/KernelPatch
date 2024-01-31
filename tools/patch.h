@@ -13,7 +13,7 @@
 #include "image.h"
 
 #define INFO_KERNEL_IMG_SESSION "[kernel]"
-#define INFO_KP_IMG_SESSION "[patch]"
+#define INFO_KP_IMG_SESSION "[kpimg]"
 #define INFO_EXTRA_SESSION "[extra]"
 #define INFO_EXTRA_SESSION_N "[extra %d]"
 
