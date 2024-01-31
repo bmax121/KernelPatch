@@ -141,7 +141,7 @@ void print_image_patch_info(patched_kimg_t *pimg)
     preset_t *preset = pimg->preset;
 
     fprintf(stdout, INFO_KERNEL_IMG_SESSION "\n");
-    fprintf(stdout, "linux_banner=%s", pimg->banner);
+    fprintf(stdout, "banner=%s", pimg->banner);
 
     if (pimg->banner[strlen(pimg->banner) - 1] != '\n') fprintf(stdout, "\n");
     fprintf(stdout, "patched=%s\n", preset ? "true" : "false");

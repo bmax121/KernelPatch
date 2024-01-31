@@ -31,8 +31,6 @@ Linux 6.3+ (not yet adapted)
 
 ## Get Involved
 
-Please submit your pull request in **dev** branch
-
 ## More Information
 
 [Documentation](./doc/)
