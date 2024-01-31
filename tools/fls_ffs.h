@@ -40,33 +40,33 @@ static inline int fls(unsigned int x)
     return r;
 }
 
-static inline unsigned long __fls(unsigned long word)
+static inline uint64_t __fls(uint64_t word)
 {
     int num = BITS_PER_LONG - 1;
 
 #if BITS_PER_LONG == 64
-    if (!(word & (~0ul << 32))) {
+    if (!(word & (~0ull << 32))) {
         num -= 32;
         word <<= 32;
     }
 #endif
-    if (!(word & (~0ul << (BITS_PER_LONG - 16)))) {
+    if (!(word & (~0ull << (BITS_PER_LONG - 16)))) {
         num -= 16;
         word <<= 16;
     }
-    if (!(word & (~0ul << (BITS_PER_LONG - 8)))) {
+    if (!(word & (~0ull << (BITS_PER_LONG - 8)))) {
         num -= 8;
         word <<= 8;
     }
-    if (!(word & (~0ul << (BITS_PER_LONG - 4)))) {
+    if (!(word & (~0ull << (BITS_PER_LONG - 4)))) {
         num -= 4;
         word <<= 4;
     }
-    if (!(word & (~0ul << (BITS_PER_LONG - 2)))) {
+    if (!(word & (~0ull << (BITS_PER_LONG - 2)))) {
         num -= 2;
         word <<= 2;
     }
-    if (!(word & (~0ul << (BITS_PER_LONG - 1)))) num -= 1;
+    if (!(word & (~0ull << (BITS_PER_LONG - 1)))) num -= 1;
     return num;
 }
 
@@ -82,7 +82,7 @@ static inline int fls64(u64 x)
  *
  * Undefined if no bit exists, so code should check against 0 first.
  */
-static inline unsigned long __ffs(unsigned long word)
+static inline uint64_t __ffs(uint64_t word)
 {
     int num = 0;
 

@@ -109,6 +109,17 @@ static inline unsigned long hweight64(u64 w)
 #define GENMASK(h, l) (((~0UL) << (l)) & (~0UL >> (BITS_PER_LONG - 1 - (h))))
 #define GENMASK_ULL(h, l) (((~0ULL) << (l)) & (~0ULL >> (BITS_PER_LONG_LONG - 1 - (h))))
 
+#ifdef _WIN32
+/*
+ * On windows platform 0ul take 4 bytes but linux take 8 bytes
+ * We must use 0ull instead 0ul to ensure no overflow
+ */
+#undef  GENMASK
+#define BITS_PER_LONG_LONG BITS_PER_LONG
+#define GENMASK GENMASK_ULL
+#endif
+
+
 /*
  * #imm16 values used for BRK instruction generation
  * Allowed values for kgbd are 0x400 - 0x7ff
