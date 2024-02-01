@@ -83,15 +83,15 @@
 
 #define BITS_PER_LONG 64
 
-static inline unsigned long __ffs64(u64 word)
+static inline uint64_t __ffs64(u64 word)
 {
-    return __ffs((unsigned long)word);
+    return __ffs((uint64_t)word);
 }
 
 #define upper_32_bits(n) ((u32)(((n) >> 16) >> 16))
 #define lower_32_bits(n) ((u32)(n))
 
-static inline unsigned long hweight64(u64 w)
+static inline uint64_t hweight64(u64 w)
 {
     u64 res = w - ((w >> 1) & 0x5555555555555555ul);
     res = (res & 0x3333333333333333ul) + ((res >> 2) & 0x3333333333333333ul);
@@ -402,9 +402,9 @@ static u32 aarch64_insn_encode_ldst_size(enum aarch64_insn_size_type type, u32 i
     return insn;
 }
 
-static inline long branch_imm_common(unsigned long pc, unsigned long addr, long range)
+static inline int64_t branch_imm_common(uint64_t pc, uint64_t addr, int64_t range)
 {
-    long offset;
+    int64_t offset;
 
     if ((pc & 0x3) || (addr & 0x3)) {
         fprintf(stdout, "%s: A64 instructions must be word aligned\n", __func__);
@@ -421,10 +421,10 @@ static inline long branch_imm_common(unsigned long pc, unsigned long addr, long 
     return offset;
 }
 
-u32 aarch64_insn_gen_branch_imm(unsigned long pc, unsigned long addr, enum aarch64_insn_branch_type type)
+u32 aarch64_insn_gen_branch_imm(uint64_t pc, uint64_t addr, enum aarch64_insn_branch_type type)
 {
     u32 insn;
-    long offset;
+    int64_t offset;
 
     /*
 	 * B/BL support [-128M, 128M) offset
@@ -449,11 +449,11 @@ u32 aarch64_insn_gen_branch_imm(unsigned long pc, unsigned long addr, enum aarch
     return aarch64_insn_encode_immediate(AARCH64_INSN_IMM_26, insn, offset >> 2);
 }
 
-u32 aarch64_insn_gen_comp_branch_imm(unsigned long pc, unsigned long addr, enum aarch64_insn_register reg,
+u32 aarch64_insn_gen_comp_branch_imm(uint64_t pc, uint64_t addr, enum aarch64_insn_register reg,
                                      enum aarch64_insn_variant variant, enum aarch64_insn_branch_type type)
 {
     u32 insn;
-    long offset;
+    int64_t offset;
 
     offset = branch_imm_common(pc, addr, SZ_1M);
     if (offset >= SZ_1M) return AARCH64_BREAK_FAULT;
@@ -486,10 +486,10 @@ u32 aarch64_insn_gen_comp_branch_imm(unsigned long pc, unsigned long addr, enum 
     return aarch64_insn_encode_immediate(AARCH64_INSN_IMM_19, insn, offset >> 2);
 }
 
-u32 aarch64_insn_gen_cond_branch_imm(unsigned long pc, unsigned long addr, enum aarch64_insn_condition cond)
+u32 aarch64_insn_gen_cond_branch_imm(uint64_t pc, uint64_t addr, enum aarch64_insn_condition cond)
 {
     u32 insn;
-    long offset;
+    int64_t offset;
 
     offset = branch_imm_common(pc, addr, SZ_1M);
 
@@ -1207,89 +1207,89 @@ u32 aarch32_insn_mcr_extract_crm(u32 insn)
     return insn & CRM_MASK;
 }
 
-static bool __check_eq(unsigned long pstate)
+static bool __check_eq(uint64_t pstate)
 {
     return (pstate & PSR_Z_BIT) != 0;
 }
 
-static bool __check_ne(unsigned long pstate)
+static bool __check_ne(uint64_t pstate)
 {
     return (pstate & PSR_Z_BIT) == 0;
 }
 
-static bool __check_cs(unsigned long pstate)
+static bool __check_cs(uint64_t pstate)
 {
     return (pstate & PSR_C_BIT) != 0;
 }
 
-static bool __check_cc(unsigned long pstate)
+static bool __check_cc(uint64_t pstate)
 {
     return (pstate & PSR_C_BIT) == 0;
 }
 
-static bool __check_mi(unsigned long pstate)
+static bool __check_mi(uint64_t pstate)
 {
     return (pstate & PSR_N_BIT) != 0;
 }
 
-static bool __check_pl(unsigned long pstate)
+static bool __check_pl(uint64_t pstate)
 {
     return (pstate & PSR_N_BIT) == 0;
 }
 
-static bool __check_vs(unsigned long pstate)
+static bool __check_vs(uint64_t pstate)
 {
     return (pstate & PSR_V_BIT) != 0;
 }
 
-static bool __check_vc(unsigned long pstate)
+static bool __check_vc(uint64_t pstate)
 {
     return (pstate & PSR_V_BIT) == 0;
 }
 
-static bool __check_hi(unsigned long pstate)
+static bool __check_hi(uint64_t pstate)
 {
     pstate &= ~(pstate >> 1); /* PSR_C_BIT &= ~PSR_Z_BIT */
     return (pstate & PSR_C_BIT) != 0;
 }
 
-static bool __check_ls(unsigned long pstate)
+static bool __check_ls(uint64_t pstate)
 {
     pstate &= ~(pstate >> 1); /* PSR_C_BIT &= ~PSR_Z_BIT */
     return (pstate & PSR_C_BIT) == 0;
 }
 
-static bool __check_ge(unsigned long pstate)
+static bool __check_ge(uint64_t pstate)
 {
     pstate ^= (pstate << 3); /* PSR_N_BIT ^= PSR_V_BIT */
     return (pstate & PSR_N_BIT) == 0;
 }
 
-static bool __check_lt(unsigned long pstate)
+static bool __check_lt(uint64_t pstate)
 {
     pstate ^= (pstate << 3); /* PSR_N_BIT ^= PSR_V_BIT */
     return (pstate & PSR_N_BIT) != 0;
 }
 
-static bool __check_gt(unsigned long pstate)
+static bool __check_gt(uint64_t pstate)
 {
     /*PSR_N_BIT ^= PSR_V_BIT */
-    unsigned long temp = pstate ^ (pstate << 3);
+    uint64_t temp = pstate ^ (pstate << 3);
 
     temp |= (pstate << 1); /*PSR_N_BIT |= PSR_Z_BIT */
     return (temp & PSR_N_BIT) == 0;
 }
 
-static bool __check_le(unsigned long pstate)
+static bool __check_le(uint64_t pstate)
 {
     /*PSR_N_BIT ^= PSR_V_BIT */
-    unsigned long temp = pstate ^ (pstate << 3);
+    uint64_t temp = pstate ^ (pstate << 3);
 
     temp |= (pstate << 1); /*PSR_N_BIT |= PSR_Z_BIT */
     return (temp & PSR_N_BIT) != 0;
 }
 
-static bool __check_al(unsigned long pstate)
+static bool __check_al(uint64_t pstate)
 {
     return true;
 }
@@ -1314,7 +1314,7 @@ static bool range_of_ones(u64 val)
 
 static u32 aarch64_encode_immediate(u64 imm, enum aarch64_insn_variant variant, u32 insn)
 {
-    unsigned int immr, imms, n, ones, ror, esz, tmp;
+    uint32_t immr, imms, n, ones, ror, esz, tmp;
     u64 mask = ~0UL;
 
     /* Can't encode full zeroes or full ones */

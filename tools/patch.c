@@ -35,7 +35,7 @@ uint32_t get_kpimg_version(const char *kpimg_path)
     int kpimg_len = 0;
     read_file(kpimg_path, &kpimg, &kpimg_len);
     preset_t *preset = get_preset(kpimg, kpimg_len);
-    if (!preset) tools_error_exit("not patched kernel image\n");
+    if (!preset) tools_loge_exit("not patched kernel image\n");
     version_t ver = preset->header.kp_version;
     uint32_t version = (ver.major << 16) + (ver.minor << 8) + ver.patch;
     return version;
@@ -52,6 +52,7 @@ void print_preset_info(preset_t *preset)
     fprintf(stdout, "version=0x%x\n", ver_num);
     fprintf(stdout, "compile_time=%s\n", header->compile_time);
     fprintf(stdout, "config=%s,%s\n", is_debug ? "debug" : "release", is_android ? "android" : "linux");
+    fprintf(stdout, "superkey=%s\n", preset->setup.superkey);
 }
 
 void print_kp_image_info_path(const char *kpimg_path)
@@ -73,7 +74,7 @@ int parse_image_patch_info(const char *kimg, int kimg_len, patched_kimg_t *pimg)
 
     // kernel image infomation
     kernel_info_t *kinfo = &pimg->kinfo;
-    if (get_kernel_info(kinfo, kimg, kimg_len)) tools_error_exit("get_kernel_info error\n");
+    if (get_kernel_info(kinfo, kimg, kimg_len)) tools_loge_exit("get_kernel_info error\n");
 
     // find banner
     char linux_banner_prefix[] = "Linux version ";
@@ -86,7 +87,7 @@ int parse_image_patch_info(const char *kimg, int kimg_len, patched_kimg_t *pimg)
             break;
         }
     }
-    if (!pimg->banner) tools_error_exit("can't find linux banner\n");
+    if (!pimg->banner) tools_loge_exit("can't find linux banner\n");
 
     // patched or new
     preset_t *old_preset = get_preset(kimg, kimg_len);
@@ -101,7 +102,7 @@ int parse_image_patch_info(const char *kimg, int kimg_len, patched_kimg_t *pimg)
     tools_logi("patched kernel image ...\n");
     int saved_kimg_len = old_preset->setup.kimg_size;
     int align_kimg_len = (char *)old_preset - kimg;
-    if (align_kimg_len != (int)align_ceil(saved_kimg_len, SZ_4K)) tools_error_exit("saved kernel image size error\n");
+    if (align_kimg_len != (int)align_ceil(saved_kimg_len, SZ_4K)) tools_loge_exit("saved kernel image size error\n");
     pimg->ori_kimg_len = saved_kimg_len;
 
     memcpy((char *)kimg, old_preset->setup.header_backup, sizeof(old_preset->setup.header_backup));
@@ -126,7 +127,7 @@ int parse_image_patch_info(const char *kimg, int kimg_len, patched_kimg_t *pimg)
 
 int parse_image_patch_info_path(const char *kimg_path, patched_kimg_t *pimg)
 {
-    if (!kimg_path) tools_error_exit("empty kernel image\n");
+    if (!kimg_path) tools_loge_exit("empty kernel image\n");
 
     char *kimg;
     int kimg_len;
@@ -177,7 +178,7 @@ void print_image_patch_info(patched_kimg_t *pimg)
                 kpm_info_t kpm_info = { 0 };
                 void *kpm = (kpm_info_t *)((uintptr_t)item + sizeof(patch_extra_item_t) + item->args_size);
                 int rc = get_kpm_info(kpm, item->con_size, &kpm_info);
-                if (rc) tools_error_exit("get kpm infomation error: %d\n", rc);
+                if (rc) tools_loge_exit("get kpm infomation error: %d\n", rc);
                 print_kpm_info(&kpm_info);
             }
         }
@@ -202,16 +203,16 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
 {
     set_log_enable(true);
 
-    if (!kpimg_path) tools_error_exit("empty kpimg\n");
-    if (!out_path) tools_error_exit("empty out image path\n");
-    if (!superkey) tools_error_exit("empty superkey\n");
+    if (!kpimg_path) tools_loge_exit("empty kpimg\n");
+    if (!out_path) tools_loge_exit("empty out image path\n");
+    if (!superkey) tools_loge_exit("empty superkey\n");
 
     patched_kimg_t pimg = { 0 };
     char *kimg;
     int kimg_len;
     read_file(kimg_path, &kimg, &kimg_len);
     int rc = parse_image_patch_info(kimg, kimg_len, &pimg);
-    if (rc) tools_error_exit("parse kernel image error\n");
+    if (rc) tools_loge_exit("parse kernel image error\n");
     // print_image_patch_info(&pimg);
 
     // kimg base info
@@ -223,7 +224,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     memcpy(kallsym_kimg, pimg.kimg, pimg.ori_kimg_len);
     kallsym_t kallsym = { 0 };
     if (analyze_kallsym_info(&kallsym, kallsym_kimg, pimg.ori_kimg_len, ARM64, 1)) {
-        tools_error_exit("analyze_kallsym_info error\n");
+        tools_loge_exit("analyze_kallsym_info error\n");
     }
 
     // kpimg
@@ -257,7 +258,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
 
         kpm_info_t kpm_info = { 0 };
         int rc = get_kpm_info(kpm_data, kpm_len, &kpm_info);
-        if (rc) tools_error_exit("can get infomation of kpm, path: %s\n", embed_kpm_path[i]);
+        if (rc) tools_loge_exit("can get infomation of kpm, path: %s\n", embed_kpm_path[i]);
 
         struct extra_items_wrap *item_wrap = extra_items + extra_num;
         patch_extra_item_t *item = &item_wrap->item;
@@ -383,7 +384,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
 
     setup->printk_offset = get_symbol_offset_zero(&kallsym, kallsym_kimg, "printk");
     if (!setup->printk_offset) setup->printk_offset = get_symbol_offset_zero(&kallsym, kallsym_kimg, "_printk");
-    if (!setup->printk_offset) tools_error_exit("no symbol printk\n");
+    if (!setup->printk_offset) tools_loge_exit("no symbol printk\n");
 
     if ((is_be() ^ kinfo->is_be)) {
         setup->kimg_size = i64swp(setup->kimg_size);
@@ -466,15 +467,15 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
 
 int unpatch_img(const char *kimg_path, const char *out_path)
 {
-    if (!kimg_path) tools_error_exit("empty kernel image\n");
-    if (!out_path) tools_error_exit("empty out image path\n");
+    if (!kimg_path) tools_loge_exit("empty kernel image\n");
+    if (!out_path) tools_loge_exit("empty out image path\n");
 
     char *kimg = NULL;
     int kimg_len = 0;
     read_file(kimg_path, &kimg, &kimg_len);
 
     preset_t *preset = get_preset(kimg, kimg_len);
-    if (!preset) tools_error_exit("not patched kernel image\n");
+    if (!preset) tools_loge_exit("not patched kernel image\n");
 
     memcpy(kimg, preset->setup.header_backup, sizeof(preset->setup.header_backup));
     int kimg_size = preset->setup.kimg_size ?: ((char *)preset - kimg);
@@ -486,19 +487,19 @@ int unpatch_img(const char *kimg_path, const char *out_path)
 
 int reset_key(const char *kimg_path, const char *out_path, const char *superkey)
 {
-    if (!kimg_path) tools_error_exit("empty kernel image\n");
-    if (!out_path) tools_error_exit("empty out image path\n");
-    if (!superkey) tools_error_exit("empty superkey\n");
+    if (!kimg_path) tools_loge_exit("empty kernel image\n");
+    if (!out_path) tools_loge_exit("empty out image path\n");
+    if (!superkey) tools_loge_exit("empty superkey\n");
 
-    if (strlen(superkey) <= 0) tools_error_exit("empty superkey\n");
-    if (strlen(superkey) >= SUPER_KEY_LEN) tools_error_exit("too long superkey\n");
+    if (strlen(superkey) <= 0) tools_loge_exit("empty superkey\n");
+    if (strlen(superkey) >= SUPER_KEY_LEN) tools_loge_exit("too long superkey\n");
 
     char *kimg = NULL;
     int kimg_len = 0;
     read_file(kimg_path, &kimg, &kimg_len);
 
     preset_t *preset = get_preset(kimg, kimg_len);
-    if (!preset) tools_error_exit("not patched kernel image\n");
+    if (!preset) tools_loge_exit("not patched kernel image\n");
 
     char *origin_key = strdup((char *)preset->setup.superkey);
     strcpy((char *)preset->setup.superkey, superkey);
@@ -514,7 +515,7 @@ int reset_key(const char *kimg_path, const char *out_path, const char *superkey)
 
 int dump_kallsym(const char *kimg_path)
 {
-    if (!kimg_path) tools_error_exit("empty kernel image\n");
+    if (!kimg_path) tools_loge_exit("empty kernel image\n");
     set_log_enable(true);
     // read image files
     char *kimg = NULL;

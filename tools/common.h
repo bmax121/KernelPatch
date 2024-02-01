@@ -25,7 +25,7 @@ extern bool log_enable;
 #define tools_loge(fmt, ...) \
     if (log_enable) fprintf(stdout, "[-] %s:%d/%s(); " fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__);
 
-#define tools_error_exit(fmt, ...)                                                            \
+#define tools_loge_exit(fmt, ...)                                                             \
     do {                                                                                      \
         fprintf(stderr, "[-] %s:%d/%s(); " fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
         exit(EXIT_FAILURE);                                                                   \
@@ -56,8 +56,8 @@ void write_file(const char *path, const char *con, int len, bool append);
 
 void read_file_align(const char *path, char **con, int *len, int align);
 
-int64_t int_unpack(void *ptr, int32_t size, int32_t is_be);
-uint64_t uint_unpack(void *ptr, int32_t size, int32_t is_be);
+int64_t int_unpack(void *ptr, int32_t size, bool is_be);
+uint64_t uint_unpack(void *ptr, int32_t size, bool is_be);
 
 static inline void read_file(const char *path, char **con, int *len)
 {

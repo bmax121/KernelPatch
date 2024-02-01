@@ -31,17 +31,17 @@ struct load_info
     struct
     {
         const char *base;
-        unsigned long size;
+        uint64_t size;
         const char *name, *version, *license, *author, *description;
     } info;
     Elf_Ehdr *hdr;
-    unsigned long len;
+    uint64_t len;
     Elf_Shdr *sechdrs;
     char *secstrings, *strtab;
-    unsigned long symoffs, stroffs;
+    uint64_t symoffs, stroffs;
     struct
     {
-        unsigned int sym, str, mod, info;
+        uint32_t sym, str, mod, info;
     } index;
 };
 

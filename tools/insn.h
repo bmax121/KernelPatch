@@ -416,10 +416,10 @@ bool aarch64_insn_is_branch(u32 insn);
 u64 aarch64_insn_decode_immediate(enum aarch64_insn_imm_type type, u32 insn);
 u32 aarch64_insn_encode_immediate(enum aarch64_insn_imm_type type, u32 insn, u64 imm);
 u32 aarch64_insn_decode_register(enum aarch64_insn_register_type type, u32 insn);
-u32 aarch64_insn_gen_branch_imm(unsigned long pc, unsigned long addr, enum aarch64_insn_branch_type type);
-u32 aarch64_insn_gen_comp_branch_imm(unsigned long pc, unsigned long addr, enum aarch64_insn_register reg,
+u32 aarch64_insn_gen_branch_imm(uint64_t pc, uint64_t addr, enum aarch64_insn_branch_type type);
+u32 aarch64_insn_gen_comp_branch_imm(uint64_t pc, uint64_t addr, enum aarch64_insn_register reg,
                                      enum aarch64_insn_variant variant, enum aarch64_insn_branch_type type);
-u32 aarch64_insn_gen_cond_branch_imm(unsigned long pc, unsigned long addr, enum aarch64_insn_condition cond);
+u32 aarch64_insn_gen_cond_branch_imm(uint64_t pc, uint64_t addr, enum aarch64_insn_condition cond);
 u32 aarch64_insn_gen_hint(enum aarch64_insn_hint_op op);
 u32 aarch64_insn_gen_nop(void);
 u32 aarch64_insn_gen_branch_reg(enum aarch64_insn_register reg, enum aarch64_insn_branch_type type);
@@ -475,7 +475,7 @@ u32 aarch32_insn_extract_reg_num(u32 insn, int offset);
 u32 aarch32_insn_mcr_extract_opc2(u32 insn);
 u32 aarch32_insn_mcr_extract_crm(u32 insn);
 
-typedef bool(pstate_check_t)(unsigned long);
+typedef bool(pstate_check_t)(uint64_t);
 extern pstate_check_t *const aarch32_opcode_cond_checks[16];
 
 #endif /* __ASSEMBLY__ */
