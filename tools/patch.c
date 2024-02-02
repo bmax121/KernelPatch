@@ -44,15 +44,27 @@ uint32_t get_kpimg_version(const char *kpimg_path)
 void print_preset_info(preset_t *preset)
 {
     setup_header_t *header = &preset->header;
+    setup_preset_t *setup = &preset->setup;
     version_t ver = header->kp_version;
     uint32_t ver_num = (ver.major << 16) + (ver.minor << 8) + ver.patch;
     bool is_android = header->config_flags | CONFIG_ANDROID;
     bool is_debug = header->config_flags | CONFIG_DEBUG;
 
+    fprintf(stdout, INFO_KP_IMG_SESSION "\n");
     fprintf(stdout, "version=0x%x\n", ver_num);
     fprintf(stdout, "compile_time=%s\n", header->compile_time);
     fprintf(stdout, "config=%s,%s\n", is_debug ? "debug" : "release", is_android ? "android" : "linux");
-    fprintf(stdout, "superkey=%s\n", preset->setup.superkey);
+    fprintf(stdout, "superkey=%s\n", setup->superkey);
+
+    fprintf(stdout, INFO_ADDITIONAL_SESSION "\n");
+    char *pos = setup->additional;
+    for (; pos < setup->additional + ADDITIONAL_LEN - 1;) {
+        pos++;
+        if (!*(pos - 1) && *pos) {
+            fprintf(stdout, "%s\n", pos);
+            pos += strlen(pos);
+        }
+    }
 }
 
 void print_kp_image_info_path(const char *kpimg_path)
@@ -61,7 +73,6 @@ void print_kp_image_info_path(const char *kpimg_path)
     int len = 0;
     read_file(kpimg_path, &kpimg, &len);
     preset_t *preset = (preset_t *)kpimg;
-    fprintf(stdout, INFO_KP_IMG_SESSION "\n");
     print_preset_info(preset);
     fprintf(stdout, "\n");
     free(kpimg);
@@ -146,11 +157,10 @@ void print_image_patch_info(patched_kimg_t *pimg)
 
     if (pimg->banner[strlen(pimg->banner) - 1] != '\n') fprintf(stdout, "\n");
     fprintf(stdout, "patched=%s\n", preset ? "true" : "false");
+    fprintf(stdout, "extra_num=%d\n", pimg->embed_item_num);
 
     if (preset) {
-        fprintf(stdout, INFO_KP_IMG_SESSION "\n");
         print_preset_info(preset);
-        fprintf(stdout, "extra_num=%d\n", pimg->embed_item_num);
 
         for (int i = 0; i < pimg->embed_item_num; i++) {
             patch_extra_item_t *item = pimg->embed_item[i];
@@ -196,10 +206,9 @@ void print_image_patch_info_path(const char *kimg_path)
     free(kimg);
 }
 
-// todo: opt
 int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey,
-                     char **embed_kpm_path, char **embed_kpm_args, int embed_kpm_num, char **detach_kpm_names,
-                     int detach_kpm_num)
+                     const char **embed_kpm_path, const char **embed_kpm_args, const char **detach_kpm_names,
+                     const char **additional)
 {
     set_log_enable(true);
 
@@ -249,8 +258,54 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
 
     memset(extra_items, 0, sizeof(struct extra_items_wrap) * EXTRA_ITEM_MAX_NUM);
 
+    // reserved patched extra
+    for (int i = 0; i < pimg.embed_item_num; i++) {
+        struct extra_items_wrap *item_wrap = extra_items + extra_num;
+        patch_extra_item_t *item = pimg.embed_item[i];
+
+        item_wrap->type = item->type;
+        if ((is_be() ^ kinfo->is_be)) item_wrap->type = i32swp(item_wrap->type);
+
+        bool detach = false;
+
+        if (item_wrap->type == EXTRA_TYPE_KPM) {
+            kpm_info_t kpm_info = { 0 };
+            void *kpm = (kpm_info_t *)((uintptr_t)item + sizeof(patch_extra_item_t) + item->args_size);
+            get_kpm_info(kpm, item->con_size, &kpm_info);
+            for (int j = 0;; j++) {
+                if (!detach_kpm_names[j]) break;
+                if (!strcmp(detach_kpm_names[j], kpm_info.name)) {
+                    detach = true;
+                    break;
+                }
+            }
+            if (!detach) {
+                memcpy(&item_wrap->item, item, sizeof(*item));
+                item_wrap->data = (const char *)kpm;
+                item_wrap->args = (const char *)item + sizeof(*item);
+                item_wrap->data_len = item->con_size;
+                item_wrap->args_len = item->args_size;
+                if ((is_be() ^ kinfo->is_be)) {
+                    item_wrap->data_len = i32swp(item_wrap->data_len);
+                    item_wrap->args_len = i32swp(item_wrap->args_len);
+                }
+                item_wrap->name = kpm_info.name;
+
+                extra_size += sizeof(*item) + item_wrap->data_len + item_wrap->args_len;
+                extra_num++;
+                tools_logi("reserved embeded kpm: %s\n", kpm_info.name);
+            } else {
+                tools_logi("detact embeded kpm: %s\n", kpm_info.name);
+            }
+        } else {
+            // todo
+        }
+    }
+
     // new extra
-    for (int i = 0; i < embed_kpm_num && extra_num < EXTRA_ITEM_MAX_NUM; i++) {
+    for (int i = 0; extra_num < EXTRA_ITEM_MAX_NUM; i++) {
+        if (!embed_kpm_path[i]) break;
+
         char *kpm_data;
         int kpm_len = 0;
         int args_len = 0;
@@ -288,49 +343,6 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
 
         extra_size += (kpm_len + args_len + sizeof(patch_extra_item_t));
         extra_num++;
-    }
-
-    // reserved pre-patched extra
-    for (int i = 0; i < pimg.embed_item_num; i++) {
-        struct extra_items_wrap *item_wrap = extra_items + extra_num;
-        patch_extra_item_t *item = pimg.embed_item[i];
-
-        item_wrap->type = item->type;
-        if ((is_be() ^ kinfo->is_be)) item_wrap->type = i32swp(item_wrap->type);
-
-        bool detach = false;
-
-        if (item_wrap->type == EXTRA_TYPE_KPM) {
-            kpm_info_t kpm_info = { 0 };
-            void *kpm = (kpm_info_t *)((uintptr_t)item + sizeof(patch_extra_item_t) + item->args_size);
-            get_kpm_info(kpm, item->con_size, &kpm_info);
-            for (int j = 0; j < detach_kpm_num; j++) {
-                if (!strcmp(detach_kpm_names[j], kpm_info.name)) {
-                    detach = true;
-                    break;
-                }
-            }
-            if (!detach) {
-                memcpy(&item_wrap->item, item, sizeof(*item));
-                item_wrap->data = (const char *)kpm;
-                item_wrap->args = (const char *)item + sizeof(*item);
-                item_wrap->data_len = item->con_size;
-                item_wrap->args_len = item->args_size;
-                if ((is_be() ^ kinfo->is_be)) {
-                    item_wrap->data_len = i32swp(item_wrap->data_len);
-                    item_wrap->args_len = i32swp(item_wrap->args_len);
-                }
-                item_wrap->name = kpm_info.name;
-
-                extra_size += sizeof(*item) + item_wrap->data_len + item_wrap->args_len;
-                extra_num++;
-                tools_logi("reserved embeded kpm: %s\n", kpm_info.name);
-            } else {
-                tools_logi("detact embeded kpm: %s\n", kpm_info.name);
-            }
-        } else {
-            // todo
-        }
     }
 
     extra_size += sizeof(patch_extra_item_t);
@@ -416,6 +428,27 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     setup->paging_init_offset = relo_branch_func(kallsym_kimg, paging_init_offset);
     int text_offset = align_kimg_len + SZ_4K;
     b((uint32_t *)(out_img + kinfo->b_stext_insn_offset), kinfo->b_stext_insn_offset, text_offset);
+
+    // additional key=value set
+    char *addition_pos = setup->additional;
+    for (; addition_pos < setup->additional + ADDITIONAL_LEN - 1; addition_pos++) {
+        if (!*addition_pos && !*(addition_pos + 1)) break;
+    }
+    for (int i = 0;; i++) {
+        addition_pos++;
+        const char *kv = additional[i];
+        if (!kv) break;
+        if (!strchr(kv, '=')) {
+            tools_loge_exit("addition must be format of key=value\n");
+        }
+        int kvlen = strlen(kv);
+        if (addition_pos + kvlen >= setup->additional + ADDITIONAL_LEN) {
+            tools_loge_exit("no memory for addition\n");
+        }
+        tools_logi("adding addition: %s\n", kv);
+        strcpy(addition_pos, kv);
+        addition_pos += kvlen;
+    }
 
     // write out
     write_file(out_path, out_img, out_img_len, false);

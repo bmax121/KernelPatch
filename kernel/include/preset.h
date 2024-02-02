@@ -30,6 +30,8 @@
 
 #define PATCH_SYMBOL_LEN (512)
 
+#define ADDITIONAL_LEN (256)
+
 #define PATCH_EXTRA_ITEM_LEN (64)
 
 #define VERSION(major, minor, patch) (((major) << 16) + ((minor) << 8) + (patch))
@@ -185,6 +187,7 @@ typedef struct _setup_preset_t
     uint8_t header_backup[HDR_BACKUP_SIZE];
     uint8_t superkey[SUPER_KEY_LEN];
     patch_symbol_t patch_symbol;
+    char additional[ADDITIONAL_LEN];
 } setup_preset_t;
 #else
 #define setup_kernel_version_offset 0
