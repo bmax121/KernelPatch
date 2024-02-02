@@ -121,7 +121,7 @@ void print_kpm_info(kpm_info_t *info)
     fprintf(stdout, "description=%s\n", info->description);
 }
 
-void print_kpm_info_path(const char *kpm_path)
+int print_kpm_info_path(const char *kpm_path)
 {
     char *img;
     int len = 0;
@@ -133,4 +133,5 @@ void print_kpm_info_path(const char *kpm_path)
         print_kpm_info(&kpm_info);
     }
     free(img);
+    return rc;
 }

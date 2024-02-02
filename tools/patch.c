@@ -67,15 +67,21 @@ void print_preset_info(preset_t *preset)
     }
 }
 
-void print_kp_image_info_path(const char *kpimg_path)
+int print_kp_image_info_path(const char *kpimg_path)
 {
+    int rc = 0;
     char *kpimg;
     int len = 0;
     read_file(kpimg_path, &kpimg, &len);
     preset_t *preset = (preset_t *)kpimg;
-    print_preset_info(preset);
-    fprintf(stdout, "\n");
-    free(kpimg);
+    if (get_preset(kpimg, len) != preset) {
+        rc = -ENOENT;
+    } else {
+        print_preset_info(preset);
+        fprintf(stdout, "\n");
+        free(kpimg);
+    }
+    return rc;
 }
 
 int parse_image_patch_info(const char *kimg, int kimg_len, patched_kimg_t *pimg)
@@ -148,8 +154,10 @@ int parse_image_patch_info_path(const char *kimg_path, patched_kimg_t *pimg)
     return rc;
 }
 
-void print_image_patch_info(patched_kimg_t *pimg)
+int print_image_patch_info(patched_kimg_t *pimg)
 {
+    int rc = 0;
+
     preset_t *preset = pimg->preset;
 
     fprintf(stdout, INFO_KERNEL_IMG_SESSION "\n");
@@ -187,15 +195,16 @@ void print_image_patch_info(patched_kimg_t *pimg)
             if (item->type == EXTRA_TYPE_KPM) {
                 kpm_info_t kpm_info = { 0 };
                 void *kpm = (kpm_info_t *)((uintptr_t)item + sizeof(patch_extra_item_t) + item->args_size);
-                int rc = get_kpm_info(kpm, item->con_size, &kpm_info);
+                rc = get_kpm_info(kpm, item->con_size, &kpm_info);
                 if (rc) tools_loge_exit("get kpm infomation error: %d\n", rc);
                 print_kpm_info(&kpm_info);
             }
         }
     }
+    return rc;
 }
 
-void print_image_patch_info_path(const char *kimg_path)
+int print_image_patch_info_path(const char *kimg_path)
 {
     patched_kimg_t pimg = { 0 };
     char *kimg;
@@ -204,6 +213,7 @@ void print_image_patch_info_path(const char *kimg_path)
     int rc = parse_image_patch_info(kimg, kimg_len, &pimg);
     print_image_patch_info(&pimg);
     free(kimg);
+    return rc;
 }
 
 int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey,
