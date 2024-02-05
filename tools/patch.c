@@ -3,15 +3,15 @@
  * Copyright (C) 2024 bmax121. All Rights Reserved.
  */
 
+#define _GNU_SOURCE
+#define __USE_GNU
+
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <assert.h>
 #include <string.h>
-
-#define _GNU_SOURCE
-#define __USE_GNU
 
 #include "patch.h"
 #include "kallsym.h"
