@@ -168,7 +168,7 @@ static void usage(int status)
             "-i, --target-isolate               Use new isolated namespace if -t is specified.\n "
             "-s, --shell SHELL                  use SHELL instead of the default\n"
             "-, -l, --login                     Pretend the shell to be a login shell\n"
-            "-Z, -x, --context SCONTEXT         Switch security context to SCONTEXT, If SCONTEXT is not specified\n"
+            "-Z, --context SCONTEXT             Switch security context to SCONTEXT, If SCONTEXT is not specified\n"
             "                                   or specified with a non-existent value, bypass all selinux permission\n"
             "                                   checks for all calls initiated by this task using hooks, \n"
             "                                   but the permission determined by other task remain unchanged. \n"

@@ -217,8 +217,8 @@ int print_image_patch_info_path(const char *kimg_path)
 }
 
 int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey,
-                     const char **embed_kpm_path, const char **embed_kpm_args, const char **detach_kpm_names,
-                     const char **additional)
+                     const char *kpatch_path, const char **embed_kpm_path, const char **embed_kpm_args,
+                     const char **detach_kpm_names, const char **additional)
 {
     set_log_enable(true);
 
@@ -485,6 +485,29 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
         write_file(out_path, (void *)item, sizeof(*item), true);
         if (item_wrap->args_len > 0) write_file(out_path, (void *)item_wrap->args, item_wrap->args_len, true);
         write_file(out_path, (void *)item_wrap->data, item_wrap->data_len, true);
+    }
+
+    // embed kpatch executable
+    if (kpatch_path) {
+        char *con;
+        int len;
+        read_file_align(kpatch_path, &con, &len, EXTRA_ALIGN);
+        patch_extra_item_t kpatch_item = {
+            .name = "kpatch",
+            .type = EXTRA_TYPE_EXEC,
+            .priority = __INT32_MAX__,
+            .con_size = len,
+            .args_size = 0,
+        };
+        if ((is_be() ^ kinfo->is_be)) {
+            kpatch_item.priority = i32swp(kpatch_item.priority);
+            kpatch_item.type = i32swp(kpatch_item.type);
+            kpatch_item.con_size = i32swp(kpatch_item.con_size);
+            kpatch_item.args_size = i32swp(kpatch_item.args_size);
+        }
+        tools_logi("embedding kpatch executable, size: 0x%x\n", len);
+        write_file(out_path, (void *)&kpatch_item, sizeof(kpatch_item), true);
+        write_file(out_path, (void *)con, len, true);
     }
 
     // guard extra

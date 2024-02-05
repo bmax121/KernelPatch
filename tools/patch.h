@@ -36,8 +36,8 @@ preset_t *get_preset(const char *kimg, int kimg_len);
 
 uint32_t get_kpimg_version(const char *kpimg_path);
 int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey,
-                     const char **embed_kpm_path, const char **embed_kpm_args, const char **detach_kpm_names,
-                     const char **additional);
+                     const char *kpatch_path, const char **embed_kpm_path, const char **embed_kpm_args,
+                     const char **detach_kpm_names, const char **additional);
 int unpatch_img(const char *kimg_path, const char *out_path);
 int reset_key(const char *kimg_path, const char *out_path, const char *key);
 int dump_kallsym(const char *kimg_path);

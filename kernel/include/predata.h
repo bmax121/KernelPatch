@@ -7,11 +7,11 @@
 #define _KP_PREDATA_H_
 
 #include <ktypes.h>
-#include <stdbool.h>
 #include <preset.h>
 
 int superkey_auth(const char *key);
 const char *get_superkey();
+uint64_t get_build_config();
 struct patch_symbol *get_preset_patch_sym();
 int on_each_extra_item(int (*callback)(const patch_extra_item_t *extra, const char *arg, const void *data, void *udata),
                        void *udata);

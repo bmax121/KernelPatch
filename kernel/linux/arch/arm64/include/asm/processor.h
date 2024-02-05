@@ -17,26 +17,8 @@
 // #define THREAD_START_SP (THREAD_SIZE - 16)
 // #define task_pt_regs(p) ((struct pt_regs *)(THREAD_START_SP + task_stack_page(p)) - 1)
 
-static inline struct pt_regs *_task_pt_reg(struct task_struct *task)
-{
-    unsigned long stack = (unsigned long)task_stack_page(task);
-    uintptr_t addr = (uintptr_t)(thread_size + stack);
-    if (kver < VERSION(4, 4, 19)) {
-        // todo: fault on 3.18 ranch-27
-        addr -= 16;
-        addr -= sizeof(struct pt_regs_lt4419);
-    } else if (kver < VERSION(4, 14, 0)) {
-        addr -= 16;
-        addr -= sizeof(struct pt_regs_lt4140);
-    } else if (kver < VERSION(5, 10, 0)) {
-        addr -= sizeof(struct pt_regs_lt5100);
-    } else {
-        addr -= sizeof(struct pt_regs);
-    }
-    struct pt_regs *regs;
-    regs = (struct pt_regs *)(addr);
-    return regs;
-}
+// implemented in utils
+struct pt_regs *_task_pt_reg(struct task_struct *task);
 
 #define task_pt_regs(p) _task_pt_reg(p)
 

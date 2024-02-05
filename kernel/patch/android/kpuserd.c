@@ -35,10 +35,14 @@ const char origin_rc_file[] = "/system/etc/init/atrace.rc";
 const char replace_rc_file[] = "/dev/.atrace.rc";
 
 static const char patch_rc[] = ""
+                               "on early-init\n"
+                               "    echo 'testabc'\n"
                                "on late-init\n"
                                "    rm %s \n"
+                               //    "    rm " KPATCH_DEV_PATH "\n"
                                "on post-fs-data\n"
                                "    start logd\n"
+                               "    cp " KPATCH_DEV_PATH " " KPATCH_PATH "\n"
                                "    exec -- " KPATCH_SHADOW_PATH " %s android_user init -k\n"
                                "    exec -- " KPATCH_SHADOW_PATH " %s android_user post-fs-data -k'\n"
                                "on nonencrypted\n"
@@ -68,18 +72,34 @@ out:
     return data;
 }
 
-static void load_config()
+static void kernel_write_file(const char *path, const void *data, loff_t len)
 {
     set_priv_selinx_allow(current, 1);
-
+    struct file *fp = filp_open(path, O_WRONLY | O_CREAT | O_TRUNC, 0744);
+    if (IS_ERR(fp)) {
+        log_boot("create file %s error: %d\n", path, PTR_ERR(fp));
+        goto out;
+    }
+    loff_t off = 0;
+    kernel_write(fp, data, len, &off);
+    if (off != len) {
+        log_boot("write file %s error: %x\n", path, off);
+        goto out;
+    }
+out:
+    filp_close(fp, 0);
     set_priv_selinx_allow(current, 0);
+}
+
+static void load_config()
+{
 }
 
 static void on_post_fs_data()
 {
-    static bool done = false;
+    static int done = 0;
     if (done) return;
-    done = true;
+    done = 1;
     set_priv_selinx_allow(current, 1);
     load_config();
     set_priv_selinx_allow(current, 0);
@@ -87,6 +107,20 @@ static void on_post_fs_data()
 
 static void on_second_stage()
 {
+}
+
+static int extra_call_back(const patch_extra_item_t *extra, const char *arg, const void *con, void *udata)
+{
+    if (extra->type == EXTRA_TYPE_EXEC && !strcmp("kpatch", extra->name)) {
+        log_boot("write kpatch to /dev/\n");
+        kernel_write_file("/dev/kpatch", con, extra->con_size);
+    }
+    return 0;
+}
+
+static void before_first_stage()
+{
+    on_each_extra_item(extra_call_back, 0);
 }
 
 // int do_execveat_common(int fd, struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp, int flags)
@@ -102,29 +136,39 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
     struct filename *filename = (struct filename *)args->args[filename_index];
     if (!filename || IS_ERR(filename)) return;
 
-    const char app_process[] = "/system/bin/app_process";
-    static bool first_app_process = true;
+    static int init_first_stage_executed = 0;
 
-    /* This applies to versions Android 10+ */
+    const char app_process[] = "/system/bin/app_process";
+    static int first_app_process = 1;
+
+    // Android 10+
     static const char system_bin_init[] = "/system/bin/init";
-    /* This applies to versions between Android 6 ~ 9  */
+    // Android 6 ~ 9
     static const char old_system_init[] = "/init";
-    static bool init_second_stage_executed = false;
+    static int init_second_stage_executed = 0;
 
     if (!memcmp(filename->name, system_bin_init, sizeof(system_bin_init) - 1) ||
         !memcmp(filename->name, old_system_init, sizeof(old_system_init) - 1)) {
-        for (int i = 1;; i++) {
-            const char *__user p1 =
-                get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], i);
-            if (!p1) break;
-            if (!IS_ERR(p1)) {
-                char arg[16] = { '\0' };
-                if (strncpy_from_user_nofault(arg, p1, sizeof(arg)) <= 0) break;
+        //
+        if (!init_first_stage_executed) {
+            init_first_stage_executed = 1;
+            before_first_stage();
+            return;
+        }
 
-                if (!strcmp(arg, "second_stage")) {
-                    log_boot("0 exec %s second_stage\n", filename->name);
-                    on_second_stage();
-                    init_second_stage_executed = true;
+        if (!init_second_stage_executed) {
+            for (int i = 1;; i++) {
+                const char *__user p1 =
+                    get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], i);
+                if (!p1) break;
+                if (!IS_ERR(p1)) {
+                    char arg[16] = { '\0' };
+                    if (strncpy_from_user_nofault(arg, p1, sizeof(arg)) <= 0) break;
+                    if (!strcmp(arg, "second_stage")) {
+                        log_boot("0 exec %s second_stage\n", filename->name);
+                        on_second_stage();
+                        init_second_stage_executed = 1;
+                    }
                 }
             }
         }
@@ -138,19 +182,16 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
                 char env[256];
                 if (strncpy_from_user_nofault(env, up, sizeof(env)) <= 0) break;
 
-                // Parsing environment variable names and values
                 char *env_name = env;
                 char *env_value = strchr(env, '=');
                 if (env_value) {
-                    // Replace equal sign with string terminator
                     *env_value = '\0';
                     env_value++;
-                    // Check if the environment variable name and value are matching
                     if (!strcmp(env_name, "INIT_SECOND_STAGE") &&
-                        (!strcmp(env_value, "1") || !strcmp(env_value, "true"))) {
+                        (!strcmp(env_value, "1") || !strcmp(env_value, "1"))) {
                         log_boot("1 exec %s second_stage\n", filename->name);
                         on_second_stage();
-                        init_second_stage_executed = true;
+                        init_second_stage_executed = 1;
                     }
                 }
             }
@@ -158,7 +199,7 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
     }
 
     if (unlikely(first_app_process && !memcmp(filename->name, app_process, sizeof(app_process) - 1))) {
-        first_app_process = false;
+        first_app_process = 0;
         log_boot("exec app_process, /data prepared, second_stage: %d\n", init_second_stage_executed);
         on_post_fs_data();
         remove_execv_hook(before_do_execve, 0);
@@ -172,7 +213,7 @@ static void before_openat(hook_fargs4_t *args, void *udata)
     // clear local
     args->local.data0 = 0;
 
-    static bool replaced = false;
+    static int replaced = 0;
     if (replaced) return;
 
     const char __user *filename = (typeof(filename))syscall_argn(args, 1);
@@ -180,7 +221,7 @@ static void before_openat(hook_fargs4_t *args, void *udata)
     strncpy_from_user_nofault(buf, filename, sizeof(buf));
     if (strcmp(origin_rc_file, buf)) return;
 
-    replaced = true;
+    replaced = 1;
 
     set_priv_selinx_allow(current, 1);
     // create replace file and redirect
@@ -229,6 +270,7 @@ static void after_openat(hook_fargs4_t *args, void *udata)
 #define EV_KEY 0x01
 #define KEY_VOLUMEDOWN 114
 
+/* Modified from KernelSU */
 // void input_handle_event(struct input_dev *dev, unsigned int type, unsigned int code, int value)
 static void before_input_handle_event(hook_fargs4_t *args, void *udata)
 {

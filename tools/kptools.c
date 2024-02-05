@@ -97,14 +97,14 @@ int main(int argc, char *argv[])
     char *kpatch_path = NULL;
 
     int embed_kpm_num = 0;
-    char *embed_kpms_path[EXTRA_ITEM_MAX_NUM] = { 0 };
-    char *embed_kpms_args[EXTRA_ITEM_MAX_NUM] = { 0 };
+    const char *embed_kpms_path[EXTRA_ITEM_MAX_NUM] = { 0 };
+    const char *embed_kpms_args[EXTRA_ITEM_MAX_NUM] = { 0 };
 
     int detach_kpm_num = 0;
-    char *detach_kpms_name[EXTRA_ITEM_MAX_NUM] = { 0 };
+    const char *detach_kpms_name[EXTRA_ITEM_MAX_NUM] = { 0 };
 
     int additional_num = 0;
-    char *additional[16] = { 0 };
+    const char *additional[16] = { 0 };
 
     char *alone_kpm_path = NULL;
 
@@ -167,9 +167,8 @@ int main(int argc, char *argv[])
         else
             fprintf(stdout, "%x\n", version);
     } else if (cmd == 'p') {
-        ret = patch_update_img(kimg_path, kpimg_path, out_path, superkey, (const char **)embed_kpms_path,
-                               (const char **)embed_kpms_args, (const char **)detach_kpms_name,
-                               (const char **)additional);
+        ret = patch_update_img(kimg_path, kpimg_path, out_path, superkey, kpatch_path, embed_kpms_path, embed_kpms_args,
+                               detach_kpms_name, additional);
     } else if (cmd == 'd') {
         ret = dump_kallsym(kimg_path);
     } else if (cmd == 'u') {

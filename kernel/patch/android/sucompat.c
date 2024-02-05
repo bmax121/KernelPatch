@@ -254,6 +254,7 @@ static uid_t current_uid()
     return uid;
 }
 
+/* KernelSU idea */
 static void *__user copy_to_user_stack(void *data, size_t len)
 {
     uintptr_t addr = current_user_stack_pointer();
@@ -270,7 +271,8 @@ static inline char *__user android_sh_user_path()
 
 static inline char *__user android_su_user_path()
 {
-    return (char *__user)copy_to_user_stack((void *)default_su_path, sizeof(default_su_path));
+    int len = strlen(current_su_path);
+    return (char *__user)copy_to_user_stack((void *)current_su_path, len);
 }
 
 // int do_execveat_common(int fd, struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp, int flags)
@@ -309,7 +311,9 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
             const char *__user p0 =
                 get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], 0);
             int sz = seq_copy_to_user((char *__user)p0, default_su_path, sizeof(default_su_path));
-            if (sz != sizeof(default_su_path)) logkfe("seq_copy_to_user error: %d\n", sz);
+            if (sz != sizeof(default_su_path)) {
+                logkfe("seq_copy_to_user error: %d\n", sz);
+            }
         }
         kvfree(profile);
     } else if (!strcmp(kpatch_shadow_path, filename->name)) {
@@ -393,10 +397,14 @@ static void before_stat(hook_fargs8_t *args, void *udata)
     } else {
         logkfd("1 uid: %d\n", uid);
         int sz = seq_copy_to_user(u_filename, sh_path, sizeof(sh_path));
-        if (sz != sizeof(sh_path)) logkfe("seq_copy_to_user error: %d\n", sz);
-        change_flag = 1;
-        args->local.data[0] = change_flag;
-        args->local.data[1] = (uint64_t)local_su_path;
+        if (sz == sizeof(sh_path)) {
+            change_flag = 1;
+            args->local.data[0] = change_flag;
+            args->local.data[1] = (uint64_t)local_su_path;
+        } else {
+            // logkfe("seq_copy_to_user error: %d\n", sz);
+            args->arg1 = (uint64_t)android_sh_user_path();
+        }
     }
 }
 
