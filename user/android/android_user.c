@@ -112,7 +112,7 @@ static void load_config_allow_uids()
 
     FILE *fallow = fopen(pkg_cfg_path, "r");
     if (fallow == NULL) {
-        log_kernel("%d open %s error: %s", getpid(), pkg_cfg_path, strerror(errno));
+        log_kernel("%d open %s error: %s\n", getpid(), pkg_cfg_path, strerror(errno));
         return;
     }
 
@@ -166,7 +166,7 @@ static void load_config_su_path()
 {
     FILE *file = fopen(su_path_path, "rb");
     if (file == NULL) {
-        log_kernel("%d open %s error: %s", getpid(), su_path_path, strerror(errno));
+        log_kernel("%d open %s error: %s\n", getpid(), su_path_path, strerror(errno));
         return;
     }
     char linebuf[SU_PATH_MAX_LEN] = { '\0' };
@@ -204,25 +204,31 @@ static void init()
 
     log_kernel("%d starting android user init, from kernel: %d\n", getpid(), from_kernel);
 
-    if (!opendir(APATCH_FLODER)) mkdir(APATCH_FLODER, 0700);
-    if (!opendir(APATCH_LOG_FLODER)) mkdir(APATCH_LOG_FLODER, 0700);
+    bool init_apatch = true;
+
+    if (!access(APATCH_FLODER, F_OK)) mkdir(APATCH_FLODER, 0700);
+    if (!access(APATCH_LOG_FLODER, F_OK)) mkdir(APATCH_LOG_FLODER, 0700);
 
     if (from_kernel) save_dmegs(boot0_log_path);
 
-    log_kernel("%d reset su path.\n", getpid());
-    load_config_su_path();
-    log_kernel("%d load allow uids.\n", getpid());
-    load_config_allow_uids();
+    char current_exe[32] = { '\0' };
+    if (readlink("/proc/self/exe", current_exe, sizeof(current_exe) - 1)) {
+        if (!strcmp(current_exe, KPATCH_DEV_PATH)) {
+            log_kernel("%d copy %s to %s.\n", getpid(), current_exe, KPATCH_PATH);
 
-    char current_path[32] = { '\0' };
-    if (readlink("/proc/self/exe", current_path, sizeof(current_path) - 1)) {
-        if (!strcmp(current_path, KPATCH_DEV_PATH)) {
-            char *const argv[] = { "/system/bin/cp", "-f", current_path, KPATCH_PATH, NULL };
-            fork_for_result(argv[0], argv);
-            char *const rm_argv[] = { "/system/bin/rm", "-f", current_path, NULL };
+            char *const cp_argv[] = { "/system/bin/cp", current_exe, KPATCH_PATH, NULL };
+            fork_for_result(cp_argv[0], cp_argv);
+
+            char *const rm_argv[] = { "/system/bin/rm", current_exe, NULL };
             fork_for_result(rm_argv[0], rm_argv);
         }
     }
+
+    char *argv[] = { magiskpolicy_path, "--magisk", "--live", NULL };
+    fork_for_result(magiskpolicy_path, argv);
+
+    load_config_su_path();
+    load_config_allow_uids();
 
     log_kernel("%d finished android user init.\n", getpid());
 

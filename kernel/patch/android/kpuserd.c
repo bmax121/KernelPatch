@@ -31,14 +31,12 @@
 #include <linux/umh.h>
 #include <uapi/scdefs.h>
 
-const char origin_rc_file[] = "/system/etc/init/atrace.rc";
-const char replace_rc_file[] = "/dev/.atrace.rc";
+#define ORIGIN_RC_FILE "/system/etc/init/atrace.rc"
+#define REPLACE_RC_FILE "/dev/.atrace.rc"
 
-static const char patch_rc[] = ""
-                               "on late-init\n"
-                               "    rm %s \n"
+static const char patch_rc[] = "on late-init\n"
+                               "    rm " REPLACE_RC_FILE " \n"
                                "on post-fs-data\n"
-                               "    start logd\n"
                                "    exec -- " KPATCH_SHADOW_PATH " %s android_user init -k --path " KPATCH_DEV_PATH
                                " \n"
                                "    exec -- " KPATCH_SHADOW_PATH " %s android_user post-fs-data -k \n"
@@ -208,23 +206,23 @@ static void before_openat(hook_fargs4_t *args, void *udata)
     const char __user *filename = (typeof(filename))syscall_argn(args, 1);
     char buf[32];
     strncpy_from_user_nofault(buf, filename, sizeof(buf));
-    if (strcmp(origin_rc_file, buf)) return;
+    if (strcmp(ORIGIN_RC_FILE, buf)) return;
 
     replaced = 1;
 
     set_priv_selinx_allow(current, 1);
     // create replace file and redirect
     loff_t ori_len = 0;
-    struct file *newfp = filp_open(replace_rc_file, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    struct file *newfp = filp_open(REPLACE_RC_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (IS_ERR(newfp)) {
         log_boot("create replace rc error: %d\n", PTR_ERR(newfp));
         goto out;
     }
-    const char *ori_rc_data = kernel_read_file(origin_rc_file, &ori_len);
+    const char *ori_rc_data = kernel_read_file(ORIGIN_RC_FILE, &ori_len);
     if (!ori_rc_data) goto out;
-    char *replace_rc_data = vmalloc(sizeof(patch_rc) + sizeof(replace_rc_file) + 5 * SUPER_KEY_LEN);
+    char *replace_rc_data = vmalloc(sizeof(patch_rc) + 5 * SUPER_KEY_LEN);
     const char *superkey = get_superkey();
-    sprintf(replace_rc_data, patch_rc, replace_rc_file, superkey, superkey, superkey, superkey, superkey);
+    sprintf(replace_rc_data, patch_rc, superkey, superkey, superkey, superkey, superkey);
     loff_t off = 0;
     kernel_write(newfp, replace_rc_data, strlen(replace_rc_data), &off);
     kernel_write(newfp, ori_rc_data, ori_len, &off);
@@ -233,7 +231,7 @@ static void before_openat(hook_fargs4_t *args, void *udata)
         goto free;
     }
     // yes, filename is not read only
-    args->local.data0 = seq_copy_to_user((void *)filename, replace_rc_file, sizeof(replace_rc_file));
+    args->local.data0 = seq_copy_to_user((void *)filename, REPLACE_RC_FILE, sizeof(REPLACE_RC_FILE));
     log_boot("redirect rc file: %x\n", args->local.data0);
 free:
     filp_close(newfp, 0);
@@ -249,9 +247,8 @@ static void after_openat(hook_fargs4_t *args, void *udata)
 {
     if (args->local.data0) {
         const char __user *filename = (typeof(filename))syscall_argn(args, 1);
-        int len = seq_copy_to_user((void *)filename, origin_rc_file, sizeof(origin_rc_file));
+        int len = seq_copy_to_user((void *)filename, ORIGIN_RC_FILE, sizeof(ORIGIN_RC_FILE));
         log_boot("restore rc file: %x\n", len);
-        // todo:
         fp_unhook_syscall(__NR_openat, before_openat, after_openat);
     }
 }

@@ -538,7 +538,6 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
             kpatch_item.con_size = i32swp(kpatch_item.con_size);
             kpatch_item.args_size = i32swp(kpatch_item.args_size);
         }
-        tools_logi("embedding kpatch executable, size: 0x%x\n", len);
         write_file(out_path, (void *)&kpatch_item, sizeof(kpatch_item), true);
         write_file(out_path, (void *)con, len, true);
     }
