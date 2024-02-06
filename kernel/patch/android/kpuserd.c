@@ -35,22 +35,19 @@ const char origin_rc_file[] = "/system/etc/init/atrace.rc";
 const char replace_rc_file[] = "/dev/.atrace.rc";
 
 static const char patch_rc[] = ""
-                               "on early-init\n"
-                               "    echo 'testabc'\n"
                                "on late-init\n"
                                "    rm %s \n"
-                               //    "    rm " KPATCH_DEV_PATH "\n"
                                "on post-fs-data\n"
                                "    start logd\n"
-                               "    cp " KPATCH_DEV_PATH " " KPATCH_PATH "\n"
-                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user init -k\n"
-                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user post-fs-data -k'\n"
+                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user init -k --path " KPATCH_DEV_PATH
+                               " \n"
+                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user post-fs-data -k \n"
                                "on nonencrypted\n"
-                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user services -k'\n"
+                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user services -k \n"
                                "on property:vold.decrypt=trigger_restart_framework\n"
-                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user services -k'\n"
+                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user services -k \n"
                                "on property:sys.boot_completed=1\n"
-                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user boot-completed -k'\n"
+                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user boot-completed -k \n"
                                "\n"
                                "";
 
@@ -84,43 +81,37 @@ static void kernel_write_file(const char *path, const void *data, loff_t len)
     kernel_write(fp, data, len, &off);
     if (off != len) {
         log_boot("write file %s error: %x\n", path, off);
-        goto out;
+        goto free;
     }
-out:
+free:
     filp_close(fp, 0);
+out:
     set_priv_selinx_allow(current, 0);
 }
 
-static void load_config()
+static int extract_kpatch_call_back(const patch_extra_item_t *extra, const char *arg, const void *con, void *udata)
 {
-}
-
-static void on_post_fs_data()
-{
-    static int done = 0;
-    if (done) return;
-    done = 1;
-    set_priv_selinx_allow(current, 1);
-    load_config();
-    set_priv_selinx_allow(current, 0);
-}
-
-static void on_second_stage()
-{
-}
-
-static int extra_call_back(const patch_extra_item_t *extra, const char *arg, const void *con, void *udata)
-{
+    const char *path = (const char *)udata;
     if (extra->type == EXTRA_TYPE_EXEC && !strcmp("kpatch", extra->name)) {
-        log_boot("write kpatch to /dev/\n");
-        kernel_write_file("/dev/kpatch", con, extra->con_size);
+        log_boot("write kpatch to %s\n", path);
+        kernel_write_file(path, con, extra->con_size);
     }
     return 0;
 }
 
-static void before_first_stage()
+static void on_first_stage()
 {
-    on_each_extra_item(extra_call_back, 0);
+}
+
+static void on_second_stage()
+{
+    log_boot("on_second_stage\n");
+    const char *path = KPATCH_DEV_PATH;
+    on_each_extra_item(extract_kpatch_call_back, (void *)path);
+}
+
+static void on_post_fs_data()
+{
 }
 
 // int do_execveat_common(int fd, struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp, int flags)
@@ -152,8 +143,7 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
         //
         if (!init_first_stage_executed) {
             init_first_stage_executed = 1;
-            before_first_stage();
-            return;
+            on_first_stage();
         }
 
         if (!init_second_stage_executed) {
@@ -181,14 +171,13 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
                 if (!up || IS_ERR(up)) break;
                 char env[256];
                 if (strncpy_from_user_nofault(env, up, sizeof(env)) <= 0) break;
-
                 char *env_name = env;
                 char *env_value = strchr(env, '=');
                 if (env_value) {
                     *env_value = '\0';
                     env_value++;
                     if (!strcmp(env_name, "INIT_SECOND_STAGE") &&
-                        (!strcmp(env_value, "1") || !strcmp(env_value, "1"))) {
+                        (!strcmp(env_value, "1") || !strcmp(env_value, "true"))) {
                         log_boot("1 exec %s second_stage\n", filename->name);
                         on_second_stage();
                         init_second_stage_executed = 1;

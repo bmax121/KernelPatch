@@ -197,12 +197,6 @@ static void fork_for_result(const char *exec, char *const *argv)
     }
 }
 
-static void load_magisk_policy()
-{
-    char *argv[] = { magiskpolicy_path, "--magisk", "--live", NULL };
-    fork_for_result(magiskpolicy_path, argv);
-}
-
 static void init()
 {
     struct su_profile profile = { .uid = getuid() };
@@ -215,12 +209,18 @@ static void init()
 
     if (from_kernel) save_dmegs(boot0_log_path);
 
-    log_kernel("%d load selinux policy.\n", getpid());
-    load_magisk_policy();
     log_kernel("%d reset su path.\n", getpid());
     load_config_su_path();
     log_kernel("%d load allow uids.\n", getpid());
     load_config_allow_uids();
+
+    char current_path[32] = { '\0' };
+    if (readlink("/proc/self/exe", current_path, sizeof(current_path) - 1)) {
+        char *const argv[] = { "/system/bin/cp", "-f", current_path, KPATCH_PATH, NULL };
+        fork_for_result(argv[0], argv);
+        char *const rm_argv[] = { "/system/bin/rm", "-f", current_path, NULL };
+        fork_for_result(rm_argv[0], rm_argv);
+    }
 
     log_kernel("%d finished android user init.\n", getpid());
 

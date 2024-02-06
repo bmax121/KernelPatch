@@ -355,7 +355,33 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
         extra_num++;
     }
 
-    extra_size += sizeof(patch_extra_item_t);
+    // embed kpatch executable
+    if (kpatch_path) {
+        char *con;
+        int len;
+        read_file_align(kpatch_path, &con, &len, EXTRA_ALIGN);
+
+        struct extra_items_wrap *item_wrap = extra_items + extra_num;
+        patch_extra_item_t *kpatch_item = &item_wrap->item;
+        item_wrap->name = "kpatch";
+        item_wrap->data = con;
+        item_wrap->data_len = len;
+        strcpy(kpatch_item->name, "kpatch");
+        kpatch_item->type = EXTRA_TYPE_EXEC;
+        kpatch_item->priority = __INT32_MAX__;
+        kpatch_item->con_size = len;
+        kpatch_item->args_size = 0;
+        if ((is_be() ^ kinfo->is_be)) {
+            kpatch_item->priority = i32swp(kpatch_item->priority);
+            kpatch_item->type = i32swp(kpatch_item->type);
+            kpatch_item->con_size = i32swp(kpatch_item->con_size);
+            kpatch_item->args_size = i32swp(kpatch_item->args_size);
+        }
+        extra_num++;
+        extra_size += len;
+    }
+
+    extra_size += sizeof(patch_extra_item_t); // ending with empty item
 
     // copy to out image
     int ori_kimg_len = pimg.ori_kimg_len;
@@ -394,7 +420,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     setup->page_shift = kinfo->page_shift;
     setup->setup_offset = align_kimg_len;
     setup->start_offset = align_kernel_size;
-    setup->extra_size = extra_size; // ending with empty item
+    setup->extra_size = extra_size;
 
     int map_start, map_max_size;
     select_map_area(&kallsym, kallsym_kimg, &map_start, &map_max_size);
@@ -474,7 +500,14 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
         case EXTRA_TYPE_SHELL:
             type = "shell";
             break;
+        case EXTRA_TYPE_EXEC:
+            type = "exec";
+            break;
+        case EXTRA_TYPE_RAW:
+            type = "raw";
+            break;
         default:
+            type = "none";
             break;
         }
 

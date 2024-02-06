@@ -325,18 +325,22 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
         if (superkey_auth(arg1)) return;
         commit_su(0, 0);
         strcpy((char *)filename->name, kpatch_path);
-        // log
-        char log_buf[512];
-        int log_off = 0;
-        for (int i = 2; i < 6; i++) {
+        // args
+        char option[128];
+        for (int i = 2; i < 10; i++) {
             const char *pn =
                 get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], i);
             if (!pn || IS_ERR(pn)) break;
-            log_off += strncpy_from_user_nofault(log_buf + log_off, pn, sizeof(log_buf) - log_off);
-            log_buf[log_off - 1] = ' ';
+            strncpy_from_user_nofault(option, pn, sizeof(option));
+            if (!strcmp("--path", option)) {
+                i++;
+                pn =
+                    get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], i);
+                if (!pn || IS_ERR(pn)) break;
+                strncpy_from_user_nofault(option, pn, sizeof(option));
+                strcpy((char *)filename->name, option);
+            }
         }
-        log_buf[log_off > 0 ? log_off - 1 : 0] = '\0';
-        logkfd("%s ****** %s\n", filename->name, log_buf);
     }
 
     return;
