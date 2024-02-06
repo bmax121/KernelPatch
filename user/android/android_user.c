@@ -216,10 +216,12 @@ static void init()
 
     char current_path[32] = { '\0' };
     if (readlink("/proc/self/exe", current_path, sizeof(current_path) - 1)) {
-        char *const argv[] = { "/system/bin/cp", "-f", current_path, KPATCH_PATH, NULL };
-        fork_for_result(argv[0], argv);
-        char *const rm_argv[] = { "/system/bin/rm", "-f", current_path, NULL };
-        fork_for_result(rm_argv[0], rm_argv);
+        if (!strcmp(current_path, KPATCH_DEV_PATH)) {
+            char *const argv[] = { "/system/bin/cp", "-f", current_path, KPATCH_PATH, NULL };
+            fork_for_result(argv[0], argv);
+            char *const rm_argv[] = { "/system/bin/rm", "-f", current_path, NULL };
+            fork_for_result(rm_argv[0], rm_argv);
+        }
     }
 
     log_kernel("%d finished android user init.\n", getpid());
