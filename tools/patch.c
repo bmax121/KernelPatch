@@ -216,6 +216,7 @@ int print_image_patch_info_path(const char *kimg_path)
     return rc;
 }
 
+// todo: opt
 int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey,
                      const char *kpatch_path, const char **embed_kpm_path, const char **embed_kpm_args,
                      const char **detach_kpm_names, const char **additional)
@@ -255,7 +256,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     int extra_size = 0;
     int extra_num = 0;
 
-    struct extra_items_wrap
+    struct extra_items_wrap // todo: opt
     {
         patch_extra_item_t item;
         const char *name;
@@ -363,6 +364,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
 
         struct extra_items_wrap *item_wrap = extra_items + extra_num;
         patch_extra_item_t *kpatch_item = &item_wrap->item;
+        item_wrap->type = EXTRA_TYPE_EXEC;
         item_wrap->name = "kpatch";
         item_wrap->data = con;
         item_wrap->data_len = len;

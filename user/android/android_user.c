@@ -32,6 +32,7 @@ struct allow_pkg_info
 static char magiskpolicy_path[] = APATCH_BIN_FLODER "magiskpolicy";
 static char pkg_cfg_path[] = APATCH_FLODER "package_config";
 static char su_path_path[] = APATCH_FLODER "su_path";
+static char skip_sepolicy_path[] = APATCH_FLODER "skip_sepolicy";
 
 static char boot0_log_path[] = APATCH_LOG_FLODER "kpatch_0.log";
 static char boot1_log_path[] = APATCH_LOG_FLODER "kpatch_1.log";
@@ -178,6 +179,12 @@ static void load_config_su_path()
 
 static void fork_for_result(const char *exec, char *const *argv)
 {
+    char cmd[512] = { '\0' };
+    for (int i = 0;; i++) {
+        if (!argv[i]) break;
+        strncat(cmd, argv[i], sizeof(cmd) - strlen(cmd) - 1);
+    }
+
     pid_t pid = fork();
     if (pid < 0) {
         log_kernel("%d fork %s error: %d\n", getpid(), exec, pid);
@@ -189,11 +196,11 @@ static void fork_for_result(const char *exec, char *const *argv)
         sprintf(kver, "%x", sc_k_ver(key));
         setenv("KERNEL_VER", kver, 1);
         int rc = execv(exec, argv);
-        log_kernel("%d exec %s error: %s\n", getpid(), exec, strerror(errno));
+        log_kernel("%d exec %s error: %s\n", getpid(), cmd, strerror(errno));
     } else {
         int status;
         wait(&status);
-        log_kernel("%d wait %s status: 0x%x\n", getpid(), exec, status);
+        log_kernel("%d wait %s status: 0x%x\n", getpid(), cmd, status);
     }
 }
 
@@ -203,8 +210,6 @@ static void init()
     sc_su(key, &profile);
 
     log_kernel("%d starting android user init, from kernel: %d\n", getpid(), from_kernel);
-
-    bool init_apatch = true;
 
     if (!access(APATCH_FLODER, F_OK)) mkdir(APATCH_FLODER, 0700);
     if (!access(APATCH_LOG_FLODER, F_OK)) mkdir(APATCH_LOG_FLODER, 0700);
@@ -224,8 +229,10 @@ static void init()
         }
     }
 
-    char *argv[] = { magiskpolicy_path, "--magisk", "--live", NULL };
-    fork_for_result(magiskpolicy_path, argv);
+    if (!access(skip_sepolicy_path, F_OK)) {
+        char *argv[] = { magiskpolicy_path, "--magisk", "--live", NULL };
+        fork_for_result(magiskpolicy_path, argv);
+    }
 
     load_config_su_path();
     load_config_allow_uids();
@@ -235,7 +242,10 @@ static void init()
     if (from_kernel) save_dmegs(boot1_log_path);
 }
 
-static struct option const longopts[] = { { "kernel", no_argument, NULL, 'k' }, { NULL, 0, NULL, 0 } };
+static struct option const longopts[] = {
+    { "kernel", no_argument, NULL, 'k' },
+    { NULL, 0, NULL, 0 },
+};
 
 int android_user(int argc, char **argv)
 {

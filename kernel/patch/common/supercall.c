@@ -159,7 +159,6 @@ static long supercall(long cmd, long arg1, long arg2, long arg3, long arg4)
     case SUPERCALL_KERNEL_VER:
         return kver;
     }
-    logkd("supercall with cmd: %x\n", cmd);
     switch (cmd) {
     case SUPERCALL_SU:
         return call_su((struct su_profile * __user) arg1);
