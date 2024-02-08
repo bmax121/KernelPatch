@@ -45,7 +45,7 @@ enum dma_data_direction
 static inline uint32_t current_el(void)
 {
     uint32_t el;
-    asm volatile("mrs %0, CurrentEL" : "=r"(el));
+    asm volatile("mrs %w0, CurrentEL" : "=r"(el));
     return el >> 2;
 }
 
