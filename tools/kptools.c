@@ -36,28 +36,34 @@ void print_usage(char **argv)
         "Usage: %s COMMAND [Options...]\n"
         "\n"
         "COMMAND:\n"
-        "  -h, --help                   Print this message.\n"
-        "  -v, --version                Print version number. Print kpimg version if -k specified.\n"
+        "  -h, --help                       Print this message.\n"
+        "  -v, --version                    Print version number. Print kpimg version if -k specified.\n"
 
-        "  -p, --patch                  Patch or Update patch of kernel image(-i) with specified kpimg(-k) and superkey(-s).\n"
-        "  -u, --unpatch                Unpatch patched kernel image(-i).\n"
-        "  -r, --resetkey               Reset superkey of patched image(-i).\n"
-        "  -d, --dump                   Dump kallsyms infomations of kernel image(-i).\n"
-        "  -l, --list                   Print all patch informations of kernel image if -i specified.\n"
-        "                               Print KPM informations if -M specified.\n"
-        "                               Print KernelPatch image informations if -k specified.\n"
+        "  -p, --patch                      Patch or Update patch of kernel image(-i) with specified kpimg(-k) and superkey(-s).\n"
+        "  -u, --unpatch                    Unpatch patched kernel image(-i).\n"
+        "  -r, --reset-skey                 Reset superkey of patched image(-i).\n"
+        "  -d, --dump                       Dump kallsyms infomations of kernel image(-i).\n"
+        "  -l, --list                       Print all patch informations of kernel image if (-i) specified.\n"
+        "                                   Print extra item informations if (-M) specified.\n"
+        "                                   Print KernelPatch image informations if (-k) specified.\n"
 
         "Options:\n"
-        "  -i, --image PATH             Kernel image path.\n"
-        "  -k, --kpimg PATH             KernelPatch image path.\n"
-        "  -o, --out PATH               Patched image path.\n"
-        "  -K, --kpatch PATH            Embed kpatch executable binary into patches.\n"
+        "  -i, --image PATH                 Kernel image path.\n"
+        "  -k, --kpimg PATH                 KernelPatch image path.\n"
+        "  -s, --skey PATH                  Set superkey.\n"
+        "  -o, --out PATH                   Patched image path.\n"
+        "  -a  --addition KEY=VALUE         Add additional information.\n"
 
-        "  -E, --embed-kpm PATH         Embed KPM into patches.\n"
-        "  -A, --embed-kpm-args ARGS    Arguments will be passed to previous KPM(-E).\n"
-        "  -D, --detach-kpm NAME        Detach embeded KPM from patches.\n"
-        "  -M, --kpm PATH               Specify KPM path.\n"
-        "  -a  --addition KEY=VALUE     Add additional information.\n"
+        "  -K, --kpatch PATH                Embed kpatch executable binary into patches.\n"
+
+        "  -M, --embed-extra-path PATH      Embed new extra item.\n"
+        "  -E, --embeded-extra-name NAME    Preserve and modifiy embedded extra item.\n"
+
+        "  -T, --extra-type TYPE            Set type of previous extra item.\n"
+        "  -N, --extra-name NAME            Set name of previous extra item.\n"
+        "  -V, --extra-event EVENT          Set trigger event of previous extra item.\n"
+        "  -A, --extra-args ARGS            Set arguments of previous extra item.\n"
+        "  -D, --extra-detach               Detach previous extra item from patches.\n"
         "\n";
     fprintf(stdout, c, version, program_name);
 }
@@ -74,21 +80,25 @@ int main(int argc, char *argv[])
                                  { "unpatch", no_argument, NULL, 'u' },
                                  { "resetkey", no_argument, NULL, 'r' },
                                  { "dump", no_argument, NULL, 'd' },
+
                                  { "list", no_argument, NULL, 'l' },
 
                                  { "image", required_argument, NULL, 'i' },
                                  { "kpimg", required_argument, NULL, 'k' },
                                  { "skey", required_argument, NULL, 's' },
                                  { "out", required_argument, NULL, 'o' },
+                                 { "addition", required_argument, NULL, 'a' },
                                  { "kpatch", required_argument, NULL, 'K' },
 
-                                 { "embed-kpm", required_argument, NULL, 'E' },
-                                 { "embed-kpm-args", required_argument, NULL, 'A' },
-                                 { "detach-kpm", required_argument, NULL, 'D' },
-                                 { "kpm", required_argument, NULL, 'M' },
-                                 { "addition", required_argument, NULL, 'a' },
+                                 { "embed-extra-path", required_argument, NULL, 'M' },
+                                 { "embeded-extra-name", required_argument, NULL, 'E' },
+                                 { "extra-type", required_argument, NULL, 'T' },
+                                 { "extra-name", required_argument, NULL, 'N' },
+                                 { "extra-event", required_argument, NULL, 'V' },
+                                 { "extra-args", required_argument, NULL, 'A' },
+                                 { "extra-detach", no_argument, NULL, 'D' },
                                  { 0, 0, 0, 0 } };
-    char *optstr = "hvpurdli:s:k:o:K:E:A:D:M:a:";
+    char *optstr = "hvpurdli:s:k:o:K:M:E:T:N:V:A:D";
 
     char *kimg_path = NULL;
     char *kpimg_path = NULL;
@@ -96,17 +106,12 @@ int main(int argc, char *argv[])
     char *superkey = NULL;
     char *kpatch_path = NULL;
 
-    int embed_kpm_num = 0;
-    const char *embed_kpms_path[EXTRA_ITEM_MAX_NUM] = { 0 };
-    const char *embed_kpms_args[EXTRA_ITEM_MAX_NUM] = { 0 };
-
-    int detach_kpm_num = 0;
-    const char *detach_kpms_name[EXTRA_ITEM_MAX_NUM] = { 0 };
-
     int additional_num = 0;
     const char *additional[16] = { 0 };
 
-    char *alone_kpm_path = NULL;
+    int extra_config_num = 0;
+    extra_config_t extra_configs[EXTRA_ITEM_MAX_NUM] = { 0 };
+    extra_config_t *config = NULL;
 
     char cmd = '\0';
     int opt = -1;
@@ -135,23 +140,39 @@ int main(int argc, char *argv[])
         case 'o':
             out_path = optarg;
             break;
+        case 'a':
+            additional[additional_num++] = optarg;
+            break;
         case 'K':
             kpatch_path = optarg;
             break;
+        case 'M':
+            config = &extra_configs[extra_config_num++];
+            config->is_path = true;
+            config->path = optarg;
+            break;
         case 'E':
-            embed_kpms_path[embed_kpm_num++] = optarg;
+            config = &extra_configs[extra_config_num++];
+            config->is_path = false;
+            config->name = optarg;
+            break;
+        case 'T':
+            config->extra_type = extra_str_type(optarg);
+            if (config->extra_type == EXTRA_TYPE_NONE) {
+                tools_loge_exit("invalid extra type: %s\n", optarg);
+            }
+            break;
+        case 'V':
+            config->set_event = optarg;
+            break;
+        case 'N':
+            config->name = optarg;
             break;
         case 'A':
-            embed_kpms_args[embed_kpm_num - 1] = optarg;
+            config->set_args = optarg;
             break;
         case 'D':
-            detach_kpms_name[detach_kpm_num++] = optarg;
-            break;
-        case 'M':
-            alone_kpm_path = optarg;
-            break;
-        case 'a':
-            additional[additional_num++] = optarg;
+            config->set_detach = true;
             break;
         default:
             break;
@@ -167,8 +188,8 @@ int main(int argc, char *argv[])
         else
             fprintf(stdout, "%x\n", version);
     } else if (cmd == 'p') {
-        ret = patch_update_img(kimg_path, kpimg_path, out_path, superkey, kpatch_path, embed_kpms_path, embed_kpms_args,
-                               detach_kpms_name, additional);
+        ret = patch_update_img(kimg_path, kpimg_path, out_path, superkey, additional, kpatch_path, extra_configs,
+                               extra_config_num);
     } else if (cmd == 'd') {
         ret = dump_kallsym(kimg_path);
     } else if (cmd == 'u') {
@@ -177,7 +198,7 @@ int main(int argc, char *argv[])
         ret = reset_key(kimg_path, out_path, superkey);
     } else if (cmd == 'l') {
         if (kimg_path) return print_image_patch_info_path(kimg_path);
-        if (alone_kpm_path) return print_kpm_info_path(alone_kpm_path);
+        if (config && config->path) return print_kpm_info_path(config->path);
         if (kpimg_path) return print_kp_image_info_path(kpimg_path);
     }
 

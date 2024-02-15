@@ -8,6 +8,7 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include "preset.h"
 #include "image.h"
@@ -32,12 +33,32 @@ typedef struct
     patch_extra_item_t *embed_item[EXTRA_ITEM_MAX_NUM];
 } patched_kimg_t;
 
+typedef struct
+{
+    int extra_type;
+    bool is_path;
+    union
+    {
+        const char *path;
+        const char *name;
+    };
+    const char *set_args;
+    const char *set_name;
+    const char *set_event;
+    int priority;
+    bool set_detach;
+    const char *data;
+    patch_extra_item_t *item;
+} extra_config_t;
+
 preset_t *get_preset(const char *kimg, int kimg_len);
 
 uint32_t get_kpimg_version(const char *kpimg_path);
+int extra_str_type(const char *extra_str);
+const char *extra_type_str(extra_item_type extra_type);
 int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey,
-                     const char *kpatch_path, const char **embed_kpm_path, const char **embed_kpm_args,
-                     const char **detach_kpm_names, const char **additional);
+                     const char **additional, const char *kpatch_path, extra_config_t *extra_configs,
+                     int extra_config_num);
 int unpatch_img(const char *kimg_path, const char *out_path);
 int reset_key(const char *kimg_path, const char *out_path, const char *key);
 int dump_kallsym(const char *kimg_path);

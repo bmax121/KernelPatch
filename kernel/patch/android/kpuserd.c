@@ -37,7 +37,7 @@
 static const char patch_rc[] = ""
                                "\n"
                                "on late-init\n"
-                               "    rm " REPLACE_RC_FILE "\n"
+                               //    "    rm " REPLACE_RC_FILE "\n"
                                "on post-fs-data\n"
                                "    exec -- " KPATCH_SHADOW_PATH " %s android_user init -k --path " KPATCH_DEV_PATH "\n"
                                "    exec -- " KPATCH_SHADOW_PATH " %s android_user post-fs-data -k\n"
@@ -100,11 +100,12 @@ static int extract_kpatch_call_back(const patch_extra_item_t *extra, const char 
 
 static void on_first_stage()
 {
+    // const char *path = KPATCH_DEV_PATH;
+    // on_each_extra_item(extract_kpatch_call_back, (void *)path);
 }
 
 static void on_second_stage()
 {
-    log_boot("on_second_stage\n");
     const char *path = KPATCH_DEV_PATH;
     on_each_extra_item(extract_kpatch_call_back, (void *)path);
 }
@@ -131,9 +132,7 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
     const char app_process[] = "/system/bin/app_process";
     static int first_app_process = 1;
 
-    // Android 10+
     static const char system_bin_init[] = "/system/bin/init";
-    // Android 6 ~ 9
     static const char old_system_init[] = "/init";
     static int init_second_stage_executed = 0;
 
@@ -142,6 +141,7 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
         //
         if (!init_first_stage_executed) {
             init_first_stage_executed = 1;
+            log_boot("exec %s first stage\n", filename->name);
             on_first_stage();
         }
 
@@ -153,8 +153,8 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
                 if (!IS_ERR(p1)) {
                     char arg[16] = { '\0' };
                     if (strncpy_from_user_nofault(arg, p1, sizeof(arg)) <= 0) break;
-                    if (!strcmp(arg, "second_stage")) {
-                        log_boot("0 exec %s second_stage\n", filename->name);
+                    if (!strcmp(arg, "second stage")) {
+                        log_boot("exec %s second stage 0\n", filename->name);
                         on_second_stage();
                         init_second_stage_executed = 1;
                     }
@@ -177,7 +177,7 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
                     env_value++;
                     if (!strcmp(env_name, "INIT_SECOND_STAGE") &&
                         (!strcmp(env_value, "1") || !strcmp(env_value, "true"))) {
-                        log_boot("1 exec %s second_stage\n", filename->name);
+                        log_boot("exec %s second stage 1\n", filename->name);
                         on_second_stage();
                         init_second_stage_executed = 1;
                     }

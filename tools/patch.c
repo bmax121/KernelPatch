@@ -41,6 +41,42 @@ uint32_t get_kpimg_version(const char *kpimg_path)
     return version;
 }
 
+int extra_str_type(const char *extra_str)
+{
+    int extra_type = EXTRA_TYPE_NONE;
+    if (!strcmp(extra_str, EXTRA_TYPE_KPM_STR)) {
+        extra_type = EXTRA_TYPE_KPM;
+    } else if (!strcmp(extra_str, EXTRA_TYPE_EXEC_STR)) {
+        extra_type = EXTRA_TYPE_EXEC;
+    } else if (!strcmp(extra_str, EXTRA_TYPE_SHELL_STR)) {
+        extra_type = EXTRA_TYPE_SHELL;
+    } else if (!strcmp(extra_str, EXTRA_TYPE_RAW_STR)) {
+        extra_type = EXTRA_TYPE_RAW;
+    } else if (!strcmp(extra_str, EXTRA_TYPE_ANDROID_RC_STR)) {
+        extra_type = EXTRA_TYPE_ANDROID_RC;
+    } else {
+    }
+    return extra_type;
+}
+
+const char *extra_type_str(extra_item_type extra_type)
+{
+    switch (extra_type) {
+    case EXTRA_TYPE_KPM:
+        return EXTRA_TYPE_KPM_STR;
+    case EXTRA_TYPE_EXEC:
+        return EXTRA_TYPE_EXEC_STR;
+    case EXTRA_TYPE_SHELL:
+        return EXTRA_TYPE_SHELL_STR;
+    case EXTRA_TYPE_RAW:
+        return EXTRA_TYPE_RAW_STR;
+    case EXTRA_TYPE_ANDROID_RC:
+        return EXTRA_TYPE_ANDROID_RC_STR;
+    default:
+        return EXTRA_TYPE_NONE_STR;
+    }
+}
+
 void print_preset_info(preset_t *preset)
 {
     setup_header_t *header = &preset->header;
@@ -172,24 +208,13 @@ int print_image_patch_info(patched_kimg_t *pimg)
 
         for (int i = 0; i < pimg->embed_item_num; i++) {
             patch_extra_item_t *item = pimg->embed_item[i];
-            const char *type = "none";
-            switch (item->type) {
-            case EXTRA_TYPE_KPM:
-                type = "kpm";
-                break;
-            case EXTRA_TYPE_SHELL:
-                type = "shell";
-                break;
-            case EXTRA_TYPE_EXEC:
-                type = "exec";
-                break;
-            case EXTRA_TYPE_RAW:
-                type = "raw";
-                break;
-            }
+            const char *type = extra_type_str(item->type);
             fprintf(stdout, INFO_EXTRA_SESSION_N "\n", i);
             fprintf(stdout, "index=%d\n", i);
             fprintf(stdout, "type=%s\n", type);
+            fprintf(stdout, "name=%s\n", item->name);
+            fprintf(stdout, "event=%s\n", item->event);
+            fprintf(stdout, "priority=%d\n", item->priority);
             fprintf(stdout, "con_size=0x%x\n", item->con_size);
             fprintf(stdout, "args_size=0x%x\n", item->args_size);
             if (item->type == EXTRA_TYPE_KPM) {
@@ -216,10 +241,16 @@ int print_image_patch_info_path(const char *kimg_path)
     return rc;
 }
 
-// todo: opt
+static int extra_compare(const void *a, const void *b)
+{
+    extra_config_t *pa = (extra_config_t *)a;
+    extra_config_t *pb = (extra_config_t *)b;
+    return -(pa->priority - pb->priority);
+}
+
 int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey,
-                     const char *kpatch_path, const char **embed_kpm_path, const char **embed_kpm_args,
-                     const char **detach_kpm_names, const char **additional)
+                     const char **additional, const char *kpatch_path, extra_config_t *extra_configs,
+                     int extra_config_num)
 {
     set_log_enable(true);
 
@@ -252,138 +283,97 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     int kpimg_len = 0;
     read_file_align(kpimg_path, &kpimg, &kpimg_len, 0x10);
 
+    // embed kpatch executable
+    if (kpatch_path) {
+        // add new
+        extra_config_t *config = extra_configs + extra_config_num;
+        extra_config_num++;
+        config->extra_type = EXTRA_TYPE_EXEC;
+        config->is_path = true;
+        config->path = kpatch_path;
+        config->priority = __INT32_MAX__;
+        config->set_name = "kpatch";
+    }
+
     // extra
     int extra_size = 0;
     int extra_num = 0;
 
-    struct extra_items_wrap // todo: opt
-    {
-        patch_extra_item_t item;
-        const char *name;
-        extra_item_type type;
-        const char *data;
-        const char *args;
-        int data_len;
-        int args_len;
-    } *extra_items = (struct extra_items_wrap *)malloc(sizeof(struct extra_items_wrap) * EXTRA_ITEM_MAX_NUM);
+    for (int i = 0; i < extra_config_num; i++) {
+        extra_config_t *config = extra_configs + i;
+        if (config->is_path && config->extra_type == EXTRA_TYPE_NONE) {
+            tools_loge_exit("extra type none\n");
+        }
+        if (config->set_event && strnlen(config->set_event, EXTRA_EVENT_LEN) >= EXTRA_EVENT_LEN) {
+            tools_loge_exit("extra event too long: %s\n", config->set_event);
+        }
+        if (config->set_name && strnlen(config->set_name, EXTRA_NAME_LEN) >= EXTRA_NAME_LEN) {
+            tools_loge_exit("extra name too long: %s\n", config->set_event);
+        }
 
-    memset(extra_items, 0, sizeof(struct extra_items_wrap) * EXTRA_ITEM_MAX_NUM);
-
-    // reserved patched extra
-    for (int i = 0; i < pimg.embed_item_num; i++) {
-        struct extra_items_wrap *item_wrap = extra_items + extra_num;
-        patch_extra_item_t *item = pimg.embed_item[i];
-
-        item_wrap->type = item->type;
-        if ((is_be() ^ kinfo->is_be)) item_wrap->type = i32swp(item_wrap->type);
-
-        bool detach = false;
-
-        if (item_wrap->type == EXTRA_TYPE_KPM) {
-            kpm_info_t kpm_info = { 0 };
-            void *kpm = (kpm_info_t *)((uintptr_t)item + sizeof(patch_extra_item_t) + item->args_size);
-            get_kpm_info(kpm, item->con_size, &kpm_info);
-            for (int j = 0;; j++) {
-                if (!detach_kpm_names[j]) break;
-                if (!strcmp(detach_kpm_names[j], kpm_info.name)) {
-                    detach = true;
-                    break;
+        patch_extra_item_t *item = NULL;
+        if (config->is_path) {
+            item = (patch_extra_item_t *)malloc(sizeof(patch_extra_item_t));
+            const char *path = config->path;
+            char *data;
+            int len = 0;
+            read_file_align(path, &data, &len, EXTRA_ALIGN);
+            config->data = data;
+            item->con_size = len;
+            // if name not set
+            if (!config->set_name) {
+                if (config->extra_type == EXTRA_TYPE_KPM) {
+                    kpm_info_t kpm_info = { 0 };
+                    int rc = get_kpm_info(data, len, &kpm_info);
+                    if (rc) tools_loge_exit("can get infomation of kpm, path: %s\n", path);
+                    strcpy(item->name, kpm_info.name);
+                } else {
+                    char *rsp = strrchr(path, '/');
+                    strncpy(item->name, rsp ? rsp + 1 : path, EXTRA_NAME_LEN - 1);
                 }
-            }
-            if (!detach) {
-                memcpy(&item_wrap->item, item, sizeof(*item));
-                item_wrap->data = (const char *)kpm;
-                item_wrap->args = (const char *)item + sizeof(*item);
-                item_wrap->data_len = item->con_size;
-                item_wrap->args_len = item->args_size;
-                if ((is_be() ^ kinfo->is_be)) {
-                    item_wrap->data_len = i32swp(item_wrap->data_len);
-                    item_wrap->args_len = i32swp(item_wrap->args_len);
-                }
-                item_wrap->name = kpm_info.name;
-
-                extra_size += sizeof(*item) + item_wrap->data_len + item_wrap->args_len;
-                extra_num++;
-                tools_logi("reserved embeded kpm: %s\n", kpm_info.name);
-            } else {
-                tools_logi("detact embeded kpm: %s\n", kpm_info.name);
             }
         } else {
-            // todo
+            const char *name = config->name;
+            for (int j = 0; j < pimg.embed_item_num; j++) {
+                if (config->set_detach) continue;
+                if (strcmp(name, config->item->name)) continue;
+                item = pimg.embed_item[j];
+                if (is_be() ^ kinfo->is_be) {
+                    item->type = i32swp(item->type);
+                    item->priority = i32swp(item->priority);
+                    item->con_size = i32swp(item->con_size);
+                    item->args_size = i32swp(item->args_size);
+                }
+                if (!config->set_args && item->args_size > 0) {
+                    config->set_args = (char *)item + sizeof(*item);
+                }
+                config->extra_type = item->type;
+                config->data = (char *)item + sizeof(*item) + item->args_size;
+                break;
+            }
         }
+        if (!item) tools_loge_exit("empty extra item\n");
+        config->item = item;
+        item->type = config->extra_type;
+        if (config->set_args) item->args_size = align_ceil(strlen(config->set_args), EXTRA_ALIGN);
+        if (config->set_name) strcpy(item->name, config->set_name);
+        if (config->set_event) strcpy(item->event, config->set_event);
+        if (config->priority) item->priority = config->priority;
     }
 
-    // new extra
-    for (int i = 0; extra_num < EXTRA_ITEM_MAX_NUM; i++) {
-        if (!embed_kpm_path[i]) break;
-
-        char *kpm_data;
-        int kpm_len = 0;
-        int args_len = 0;
-        read_file_align(embed_kpm_path[i], &kpm_data, &kpm_len, EXTRA_ALIGN);
-
-        kpm_info_t kpm_info = { 0 };
-        int rc = get_kpm_info(kpm_data, kpm_len, &kpm_info);
-        if (rc) tools_loge_exit("can get infomation of kpm, path: %s\n", embed_kpm_path[i]);
-
-        struct extra_items_wrap *item_wrap = extra_items + extra_num;
-        patch_extra_item_t *item = &item_wrap->item;
-
-        // set wrap
-        const char *args = embed_kpm_args[i];
-        if (args) args_len = align_ceil(strlen(args), EXTRA_ALIGN);
-        item_wrap->type = EXTRA_TYPE_KPM;
-        item_wrap->data = kpm_data;
-        item_wrap->data_len = kpm_len;
-        item_wrap->args = args;
-        item_wrap->args_len = args_len;
-        item_wrap->name = kpm_info.name;
-
-        // set runtime item
-        strcpy(item->name, kpm_info.name);
-        item->priority = 0;
-        item->type = EXTRA_TYPE_KPM;
-        item->con_size = kpm_len;
-        item->args_size = args_len;
-        if ((is_be() ^ kinfo->is_be)) {
-            item->priority = i32swp(item->priority);
-            item->type = i32swp(item->type);
-            item->con_size = i32swp(item->con_size);
-            item->args_size = i32swp(item->args_size);
-        }
-
-        extra_size += (kpm_len + args_len + sizeof(patch_extra_item_t));
-        extra_num++;
-    }
-
-    // embed kpatch executable
-    if (kpatch_path) {
-        char *con;
-        int len;
-        read_file_align(kpatch_path, &con, &len, EXTRA_ALIGN);
-
-        struct extra_items_wrap *item_wrap = extra_items + extra_num;
-        patch_extra_item_t *kpatch_item = &item_wrap->item;
-        item_wrap->type = EXTRA_TYPE_EXEC;
-        item_wrap->name = "kpatch";
-        item_wrap->data = con;
-        item_wrap->data_len = len;
-        strcpy(kpatch_item->name, "kpatch");
-        kpatch_item->type = EXTRA_TYPE_EXEC;
-        kpatch_item->priority = __INT32_MAX__;
-        kpatch_item->con_size = len;
-        kpatch_item->args_size = 0;
-        if ((is_be() ^ kinfo->is_be)) {
-            kpatch_item->priority = i32swp(kpatch_item->priority);
-            kpatch_item->type = i32swp(kpatch_item->type);
-            kpatch_item->con_size = i32swp(kpatch_item->con_size);
-            kpatch_item->args_size = i32swp(kpatch_item->args_size);
-        }
-        extra_num++;
-        extra_size += len;
-    }
+    qsort(extra_configs, extra_config_num, sizeof(extra_config_t), extra_compare);
 
     extra_size += sizeof(patch_extra_item_t); // ending with empty item
+
+    for (int i = 0; i < extra_config_num; i++) {
+        extra_config_t *config = extra_configs + i;
+        if (config->set_detach) continue;
+        extra_num++;
+        extra_size += sizeof(patch_extra_item_t);
+        extra_size += config->item->args_size;
+        extra_size += config->item->con_size;
+        tools_logi("extra item num: %d, size: 0x%x\n", extra_num, extra_size);
+    }
 
     // copy to out image
     int ori_kimg_len = pimg.ori_kimg_len;
@@ -492,68 +482,33 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     write_file(out_path, out_img, out_img_len, false);
 
     // write extra
-    for (int i = 0; i < extra_num; i++) {
-        struct extra_items_wrap *item_wrap = &extra_items[i];
-        const char *type = EXTRA_TYPE_NONE;
-        switch (item_wrap->type) {
-        case EXTRA_TYPE_KPM:
-            type = "kpm";
-            break;
-        case EXTRA_TYPE_SHELL:
-            type = "shell";
-            break;
-        case EXTRA_TYPE_EXEC:
-            type = "exec";
-            break;
-        case EXTRA_TYPE_RAW:
-            type = "raw";
-            break;
-        default:
-            type = "none";
-            break;
-        }
+    for (int i = 0; i < extra_config_num; i++) {
+        extra_config_t *config = extra_configs + i;
+        patch_extra_item_t *item = config->item;
+        const char *type = extra_type_str(item->type);
+        tools_logi("embedding %s, name: %s, priority: %d, event: %s, size: 0x%x+0x%x+0x%x\n", type, item->name,
+                   item->priority, item->event, (int)sizeof(*item), item->args_size, item->con_size);
 
-        patch_extra_item_t *item = &item_wrap->item;
-        tools_logi("embedding %s, name: %s, size: 0x%x + 0x%x + 0x%x\n", type, item_wrap->name, (int)sizeof(*item),
-                   item_wrap->args_len, item_wrap->data_len);
+        int args_len = item->args_size;
+        int con_len = item->con_size;
+
+        if (is_be() ^ kinfo->is_be) {
+            item->type = i32swp(item->type);
+            item->priority = i32swp(item->priority);
+            item->con_size = i32swp(item->con_size);
+            item->args_size = i32swp(item->args_size);
+        }
 
         write_file(out_path, (void *)item, sizeof(*item), true);
-        if (item_wrap->args_len > 0) write_file(out_path, (void *)item_wrap->args, item_wrap->args_len, true);
-        write_file(out_path, (void *)item_wrap->data, item_wrap->data_len, true);
-    }
-
-    // embed kpatch executable
-    if (kpatch_path) {
-        char *con;
-        int len;
-        read_file_align(kpatch_path, &con, &len, EXTRA_ALIGN);
-        patch_extra_item_t kpatch_item = {
-            .name = "kpatch",
-            .type = EXTRA_TYPE_EXEC,
-            .priority = __INT32_MAX__,
-            .con_size = len,
-            .args_size = 0,
-        };
-        if ((is_be() ^ kinfo->is_be)) {
-            kpatch_item.priority = i32swp(kpatch_item.priority);
-            kpatch_item.type = i32swp(kpatch_item.type);
-            kpatch_item.con_size = i32swp(kpatch_item.con_size);
-            kpatch_item.args_size = i32swp(kpatch_item.args_size);
-        }
-        write_file(out_path, (void *)&kpatch_item, sizeof(kpatch_item), true);
-        write_file(out_path, (void *)con, len, true);
+        if (args_len > 0) write_file(out_path, (void *)config->set_args, args_len, true);
+        write_file(out_path, (void *)config->data, con_len, true);
     }
 
     // guard extra
-    patch_extra_item_t empty_item = {
-        .type = EXTRA_TYPE_NONE,
-        .priority = 0,
-        .con_size = 0,
-    };
+    patch_extra_item_t empty_item = { 0 };
     write_file(out_path, (void *)&empty_item, sizeof(empty_item), true);
 
     // free
-    free(extra_items);
     free(kallsym_kimg);
     free(kpimg);
     free(out_img);
