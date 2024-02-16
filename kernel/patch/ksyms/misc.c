@@ -438,6 +438,8 @@ int kfunc_def(filp_close)(struct file *, fl_owner_t id) = 0;
 
 struct filename *kfunc_def(getname)(const char __user *) = 0;
 struct filename *kfunc_def(getname_kernel)(const char *) = 0;
+void kfunc_def(putname)(struct filename *name) = 0;
+void kfunc_def(final_putname)(struct filename *name) = 0;
 
 loff_t kfunc_def(vfs_llseek)(struct file *file, loff_t offset, int whence) = 0;
 
@@ -455,8 +457,10 @@ static void _linux_fs_sym_match(const char *name, unsigned long addr)
     // kfunc_match(file_open_root, name, addr);
     // kfunc_match(dentry_open, name, addr);
     kfunc_match(filp_close, name, addr);
-    // kfunc_match(getname, name, addr);
-    // kfunc_match(getname_kernel, name, addr);
+    kfunc_match(getname, name, addr);
+    kfunc_match(getname_kernel, name, addr);
+    kfunc_match(putname, name, addr);
+    kfunc_match(final_putname, name, addr);
     kfunc_match(vfs_llseek, name, addr);
 }
 

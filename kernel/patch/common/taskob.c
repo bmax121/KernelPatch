@@ -56,7 +56,7 @@ static struct task_struct *(*backup_copy_process)(void *a0, void *a1, void *a2, 
 struct task_struct *replace_copy_process(void *a0, void *a1, void *a2, void *a3, void *a4, void *a5, void *a6, void *a7)
 {
     struct task_struct *new = backup_copy_process(a0, a1, a2, a3, a4, a5, a6, a7);
-    if (unlikely(IS_ERR_VALUE(new))) return new;
+    if (unlikely(IS_ERR(new))) return new;
     prepare_task_ext(new, current);
     return new;
 }

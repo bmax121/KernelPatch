@@ -179,10 +179,11 @@ static void load_config_su_path()
 
 static void fork_for_result(const char *exec, char *const *argv)
 {
-    char cmd[512] = { '\0' };
+    char cmd[4096] = { '\0' };
     for (int i = 0;; i++) {
         if (!argv[i]) break;
         strncat(cmd, argv[i], sizeof(cmd) - strlen(cmd) - 1);
+        strncat(cmd, " ", sizeof(cmd) - strlen(cmd) - 1);
     }
 
     pid_t pid = fork();
@@ -204,19 +205,19 @@ static void fork_for_result(const char *exec, char *const *argv)
     }
 }
 
-static void init()
+static void post_fs_data_init()
 {
     struct su_profile profile = { .uid = getuid() };
     sc_su(key, &profile);
 
-    log_kernel("%d starting android user init, from kernel: %d\n", getpid(), from_kernel);
+    log_kernel("%d starting android user post_fs_data_init, from kernel: %d\n", getpid(), from_kernel);
 
     if (!access(APATCH_FLODER, F_OK)) mkdir(APATCH_FLODER, 0700);
     if (!access(APATCH_LOG_FLODER, F_OK)) mkdir(APATCH_LOG_FLODER, 0700);
 
     if (from_kernel) save_dmegs(boot0_log_path);
 
-    char current_exe[32] = { '\0' };
+    char current_exe[1024] = { '\0' };
     if (readlink("/proc/self/exe", current_exe, sizeof(current_exe) - 1)) {
         if (!strcmp(current_exe, KPATCH_DEV_PATH)) {
             log_kernel("%d copy %s to %s.\n", getpid(), current_exe, KPATCH_PATH);
@@ -237,7 +238,7 @@ static void init()
     load_config_su_path();
     load_config_allow_uids();
 
-    log_kernel("%d finished android user init.\n", getpid());
+    log_kernel("%d finished android user post_fs_data_init.\n", getpid());
 
     if (from_kernel) save_dmegs(boot1_log_path);
 }
@@ -265,9 +266,10 @@ int android_user(int argc, char **argv)
         }
     }
 
-    if (!strcmp("init", scmd)) {
-        init();
+    if (!strcmp("post_fs_data_init", scmd)) {
+        post_fs_data_init();
     } else if (!strcmp("post-fs-data", scmd) || !strcmp("services", scmd) || !strcmp("boot-completed", scmd)) {
+        // todo: move to apd
         struct su_profile profile = {
             .uid = getuid(),
             .to_uid = 0,

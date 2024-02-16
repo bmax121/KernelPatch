@@ -240,6 +240,8 @@ extern int kfunc_def(filp_close)(struct file *, fl_owner_t id);
 
 extern struct filename *kfunc_def(getname)(const char __user *);
 extern struct filename *kfunc_def(getname_kernel)(const char *);
+extern void kfunc_def(putname)(struct filename *name);
+extern void kfunc_def(final_putname)(struct filename *name);
 
 extern loff_t kfunc_def(vfs_llseek)(struct file *file, loff_t offset, int whence);
 
@@ -248,25 +250,21 @@ extern loff_t kfunc_def(vfs_llseek)(struct file *file, loff_t offset, int whence
 static inline void inc_nlink(struct inode *inode)
 {
     kfunc_call_void(inc_nlink, inode);
-    kfunc_not_found();
 }
 
 static inline void drop_nlink(struct inode *inode)
 {
     kfunc_call_void(drop_nlink, inode);
-    kfunc_not_found();
 }
 
 static inline void clear_nlink(struct inode *inode)
 {
     kfunc_call_void(clear_nlink, inode);
-    kfunc_not_found();
 }
 
 static inline void set_nlink(struct inode *inode, unsigned int nlink)
 {
     kfunc_call_void(set_nlink, inode, nlink);
-    kfunc_not_found();
 }
 
 static inline ssize_t kernel_read(struct file *file, void *buf, size_t count, loff_t *pos)
@@ -315,66 +313,55 @@ static inline ssize_t kernel_write(struct file *file, const void *buf, size_t co
 
 static inline struct file *open_exec(const char *name)
 {
-    kfunc_call(open_exec, name);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(open_exec, name);
 }
 
 static inline struct file *file_open_name(struct filename *name, int flags, umode_t mode)
 {
-    kfunc_call(file_open_name, name, flags, mode);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(file_open_name, name, flags, mode);
 }
 
 static inline struct file *filp_open(const char *filename, int flags, umode_t mode)
 {
-    kfunc_call(filp_open, filename, flags, mode);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(filp_open, filename, flags, mode);
 }
 
 static inline struct file *file_open_root(struct dentry *dentry, struct vfsmount *mnt, const char *filename, int flags,
                                           umode_t mode)
 {
-    kfunc_call(file_open_root, dentry, mnt, filename, flags, mode);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(file_open_root, dentry, mnt, filename, flags, mode);
 }
 
 static inline struct file *dentry_open(const struct path *path, int flags, const struct cred *cred)
 {
-    kfunc_call(dentry_open, path, flags, cred);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(dentry_open, path, flags, cred);
 }
 
 static inline int filp_close(struct file *filp, fl_owner_t id)
 {
-    kfunc_call(filp_close, filp, id);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(filp_close, filp, id);
 }
 
 static inline struct filename *getname(const char __user *filename)
 {
-    kfunc_call(getname, filename);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(getname, filename);
 }
 
 static inline struct filename *getname_kernel(const char *filename)
 {
-    kfunc_call(getname_kernel, filename);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(getname_kernel, filename);
 }
 
 static inline loff_t vfs_llseek(struct file *file, loff_t offset, int whence)
 {
-    kfunc_call(vfs_llseek, file, offset, whence);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(vfs_llseek, file, offset, whence);
+}
+
+static inline void putname(struct filename *name)
+{
+    // logkd("aaaaaaaaaaa %llx\n", kfunc(putname));
+    kfunc_direct_call_void(putname, name);
+    // kfunc_direct_call_void(final_putname, name);
 }
 
 #endif

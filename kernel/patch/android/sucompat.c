@@ -33,13 +33,14 @@
 #include <predata.h>
 #include <uapi/scdefs.h>
 #include <predata.h>
+#include <kconfig.h>
 #include <linux/vmalloc.h>
+#include <uapi/linux/limits.h>
 
 static const char sh_path[] = ANDROID_SH_PATH;
 static const char default_su_path[] = ANDROID_SU_PATH;
 static const char *current_su_path = 0;
 static const char apd_path[] = APD_PATH;
-static const char kpatch_path[] = KPATCH_PATH;
 static const char kpatch_shadow_path[] = KPATCH_SHADOW_PATH;
 
 struct allow_uid
@@ -289,7 +290,7 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
     }
     filename = (struct filename *)args->args[filename_index];
 
-    if (!filename || IS_ERR(filename)) return;
+    if (IS_ERR(filename)) return;
 
     if (!strcmp(current_su_path, filename->name)) {
         uid_t uid = current_uid();
@@ -317,30 +318,58 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
         }
         kvfree(profile);
     } else if (!strcmp(kpatch_shadow_path, filename->name)) {
-        const char __user *p1 =
-            get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], 1);
-        if (!p1 || IS_ERR(p1)) return;
+        void *ua0 = (void *)args->args[filename_index + 1];
+        void *ua1 = (void *)args->args[filename_index + 2];
+        // key
+        const char __user *p1 = get_user_arg_ptr(ua0, ua1, 1);
+        if (IS_ERR(p1)) return;
+
+        // auth skey
         char arg1[SUPER_KEY_LEN];
         if (strncpy_from_user_nofault(arg1, p1, sizeof(arg1)) <= 0) return;
         if (superkey_auth(arg1)) return;
+
         commit_su(0, 0);
-        strcpy((char *)filename->name, kpatch_path);
-        // args
-        char option[128];
-        for (int i = 2; i < 10; i++) {
-            const char *pn =
-                get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], i);
-            if (!pn || IS_ERR(pn)) break;
-            strncpy_from_user_nofault(option, pn, sizeof(option));
-            if (!strcmp("--path", option)) {
-                i++;
-                pn =
-                    get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], i);
-                if (!pn || IS_ERR(pn)) break;
-                strncpy_from_user_nofault(option, pn, sizeof(option));
-                strcpy((char *)filename->name, option);
-            }
+
+        // real exec
+        const char __user *p2 = get_user_arg_ptr(ua0, ua1, 2);
+
+        if (IS_ERR(p2)) {
+            strcpy((char *)filename->name, sh_path);
+            return;
         }
+
+#define EMBEDDED_NAME_MAX (PATH_MAX - sizeof(*filename) - 128) // enough
+
+        int len = strncpy_from_user_nofault((char *)filename->name, p2, EMBEDDED_NAME_MAX);
+        if (unlikely(len < 0)) return;
+
+        // user_arg_ptr
+        if (has_config_compat) {
+            if (ua0) {
+                args->args[filename_index + 2] += 2 * 4;
+            } else {
+                args->args[filename_index + 2] += 2 * 8;
+            }
+        } else {
+            args->args[filename_index + 1] += 2 * 8;
+        }
+
+        // char option[128];
+        // for (int i = 3; i < 10; i++) {
+        //     const char *pn =
+        //         get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], i);
+        //     if (IS_ERR(pn)) break;
+        //     strncpy_from_user_nofault(option, pn, sizeof(option));
+        //     if (!strcmp("--path", option)) {
+        //         i++;
+        //         pn =
+        //             get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], i);
+        //         if (IS_ERR(pn)) break;
+        //         strncpy_from_user_nofault(option, pn, sizeof(option));
+        //         strcpy((char *)filename->name, option);
+        //     }
+        // }
     }
 
     return;

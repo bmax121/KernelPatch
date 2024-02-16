@@ -34,21 +34,22 @@
 #define ORIGIN_RC_FILE "/system/etc/init/atrace.rc"
 #define REPLACE_RC_FILE "/dev/.atrace.rc"
 
-static const char patch_rc[] = ""
-                               "\n"
-                               "on late-init\n"
-                               //    "    rm " REPLACE_RC_FILE "\n"
-                               "on post-fs-data\n"
-                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user init -k --path " KPATCH_DEV_PATH "\n"
-                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user post-fs-data -k\n"
-                               "on nonencrypted\n"
-                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user services -k\n"
-                               "on property:vold.decrypt=trigger_restart_framework\n"
-                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user services -k\n"
-                               "on property:sys.boot_completed=1\n"
-                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user boot-completed -k\n"
-                               "\n\n"
-                               "";
+static const char patch_rc[] =
+    ""
+    "\n"
+    "on late-init\n"
+    "    rm " REPLACE_RC_FILE "\n"
+    "on post-fs-data\n"
+    "    exec -- " KPATCH_SHADOW_PATH " %s " KPATCH_DEV_PATH " %s android_user post-fs-data-init -k\n"
+    "    exec -- " KPATCH_SHADOW_PATH " %s " KPATCH_PATH " %s android_user post-fs-data -k\n"
+    "on nonencrypted\n"
+    "    exec -- " KPATCH_SHADOW_PATH " %s " KPATCH_PATH " %s android_user services -k\n"
+    "on property:vold.decrypt=trigger_restart_framework\n"
+    "    exec -- " KPATCH_SHADOW_PATH " %s " KPATCH_PATH " %s android_user services -k\n"
+    "on property:sys.boot_completed=1\n"
+    "    exec -- " KPATCH_SHADOW_PATH " %s " KPATCH_PATH " %s android_user boot-completed -k\n"
+    "\n\n"
+    "";
 
 static const void *kernel_read_file(const char *path, loff_t *len)
 {
@@ -68,10 +69,10 @@ out:
     return data;
 }
 
-static void kernel_write_file(const char *path, const void *data, loff_t len)
+static void kernel_write_file(const char *path, const void *data, loff_t len, umode_t mode)
 {
     set_priv_selinx_allow(current, 1);
-    struct file *fp = filp_open(path, O_WRONLY | O_CREAT | O_TRUNC, 0744);
+    struct file *fp = filp_open(path, O_WRONLY | O_CREAT | O_TRUNC, mode);
     if (IS_ERR(fp)) {
         log_boot("create file %s error: %d\n", path, PTR_ERR(fp));
         goto out;
@@ -88,26 +89,29 @@ out:
     set_priv_selinx_allow(current, 0);
 }
 
+static void kernel_write_exec(const char *path, const void *data, loff_t len)
+{
+    kernel_write_file(path, data, len, 0744);
+}
+
 static int extract_kpatch_call_back(const patch_extra_item_t *extra, const char *arg, const void *con, void *udata)
 {
     const char *path = (const char *)udata;
     if (extra->type == EXTRA_TYPE_EXEC && !strcmp("kpatch", extra->name)) {
         log_boot("write kpatch to %s\n", path);
-        kernel_write_file(path, con, extra->con_size);
+        kernel_write_exec(path, con, extra->con_size);
     }
     return 0;
 }
 
-static void on_first_stage()
-{
-    // const char *path = KPATCH_DEV_PATH;
-    // on_each_extra_item(extract_kpatch_call_back, (void *)path);
-}
-
-static void on_second_stage()
+static void before_first_stage()
 {
     const char *path = KPATCH_DEV_PATH;
     on_each_extra_item(extract_kpatch_call_back, (void *)path);
+}
+
+static void before_second_stage()
+{
 }
 
 static void on_zygote_start()
@@ -127,22 +131,20 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
     struct filename *filename = (struct filename *)args->args[filename_index];
     if (!filename || IS_ERR(filename)) return;
 
-    static int init_first_stage_executed = 0;
-
     const char app_process[] = "/system/bin/app_process";
     static int first_app_process = 1;
 
     static const char system_bin_init[] = "/system/bin/init";
-    static const char old_system_init[] = "/init";
+    static const char root_init[] = "/init";
+    static int init_first_stage_executed = 0;
     static int init_second_stage_executed = 0;
 
-    if (!memcmp(filename->name, system_bin_init, sizeof(system_bin_init) - 1) ||
-        !memcmp(filename->name, old_system_init, sizeof(old_system_init) - 1)) {
+    if (!strcmp(system_bin_init, filename->name) || !strcmp(root_init, filename->name)) {
         //
         if (!init_first_stage_executed) {
             init_first_stage_executed = 1;
             log_boot("exec %s first stage\n", filename->name);
-            on_first_stage();
+            before_first_stage();
         }
 
         if (!init_second_stage_executed) {
@@ -153,9 +155,9 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
                 if (!IS_ERR(p1)) {
                     char arg[16] = { '\0' };
                     if (strncpy_from_user_nofault(arg, p1, sizeof(arg)) <= 0) break;
-                    if (!strcmp(arg, "second stage")) {
+                    if (!strcmp(arg, "second_stage") || !strcmp(arg, "--second-stage")) {
                         log_boot("exec %s second stage 0\n", filename->name);
-                        on_second_stage();
+                        before_second_stage();
                         init_second_stage_executed = 1;
                     }
                 }
@@ -167,7 +169,7 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
             for (int i = 0;; i++) {
                 const char *__user up =
                     get_user_arg_ptr((void *)args->args[envp_index], (void *)args->args[envp_index + 1], i);
-                if (!up || IS_ERR(up)) break;
+                if (IS_ERR(up)) break;
                 char env[256];
                 if (strncpy_from_user_nofault(env, up, sizeof(env)) <= 0) break;
                 char *env_name = env;
@@ -178,7 +180,7 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
                     if (!strcmp(env_name, "INIT_SECOND_STAGE") &&
                         (!strcmp(env_value, "1") || !strcmp(env_value, "true"))) {
                         log_boot("exec %s second stage 1\n", filename->name);
-                        on_second_stage();
+                        before_second_stage();
                         init_second_stage_executed = 1;
                     }
                 }
@@ -186,7 +188,7 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
         }
     }
 
-    if (unlikely(first_app_process && !memcmp(filename->name, app_process, sizeof(app_process) - 1))) {
+    if (unlikely(first_app_process && !strcmp(app_process, filename->name))) {
         first_app_process = 0;
         log_boot("exec app_process, /data prepared, second_stage: %d\n", init_second_stage_executed);
         on_zygote_start();
@@ -221,9 +223,10 @@ static void before_openat(hook_fargs4_t *args, void *udata)
     }
     const char *ori_rc_data = kernel_read_file(ORIGIN_RC_FILE, &ori_len);
     if (!ori_rc_data) goto out;
-    char *replace_rc_data = vmalloc(sizeof(patch_rc) + 5 * SUPER_KEY_LEN);
+    char *replace_rc_data = vmalloc(sizeof(patch_rc) + 10 * SUPER_KEY_LEN);
     const char *superkey = get_superkey();
-    sprintf(replace_rc_data, patch_rc, superkey, superkey, superkey, superkey, superkey);
+    sprintf(replace_rc_data, patch_rc, superkey, superkey, superkey, superkey, superkey, superkey, superkey, superkey,
+            superkey, superkey);
     loff_t off = 0;
     kernel_write(newfp, replace_rc_data, strlen(replace_rc_data), &off);
     kernel_write(newfp, ori_rc_data, ori_len, &off);
@@ -270,7 +273,7 @@ static void before_input_handle_event(hook_fargs4_t *args, void *udata)
         if (volumedown_pressed_count == 3) {
             log_boot("entering safemode ...");
             struct file *filp = filp_open(SAFE_MODE_FLAG_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-            if (filp && !IS_ERR(filp)) filp_close(filp, 0);
+            if (!IS_ERR(filp)) filp_close(filp, 0);
         }
     }
 }

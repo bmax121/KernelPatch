@@ -46,6 +46,8 @@ int _ksym_local_strcmp(const char *s1, const char *s2);
 #define kfunc_call_void(func, ...) \
     if (kf_##func) kf_##func(__VA_ARGS__);
 
+#define kfunc_direct_call_void(func, ...) kf_##func(__VA_ARGS__);
+
 // todo
 #define kfunc_not_found() logke("kfunc: %s not found\n", __func__);
 
