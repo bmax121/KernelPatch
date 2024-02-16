@@ -266,7 +266,7 @@ int android_user(int argc, char **argv)
         }
     }
 
-    if (!strcmp("post_fs_data_init", scmd)) {
+    if (!strcmp("post-fs-data-init", scmd)) {
         post_fs_data_init();
     } else if (!strcmp("post-fs-data", scmd) || !strcmp("services", scmd) || !strcmp("boot-completed", scmd)) {
         // todo: move to apd
