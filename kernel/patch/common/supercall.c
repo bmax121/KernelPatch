@@ -26,6 +26,7 @@
 #include <linux/err.h>
 #include <linux/slab.h>
 #include <kputils.h>
+#include <pidmem.h>
 
 #define MAX_KEY_LEN 128
 
@@ -126,6 +127,11 @@ static long call_kpm_info(const char *__user uname, char *__user out_info, int o
     return sz;
 }
 
+static unsigned long call_pid_virt_to_phys(pid_t pid, uintptr_t vaddr)
+{
+    return pid_virt_to_phys(pid, vaddr);
+}
+
 static long call_su(struct su_profile *__user uprofile)
 {
     struct su_profile *profile = memdup_user(uprofile, sizeof(struct su_profile));
@@ -176,6 +182,9 @@ static long supercall(long cmd, long arg1, long arg2, long arg3, long arg4)
         return call_kpm_list((char *__user)arg1, (int)arg2);
     case SUPERCALL_KPM_INFO:
         return call_kpm_info((const char *__user)arg1, (char *__user)arg2, (int)arg3);
+    case SUPERCALL_MEM_PHYS:
+        return call_pid_virt_to_phys((pid_t)arg1, (uintptr_t)arg2);
+
     case SUPERCALL_BOOTLOG:
         return call_bootlog();
     case SUPERCALL_PANIC:
@@ -189,6 +198,8 @@ static long supercall(long cmd, long arg1, long arg2, long arg3, long arg4)
     return NO_SYSCALL;
 }
 
+static long hash_key_val = 0;
+
 static void before(hook_fargs6_t *args, void *udata)
 {
     const char *__user ukey = (const char *__user)syscall_argn(args, 0);
@@ -201,12 +212,12 @@ static void before(hook_fargs6_t *args, void *udata)
     long cmd = hash_cmd & 0xFFFF;
     long hash = hash_cmd & 0xFFFF0000;
 
+    if ((hash_key_val & 0xFFFF0000) != hash) return;
+
     char key[MAX_KEY_LEN];
     long len = strncpy_from_user_nofault(key, ukey, MAX_KEY_LEN);
-
     if (len <= 0) return;
     if (superkey_auth(key)) return;
-    if ((hash_key(key) & 0xFFFF0000) != hash) return;
 
     args->skip_origin = 1;
     args->ret = supercall(cmd, a1, a2, a3, a4);
@@ -215,6 +226,8 @@ static void before(hook_fargs6_t *args, void *udata)
 int supercall_install()
 {
     int rc = 0;
+    hash_key_val = hash_key(get_superkey());
+
     // hook_err_t err = inline_hook_syscalln(__NR_supercall, 6, before, 0, 0);
     hook_err_t err = fp_hook_syscalln(__NR_supercall, 6, before, 0, 0);
     if (err) {

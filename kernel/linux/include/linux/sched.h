@@ -40,7 +40,6 @@ extern void io_schedule_finish(int token);
 extern long io_schedule_timeout(long timeout);
 extern void io_schedule(void);
 
-// todo:
 struct task_struct_offset
 {
     int16_t pid_offset;
@@ -58,6 +57,8 @@ struct task_struct_offset
     int16_t security_offset;
     int16_t stack_offset;
     int16_t tasks_offset;
+    int16_t mm_offset;
+    int16_t active_mm_offset;
 };
 
 extern struct task_struct_offset task_struct_offset;
@@ -145,9 +146,7 @@ extern struct task_struct *kfunc_def(find_get_task_by_vpid)(pid_t nr);
 
 static inline pid_t __task_pid_nr_ns(struct task_struct *task, enum pid_type type, struct pid_namespace *ns)
 {
-    kfunc_call(__task_pid_nr_ns, task, type, ns);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(__task_pid_nr_ns, task, type, ns);
 }
 
 static inline pid_t task_pid_nr_ns(struct task_struct *tsk, struct pid_namespace *ns)
@@ -162,28 +161,22 @@ static inline pid_t task_pid_vnr(struct task_struct *tsk)
 
 static inline struct pid_namespace *task_active_pid_ns(struct task_struct *tsk)
 {
-    kfunc_call(task_active_pid_ns, tsk);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(task_active_pid_ns, tsk);
 }
 
 static inline struct task_struct *find_task_by_vpid(pid_t nr)
 {
-    kfunc_call(find_task_by_vpid, nr);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(find_task_by_vpid, nr);
 }
+
 static inline struct task_struct *find_task_by_pid_ns(pid_t nr, struct pid_namespace *ns)
 {
-    kfunc_call(find_task_by_pid_ns, nr, ns);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(find_task_by_pid_ns, nr, ns);
 }
+
 static inline struct task_struct *find_get_task_by_vpid(pid_t nr)
 {
-    kfunc_call(find_get_task_by_vpid, nr);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(find_get_task_by_vpid, nr);
 }
 
 #endif

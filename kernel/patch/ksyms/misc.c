@@ -175,7 +175,7 @@ static void _linux_kernel_fork_sym_match(const char *name, unsigned long addr)
     // kfunc_match(pidfd_pid, name, addr);
     // kfunc_match(get_mm_exe_file, name, addr);
     // kfunc_match(free_task, name, addr);
-    kfunc_match(__put_task_struct, name, addr);
+    // kfunc_match(__put_task_struct, name, addr);
     // kfunc_match(fork_init, name, addr);
     // kfunc_match(set_mm_exe_file, name, addr);
     // kfunc_match(get_mm_exe_file, name, addr);
@@ -457,10 +457,10 @@ static void _linux_fs_sym_match(const char *name, unsigned long addr)
     // kfunc_match(file_open_root, name, addr);
     // kfunc_match(dentry_open, name, addr);
     kfunc_match(filp_close, name, addr);
-    kfunc_match(getname, name, addr);
-    kfunc_match(getname_kernel, name, addr);
-    kfunc_match(putname, name, addr);
-    kfunc_match(final_putname, name, addr);
+    // kfunc_match(getname, name, addr);
+    // kfunc_match(getname_kernel, name, addr);
+    // kfunc_match(putname, name, addr);
+    // kfunc_match(final_putname, name, addr);
     kfunc_match(vfs_llseek, name, addr);
 }
 
@@ -817,6 +817,17 @@ static void _linux_rcu_symbol_init(const char *name, unsigned long addr)
     // kfunc_match(exit_tasks_rcu_finish, name, addr);
 }
 
+void kfunc_def(mmput)(struct mm_struct *);
+void kfunc_def(mmput_async)(struct mm_struct *);
+struct mm_struct *kfunc_def(get_task_mm)(struct task_struct *task);
+
+static void _linux_sched_mm_init(const char *name, unsigned long addr)
+{
+    kfunc_match(mmput, name, addr);
+    kfunc_match(mmput_async, name, addr);
+    kfunc_match(get_task_mm, name, addr);
+}
+
 static int _linux_misc_symbol_init(void *data, const char *name, struct module *m, unsigned long addr)
 {
     _linux_kernel_cred_sym_match(name, addr);
@@ -834,6 +845,7 @@ static int _linux_misc_symbol_init(void *data, const char *name, struct module *
     _linux_kernel_fork_sym_match(name, addr);
     _linux_rcu_symbol_init(name, addr);
     _linux_seccomp_sym_match(name, addr);
+    _linux_sched_mm_init(name, addr);
     return 0;
 }
 
