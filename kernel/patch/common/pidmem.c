@@ -27,7 +27,7 @@ phys_addr_t pid_virt_to_phys(pid_t pid, uintptr_t vaddr)
         // todo
     }
     uintptr_t pgd = *(uintptr_t *)((uintptr_t)mm + mm_struct_offset.pgd_offset);
-    uintptr_t entry = pgtable_entry(pgd, vaddr);
+    uintptr_t *entry = pgtable_entry(pgd, vaddr);
 
     // remap_pfn_range or direct modify pgtable
 
