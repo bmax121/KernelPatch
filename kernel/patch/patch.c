@@ -87,9 +87,6 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
     log_boot("su_compat_init done: %d\n", rc);
 #endif
 
-    if ((rc = extra_init())) goto out;
-    log_boot("supercall_install done: %d\n", rc);
-
 out:
     return;
 }
@@ -97,6 +94,8 @@ out:
 static void before_kernel_init(hook_fargs4_t *args, void *udata)
 {
     log_boot("before kernel_init ...\n");
+    int rc = extra_init("pre-kernel-init");
+    log_boot("extra_init done: %d\n", rc);
 }
 
 static void after_kernel_init(hook_fargs4_t *args, void *udata)

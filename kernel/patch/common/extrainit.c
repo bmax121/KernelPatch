@@ -11,18 +11,16 @@
 
 static int extra_callback(const patch_extra_item_t *extra, const char *args, const void *data, void *udata)
 {
-    int *num = (int *)udata;
+    const char *event = (const char *)udata;
     if (extra->type == EXTRA_TYPE_KPM) {
-        int rc = load_module(data, extra->con_size, args, "pre-kinit", 0);
-        log_boot("loading extra %d kpm return: %d\n", *num, rc);
+        int rc = load_module(data, extra->con_size, args, event, 0);
+        log_boot("%s loading extra kpm return: %d\n", event, rc);
     }
-    (*num)++;
     return 0;
 }
 
-int extra_init()
+int extra_init(const char *event)
 {
-    int num = 0;
-    on_each_extra_item(extra_callback, &num);
+    on_each_extra_item(extra_callback, (void *)event);
     return 0;
 }
