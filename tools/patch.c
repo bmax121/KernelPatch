@@ -217,6 +217,11 @@ int print_image_patch_info(patched_kimg_t *pimg)
             fprintf(stdout, "priority=%d\n", item->priority);
             fprintf(stdout, "con_size=0x%x\n", item->con_size);
             fprintf(stdout, "args_size=0x%x\n", item->args_size);
+            if (item->args_size > 0) {
+                fprintf(stdout, "args=%s\n", (char *)item + sizeof(*item));
+            } else {
+                fprintf(stdout, "args=\n");
+            }
             if (item->type == EXTRA_TYPE_KPM) {
                 kpm_info_t kpm_info = { 0 };
                 void *kpm = (kpm_info_t *)((uintptr_t)item + sizeof(patch_extra_item_t) + item->args_size);
