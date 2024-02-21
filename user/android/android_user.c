@@ -220,9 +220,9 @@ static void post_fs_data_init()
     char current_exe[1024] = { '\0' };
     if (readlink("/proc/self/exe", current_exe, sizeof(current_exe) - 1)) {
         if (!strcmp(current_exe, KPATCH_DEV_PATH)) {
-            log_kernel("%d copy %s to %s.\n", getpid(), current_exe, KPATCH_PATH);
+            log_kernel("%d copy %s to %s.\n", getpid(), current_exe, KPATCH_DATA_PATH);
 
-            char *const cp_argv[] = { "/system/bin/cp", current_exe, KPATCH_PATH, NULL };
+            char *const cp_argv[] = { "/system/bin/cp", current_exe, KPATCH_DATA_PATH, NULL };
             fork_for_result(cp_argv[0], cp_argv);
 
             char *const rm_argv[] = { "/system/bin/rm", current_exe, NULL };

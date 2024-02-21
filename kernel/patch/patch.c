@@ -94,13 +94,15 @@ out:
 static void before_kernel_init(hook_fargs4_t *args, void *udata)
 {
     log_boot("before kernel_init ...\n");
-    int rc = extra_init("pre-kernel-init");
+    int rc = extra_init(EXTRA_EVENT_PRE_KERNEL_INIT);
     log_boot("extra_init done: %d\n", rc);
 }
 
 static void after_kernel_init(hook_fargs4_t *args, void *udata)
 {
     log_boot("after kernel_init ...\n");
+    // int rc = extra_init(EXTRA_EVENT_POST_KERNEL_INIT);
+    // log_boot("extra_init done: %d\n", rc);
 }
 
 int patch()

@@ -34,22 +34,21 @@
 #define ORIGIN_RC_FILE "/system/etc/init/atrace.rc"
 #define REPLACE_RC_FILE "/dev/.atrace.rc"
 
-static const char patch_rc[] =
-    ""
-    "\n"
-    "on late-init\n"
-    "    rm " REPLACE_RC_FILE "\n"
-    "on post-fs-data\n"
-    "    exec -- " KPATCH_SHADOW_PATH " %s " KPATCH_DEV_PATH " %s android_user post-fs-data-init -k\n"
-    "    exec -- " KPATCH_SHADOW_PATH " %s " KPATCH_PATH " %s android_user post-fs-data -k\n"
-    "on nonencrypted\n"
-    "    exec -- " KPATCH_SHADOW_PATH " %s " KPATCH_PATH " %s android_user services -k\n"
-    "on property:vold.decrypt=trigger_restart_framework\n"
-    "    exec -- " KPATCH_SHADOW_PATH " %s " KPATCH_PATH " %s android_user services -k\n"
-    "on property:sys.boot_completed=1\n"
-    "    exec -- " KPATCH_SHADOW_PATH " %s " KPATCH_PATH " %s android_user boot-completed -k\n"
-    "\n\n"
-    "";
+static const char patch_rc[] = ""
+                               "\n"
+                               "on late-init\n"
+                               "    rm " REPLACE_RC_FILE "\n"
+                               "on post-fs-data\n"
+                               "    exec -- " SUPERCMD " %s " KPATCH_DEV_PATH " %s android_user post-fs-data-init -k\n"
+                               "    exec -- " SUPERCMD " %s " KPATCH_DATA_PATH " %s android_user post-fs-data -k\n"
+                               "on nonencrypted\n"
+                               "    exec -- " SUPERCMD " %s " KPATCH_DATA_PATH " %s android_user services -k\n"
+                               "on property:vold.decrypt=trigger_restart_framework\n"
+                               "    exec -- " SUPERCMD " %s " KPATCH_DATA_PATH " %s android_user services -k\n"
+                               "on property:sys.boot_completed=1\n"
+                               "    exec -- " SUPERCMD " %s " KPATCH_DATA_PATH " %s android_user boot-completed -k\n"
+                               "\n\n"
+                               "";
 
 static const void *kernel_read_file(const char *path, loff_t *len)
 {

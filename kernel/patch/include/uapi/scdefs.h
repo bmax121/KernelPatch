@@ -64,10 +64,10 @@ struct su_profile
 #define SU_PATH_MAX_LEN 128
 
 #define ANDROID_SU_PATH "/system/bin/kp"
-#define KPATCH_PATH "/data/adb/kpatch"
+#define KPATCH_DATA_PATH "/data/adb/kpatch"
 #define KPATCH_DEV_PATH "/dev/kpatch"
 #define APD_PATH "/data/adb/apd"
-#define KPATCH_SHADOW_PATH "/system/bin/truncate"
+#define SUPERCMD "/system/bin/truncate"
 
 #define ADB_FLODER "/data/adb/"
 #define APATCH_FLODER "/data/adb/ap/"

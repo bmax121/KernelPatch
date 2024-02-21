@@ -156,6 +156,17 @@ typedef int32_t extra_item_type;
 #define EXTRA_TYPE_RAW_STR "raw"
 #define EXTRA_TYPE_ANDROID_RC_STR "android_rc"
 
+// todo
+#define EXTRA_EVENT_PAGING_INIT "paging-init"
+#define EXTRA_EVENT_PRE_KERNEL_INIT "pre-kernel-init"
+#define EXTRA_EVENT_POST_KERNEL_INIT "post-kernel-init"
+#define EXTRA_EVENT_PRE_INIT "pre-init"
+#define EXTRA_EVENT_POST_INIT "post-init"
+#define EXTRA_EVENT_PRE_SECOND_STAGE "pre-second-stage"
+#define EXTRA_EVENT_POST_SECOND_STAGE "post-second-stage"
+#define EXTRA_EVENT_PRE_ZYGOTE_START "pre-zygote-start"
+#define EXTRA_EVENT_POST_ZYGOTE_START "post-zygote-start"
+
 struct _patch_extra_item
 {
     union

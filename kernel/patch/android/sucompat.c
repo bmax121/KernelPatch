@@ -41,7 +41,7 @@ static const char sh_path[] = ANDROID_SH_PATH;
 static const char default_su_path[] = ANDROID_SU_PATH;
 static const char *current_su_path = 0;
 static const char apd_path[] = APD_PATH;
-static const char kpatch_shadow_path[] = KPATCH_SHADOW_PATH;
+static const char kpatch_supercmd[] = SUPERCMD;
 
 struct allow_uid
 {
@@ -317,7 +317,7 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
             }
         }
         kvfree(profile);
-    } else if (!strcmp(kpatch_shadow_path, filename->name)) {
+    } else if (!strcmp(kpatch_supercmd, filename->name)) {
         void *ua0 = (void *)args->args[filename_index + 1];
         void *ua1 = (void *)args->args[filename_index + 2];
         // key
