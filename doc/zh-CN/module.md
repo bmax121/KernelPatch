@@ -1,6 +1,6 @@
 # KernelPatch Module
 
-## What is KernelPatch Module (KPM)
+## 什么是 KernelPatch Module (KPM)
 
   **KPM is an ELF file that can be loaded and run within the kernel space by KernelPatch.**  
 

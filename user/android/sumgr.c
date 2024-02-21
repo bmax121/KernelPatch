@@ -101,7 +101,7 @@ void usage(int status)
             "num                               Get the number of uids with the aforementioned permissions.\n"
             "list                              List aforementioned uids.\n"
             "profile <UID>                     Get the profile of the uid configuration.\n"
-            "reset <PATH>                      Reset '/system/bin/kp' to PATH. The length of PATH must be between 14-63.\n"
+            "reset <PATH>                      Reset '/system/bin/kp' to PATH. The length of PATH must be between 1-127.\n"
             "path                              Get current su PATH.\n"
             "");
     }

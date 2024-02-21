@@ -16,9 +16,9 @@ INCLUDE_FLAGS := $(foreach dir,$(INCLUDE_DIRS),-I$(KP_DIR)/kernel/$(dir))
 
 objs := main.o
 
-all: phys_access.kpm
+all: shmem.kpm
 
-phys_access.kpm: ${objs}
+shmem.kpm: ${objs}
 	${CC} -r -o $@ $^
 
 %.o: %.c

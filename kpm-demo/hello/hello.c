@@ -33,28 +33,35 @@ KPM_DESCRIPTION("KernelPatch Module Example");
  * @param reserved 
  * @return int 
  */
-static int hello_init(const char *args, void *__user reserved)
+static long hello_init(const char *args, const char *event, void *__user reserved)
 {
-    pr_info("kpm hello init, args: %s\n", args);
+    pr_info("kpm hello init, event: %s, args: %s\n", event, args);
     pr_info("kernelpatch version: %x\n", kpver);
     return 0;
 }
 
-static int hello_control(const char *args, char *__user out_msg, int outlen)
+static long hello_control0(const char *args, char *__user out_msg, int outlen)
 {
-    pr_info("kpm hello control, args: %s\n", args);
+    pr_info("kpm hello control0, args: %s\n", args);
     char echo[64] = "echo: ";
     strncat(echo, args, 48);
     seq_copy_to_user(out_msg, echo, sizeof(echo));
     return 0;
 }
 
-static int hello_exit(void *__user reserved)
+static long hello_control1(void *a1, void *a2, void *a3)
+{
+    pr_info("kpm hello control1, a1: %llx, a2: %llx, a3: %llx\n", a1, a2, a3);
+    return 0;
+}
+
+static long hello_exit(void *__user reserved)
 {
     pr_info("kpm hello exit\n");
     return 0;
 }
 
 KPM_INIT(hello_init);
-KPM_CTL(hello_control);
+KPM_CTL0(hello_control0);
+KPM_CTL1(hello_control1);
 KPM_EXIT(hello_exit);

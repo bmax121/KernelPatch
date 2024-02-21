@@ -13,7 +13,7 @@ static int extra_callback(const patch_extra_item_t *extra, const char *args, con
 {
     int *num = (int *)udata;
     if (extra->type == EXTRA_TYPE_KPM) {
-        int rc = load_module(data, extra->con_size, args, 0);
+        int rc = load_module(data, extra->con_size, args, "pre-kinit", 0);
         log_boot("loading extra %d kpm return: %d\n", *num, rc);
     }
     (*num)++;

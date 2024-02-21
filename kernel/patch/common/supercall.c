@@ -87,7 +87,7 @@ static long call_kpm_control(const char __user *arg1, const char *__user arg2, v
     long namelen = strncpy_from_user_nofault(name, arg1, sizeof(name));
     if (namelen <= 0) return -EINVAL;
     long arglen = strncpy_from_user_nofault(args, arg2, sizeof(args));
-    return control_module(name, arglen <= 0 ? 0 : args, out_msg, outlen);
+    return module_control0(name, arglen <= 0 ? 0 : args, out_msg, outlen);
 }
 
 static long call_kpm_unload(const char *__user arg1, void *__user reserved)

@@ -134,7 +134,6 @@ int main(int argc, char **argv)
     case 'k':
         strcat(program_name, " kpm");
         return kpm_main(argc - 2, argv + 2);
-
     case 'l':
         bootlog(key);
         break;

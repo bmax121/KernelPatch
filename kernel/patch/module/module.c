@@ -207,20 +207,20 @@ static int simplify_symbols(struct module *mod, const struct load_info *info)
 
 static int apply_relocations(struct module *mod, const struct load_info *info)
 {
-    int err = 0;
+    int rc = 0;
     unsigned int i;
     for (i = 1; i < info->hdr->e_shnum; i++) {
         unsigned int infosec = info->sechdrs[i].sh_info;
         if (infosec >= info->hdr->e_shnum) continue;
         if (!(info->sechdrs[infosec].sh_flags & SHF_ALLOC)) continue;
         if (info->sechdrs[i].sh_type == SHT_REL) {
-            err = apply_relocate(info->sechdrs, info->strtab, info->index.sym, i, mod);
+            rc = apply_relocate(info->sechdrs, info->strtab, info->index.sym, i, mod);
         } else if (info->sechdrs[i].sh_type == SHT_RELA) {
-            err = apply_relocate_add(info->sechdrs, info->strtab, info->index.sym, i, mod);
+            rc = apply_relocate_add(info->sechdrs, info->strtab, info->index.sym, i, mod);
         }
-        if (err < 0) break;
+        if (rc < 0) break;
     }
-    return err;
+    return rc;
 }
 
 // todo: free .strtab and .symtab after relocation
@@ -302,24 +302,18 @@ static int move_module(struct module *mod, struct load_info *info)
 
         logkd("    %s %llx %llx\n", sname, dest, shdr->sh_size);
 
-        if (shdr->sh_type != SHT_NOBITS) {
-            memcpy(dest, (void *)shdr->sh_addr, shdr->sh_size);
-        }
+        if (shdr->sh_type != SHT_NOBITS) memcpy(dest, (void *)shdr->sh_addr, shdr->sh_size);
 
         shdr->sh_addr = (unsigned long)dest;
 
-        if (!mod->init && !strcmp(".kpm.init", sname)) {
-            mod->init = (mod_initcall_t *)dest;
-        }
-        if (!mod->ctl && !strcmp(".kpm.ctl", sname)) {
-            mod->ctl = (mod_ctlcall_t *)dest;
-        }
-        if (!mod->exit && !strcmp(".kpm.exit", sname)) {
-            mod->exit = (mod_exitcall_t *)dest;
-        }
-        if (!mod->info.base && !strcmp(".kpm.info", sname)) {
-            mod->info.base = (const char *)dest;
-        }
+        if (!mod->init && !strcmp(".kpm.init", sname)) mod->init = (mod_initcall_t *)dest;
+
+        if (!strcmp(".kpm.ctl0", sname)) mod->ctl0 = (mod_ctl0call_t *)dest;
+        if (!strcmp(".kpm.ctl1", sname)) mod->ctl1 = (mod_ctl1call_t *)dest;
+
+        if (!mod->exit && !strcmp(".kpm.exit", sname)) mod->exit = (mod_exitcall_t *)dest;
+
+        if (!mod->info.base && !strcmp(".kpm.info", sname)) mod->info.base = (const char *)dest;
     }
     mod->info.name = info->info.name - info->info.base + mod->info.base;
     mod->info.version = info->info.version - info->info.base + mod->info.base;
@@ -332,22 +326,18 @@ static int move_module(struct module *mod, struct load_info *info)
 
 static int setup_load_info(struct load_info *info)
 {
-    int err = 0;
+    int rc = 0;
     info->sechdrs = (void *)info->hdr + info->hdr->e_shoff;
     info->secstrings = (void *)info->hdr + info->sechdrs[info->hdr->e_shstrndx].sh_offset;
 
-    if ((err = rewrite_section_headers(info))) {
+    if ((rc = rewrite_section_headers(info))) {
         logke("rewrite section error\n");
-        return err;
+        return rc;
     }
 
     if (!find_sec(info, ".kpm.init") || !find_sec(info, ".kpm.exit")) {
         logke("no .kpm.init or .kpm.exit section\n");
         return -ENOEXEC;
-    }
-
-    if (!find_sec(info, ".kpm.ctl")) {
-        logkw("no .kpm.ctl section\n");
     }
 
     info->index.info = find_sec(info, ".kpm.info");
@@ -420,22 +410,18 @@ static int elf_header_check(struct load_info *info)
 struct module modules = { 0 };
 static spinlock_t module_lock;
 
-int load_module(const void *data, int len, const char *args, void *__user reserved)
+long load_module(const void *data, int len, const char *args, const char *event, void *__user reserved)
 {
     struct load_info load_info = { .len = len, .hdr = data };
     struct load_info *info = &load_info;
-    int err = 0;
+    long rc = 0;
 
-    if ((err = elf_header_check(info))) {
-        goto out;
-    }
-    if ((err = setup_load_info(info))) {
-        goto out;
-    }
+    if ((rc = elf_header_check(info))) goto out;
+    if ((rc = setup_load_info(info))) goto out;
 
     if (find_module(info->info.name)) {
         logkfd("%s exist\n", info->info.name);
-        err = -EEXIST;
+        rc = -EEXIST;
         goto out;
     }
 
@@ -446,7 +432,7 @@ int load_module(const void *data, int len, const char *args, void *__user reserv
     if (args) {
         mod->args = vmalloc(strlen(args) + 1);
         if (!mod->args) {
-            err = -ENOMEM;
+            rc = -ENOMEM;
             goto free1;
         }
         strcpy(mod->args, args);
@@ -455,57 +441,47 @@ int load_module(const void *data, int len, const char *args, void *__user reserv
     layout_sections(mod, info);
     layout_symtab(mod, info);
 
-    if ((err = move_module(mod, info))) {
-        goto free;
-    }
-
-    if ((err = simplify_symbols(mod, info))) {
-        goto free;
-    }
-
-    if ((err = apply_relocations(mod, info))) {
-        goto free;
-    }
+    if ((rc = move_module(mod, info))) goto free;
+    if ((rc = simplify_symbols(mod, info))) goto free;
+    if ((rc = apply_relocations(mod, info))) goto free;
 
     flush_icache_all();
 
-    err = (*mod->init)(mod->args, reserved);
+    rc = (*mod->init)(mod->args, event, reserved);
 
-    if (!err) {
+    if (!rc) {
         logkfi("[%s] succeed with [%s] \n", mod->info.name, args);
         list_add_tail(&mod->list, &modules.list);
         goto out;
     } else {
-        logkfi("[%s] failed with [%s] error: %d, try exit ...\n", mod->info.name, args, err);
+        logkfi("[%s] failed with [%s] error: %d, try exit ...\n", mod->info.name, args, rc);
         (*mod->exit)(reserved);
     }
 
 free:
     if (mod->args) kvfree(mod->args);
     kp_free_exec(mod->start);
-
 free1:
     kvfree(mod);
-
 out:
-    return err;
+    return rc;
 }
 
-// lock
-int unload_module(const char *name, void *__user reserved)
+// todo: lock
+long unload_module(const char *name, void *__user reserved)
 {
     logkfe("name: %s\n", name);
 
     rcu_read_lock();
-    int err = 0;
+    long rc = 0;
 
     struct module *mod = find_module(name);
     if (!mod) {
-        err = -ENOENT;
+        rc = -ENOENT;
         goto out;
     }
     list_del(&mod->list);
-    err = (*mod->exit)(reserved);
+    rc = (*mod->exit)(reserved);
 
     if (mod->args) kvfree(mod->args);
     if (mod->ctl_args) kvfree(mod->ctl_args);
@@ -513,23 +489,22 @@ int unload_module(const char *name, void *__user reserved)
     kp_free_exec(mod->start);
     kvfree(mod);
 
-    logkfi("name: %s, rc: %d\n", name, err);
+    logkfi("name: %s, rc: %d\n", name, rc);
 
 out:
     rcu_read_unlock();
-    return err;
+    return rc;
 }
 
-// lock
-int load_module_path(const char *path, const char *args, void *__user reserved)
+long load_module_path(const char *path, const char *args, void *__user reserved)
 {
-    long err = 0;
+    long rc = 0;
     logkfd("%s\n", path);
 
     struct file *filp = filp_open(path, O_RDONLY, 0);
     if (unlikely(IS_ERR(filp))) {
         logkfe("open module: %s error\n", path);
-        err = PTR_ERR(filp);
+        rc = PTR_ERR(filp);
         goto out;
     }
     loff_t len = vfs_llseek(filp, 0, SEEK_END);
@@ -538,7 +513,7 @@ int load_module_path(const char *path, const char *args, void *__user reserved)
 
     void *data = vmalloc(len);
     if (!data) {
-        err = -ENOMEM;
+        rc = -ENOMEM;
         goto out;
     }
     memset(data, 0, len);
@@ -549,19 +524,18 @@ int load_module_path(const char *path, const char *args, void *__user reserved)
 
     if (pos != len) {
         logkfe("read module: %s error\n", path);
-        err = -EIO;
+        rc = -EIO;
         goto free;
     }
 
-    err = load_module(data, len, args, reserved);
-
+    rc = load_module(data, len, args, "load-file", reserved);
 free:
     kvfree(data);
 out:
-    return err;
+    return rc;
 }
 
-int control_module(const char *name, const char *ctl_args, char *__user out_msg, int outlen)
+long module_control0(const char *name, const char *ctl_args, char *__user out_msg, int outlen)
 {
     if (!ctl_args) return -EINVAL;
     int args_len = strlen(ctl_args);
@@ -569,34 +543,63 @@ int control_module(const char *name, const char *ctl_args, char *__user out_msg,
 
     logkfi("name %s, args: %s\n", name, ctl_args);
 
-    int err = 0;
+    long rc = 0;
     rcu_read_lock();
 
     struct module *mod = find_module(name);
     if (!mod) {
-        err = -ENOENT;
+        rc = -ENOENT;
         goto out;
     }
 
-    if (mod->ctl_args) {
-        kvfree(mod->ctl_args);
+    if (!*mod->ctl0) {
+        logkfe("no ctl0\n");
+        rc = -ENOSYS;
+        goto out;
     }
+
+    if (mod->ctl_args) kvfree(mod->ctl_args);
 
     mod->ctl_args = vmalloc(args_len + 1);
     if (!mod->ctl_args) {
-        err = -ENOMEM;
+        rc = -ENOMEM;
         goto out;
     }
 
     strcpy(mod->ctl_args, ctl_args);
 
-    err = (*mod->ctl)(mod->ctl_args, out_msg, outlen);
+    rc = (*mod->ctl0)(mod->ctl_args, out_msg, outlen);
 
-    logkfi("name: %s, rc: %d\n", name, err);
-
+    logkfi("name: %s, rc: %d\n", name, rc);
 out:
     rcu_read_unlock();
-    return err;
+    return rc;
+}
+
+long module_control1(const char *name, void *a1, void *a2, void *a3)
+{
+    logkfi("name %s, a1: %llx, a2: %llx, a3: %llx\n", name, a1, a2, a3);
+    long rc = 0;
+    rcu_read_lock();
+
+    struct module *mod = find_module(name);
+    if (!mod) {
+        rc = -ENOENT;
+        goto out;
+    }
+
+    if (!*mod->ctl1) {
+        logkfe("no ctl1\n");
+        rc = -ENOSYS;
+        goto out;
+    }
+
+    rc = (*mod->ctl1)(a1, a2, a3);
+
+    logkfi("name: %s, rc: %d\n", name, rc);
+out:
+    rcu_read_unlock();
+    return rc;
 }
 
 struct module *find_module(const char *name)

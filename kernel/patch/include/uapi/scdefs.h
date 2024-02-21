@@ -61,8 +61,7 @@ struct su_profile
 #ifdef ANDROID
 
 #define ANDROID_SH_PATH "/system/bin/sh"
-#define SU_PATH_MIN_LEN sizeof(ANDROID_SH_PATH)
-#define SU_PATH_MAX_LEN 64
+#define SU_PATH_MAX_LEN 128
 
 #define ANDROID_SU_PATH "/system/bin/kp"
 #define KPATCH_PATH "/data/adb/kpatch"
