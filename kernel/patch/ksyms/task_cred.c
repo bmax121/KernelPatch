@@ -584,19 +584,20 @@ int resolve_current()
     return 0;
 }
 
-int resolve_mm_struct_offset()
-{
-    log_boot("struct mm_struct: \n");
-    uintptr_t init_mm_addr = (uintptr_t)init_mm;
-    for (uintptr_t i = init_mm_addr; i < init_mm_addr + MM_STRUCT_MAX_SIZE; i += sizeof(uintptr_t)) {
-        uint64_t pgd = *(uintptr_t *)i;
-        if (pgd == phys_to_kimg(pgd_pa)) {
-            mm_struct_offset.pgd_offset = i - init_mm_addr;
-        }
-    }
-    log_boot("    pgd offset: %x\n", mm_struct_offset.pgd_offset);
-    return 0;
-}
+// int resolve_mm_struct_offset()
+// {
+// log_boot("struct mm_struct: \n");
+// uintptr_t init_mm_addr = (uintptr_t)init_mm;
+// struct mm_struct *mm = get_task_mm(task);
+// for (uintptr_t i = init_mm_addr; i < init_mm_addr + MM_STRUCT_MAX_SIZE; i += sizeof(uintptr_t)) {
+//     uint64_t pgd = *(uintptr_t *)i;
+//     if (pgd == phys_to_kimg(pgd_pa)) {
+//         mm_struct_offset.pgd_offset = i - init_mm_addr;
+//     }
+// }
+// log_boot("    pgd offset: %x\n", mm_struct_offset.pgd_offset);
+//     return 0;
+// }
 
 int resolve_struct()
 {
@@ -607,7 +608,7 @@ int resolve_struct()
     if ((err = resolve_task_offset())) goto out;
     if ((err = resolve_cred_offset())) goto out;
 
-    resolve_mm_struct_offset();
+    // resolve_mm_struct_offset();
 
 out:
     return err;

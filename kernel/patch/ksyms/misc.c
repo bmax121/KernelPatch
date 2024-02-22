@@ -265,8 +265,8 @@ int kfunc_def(stop_machine)(int (*fn)(void *), void *data, const struct cpumask 
 
 static void _linux_kernel_stop_machine_sym_match(const char *name, unsigned long addr)
 {
-    kvar_match(stop_machine_initialized, name, addr);
-    kvar_match(cpu_online_mask, name, addr);
+    // kvar_match(stop_machine_initialized, name, addr);
+    // kvar_match(cpu_online_mask, name, addr);
     kfunc_match(stop_machine, name, addr);
 }
 
