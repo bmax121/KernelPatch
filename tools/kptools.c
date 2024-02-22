@@ -96,9 +96,8 @@ int main(int argc, char *argv[])
                                  { "extra-name", required_argument, NULL, 'N' },
                                  { "extra-event", required_argument, NULL, 'V' },
                                  { "extra-args", required_argument, NULL, 'A' },
-                                 { "extra-detach", no_argument, NULL, 'D' },
                                  { 0, 0, 0, 0 } };
-    char *optstr = "hvpurdli:s:k:o:K:M:E:T:N:V:A:D";
+    char *optstr = "hvpurdli:s:k:o:a:K:M:E:T:N:V:A:";
 
     char *kimg_path = NULL;
     char *kpimg_path = NULL;
@@ -170,9 +169,6 @@ int main(int argc, char *argv[])
             break;
         case 'A':
             config->set_args = optarg;
-            break;
-        case 'D':
-            config->set_detach = true;
             break;
         default:
             break;

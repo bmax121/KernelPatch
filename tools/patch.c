@@ -94,12 +94,11 @@ void print_preset_info(preset_t *preset)
 
     fprintf(stdout, INFO_ADDITIONAL_SESSION "\n");
     char *pos = setup->additional;
-    for (; pos < setup->additional + ADDITIONAL_LEN - 1;) {
-        pos++;
-        if (!*(pos - 1) && *pos) {
-            fprintf(stdout, "%s\n", pos);
-            pos += strlen(pos);
-        }
+    while (pos < setup->additional + ADDITIONAL_LEN) {
+        int len = *pos;
+        if (!len) break;
+        fprintf(stdout, "%s\n", strndup(++pos, len));
+        pos += len;
     }
 }
 
@@ -215,19 +214,19 @@ int print_image_patch_info(patched_kimg_t *pimg)
             fprintf(stdout, "name=%s\n", item->name);
             fprintf(stdout, "event=%s\n", item->event);
             fprintf(stdout, "priority=%d\n", item->priority);
-            fprintf(stdout, "con_size=0x%x\n", item->con_size);
             fprintf(stdout, "args_size=0x%x\n", item->args_size);
-            if (item->args_size > 0) {
-                fprintf(stdout, "args=%s\n", (char *)item + sizeof(*item));
-            } else {
-                fprintf(stdout, "args=\n");
-            }
+            fprintf(stdout, "args=%s\n", item->args_size > 0 ? (char *)item + sizeof(*item) : "");
+            fprintf(stdout, "con_size=0x%x\n", item->con_size);
+
             if (item->type == EXTRA_TYPE_KPM) {
                 kpm_info_t kpm_info = { 0 };
                 void *kpm = (kpm_info_t *)((uintptr_t)item + sizeof(patch_extra_item_t) + item->args_size);
                 rc = get_kpm_info(kpm, item->con_size, &kpm_info);
                 if (rc) tools_loge_exit("get kpm infomation error: %d\n", rc);
-                print_kpm_info(&kpm_info);
+                fprintf(stdout, "version=%s\n", kpm_info.version);
+                fprintf(stdout, "license=%s\n", kpm_info.license);
+                fprintf(stdout, "author=%s\n", kpm_info.author);
+                fprintf(stdout, "description=%s\n", kpm_info.description);
             }
         }
     }
@@ -340,9 +339,8 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
         } else {
             const char *name = config->name;
             for (int j = 0; j < pimg.embed_item_num; j++) {
-                if (config->set_detach) continue;
-                if (strcmp(name, config->item->name)) continue;
                 item = pimg.embed_item[j];
+                if (strcmp(name, item->name)) continue;
                 if (is_be() ^ kinfo->is_be) {
                     item->type = i32swp(item->type);
                     item->priority = i32swp(item->priority);
@@ -372,7 +370,6 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
 
     for (int i = 0; i < extra_config_num; i++) {
         extra_config_t *config = extra_configs + i;
-        if (config->set_detach) continue;
         extra_num++;
         extra_size += sizeof(patch_extra_item_t);
         extra_size += config->item->args_size;
@@ -462,22 +459,20 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     int text_offset = align_kimg_len + SZ_4K;
     b((uint32_t *)(out_img + kinfo->b_stext_insn_offset), kinfo->b_stext_insn_offset, text_offset);
 
-    // additional key=value set
+    // additional [len key=value] set
     char *addition_pos = setup->additional;
-    for (; addition_pos < setup->additional + ADDITIONAL_LEN - 1; addition_pos++) {
-        if (!*addition_pos && !*(addition_pos + 1)) break;
-    }
     for (int i = 0;; i++) {
-        addition_pos++;
         const char *kv = additional[i];
         if (!kv) break;
-        if (!strchr(kv, '=')) {
-            tools_loge_exit("addition must be format of key=value\n");
-        }
+        if (!strchr(kv, '=')) tools_loge_exit("addition must be format of key=value\n");
+
         int kvlen = strlen(kv);
-        if (addition_pos + kvlen >= setup->additional + ADDITIONAL_LEN) {
-            tools_loge_exit("no memory for addition\n");
-        }
+        if (kvlen > 127) tools_loge_exit("addition %s too long\n", kv);
+        if (addition_pos + kvlen + 1 > setup->additional + ADDITIONAL_LEN) tools_loge_exit("no memory for addition\n");
+
+        *addition_pos = (char)kvlen;
+        addition_pos++;
+
         tools_logi("adding addition: %s\n", kv);
         strcpy(addition_pos, kv);
         addition_pos += kvlen;
@@ -491,8 +486,9 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
         extra_config_t *config = extra_configs + i;
         patch_extra_item_t *item = config->item;
         const char *type = extra_type_str(item->type);
-        tools_logi("embedding %s, name: %s, priority: %d, event: %s, size: 0x%x+0x%x+0x%x\n", type, item->name,
-                   item->priority, item->event, (int)sizeof(*item), item->args_size, item->con_size);
+        tools_logi("embedding %s, name: %s, priority: %d, event: %s, args: %s, size: 0x%x+0x%x+0x%x\n", type,
+                   item->name, item->priority, item->event, config->set_args ?: "", (int)sizeof(*item), item->args_size,
+                   item->con_size);
 
         int args_len = item->args_size;
         int con_len = item->con_size;

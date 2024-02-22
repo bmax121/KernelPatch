@@ -30,7 +30,7 @@
 
 #define PATCH_SYMBOL_LEN (512)
 
-#define ADDITIONAL_LEN (256)
+#define ADDITIONAL_LEN (512)
 
 #define PATCH_EXTRA_ITEM_LEN (128)
 

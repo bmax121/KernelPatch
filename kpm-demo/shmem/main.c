@@ -19,8 +19,6 @@ KPM_DESCRIPTION("Share memory between processes");
 /*
  * This module's main functionality is to map any address of any process to any other process. 
  * Of course, this means you can easily manipulate data of other processes. 
- * However, this is too powerful and ...
- * so let's leave it aside for now. Perhaps it will be developed someday ......
 */
 
 static long init(const char *args, const char *event, void *__user reserved)

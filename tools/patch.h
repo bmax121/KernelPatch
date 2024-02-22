@@ -46,7 +46,6 @@ typedef struct
     const char *set_name;
     const char *set_event;
     int priority;
-    bool set_detach;
     const char *data;
     patch_extra_item_t *item;
 } extra_config_t;
