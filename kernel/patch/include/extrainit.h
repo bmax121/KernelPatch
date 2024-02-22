@@ -6,6 +6,6 @@
 #ifndef _KP_EXTRAINIT_H_
 #define _KP_EXTRAINIT_H_
 
-int extra_init();
+int extra_load_kpm();
 
 #endif

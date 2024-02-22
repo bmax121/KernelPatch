@@ -159,6 +159,7 @@ typedef int32_t extra_item_type;
 // todo
 #define EXTRA_EVENT_PAGING_INIT "paging-init"
 #define EXTRA_EVENT_PRE_KERNEL_INIT "pre-kernel-init"
+#define EXTRA_EVENT_KPM_DEFAULT EXTRA_EVENT_PRE_KERNEL_INIT
 #define EXTRA_EVENT_POST_KERNEL_INIT "post-kernel-init"
 #define EXTRA_EVENT_PRE_INIT "pre-init"
 #define EXTRA_EVENT_POST_INIT "post-init"
