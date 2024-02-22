@@ -33,14 +33,15 @@
 #include <predata.h>
 #include <uapi/scdefs.h>
 #include <predata.h>
+#include <kconfig.h>
 #include <linux/vmalloc.h>
+#include <uapi/linux/limits.h>
 
 static const char sh_path[] = ANDROID_SH_PATH;
 static const char default_su_path[] = ANDROID_SU_PATH;
 static const char *current_su_path = 0;
 static const char apd_path[] = APD_PATH;
-static const char kpatch_path[] = KPATCH_PATH;
-static const char kpatch_shadow_path[] = KPATCH_SHADOW_PATH;
+static const char kpatch_supercmd[] = SUPERCMD;
 
 struct allow_uid
 {
@@ -254,6 +255,7 @@ static uid_t current_uid()
     return uid;
 }
 
+/* KernelSU idea */
 static void *__user copy_to_user_stack(void *data, size_t len)
 {
     uintptr_t addr = current_user_stack_pointer();
@@ -270,7 +272,8 @@ static inline char *__user android_sh_user_path()
 
 static inline char *__user android_su_user_path()
 {
-    return (char *__user)copy_to_user_stack((void *)default_su_path, sizeof(default_su_path));
+    int len = strlen(current_su_path);
+    return (char *__user)copy_to_user_stack((void *)current_su_path, len);
 }
 
 // int do_execveat_common(int fd, struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp, int flags)
@@ -287,7 +290,7 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
     }
     filename = (struct filename *)args->args[filename_index];
 
-    if (!filename || IS_ERR(filename)) return;
+    if (IS_ERR(filename)) return;
 
     if (!strcmp(current_su_path, filename->name)) {
         uid_t uid = current_uid();
@@ -309,30 +312,64 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
             const char *__user p0 =
                 get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], 0);
             int sz = seq_copy_to_user((char *__user)p0, default_su_path, sizeof(default_su_path));
-            if (sz != sizeof(default_su_path)) logkfe("seq_copy_to_user error: %d\n", sz);
+            if (sz != sizeof(default_su_path)) {
+                logkfe("seq_copy_to_user error: %d\n", sz);
+            }
         }
         kvfree(profile);
-    } else if (!strcmp(kpatch_shadow_path, filename->name)) {
-        const char __user *p1 =
-            get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], 1);
-        if (!p1 || IS_ERR(p1)) return;
+    } else if (!strcmp(kpatch_supercmd, filename->name)) {
+        void *ua0 = (void *)args->args[filename_index + 1];
+        void *ua1 = (void *)args->args[filename_index + 2];
+        // key
+        const char __user *p1 = get_user_arg_ptr(ua0, ua1, 1);
+        if (IS_ERR(p1)) return;
+
+        // auth skey
         char arg1[SUPER_KEY_LEN];
         if (strncpy_from_user_nofault(arg1, p1, sizeof(arg1)) <= 0) return;
         if (superkey_auth(arg1)) return;
+
         commit_su(0, 0);
-        strcpy((char *)filename->name, kpatch_path);
-        // log
-        char log_buf[512];
-        int log_off = 0;
-        for (int i = 2; i < 6; i++) {
-            const char *pn =
-                get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], i);
-            if (!pn || IS_ERR(pn)) break;
-            log_off += strncpy_from_user_nofault(log_buf + log_off, pn, sizeof(log_buf) - log_off);
-            log_buf[log_off - 1] = ' ';
+
+        // real exec
+        const char __user *p2 = get_user_arg_ptr(ua0, ua1, 2);
+
+        if (IS_ERR(p2)) {
+            strcpy((char *)filename->name, sh_path);
+            return;
         }
-        log_buf[log_off > 0 ? log_off - 1 : 0] = '\0';
-        logkfd("%s ****** %s\n", filename->name, log_buf);
+
+#define EMBEDDED_NAME_MAX (PATH_MAX - sizeof(*filename) - 128) // enough
+
+        int len = strncpy_from_user_nofault((char *)filename->name, p2, EMBEDDED_NAME_MAX);
+        if (unlikely(len < 0)) return;
+
+        // user_arg_ptr
+        if (has_config_compat) {
+            if (ua0) {
+                args->args[filename_index + 2] += 2 * 4;
+            } else {
+                args->args[filename_index + 2] += 2 * 8;
+            }
+        } else {
+            args->args[filename_index + 1] += 2 * 8;
+        }
+
+        // char option[128];
+        // for (int i = 3; i < 10; i++) {
+        //     const char *pn =
+        //         get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], i);
+        //     if (IS_ERR(pn)) break;
+        //     strncpy_from_user_nofault(option, pn, sizeof(option));
+        //     if (!strcmp("--path", option)) {
+        //         i++;
+        //         pn =
+        //             get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], i);
+        //         if (IS_ERR(pn)) break;
+        //         strncpy_from_user_nofault(option, pn, sizeof(option));
+        //         strcpy((char *)filename->name, option);
+        //     }
+        // }
     }
 
     return;
@@ -393,10 +430,14 @@ static void before_stat(hook_fargs8_t *args, void *udata)
     } else {
         logkfd("1 uid: %d\n", uid);
         int sz = seq_copy_to_user(u_filename, sh_path, sizeof(sh_path));
-        if (sz != sizeof(sh_path)) logkfe("seq_copy_to_user error: %d\n", sz);
-        change_flag = 1;
-        args->local.data[0] = change_flag;
-        args->local.data[1] = (uint64_t)local_su_path;
+        if (sz == sizeof(sh_path)) {
+            change_flag = 1;
+            args->local.data[0] = change_flag;
+            args->local.data[1] = (uint64_t)local_su_path;
+        } else {
+            // logkfe("seq_copy_to_user error: %d\n", sz);
+            args->arg1 = (uint64_t)android_sh_user_path();
+        }
     }
 }
 

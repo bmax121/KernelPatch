@@ -276,7 +276,7 @@ static inline void forget_syscall(struct pt_regs *regs)
 
 static inline unsigned long user_stack_pointer(struct pt_regs *regs)
 {
-    if (compat_user_mode(regs)) return regs->compat_sp;
+    // if (compat_user_mode(regs)) return regs->compat_sp;
     return regs->sp;
 }
 

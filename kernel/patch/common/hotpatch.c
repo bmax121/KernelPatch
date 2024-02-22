@@ -39,7 +39,6 @@ int patch_verify_safety()
 
     // do_each_thread(p)
     // {
-    // logkd("ggg: %llx\n", p);
     //         trace.nr_entries = 0;
     //         save_stack_trace_tsk(t, &trace);
 

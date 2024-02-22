@@ -9,6 +9,8 @@
 #include <pgtable.h>
 #include <linux/string.h>
 #include <symbol.h>
+#include <asm/processor.h>
+#include <predata.h>
 
 int trace_seq_copy_to_user(void __user *to, const void *from, int n)
 {
@@ -69,3 +71,25 @@ long strncpy_from_user_nofault(char *dest, const char __user *src, long count)
     return 0;
 }
 KP_EXPORT_SYMBOL(strncpy_from_user_nofault);
+
+struct pt_regs *_task_pt_reg(struct task_struct *task)
+{
+    unsigned long stack = (unsigned long)task_stack_page(task);
+    uintptr_t addr = (uintptr_t)(thread_size + stack);
+#ifndef ANDROID
+    if (kver < VERSION(4, 4, 19)) {
+        addr -= sizeof(struct pt_regs_lt4419);
+    } else
+#endif
+        if (kver < VERSION(4, 14, 0)) {
+        addr -= sizeof(struct pt_regs_lt4140);
+    } else if (kver < VERSION(5, 10, 0)) {
+        addr -= sizeof(struct pt_regs_lt5100);
+    } else {
+        addr -= sizeof(struct pt_regs);
+    }
+    struct pt_regs *regs;
+    regs = (struct pt_regs *)(addr);
+    return regs;
+}
+KP_EXPORT_SYMBOL(_task_pt_reg);

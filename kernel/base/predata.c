@@ -39,8 +39,9 @@ int on_each_extra_item(int (*callback)(const patch_extra_item_t *extra, const ch
     while (item_addr < _kp_extra_end) {
         patch_extra_item_t *item = (patch_extra_item_t *)item_addr;
         if (item->type == EXTRA_TYPE_NONE) break;
-        rc = callback(item, (const char *)(item_addr + sizeof(patch_extra_item_t)),
-                      (void *)(item_addr + sizeof(patch_extra_item_t) + item->args_size), udata);
+        const char *args = item->args_size > 0 ? (const char *)(item_addr + sizeof(patch_extra_item_t)) : 0;
+        const void *con = (void *)(item_addr + sizeof(patch_extra_item_t) + item->args_size);
+        rc = callback(item, args, con, udata);
         if (rc) break;
         item_addr += sizeof(patch_extra_item_t);
         item_addr += item->args_size;

@@ -37,6 +37,13 @@ static inline long hash_key(const char *key)
 #define SUPERCALL_KPM_LIST 0x1031
 #define SUPERCALL_KPM_INFO 0x1032
 
+#define SUPERCALL_MEM_PHYS 0x1041
+#define SUPERCALL_MEM_KERNEL_PHYS 0x1042
+#define SUPERCALL_MEM_MAP_KERNEL 0x1048
+#define SUPERCALL_MEM_MAP_USER 0x1049
+#define SUPERCALL_MEM_PROT 0x1049
+#define SUPERCALL_MEM_CACHE_FLUSH 0x1049
+
 #define SUPERCALL_BOOTLOG 0x10fd
 #define SUPERCALL_PANIC 0x10fe
 #define SUPERCALL_TEST 0x10ff
@@ -54,13 +61,13 @@ struct su_profile
 #ifdef ANDROID
 
 #define ANDROID_SH_PATH "/system/bin/sh"
-#define SU_PATH_MIN_LEN sizeof(ANDROID_SH_PATH)
-#define SU_PATH_MAX_LEN 64
+#define SU_PATH_MAX_LEN 128
 
 #define ANDROID_SU_PATH "/system/bin/kp"
-#define KPATCH_PATH "/data/adb/kpatch"
+#define KPATCH_DATA_PATH "/data/adb/kpatch"
+#define KPATCH_DEV_PATH "/dev/kpatch"
 #define APD_PATH "/data/adb/apd"
-#define KPATCH_SHADOW_PATH "/system/bin/truncate"
+#define SUPERCMD "/system/bin/truncate"
 
 #define ADB_FLODER "/data/adb/"
 #define APATCH_FLODER "/data/adb/ap/"

@@ -49,13 +49,13 @@ static int find_linux_banner(kallsym_t *info, char *img, int32_t imglen)
     char *space = strchr(banner + prefix_len, ' ');
 
     char *dot = NULL;
-    // todo:
+
     // VERSION
     info->version.major = (uint8_t)strtoul(uts_release_start, &dot, 10);
     // PATCHLEVEL
     info->version.minor = (uint8_t)strtoul(dot + 1, &dot, 10);
     // SUBLEVEL
-    unsigned long patch = strtoul(dot + 1, &dot, 10);
+    int32_t patch = (int32_t)strtoul(dot + 1, &dot, 10);
     info->version.patch = patch <= 256 ? patch : 255;
 
     tools_logi("kernel version major: %d, minor: %d, patch: %d\n", info->version.major, info->version.minor,
@@ -261,12 +261,12 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
         uint64_t r_addend = uint_unpack(img + cand + 16, 8, info->is_be);
         if (!r_offset && !r_info && !r_addend) continue;
         if (r_offset <= kernel_va || r_offset >= max_va - imglen) {
-            // tools_loge("warn ignore arm64 relocation r_offset: 0x%08lx at 0x%08x\n", r_offset, cand);
+            // tools_logw("warn ignore arm64 relocation r_offset: 0x%08lx at 0x%08x\n", r_offset, cand);
             continue;
         }
         int32_t offset = r_offset - kernel_va;
         if (offset >= imglen) {
-            // tools_loge("apply relocations error\n");
+            // tools_logw("apply relocations error\n");
             continue;
         }
         uint64_t value = uint_unpack(img + offset, 8, info->is_be);
@@ -342,7 +342,7 @@ static int find_approx_addresses(kallsym_t *info, char *img, int32_t imglen)
 
     //
     if (info->relo_applied) {
-        tools_loge("mismatch relo applied, subsequent operations may be undefined\n");
+        tools_logw("mismatch relo applied, subsequent operations may be undefined\n");
     }
 
     return 0;

@@ -118,6 +118,13 @@ static inline long sc_kpm_info(const char *key, const char *name, char *buf, int
     return ret;
 }
 
+static inline long sc_pid_virt_to_phys(const char *key, pid_t pid, unsigned long vaddr)
+{
+    if (!key || !key[0]) return -EINVAL;
+    long ret = syscall(__NR_supercall, key, hash_key_cmd(key, SUPERCALL_MEM_PHYS), pid, vaddr);
+    return ret;
+}
+
 static inline long sc_bootlog(const char *key)
 {
     long ret = syscall(__NR_supercall, key, hash_key_cmd(key, SUPERCALL_BOOTLOG));

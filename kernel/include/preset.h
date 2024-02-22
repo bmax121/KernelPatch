@@ -30,7 +30,9 @@
 
 #define PATCH_SYMBOL_LEN (512)
 
-#define PATCH_EXTRA_ITEM_LEN (64)
+#define ADDITIONAL_LEN (512)
+
+#define PATCH_EXTRA_ITEM_LEN (128)
 
 #define VERSION(major, minor, patch) (((major) << 16) + ((minor) << 8) + (patch))
 
@@ -135,12 +137,36 @@ _Static_assert(sizeof(patch_symbol_t) == PATCH_SYMBOL_LEN, "sizeof patch_symbol_
 #ifndef __ASSEMBLY__
 
 #define EXTRA_ALIGN 0x10
+#define EXTRA_NAME_LEN 0x20
+#define EXTRA_EVENT_LEN 0x20
 
 typedef int32_t extra_item_type;
 
 #define EXTRA_TYPE_NONE 0
 #define EXTRA_TYPE_KPM 1
 #define EXTRA_TYPE_SHELL 2
+#define EXTRA_TYPE_EXEC 3
+#define EXTRA_TYPE_RAW 4
+#define EXTRA_TYPE_ANDROID_RC 5
+
+#define EXTRA_TYPE_NONE_STR "none"
+#define EXTRA_TYPE_KPM_STR "kpm"
+#define EXTRA_TYPE_SHELL_STR "shell"
+#define EXTRA_TYPE_EXEC_STR "exec"
+#define EXTRA_TYPE_RAW_STR "raw"
+#define EXTRA_TYPE_ANDROID_RC_STR "android_rc"
+
+// todo
+#define EXTRA_EVENT_PAGING_INIT "paging-init"
+#define EXTRA_EVENT_PRE_KERNEL_INIT "pre-kernel-init"
+#define EXTRA_EVENT_KPM_DEFAULT EXTRA_EVENT_PRE_KERNEL_INIT
+#define EXTRA_EVENT_POST_KERNEL_INIT "post-kernel-init"
+#define EXTRA_EVENT_PRE_INIT "pre-init"
+#define EXTRA_EVENT_POST_INIT "post-init"
+#define EXTRA_EVENT_PRE_SECOND_STAGE "pre-second-stage"
+#define EXTRA_EVENT_POST_SECOND_STAGE "post-second-stage"
+#define EXTRA_EVENT_PRE_ZYGOTE_START "pre-zygote-start"
+#define EXTRA_EVENT_POST_ZYGOTE_START "post-zygote-start"
 
 struct _patch_extra_item
 {
@@ -149,9 +175,11 @@ struct _patch_extra_item
         struct
         {
             extra_item_type type;
+            char name[EXTRA_NAME_LEN];
+            char event[EXTRA_EVENT_LEN];
             int32_t priority;
-            int32_t con_size;
             int32_t args_size;
+            int32_t con_size;
         };
         char _cap[PATCH_EXTRA_ITEM_LEN];
     };
@@ -181,6 +209,7 @@ typedef struct _setup_preset_t
     uint8_t header_backup[HDR_BACKUP_SIZE];
     uint8_t superkey[SUPER_KEY_LEN];
     patch_symbol_t patch_symbol;
+    char additional[ADDITIONAL_LEN];
 } setup_preset_t;
 #else
 #define setup_kernel_version_offset 0

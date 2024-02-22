@@ -56,5 +56,6 @@ void panic(const char *key)
 
 int __test(const char *key)
 {
-    return __sc_test(key, 0, 0, 0);
+    // return __sc_test(key, 0, 0, 0);
+    return sc_pid_virt_to_phys(key, getpid(), (unsigned long)__test);
 }

@@ -102,6 +102,9 @@ extern int64_t kernel_size;
 extern int64_t page_shift;
 extern int64_t page_size;
 extern int64_t va_bits;
+extern int64_t page_level;
+extern uint64_t pgd_pa;
+extern uint64_t pgd_va;
 // extern int64_t pa_bits;
 
 static inline uint64_t phys_to_virt(uint64_t phys)
@@ -159,6 +162,11 @@ static inline int is_kimg_range(uint64_t addr)
     return addr >= kernel_va && addr < (kernel_va + kernel_size);
 }
 
-uint64_t *pgtable_entry_kernel(uint64_t va);
+uint64_t *pgtable_entry(uint64_t pgd, uint64_t va);
+
+static inline uint64_t *pgtable_entry_kernel(uint64_t va)
+{
+    return pgtable_entry(pgd_va, va);
+}
 
 #endif

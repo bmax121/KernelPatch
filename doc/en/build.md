@@ -8,7 +8,7 @@ Require a bare-metal cross compiler
 ```shell
 export TARGET_COMPILE=aarch64-none-elf-
 cd kernel
-# export ANDROID=1 # Android version, including support for the 'su' command
+export ANDROID=1 # Android version, including support for the 'su' command
 make
 ```
 
@@ -19,6 +19,7 @@ kptools can run anywhere, just compile it.
 - Using Makefile
 
 ```shell
+export ANDROID=1
 cd tools
 make
 ```

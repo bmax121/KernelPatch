@@ -24,15 +24,19 @@
 #define KPM_AUTHOR(x) KPM_INFO(author, x, KPM_AUTHOR_LEN)
 #define KPM_DESCRIPTION(x) KPM_INFO(description, x, KPM_DESCRIPTION_LEN)
 
-typedef int (*mod_initcall_t)(const char *args, void *reserved);
-typedef int (*mod_ctlcall_t)(const char *ctl_args, char *__user out_msg, int outlen);
-typedef int (*mod_exitcall_t)(void *reserved);
+typedef long (*mod_initcall_t)(const char *args, const char *event, void *reserved);
+typedef long (*mod_ctl0call_t)(const char *ctl_args, char *__user out_msg, int outlen);
+typedef long (*mod_ctl1call_t)(void *a1, void *a2, void *a3);
+typedef long (*mod_exitcall_t)(void *reserved);
 
 #define KPM_INIT(fn) \
     static mod_initcall_t __kpm_initcall_##fn __attribute__((__used__)) __attribute__((__section__(".kpm.init"))) = fn
 
-#define KPM_CTL(fn) \
-    static mod_ctlcall_t __kpm_ctlmodule_##fn __attribute__((__used__)) __attribute__((__section__(".kpm.ctl"))) = fn
+#define KPM_CTL0(fn) \
+    static mod_ctl0call_t __kpm_ctlmodule_##fn __attribute__((__used__)) __attribute__((__section__(".kpm.ctl0"))) = fn
+
+#define KPM_CTL1(fn) \
+    static mod_ctl1call_t __kpm_ctlmodule_##fn __attribute__((__used__)) __attribute__((__section__(".kpm.ctl1"))) = fn
 
 #define KPM_EXIT(fn) \
     static mod_exitcall_t __kpm_exitcall_##fn __attribute__((__used__)) __attribute__((__section__(".kpm.exit"))) = fn

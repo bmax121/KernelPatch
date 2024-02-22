@@ -6,6 +6,9 @@
 #ifndef _KP_TOOL_KPM_H_
 #define _KP_TOOL_KPM_H_
 
+#include "elf/elf.h"
+#include "common.h"
+
 #define Elf_Shdr Elf64_Shdr
 #define Elf_Phdr Elf64_Phdr
 #define Elf_Sym Elf64_Sym
@@ -21,25 +24,24 @@
 #define ELF_R_TYPE(X) ELF64_R_TYPE(X)
 #define ELF_R_SYM(X) ELF64_R_SYM(X)
 
-#include "elf/elf.h"
-#include "common.h"
+#define INFO_EXTRA_KPM_SESSION "[kpm]"
 
 struct load_info
 {
     struct
     {
         const char *base;
-        unsigned long size;
+        uint64_t size;
         const char *name, *version, *license, *author, *description;
     } info;
     Elf_Ehdr *hdr;
-    unsigned long len;
+    uint64_t len;
     Elf_Shdr *sechdrs;
     char *secstrings, *strtab;
-    unsigned long symoffs, stroffs;
+    uint64_t symoffs, stroffs;
     struct
     {
-        unsigned int sym, str, mod, info;
+        uint32_t sym, str, mod, info;
     } index;
 };
 
@@ -51,6 +53,6 @@ typedef struct
 int get_kpm_info(const char *kpm, int len, kpm_info_t *info);
 
 void print_kpm_info(kpm_info_t *info);
-void print_kpm_info_path(const char *kpm_path);
+int print_kpm_info_path(const char *kpm_path);
 
 #endif

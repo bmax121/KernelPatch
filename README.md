@@ -29,11 +29,7 @@ Currently only supports arm64 architecture.
 Linux 3.18 - 6.2 (theoretically)  
 Linux 6.3+ (not yet adapted)  
 
-## Get Help
-
 ## Get Involved
-
-## Community Discussion
 
 ## More Information
 

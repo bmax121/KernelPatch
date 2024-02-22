@@ -21,6 +21,7 @@
 #include <ksyms.h>
 #include <pgtable.h>
 #include <symbol.h>
+#include <linux/mm_types.h>
 #include <asm/processor.h>
 
 #define TASK_COMM_LEN 16
@@ -28,6 +29,32 @@
 #define TASK_STRUCT_MAX_SIZE 0x1800
 #define THREAD_INFO_MAX_SIZE 0x90
 #define CRED_MAX_SIZE 0x100
+#define MM_STRUCT_MAX_SIZE 0xb0
+
+struct mm_struct_offset mm_struct_offset = {
+    .mmap_base_offset = -1,
+    .task_size_offset = -1,
+    .pgd_offset = -1,
+    .map_count_offset = -1,
+    .total_vm_offset = -1,
+    .locked_vm_offset = -1,
+    .pinned_vm_offset = -1,
+    .data_vm_offset = -1,
+    .exec_vm_offset = -1,
+    .stack_vm_offset = -1,
+    .start_code_offset = -1,
+    .end_code_offset = -1,
+    .start_data_offset = -1,
+    .end_data_offset = -1,
+    .start_brk_offset = -1,
+    .brk_offset = -1,
+    .start_stack_offset = -1,
+    .arg_start_offset = -1,
+    .arg_end_offset = -1,
+    .env_start_offset = -1,
+    .env_end_offset = -1,
+};
+KP_EXPORT_SYMBOL(mm_struct_offset);
 
 struct task_struct_offset task_struct_offset = {
     .pid_offset = -1,
@@ -45,6 +72,8 @@ struct task_struct_offset task_struct_offset = {
     .security_offset = -1,
     .stack_offset = -1,
     .tasks_offset = -1,
+    .mm_offset = -1,
+    .active_mm_offset = -1,
 };
 KP_EXPORT_SYMBOL(task_struct_offset);
 
@@ -84,10 +113,8 @@ struct cred_offset cred_offset = {
 KP_EXPORT_SYMBOL(cred_offset);
 
 struct task_struct *init_task = 0;
-KP_EXPORT_SYMBOL(init_task);
-
 const struct cred *init_cred = 0;
-KP_EXPORT_SYMBOL(init_cred);
+const struct mm_struct *init_mm = 0;
 
 int thread_size = 0;
 KP_EXPORT_SYMBOL(thread_size);
@@ -412,6 +439,21 @@ int resolve_task_offset()
     }
     log_boot("    seccomp offset: %x\n", task_struct_offset.seccomp_offset);
 
+    // active_mm
+    init_mm = (struct mm_struct *)kallsyms_lookup_name("init_mm");
+    if (init_mm) {
+        for (uintptr_t i = (uintptr_t)task; i < (uintptr_t)task + TASK_STRUCT_MAX_SIZE; i += sizeof(uintptr_t)) {
+            uintptr_t active_mm = *(uintptr_t *)i;
+            if (active_mm == (uintptr_t)init_mm) {
+                task_struct_offset.active_mm_offset = i - (uintptr_t)task;
+                break;
+            }
+        }
+    } else {
+        // todo
+    }
+    log_boot("    active_mm offset: %x\n", task_struct_offset.active_mm_offset);
+
     revert_current(backup);
     vfree(task);
     return 0;
@@ -542,6 +584,21 @@ int resolve_current()
     return 0;
 }
 
+// int resolve_mm_struct_offset()
+// {
+// log_boot("struct mm_struct: \n");
+// uintptr_t init_mm_addr = (uintptr_t)init_mm;
+// struct mm_struct *mm = get_task_mm(task);
+// for (uintptr_t i = init_mm_addr; i < init_mm_addr + MM_STRUCT_MAX_SIZE; i += sizeof(uintptr_t)) {
+//     uint64_t pgd = *(uintptr_t *)i;
+//     if (pgd == phys_to_kimg(pgd_pa)) {
+//         mm_struct_offset.pgd_offset = i - init_mm_addr;
+//     }
+// }
+// log_boot("    pgd offset: %x\n", mm_struct_offset.pgd_offset);
+//     return 0;
+// }
+
 int resolve_struct()
 {
     full_cap = CAP_FULL_SET;
@@ -550,6 +607,8 @@ int resolve_struct()
     if ((err = resolve_current())) goto out;
     if ((err = resolve_task_offset())) goto out;
     if ((err = resolve_cred_offset())) goto out;
+
+    // resolve_mm_struct_offset();
 
 out:
     return err;

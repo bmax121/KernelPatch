@@ -15,6 +15,7 @@
 #include <barrier.h>
 #include <stdarg.h>
 
+#include "../banner"
 #include "start.h"
 #include "hook.h"
 #include "tlsf.h"
@@ -41,14 +42,6 @@ void (*printk)(const char *fmt, ...) = 0;
 KP_EXPORT_SYMBOL(printk);
 
 int (*vsprintf)(char *buf, const char *fmt, va_list args) = 0;
-
-const char kernel_patch_logo[] = "\n"
-                                 " _  __                    _ ____       _       _     \n"
-                                 "| |/ /___ _ __ _ __   ___| |  _ \\ __ _| |_ ___| |__  \n"
-                                 "| ' // _ \\ '__| '_ \\ / _ \\ | |_) / _` | __/ __| '_ \\ \n"
-                                 "| . \\  __/ |  | | | |  __/ |  __/ (_| | || (__| | | |\n"
-                                 "|_|\\_\\___|_|  |_| |_|\\___|_|_|   \\__,_|\\__\\___|_| |_|\n";
-KP_EXPORT_SYMBOL(kernel_patch_logo);
 
 static struct vm_struct
 {
@@ -93,6 +86,9 @@ int64_t kernel_size = 0;
 int64_t page_shift = 0;
 int64_t page_size = 0;
 int64_t va_bits = 0;
+int64_t page_level;
+uint64_t pgd_pa;
+uint64_t pgd_va;
 // int64_t pa_bits = 0;
 
 uint64_t kernel_stext_va = 0;
@@ -126,26 +122,18 @@ void log_boot(const char *fmt, ...)
     boot_log_offset += ret;
 }
 
-uint64_t *pgtable_entry_kernel(uint64_t va)
+uint64_t *pgtable_entry(uint64_t pgd, uint64_t va)
 {
-    uint64_t page_level = (va_bits - 4) / (page_shift - 3);
     uint64_t pxd_bits = page_shift - 3;
     uint64_t pxd_ptrs = 1u << pxd_bits;
-    uint64_t ttbr1_el1;
-    asm volatile("mrs %0, ttbr1_el1" : "=r"(ttbr1_el1));
-
-    uint64_t baddr = ttbr1_el1 & 0xFFFFFFFFFFFE;
-    uint64_t page_size = 1 << page_shift;
-    uint64_t page_size_mask = ~(page_size - 1);
-    uint64_t pxd_pa = baddr & page_size_mask;
-    uint64_t pxd_va = phys_to_virt(pxd_pa);
+    uint64_t pxd_va = pgd;
+    uint64_t pxd_pa = virt_to_phys(pxd_va);
     uint64_t pxd_entry_va = 0;
     uint64_t block_lv = 0;
 
     // ================
-    // todo:
-    // branch to some function (even empty) will work, but I don't know why,
-    // if anyone knows, please let me know. thank you very much.
+    // Branch to some function (even empty), It can work,
+    // I don't know why, if anyone knows, please let me know. thank you very much.
     // ================
     __flush_dcache_area((void *)pxd_va, page_size);
 
@@ -171,7 +159,7 @@ uint64_t *pgtable_entry_kernel(uint64_t va)
             break;
         }
     }
-#if 1
+#if 0
     uint64_t left_bit = page_shift + (block_lv ? (3 - block_lv) * pxd_bits : 0);
     uint64_t tpa = pxd_pa + (va & ((1u << left_bit) - 1));
     uint64_t tlva = phys_to_virt(tpa);
@@ -182,7 +170,7 @@ uint64_t *pgtable_entry_kernel(uint64_t va)
 #endif
     return (uint64_t *)pxd_entry_va;
 }
-KP_EXPORT_SYMBOL(pgtable_entry_kernel);
+KP_EXPORT_SYMBOL(pgtable_entry);
 
 static void prot_myself()
 {
@@ -403,7 +391,7 @@ static void start_init(uint64_t kimage_voff, uint64_t linear_voff)
 
     vsprintf = (typeof(vsprintf))kallsyms_lookup_name("vsprintf");
 
-    log_boot(kernel_patch_logo);
+    log_boot(KERNEL_PATCH_BANNER);
 
     endian = *(unsigned char *)&(uint16_t){ 1 } ? little : big;
     setup_header_t *header = &start_preset.header;
@@ -435,6 +423,15 @@ static void start_init(uint64_t kimage_voff, uint64_t linear_voff)
         page_shift = 16;
     }
     page_size = 1 << page_shift;
+
+    page_level = (va_bits - 4) / (page_shift - 3);
+
+    uint64_t ttbr1_el1;
+    asm volatile("mrs %0, ttbr1_el1" : "=r"(ttbr1_el1));
+    uint64_t baddr = ttbr1_el1 & 0xFFFFFFFFFFFE;
+    uint64_t page_size_mask = ~(page_size - 1);
+    pgd_pa = baddr & page_size_mask;
+    pgd_va = phys_to_virt(pgd_pa);
 }
 
 static int nice_zone()

@@ -3,13 +3,13 @@
  * Copyright (C) 2023 bmax121. All Rights Reserved.
  */
 
-#include "kpm.h"
 #include <errno.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <error.h>
 
+#include "kpm.h"
 #include "supercall.h"
 
 int kpm_load(const char *key, const char *path, const char *args)
@@ -75,7 +75,7 @@ static void usage(int status)
                         "\n"
                         "help                           Print this help message. \n"
                         "load <KPM_PATH> [KPM_ARGS]     Load KernelPatch Module with KPM_PATH and KPM_ARGS.\n"
-                        "ctl <KPM_NAME> <CTL_ARGS>  Control KernelPatch Module named KPM_PATH with CTL_ARGS.\n"
+                        "ctl0 <KPM_NAME> <CTL_ARGS>     Control KernelPatch Module named KPM_PATH with CTL_ARGS.\n"
                         "unload <KPM_NAME>              Unload KernelPatch Module named KPM_NAME.\n"
                         "num                            Get the number of modules that have been loaded.\n"
                         "list                           List names of all loaded modules.\n"
@@ -98,7 +98,7 @@ int kpm_main(int argc, char **argv)
         int cmd;
     } cmd_arr[] = {
         { "load", SUPERCALL_KPM_LOAD },
-        { "ctl", SUPERCALL_KPM_CONTROL },
+        { "ctl0", SUPERCALL_KPM_CONTROL },
         { "unload", SUPERCALL_KPM_UNLOAD },
         { "num", SUPERCALL_KPM_NUMS },
         { "list", SUPERCALL_KPM_LIST },

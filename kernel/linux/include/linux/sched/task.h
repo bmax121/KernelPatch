@@ -47,71 +47,83 @@ extern void kfunc_def(sched_exec)(void);
 
 static inline void __put_task_struct(struct task_struct *t)
 {
-    kfunc_call(__put_task_struct, t);
-    kfunc_not_found();
+    kfunc_direct_call(__put_task_struct, t);
 }
+
 static inline int lockdep_tasklist_lock_is_held(void)
 {
     kfunc_call(lockdep_tasklist_lock_is_held);
     kfunc_not_found();
     return 0;
 }
+
 static inline asmlinkage void schedule_tail(struct task_struct *prev)
 {
     kfunc_call(schedule_tail, prev);
     kfunc_not_found();
 }
+
 static inline void init_idle(struct task_struct *idle, int cpu)
 {
     kfunc_call(init_idle, idle, cpu);
     kfunc_not_found();
 }
+
 static inline int sched_fork(unsigned long clone_flags, struct task_struct *p)
 {
     kfunc_call(sched_fork, clone_flags, p);
     kfunc_not_found();
     return 0;
 }
+
 static inline void sched_cgroup_fork(struct task_struct *p, struct kernel_clone_args *kargs)
 {
     kfunc_call(sched_cgroup_fork, p, kargs);
     kfunc_not_found();
 }
+
 static inline void sched_post_fork(struct task_struct *p)
 {
     kfunc_call(sched_post_fork, p);
     kfunc_not_found();
 }
+
 static inline void sched_dead(struct task_struct *p)
 {
     kfunc_call(sched_dead, p);
     kfunc_not_found();
 }
+
 static inline void __noreturn do_task_dead(void)
 {
     kfunc_call_void(do_task_dead);
     kfunc_not_found();
 }
+
 static inline void __noreturn make_task_dead(int signr)
 {
     kfunc_call_void(make_task_dead, signr);
     kfunc_not_found();
 }
+
 static inline void proc_caches_init(void)
 {
     kfunc_call(proc_caches_init);
     kfunc_not_found();
 }
+
 static inline void fork_init(void)
 {
     kfunc_call(fork_init);
     kfunc_not_found();
 }
+
 static inline void release_task(struct task_struct *p)
 {
     kfunc_call(release_task, p);
     kfunc_not_found();
 }
+
 static inline int copy_thread(unsigned long clone_flags, unsigned long stack_start, unsigned long stk_sz,
                               struct task_struct *p, unsigned long tls)
 {
@@ -119,6 +131,7 @@ static inline int copy_thread(unsigned long clone_flags, unsigned long stack_sta
     kfunc_not_found();
     return 0;
 }
+
 static inline void flush_thread(void)
 {
     kfunc_call(flush_thread);

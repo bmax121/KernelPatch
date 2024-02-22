@@ -31,23 +31,23 @@
 #include <linux/umh.h>
 #include <uapi/scdefs.h>
 
-const char origin_rc_file[] = "/system/etc/init/atrace.rc";
-const char replace_rc_file[] = "/dev/.atrace.rc";
+#define ORIGIN_RC_FILE "/system/etc/init/atrace.rc"
+#define REPLACE_RC_FILE "/dev/.atrace.rc"
 
 static const char patch_rc[] = ""
-                               "on late-init\n"
-                               "    rm %s \n"
-                               "on post-fs-data\n"
-                               "    start logd\n"
-                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user init -k\n"
-                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user post-fs-data -k'\n"
-                               "on nonencrypted\n"
-                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user services -k'\n"
-                               "on property:vold.decrypt=trigger_restart_framework\n"
-                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user services -k'\n"
-                               "on property:sys.boot_completed=1\n"
-                               "    exec -- " KPATCH_SHADOW_PATH " %s android_user boot-completed -k'\n"
                                "\n"
+                               "on late-init\n"
+                               "    rm " REPLACE_RC_FILE "\n"
+                               "on post-fs-data\n"
+                               "    exec -- " SUPERCMD " %s " KPATCH_DEV_PATH " %s android_user post-fs-data-init -k\n"
+                               "    exec -- " SUPERCMD " %s " KPATCH_DATA_PATH " %s android_user post-fs-data -k\n"
+                               "on nonencrypted\n"
+                               "    exec -- " SUPERCMD " %s " KPATCH_DATA_PATH " %s android_user services -k\n"
+                               "on property:vold.decrypt=trigger_restart_framework\n"
+                               "    exec -- " SUPERCMD " %s " KPATCH_DATA_PATH " %s android_user services -k\n"
+                               "on property:sys.boot_completed=1\n"
+                               "    exec -- " SUPERCMD " %s " KPATCH_DATA_PATH " %s android_user boot-completed -k\n"
+                               "\n\n"
                                "";
 
 static const void *kernel_read_file(const char *path, loff_t *len)
@@ -68,24 +68,52 @@ out:
     return data;
 }
 
-static void load_config()
+static void kernel_write_file(const char *path, const void *data, loff_t len, umode_t mode)
 {
     set_priv_selinx_allow(current, 1);
-
+    struct file *fp = filp_open(path, O_WRONLY | O_CREAT | O_TRUNC, mode);
+    if (IS_ERR(fp)) {
+        log_boot("create file %s error: %d\n", path, PTR_ERR(fp));
+        goto out;
+    }
+    loff_t off = 0;
+    kernel_write(fp, data, len, &off);
+    if (off != len) {
+        log_boot("write file %s error: %x\n", path, off);
+        goto free;
+    }
+free:
+    filp_close(fp, 0);
+out:
     set_priv_selinx_allow(current, 0);
 }
 
-static void on_post_fs_data()
+static void kernel_write_exec(const char *path, const void *data, loff_t len)
 {
-    static bool done = false;
-    if (done) return;
-    done = true;
-    set_priv_selinx_allow(current, 1);
-    load_config();
-    set_priv_selinx_allow(current, 0);
+    kernel_write_file(path, data, len, 0744);
 }
 
-static void on_second_stage()
+static int extract_kpatch_call_back(const patch_extra_item_t *extra, const char *arg, const void *con, void *udata)
+{
+    const char *path = (const char *)udata;
+    if (extra->type == EXTRA_TYPE_EXEC && !strcmp("kpatch", extra->name)) {
+        log_boot("write kpatch to %s\n", path);
+        kernel_write_exec(path, con, extra->con_size);
+    }
+    return 0;
+}
+
+static void before_first_stage()
+{
+    const char *path = KPATCH_DEV_PATH;
+    on_each_extra_item(extract_kpatch_call_back, (void *)path);
+}
+
+static void before_second_stage()
+{
+}
+
+static void on_zygote_start()
 {
 }
 
@@ -103,28 +131,34 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
     if (!filename || IS_ERR(filename)) return;
 
     const char app_process[] = "/system/bin/app_process";
-    static bool first_app_process = true;
+    static int first_app_process = 1;
 
-    /* This applies to versions Android 10+ */
     static const char system_bin_init[] = "/system/bin/init";
-    /* This applies to versions between Android 6 ~ 9  */
-    static const char old_system_init[] = "/init";
-    static bool init_second_stage_executed = false;
+    static const char root_init[] = "/init";
+    static int init_first_stage_executed = 0;
+    static int init_second_stage_executed = 0;
 
-    if (!memcmp(filename->name, system_bin_init, sizeof(system_bin_init) - 1) ||
-        !memcmp(filename->name, old_system_init, sizeof(old_system_init) - 1)) {
-        for (int i = 1;; i++) {
-            const char *__user p1 =
-                get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], i);
-            if (!p1) break;
-            if (!IS_ERR(p1)) {
-                char arg[16] = { '\0' };
-                if (strncpy_from_user_nofault(arg, p1, sizeof(arg)) <= 0) break;
+    if (!strcmp(system_bin_init, filename->name) || !strcmp(root_init, filename->name)) {
+        //
+        if (!init_first_stage_executed) {
+            init_first_stage_executed = 1;
+            log_boot("exec %s first stage\n", filename->name);
+            before_first_stage();
+        }
 
-                if (!strcmp(arg, "second_stage")) {
-                    log_boot("0 exec %s second_stage\n", filename->name);
-                    on_second_stage();
-                    init_second_stage_executed = true;
+        if (!init_second_stage_executed) {
+            for (int i = 1;; i++) {
+                const char *__user p1 =
+                    get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], i);
+                if (!p1) break;
+                if (!IS_ERR(p1)) {
+                    char arg[16] = { '\0' };
+                    if (strncpy_from_user_nofault(arg, p1, sizeof(arg)) <= 0) break;
+                    if (!strcmp(arg, "second_stage") || !strcmp(arg, "--second-stage")) {
+                        log_boot("exec %s second stage 0\n", filename->name);
+                        before_second_stage();
+                        init_second_stage_executed = 1;
+                    }
                 }
             }
         }
@@ -134,33 +168,29 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
             for (int i = 0;; i++) {
                 const char *__user up =
                     get_user_arg_ptr((void *)args->args[envp_index], (void *)args->args[envp_index + 1], i);
-                if (!up || IS_ERR(up)) break;
+                if (IS_ERR(up)) break;
                 char env[256];
                 if (strncpy_from_user_nofault(env, up, sizeof(env)) <= 0) break;
-
-                // Parsing environment variable names and values
                 char *env_name = env;
                 char *env_value = strchr(env, '=');
                 if (env_value) {
-                    // Replace equal sign with string terminator
                     *env_value = '\0';
                     env_value++;
-                    // Check if the environment variable name and value are matching
                     if (!strcmp(env_name, "INIT_SECOND_STAGE") &&
                         (!strcmp(env_value, "1") || !strcmp(env_value, "true"))) {
-                        log_boot("1 exec %s second_stage\n", filename->name);
-                        on_second_stage();
-                        init_second_stage_executed = true;
+                        log_boot("exec %s second stage 1\n", filename->name);
+                        before_second_stage();
+                        init_second_stage_executed = 1;
                     }
                 }
             }
         }
     }
 
-    if (unlikely(first_app_process && !memcmp(filename->name, app_process, sizeof(app_process) - 1))) {
-        first_app_process = false;
+    if (unlikely(first_app_process && !strcmp(app_process, filename->name))) {
+        first_app_process = 0;
         log_boot("exec app_process, /data prepared, second_stage: %d\n", init_second_stage_executed);
-        on_post_fs_data();
+        on_zygote_start();
         remove_execv_hook(before_do_execve, 0);
     }
 }
@@ -172,29 +202,30 @@ static void before_openat(hook_fargs4_t *args, void *udata)
     // clear local
     args->local.data0 = 0;
 
-    static bool replaced = false;
+    static int replaced = 0;
     if (replaced) return;
 
     const char __user *filename = (typeof(filename))syscall_argn(args, 1);
     char buf[32];
     strncpy_from_user_nofault(buf, filename, sizeof(buf));
-    if (strcmp(origin_rc_file, buf)) return;
+    if (strcmp(ORIGIN_RC_FILE, buf)) return;
 
-    replaced = true;
+    replaced = 1;
 
     set_priv_selinx_allow(current, 1);
     // create replace file and redirect
     loff_t ori_len = 0;
-    struct file *newfp = filp_open(replace_rc_file, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    struct file *newfp = filp_open(REPLACE_RC_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (IS_ERR(newfp)) {
         log_boot("create replace rc error: %d\n", PTR_ERR(newfp));
         goto out;
     }
-    const char *ori_rc_data = kernel_read_file(origin_rc_file, &ori_len);
+    const char *ori_rc_data = kernel_read_file(ORIGIN_RC_FILE, &ori_len);
     if (!ori_rc_data) goto out;
-    char *replace_rc_data = vmalloc(sizeof(patch_rc) + sizeof(replace_rc_file) + 5 * SUPER_KEY_LEN);
+    char *replace_rc_data = vmalloc(sizeof(patch_rc) + 10 * SUPER_KEY_LEN);
     const char *superkey = get_superkey();
-    sprintf(replace_rc_data, patch_rc, replace_rc_file, superkey, superkey, superkey, superkey, superkey);
+    sprintf(replace_rc_data, patch_rc, superkey, superkey, superkey, superkey, superkey, superkey, superkey, superkey,
+            superkey, superkey);
     loff_t off = 0;
     kernel_write(newfp, replace_rc_data, strlen(replace_rc_data), &off);
     kernel_write(newfp, ori_rc_data, ori_len, &off);
@@ -203,7 +234,7 @@ static void before_openat(hook_fargs4_t *args, void *udata)
         goto free;
     }
     // yes, filename is not read only
-    args->local.data0 = seq_copy_to_user((void *)filename, replace_rc_file, sizeof(replace_rc_file));
+    args->local.data0 = seq_copy_to_user((void *)filename, REPLACE_RC_FILE, sizeof(REPLACE_RC_FILE));
     log_boot("redirect rc file: %x\n", args->local.data0);
 free:
     filp_close(newfp, 0);
@@ -219,9 +250,8 @@ static void after_openat(hook_fargs4_t *args, void *udata)
 {
     if (args->local.data0) {
         const char __user *filename = (typeof(filename))syscall_argn(args, 1);
-        int len = seq_copy_to_user((void *)filename, origin_rc_file, sizeof(origin_rc_file));
+        int len = seq_copy_to_user((void *)filename, ORIGIN_RC_FILE, sizeof(ORIGIN_RC_FILE));
         log_boot("restore rc file: %x\n", len);
-        // todo:
         fp_unhook_syscall(__NR_openat, before_openat, after_openat);
     }
 }
@@ -229,6 +259,7 @@ static void after_openat(hook_fargs4_t *args, void *udata)
 #define EV_KEY 0x01
 #define KEY_VOLUMEDOWN 114
 
+/* Modified from KernelSU */
 // void input_handle_event(struct input_dev *dev, unsigned int type, unsigned int code, int value)
 static void before_input_handle_event(hook_fargs4_t *args, void *udata)
 {
@@ -241,7 +272,7 @@ static void before_input_handle_event(hook_fargs4_t *args, void *udata)
         if (volumedown_pressed_count == 3) {
             log_boot("entering safemode ...");
             struct file *filp = filp_open(SAFE_MODE_FLAG_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-            if (filp && !IS_ERR(filp)) filp_close(filp, 0);
+            if (!IS_ERR(filp)) filp_close(filp, 0);
         }
     }
 }

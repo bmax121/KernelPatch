@@ -95,11 +95,15 @@ int main(int argc, char **argv)
         { "kver", SUPERCALL_KERNEL_VER },
         { "su", 's' },
         { "kpm", 'k' },
+
         { "bootlog", 'l' },
         { "panic", '.' },
         { "test", 't' },
+
         { "--help", 'h' },
         { "-h", 'h' },
+        { "--version", 'v' },
+        { "-v", 'v' },
 #ifdef ANDROID
         { "sumgr", 'm' },
         { "android_user", 'a' },
@@ -130,9 +134,6 @@ int main(int argc, char **argv)
     case 'k':
         strcat(program_name, " kpm");
         return kpm_main(argc - 2, argv + 2);
-    case 'm':
-        strcat(program_name, " sumgr");
-        return sumgr_main(argc - 2, argv + 2);
     case 'l':
         bootlog(key);
         break;
@@ -142,11 +143,22 @@ int main(int argc, char **argv)
     case 't':
         __test(key);
         break;
+
     case 'h':
         usage(EXIT_SUCCESS);
         break;
+    case 'v':
+        fprintf(stdout, "%x\n", version());
+        break;
+
+#ifdef ANDROID
+    case 'm':
+        strcat(program_name, " sumgr");
+        return sumgr_main(argc - 2, argv + 2);
     case 'a':
         return android_user(argc - 2, argv + 2);
+#endif
+
     default:
         fprintf(stderr, "Invalid command: %s!\n", scmd);
         return -EINVAL;

@@ -11,7 +11,7 @@
 
 #define elf_check_arch(x) ((x)->e_machine == EM_AARCH64)
 
-static char *next_string(char *string, unsigned long *secsize)
+static char *next_string(char *string, uint64_t *secsize)
 {
     while (string[0]) {
         string++;
@@ -27,9 +27,9 @@ static char *next_string(char *string, unsigned long *secsize)
 static char *get_next_modinfo(const struct load_info *info, const char *tag, char *prev)
 {
     char *p;
-    unsigned int taglen = strlen(tag);
+    uint32_t taglen = strlen(tag);
     Elf_Shdr *infosec = &info->sechdrs[info->index.info];
-    unsigned long size = infosec->sh_size;
+    uint64_t size = infosec->sh_size;
     char *modinfo = (char *)info->hdr + infosec->sh_offset;
     if (prev) {
         size -= prev - modinfo;
@@ -64,7 +64,7 @@ static void *get_sh_base(struct load_info *info, const char *secname)
     return addr;
 }
 
-static unsigned long get_sh_size(struct load_info *info, const char *secname)
+static uint64_t get_sh_size(struct load_info *info, const char *secname)
 {
     int idx = find_sec(info, secname);
     if (!idx) return 0;
@@ -121,18 +121,17 @@ void print_kpm_info(kpm_info_t *info)
     fprintf(stdout, "description=%s\n", info->description);
 }
 
-void print_kpm_info_path(const char *kpm_path)
+int print_kpm_info_path(const char *kpm_path)
 {
-    fprintf(stdout, "path=%s\n", kpm_path);
-
     char *img;
     int len = 0;
     read_file(kpm_path, &img, &len);
-
+    fprintf(stdout, INFO_EXTRA_KPM_SESSION "\n");
     kpm_info_t kpm_info = { 0 };
     int rc = get_kpm_info(img, len, &kpm_info);
     if (!rc) {
         print_kpm_info(&kpm_info);
     }
     free(img);
+    return rc;
 }

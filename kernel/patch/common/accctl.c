@@ -111,8 +111,7 @@ int task_su(pid_t pid, uid_t to_uid, const char *sctx)
     struct task_struct *task = find_get_task_by_vpid(pid);
     if (!task) {
         logkfe("no such pid: %d\n", pid);
-        rc = -ENOENT;
-        goto out;
+        return -ESRCH;
     }
     struct task_ext *ext = get_task_ext(task);
 
@@ -147,6 +146,5 @@ int task_su(pid_t pid, uid_t to_uid, const char *sctx)
     logkfi("pid: %d, tgid: %d, to_uid: %d, sctx: %s, via_hook: %d\n", ext->pid, ext->tgid, to_uid, sctx,
            ext->priv_selinux_allow);
 out:
-    __put_task_struct(task);
     return rc;
 }

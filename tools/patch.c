@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <string.h>
+#include <ctype.h>
 
 #include "patch.h"
 #include "kallsym.h"
@@ -34,35 +35,88 @@ uint32_t get_kpimg_version(const char *kpimg_path)
     int kpimg_len = 0;
     read_file(kpimg_path, &kpimg, &kpimg_len);
     preset_t *preset = get_preset(kpimg, kpimg_len);
-    if (!preset) tools_error_exit("not patched kernel image\n");
+    if (!preset) tools_loge_exit("not patched kernel image\n");
     version_t ver = preset->header.kp_version;
     uint32_t version = (ver.major << 16) + (ver.minor << 8) + ver.patch;
     return version;
 }
 
+int extra_str_type(const char *extra_str)
+{
+    int extra_type = EXTRA_TYPE_NONE;
+    if (!strcmp(extra_str, EXTRA_TYPE_KPM_STR)) {
+        extra_type = EXTRA_TYPE_KPM;
+    } else if (!strcmp(extra_str, EXTRA_TYPE_EXEC_STR)) {
+        extra_type = EXTRA_TYPE_EXEC;
+    } else if (!strcmp(extra_str, EXTRA_TYPE_SHELL_STR)) {
+        extra_type = EXTRA_TYPE_SHELL;
+    } else if (!strcmp(extra_str, EXTRA_TYPE_RAW_STR)) {
+        extra_type = EXTRA_TYPE_RAW;
+    } else if (!strcmp(extra_str, EXTRA_TYPE_ANDROID_RC_STR)) {
+        extra_type = EXTRA_TYPE_ANDROID_RC;
+    } else {
+    }
+    return extra_type;
+}
+
+const char *extra_type_str(extra_item_type extra_type)
+{
+    switch (extra_type) {
+    case EXTRA_TYPE_KPM:
+        return EXTRA_TYPE_KPM_STR;
+    case EXTRA_TYPE_EXEC:
+        return EXTRA_TYPE_EXEC_STR;
+    case EXTRA_TYPE_SHELL:
+        return EXTRA_TYPE_SHELL_STR;
+    case EXTRA_TYPE_RAW:
+        return EXTRA_TYPE_RAW_STR;
+    case EXTRA_TYPE_ANDROID_RC:
+        return EXTRA_TYPE_ANDROID_RC_STR;
+    default:
+        return EXTRA_TYPE_NONE_STR;
+    }
+}
+
 void print_preset_info(preset_t *preset)
 {
     setup_header_t *header = &preset->header;
+    setup_preset_t *setup = &preset->setup;
     version_t ver = header->kp_version;
     uint32_t ver_num = (ver.major << 16) + (ver.minor << 8) + ver.patch;
     bool is_android = header->config_flags | CONFIG_ANDROID;
     bool is_debug = header->config_flags | CONFIG_DEBUG;
 
+    fprintf(stdout, INFO_KP_IMG_SESSION "\n");
     fprintf(stdout, "version=0x%x\n", ver_num);
     fprintf(stdout, "compile_time=%s\n", header->compile_time);
     fprintf(stdout, "config=%s,%s\n", is_debug ? "debug" : "release", is_android ? "android" : "linux");
+    fprintf(stdout, "superkey=%s\n", setup->superkey);
+
+    fprintf(stdout, INFO_ADDITIONAL_SESSION "\n");
+    char *pos = setup->additional;
+    while (pos < setup->additional + ADDITIONAL_LEN) {
+        int len = *pos;
+        if (!len) break;
+        fprintf(stdout, "%s\n", strndup(++pos, len));
+        pos += len;
+    }
 }
 
-void print_kp_image_info(const char *kpimg_path)
+int print_kp_image_info_path(const char *kpimg_path)
 {
-    fprintf(stdout, "path=%s\n", kpimg_path);
+    int rc = 0;
     char *kpimg;
     int len = 0;
     read_file(kpimg_path, &kpimg, &len);
     preset_t *preset = (preset_t *)kpimg;
-    print_preset_info(preset);
-    fprintf(stdout, "\n");
-    free(kpimg);
+    if (get_preset(kpimg, len) != preset) {
+        rc = -ENOENT;
+    } else {
+        print_preset_info(preset);
+        fprintf(stdout, "\n");
+        free(kpimg);
+    }
+    return rc;
 }
 
 int parse_image_patch_info(const char *kimg, int kimg_len, patched_kimg_t *pimg)
@@ -72,7 +126,20 @@ int parse_image_patch_info(const char *kimg, int kimg_len, patched_kimg_t *pimg)
 
     // kernel image infomation
     kernel_info_t *kinfo = &pimg->kinfo;
-    if (get_kernel_info(kinfo, kimg, kimg_len)) tools_error_exit("get_kernel_info error\n");
+    if (get_kernel_info(kinfo, kimg, kimg_len)) tools_loge_exit("get_kernel_info error\n");
+
+    // find banner
+    char linux_banner_prefix[] = "Linux version ";
+    size_t prefix_len = strlen(linux_banner_prefix);
+    const char *imgend = pimg->kimg + pimg->kimg_len;
+    const char *banner = (char *)pimg->kimg;
+    while ((banner = (char *)memmem(banner + 1, imgend - banner, linux_banner_prefix, prefix_len)) != NULL) {
+        if (isdigit(*(banner + prefix_len)) && *(banner + prefix_len + 1) == '.') {
+            pimg->banner = banner;
+            break;
+        }
+    }
+    if (!pimg->banner) tools_loge_exit("can't find linux banner\n");
 
     // patched or new
     preset_t *old_preset = get_preset(kimg, kimg_len);
@@ -81,20 +148,18 @@ int parse_image_patch_info(const char *kimg, int kimg_len, patched_kimg_t *pimg)
     if (!old_preset) {
         tools_logi("new kernel image ...\n");
         pimg->ori_kimg_len = pimg->kimg_len;
-        // free((void *)kimg);
         return 0;
     }
 
     tools_logi("patched kernel image ...\n");
     int saved_kimg_len = old_preset->setup.kimg_size;
     int align_kimg_len = (char *)old_preset - kimg;
-    if (align_kimg_len == (int)align_ceil(saved_kimg_len, SZ_4K)) {
-        pimg->ori_kimg_len = saved_kimg_len;
-    } else {
-        pimg->ori_kimg_len = align_kimg_len;
-    }
+    if (align_kimg_len != (int)align_ceil(saved_kimg_len, SZ_4K)) tools_loge_exit("saved kernel image size error\n");
+    pimg->ori_kimg_len = saved_kimg_len;
+
     memcpy((char *)kimg, old_preset->setup.header_backup, sizeof(old_preset->setup.header_backup));
 
+    // extra
     int extra_offset = align_kimg_len + old_preset->setup.kpimg_size;
     int extra_size = old_preset->setup.extra_size;
 
@@ -109,76 +174,100 @@ int parse_image_patch_info(const char *kimg, int kimg_len, patched_kimg_t *pimg)
         item_addr += item->con_size;
     }
 
-    // free(kimg);
     return 0;
 }
 
 int parse_image_patch_info_path(const char *kimg_path, patched_kimg_t *pimg)
 {
-    if (!kimg_path) tools_error_exit("empty kernel image\n");
+    if (!kimg_path) tools_loge_exit("empty kernel image\n");
 
     char *kimg;
     int kimg_len;
     read_file(kimg_path, &kimg, &kimg_len);
-    return parse_image_patch_info(kimg, kimg_len, pimg);
+    int rc = parse_image_patch_info(kimg, kimg_len, pimg);
+    free(kimg);
+    return rc;
 }
 
-void print_image_patch_info(patched_kimg_t *pimg)
+int print_image_patch_info(patched_kimg_t *pimg)
 {
+    int rc = 0;
+
     preset_t *preset = pimg->preset;
+
+    fprintf(stdout, INFO_KERNEL_IMG_SESSION "\n");
+    fprintf(stdout, "banner=%s", pimg->banner);
+
+    if (pimg->banner[strlen(pimg->banner) - 1] != '\n') fprintf(stdout, "\n");
     fprintf(stdout, "patched=%s\n", preset ? "true" : "false");
+    fprintf(stdout, "extra_num=%d\n", pimg->embed_item_num);
 
     if (preset) {
         print_preset_info(preset);
-        fprintf(stdout, "extra_item_num=%d\n", pimg->embed_item_num);
+
         for (int i = 0; i < pimg->embed_item_num; i++) {
             patch_extra_item_t *item = pimg->embed_item[i];
-            const char *type = "none";
-            switch (item->type) {
-            case EXTRA_TYPE_KPM:
-                type = "kpm";
-                break;
-            case EXTRA_TYPE_SHELL:
-                type = "shell";
-                break;
-            }
-            fprintf(stdout, "extra_index=%d\n", i);
+            const char *type = extra_type_str(item->type);
+            fprintf(stdout, INFO_EXTRA_SESSION_N "\n", i);
+            fprintf(stdout, "index=%d\n", i);
             fprintf(stdout, "type=%s\n", type);
-            fprintf(stdout, "con_size=0x%x\n", item->con_size);
+            fprintf(stdout, "name=%s\n", item->name);
+            fprintf(stdout, "event=%s\n", item->event);
+            fprintf(stdout, "priority=%d\n", item->priority);
             fprintf(stdout, "args_size=0x%x\n", item->args_size);
+            fprintf(stdout, "args=%s\n", item->args_size > 0 ? (char *)item + sizeof(*item) : "");
+            fprintf(stdout, "con_size=0x%x\n", item->con_size);
+
             if (item->type == EXTRA_TYPE_KPM) {
                 kpm_info_t kpm_info = { 0 };
                 void *kpm = (kpm_info_t *)((uintptr_t)item + sizeof(patch_extra_item_t) + item->args_size);
-                int rc = get_kpm_info(kpm, item->con_size, &kpm_info);
-                if (rc) tools_error_exit("get kpm infomation error: %d\n", rc);
-                print_kpm_info(&kpm_info);
+                rc = get_kpm_info(kpm, item->con_size, &kpm_info);
+                if (rc) tools_loge_exit("get kpm infomation error: %d\n", rc);
+                fprintf(stdout, "version=%s\n", kpm_info.version);
+                fprintf(stdout, "license=%s\n", kpm_info.license);
+                fprintf(stdout, "author=%s\n", kpm_info.author);
+                fprintf(stdout, "description=%s\n", kpm_info.description);
             }
         }
     }
-    // free((void *)pimg.kimg);
+    return rc;
 }
 
-void print_image_patch_info_path(const char *kimg_path)
+int print_image_patch_info_path(const char *kimg_path)
 {
-    fprintf(stdout, "path=%s\n", kimg_path);
     patched_kimg_t pimg = { 0 };
-    parse_image_patch_info_path(kimg_path, &pimg);
+    char *kimg;
+    int kimg_len;
+    read_file(kimg_path, &kimg, &kimg_len);
+    int rc = parse_image_patch_info(kimg, kimg_len, &pimg);
     print_image_patch_info(&pimg);
+    free(kimg);
+    return rc;
 }
 
-// todo: opt
+static int extra_compare(const void *a, const void *b)
+{
+    extra_config_t *pa = (extra_config_t *)a;
+    extra_config_t *pb = (extra_config_t *)b;
+    return -(pa->priority - pb->priority);
+}
+
 int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey,
-                     char **embed_kpm_path, char **embed_kpm_args, int embed_kpm_num, char **detach_kpm_names,
-                     int detach_kpm_num)
+                     const char **additional, const char *kpatch_path, extra_config_t *extra_configs,
+                     int extra_config_num)
 {
     set_log_enable(true);
 
-    if (!kpimg_path) tools_error_exit("empty kpimg\n");
-    if (!out_path) tools_error_exit("empty out image path\n");
-    if (!superkey) tools_error_exit("empty superkey\n");
+    if (!kpimg_path) tools_loge_exit("empty kpimg\n");
+    if (!out_path) tools_loge_exit("empty out image path\n");
+    if (!superkey) tools_loge_exit("empty superkey\n");
 
     patched_kimg_t pimg = { 0 };
-    parse_image_patch_info_path(kimg_path, &pimg);
+    char *kimg;
+    int kimg_len;
+    read_file(kimg_path, &kimg, &kimg_len);
+    int rc = parse_image_patch_info(kimg, kimg_len, &pimg);
+    if (rc) tools_loge_exit("parse kernel image error\n");
     // print_image_patch_info(&pimg);
 
     // kimg base info
@@ -190,7 +279,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     memcpy(kallsym_kimg, pimg.kimg, pimg.ori_kimg_len);
     kallsym_t kallsym = { 0 };
     if (analyze_kallsym_info(&kallsym, kallsym_kimg, pimg.ori_kimg_len, ARM64, 1)) {
-        tools_error_exit("analyze_kallsym_info error\n");
+        tools_loge_exit("analyze_kallsym_info error\n");
     }
 
     // kpimg
@@ -198,67 +287,103 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     int kpimg_len = 0;
     read_file_align(kpimg_path, &kpimg, &kpimg_len, 0x10);
 
+    // embed kpatch executable
+    if (kpatch_path) {
+        // add new
+        extra_config_t *config = extra_configs + extra_config_num;
+        extra_config_num++;
+        config->extra_type = EXTRA_TYPE_EXEC;
+        config->is_path = true;
+        config->path = kpatch_path;
+        config->priority = __INT32_MAX__;
+        config->set_name = "kpatch";
+    }
+
     // extra
     int extra_size = 0;
     int extra_num = 0;
 
-    struct extra_items_wrap
-    {
-        patch_extra_item_t item;
-        const char *data;
-        const char *args;
-        int len;
-        union
-        {
-            const char *name;
-        };
-    } *extra_items = (struct extra_items_wrap *)malloc(sizeof(struct extra_items_wrap) * EXTRA_ITEM_MAX_NUM);
-
-    memset(extra_items, 0, sizeof(struct extra_items_wrap) * EXTRA_ITEM_MAX_NUM);
-
-    for (int i = 0; i < embed_kpm_num && extra_num < EXTRA_ITEM_MAX_NUM; i++) {
-        char *kpm_data;
-        int kpm_len;
-        read_file_align(embed_kpm_path[i], &kpm_data, &kpm_len, EXTRA_ALIGN);
-
-        kpm_info_t kpm_info = { 0 };
-        int rc = get_kpm_info(kpm_data, kpm_len, &kpm_info);
-        if (rc) tools_error_exit("can get infomation of kpm, path: %s\n", embed_kpm_path[i]);
-
-        struct extra_items_wrap *item_wrap = extra_items + extra_num;
-        patch_extra_item_t *kpm_item = &item_wrap->item;
-
-        kpm_item->type = EXTRA_TYPE_KPM;
-        kpm_item->con_size = kpm_len;
-        const char *args = embed_kpm_args[i];
-        if (args) {
-            item_wrap->args = args;
-            kpm_item->args_size = align_ceil(strlen(args), EXTRA_ALIGN);
+    for (int i = 0; i < extra_config_num; i++) {
+        extra_config_t *config = extra_configs + i;
+        if (config->is_path && config->extra_type == EXTRA_TYPE_NONE) {
+            tools_loge_exit("extra type none\n");
         }
-        // todo:
-        kpm_item->priority = 0;
-
-        item_wrap->data = kpm_data;
-        item_wrap->len = kpm_len;
-        item_wrap->name = kpm_info.name;
-
-        if ((is_be() ^ kinfo->is_be)) {
-            kpm_item->priority = i32swp(kpm_item->priority);
-            kpm_item->type = i32swp(kpm_item->type);
-            kpm_item->con_size = i32swp(kpm_item->con_size);
-            kpm_item->args_size = i32swp(kpm_item->args_size);
+        if (config->set_event && strnlen(config->set_event, EXTRA_EVENT_LEN) >= EXTRA_EVENT_LEN) {
+            tools_loge_exit("extra event too long: %s\n", config->set_event);
         }
-        extra_size += sizeof(patch_extra_item_t);
-        extra_size += kpm_len;
-        extra_size += kpm_item->args_size;
-        extra_num++;
+        if (config->set_name && strnlen(config->set_name, EXTRA_NAME_LEN) >= EXTRA_NAME_LEN) {
+            tools_loge_exit("extra name too long: %s\n", config->set_event);
+        }
+
+        patch_extra_item_t *item = NULL;
+        if (config->is_path) {
+            item = (patch_extra_item_t *)malloc(sizeof(patch_extra_item_t));
+            const char *path = config->path;
+            char *data;
+            int len = 0;
+            read_file_align(path, &data, &len, EXTRA_ALIGN);
+            config->data = data;
+            item->con_size = len;
+            // if name not set
+            if (!config->set_name) {
+                if (config->extra_type == EXTRA_TYPE_KPM) {
+                    kpm_info_t kpm_info = { 0 };
+                    int rc = get_kpm_info(data, len, &kpm_info);
+                    if (rc) tools_loge_exit("can get infomation of kpm, path: %s\n", path);
+                    strcpy(item->name, kpm_info.name);
+                } else {
+                    char *rsp = strrchr(path, '/');
+                    strncpy(item->name, rsp ? rsp + 1 : path, EXTRA_NAME_LEN - 1);
+                }
+            }
+        } else {
+            const char *name = config->name;
+            for (int j = 0; j < pimg.embed_item_num; j++) {
+                item = pimg.embed_item[j];
+                if (strcmp(name, item->name)) continue;
+                if (is_be() ^ kinfo->is_be) {
+                    item->type = i32swp(item->type);
+                    item->priority = i32swp(item->priority);
+                    item->con_size = i32swp(item->con_size);
+                    item->args_size = i32swp(item->args_size);
+                }
+                if (!config->set_args && item->args_size > 0) {
+                    config->set_args = (char *)item + sizeof(*item);
+                }
+                config->extra_type = item->type;
+                config->data = (char *)item + sizeof(*item) + item->args_size;
+                break;
+            }
+        }
+        if (!item) tools_loge_exit("empty extra item\n");
+        config->item = item;
+        item->type = config->extra_type;
+        if (config->set_args) item->args_size = align_ceil(strlen(config->set_args), EXTRA_ALIGN);
+        if (config->set_name) strcpy(item->name, config->set_name);
+        if (config->set_event) strcpy(item->event, config->set_event);
+        if (config->priority) item->priority = config->priority;
     }
-    extra_size += sizeof(patch_extra_item_t);
+
+    qsort(extra_configs, extra_config_num, sizeof(extra_config_t), extra_compare);
+
+    extra_size += sizeof(patch_extra_item_t); // ending with empty item
+
+    for (int i = 0; i < extra_config_num; i++) {
+        extra_config_t *config = extra_configs + i;
+        extra_num++;
+        extra_size += sizeof(patch_extra_item_t);
+        extra_size += config->item->args_size;
+        extra_size += config->item->con_size;
+        tools_logi("extra item num: %d, size: 0x%x\n", extra_num, extra_size);
+    }
 
     // copy to out image
     int ori_kimg_len = pimg.ori_kimg_len;
-    int align_kimg_len = align_ceil(pimg.kimg_len, SZ_4K);
+    int align_kimg_len = align_ceil(ori_kimg_len, SZ_4K);
     int out_img_len = align_kimg_len + kpimg_len;
+    tools_logi("layout kimg: 0x0-0x%x, kpimg: 0x%x-0x%x, extra: 0x%x-0x%x\n", ori_kimg_len, align_kimg_len, kpimg_len,
+               align_kimg_len + kpimg_len, extra_size);
+
     char *out_img = (char *)malloc(out_img_len);
     memcpy(out_img, pimg.kimg, ori_kimg_len);
     memset(out_img + ori_kimg_len, 0, align_kimg_len - ori_kimg_len);
@@ -289,7 +414,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     setup->page_shift = kinfo->page_shift;
     setup->setup_offset = align_kimg_len;
     setup->start_offset = align_kernel_size;
-    setup->extra_size = extra_size; // ending with empty item
+    setup->extra_size = extra_size;
 
     int map_start, map_max_size;
     select_map_area(&kallsym, kallsym_kimg, &map_start, &map_max_size);
@@ -301,7 +426,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
 
     setup->printk_offset = get_symbol_offset_zero(&kallsym, kallsym_kimg, "printk");
     if (!setup->printk_offset) setup->printk_offset = get_symbol_offset_zero(&kallsym, kallsym_kimg, "_printk");
-    if (!setup->printk_offset) tools_error_exit("no symbol printk\n");
+    if (!setup->printk_offset) tools_loge_exit("no symbol printk\n");
 
     if ((is_be() ^ kinfo->is_be)) {
         setup->kimg_size = i64swp(setup->kimg_size);
@@ -334,50 +459,61 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     int text_offset = align_kimg_len + SZ_4K;
     b((uint32_t *)(out_img + kinfo->b_stext_insn_offset), kinfo->b_stext_insn_offset, text_offset);
 
+    // additional [len key=value] set
+    char *addition_pos = setup->additional;
+    for (int i = 0;; i++) {
+        const char *kv = additional[i];
+        if (!kv) break;
+        if (!strchr(kv, '=')) tools_loge_exit("addition must be format of key=value\n");
+
+        int kvlen = strlen(kv);
+        if (kvlen > 127) tools_loge_exit("addition %s too long\n", kv);
+        if (addition_pos + kvlen + 1 > setup->additional + ADDITIONAL_LEN) tools_loge_exit("no memory for addition\n");
+
+        *addition_pos = (char)kvlen;
+        addition_pos++;
+
+        tools_logi("adding addition: %s\n", kv);
+        strcpy(addition_pos, kv);
+        addition_pos += kvlen;
+    }
+
     // write out
     write_file(out_path, out_img, out_img_len, false);
 
-    // extra
-    for (int i = 0; i < extra_num; i++) {
-        struct extra_items_wrap *item_wrap = &extra_items[i];
-        const char *type = EXTRA_TYPE_NONE;
-        switch (item_wrap->item.type) {
-        case EXTRA_TYPE_KPM:
-            type = "kpm";
-            break;
-        case EXTRA_TYPE_SHELL:
-            type = "shell";
-            break;
-        default:
-            break;
-        }
-        tools_logi("embedding %s, name: %s, size: 0x%x, args: %s\n", type, item_wrap->name, item_wrap->len,
-                   item_wrap->args);
+    // write extra
+    for (int i = 0; i < extra_config_num; i++) {
+        extra_config_t *config = extra_configs + i;
+        patch_extra_item_t *item = config->item;
+        const char *type = extra_type_str(item->type);
+        tools_logi("embedding %s, name: %s, priority: %d, event: %s, args: %s, size: 0x%x+0x%x+0x%x\n", type,
+                   item->name, item->priority, item->event, config->set_args ?: "", (int)sizeof(*item), item->args_size,
+                   item->con_size);
 
-        write_file(out_path, (void *)&item_wrap->item, sizeof(item_wrap->item), true);
-        int args_size = item_wrap->item.args_size;
-        if (args_size > 0) {
-            char *args = (char *)malloc(args_size);
-            memset(args + args_size - EXTRA_ALIGN, 0, EXTRA_ALIGN);
-            strcpy(args, item_wrap->args);
-            write_file(out_path, (void *)item_wrap->args, args_size, true);
-            free(args);
+        int args_len = item->args_size;
+        int con_len = item->con_size;
+
+        if (is_be() ^ kinfo->is_be) {
+            item->type = i32swp(item->type);
+            item->priority = i32swp(item->priority);
+            item->con_size = i32swp(item->con_size);
+            item->args_size = i32swp(item->args_size);
         }
-        write_file(out_path, (void *)item_wrap->data, item_wrap->len, true);
+
+        write_file(out_path, (void *)item, sizeof(*item), true);
+        if (args_len > 0) write_file(out_path, (void *)config->set_args, args_len, true);
+        write_file(out_path, (void *)config->data, con_len, true);
     }
 
-    patch_extra_item_t empty_item = {
-        .type = EXTRA_TYPE_NONE,
-        .priority = 0,
-        .con_size = 0,
-    };
+    // guard extra
+    patch_extra_item_t empty_item = { 0 };
     write_file(out_path, (void *)&empty_item, sizeof(empty_item), true);
 
     // free
-    free(extra_items);
     free(kallsym_kimg);
     free(kpimg);
     free(out_img);
+    free(kimg);
 
     tools_logi("patch done: %s\n", out_path);
 
@@ -387,15 +523,15 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
 
 int unpatch_img(const char *kimg_path, const char *out_path)
 {
-    if (!kimg_path) tools_error_exit("empty kernel image\n");
-    if (!out_path) tools_error_exit("empty out image path\n");
+    if (!kimg_path) tools_loge_exit("empty kernel image\n");
+    if (!out_path) tools_loge_exit("empty out image path\n");
 
     char *kimg = NULL;
     int kimg_len = 0;
     read_file(kimg_path, &kimg, &kimg_len);
 
     preset_t *preset = get_preset(kimg, kimg_len);
-    if (!preset) tools_error_exit("not patched kernel image\n");
+    if (!preset) tools_loge_exit("not patched kernel image\n");
 
     memcpy(kimg, preset->setup.header_backup, sizeof(preset->setup.header_backup));
     int kimg_size = preset->setup.kimg_size ?: ((char *)preset - kimg);
@@ -407,19 +543,19 @@ int unpatch_img(const char *kimg_path, const char *out_path)
 
 int reset_key(const char *kimg_path, const char *out_path, const char *superkey)
 {
-    if (!kimg_path) tools_error_exit("empty kernel image\n");
-    if (!out_path) tools_error_exit("empty out image path\n");
-    if (!superkey) tools_error_exit("empty superkey\n");
+    if (!kimg_path) tools_loge_exit("empty kernel image\n");
+    if (!out_path) tools_loge_exit("empty out image path\n");
+    if (!superkey) tools_loge_exit("empty superkey\n");
 
-    if (strlen(superkey) <= 0) tools_error_exit("empty superkey\n");
-    if (strlen(superkey) >= SUPER_KEY_LEN) tools_error_exit("too long superkey\n");
+    if (strlen(superkey) <= 0) tools_loge_exit("empty superkey\n");
+    if (strlen(superkey) >= SUPER_KEY_LEN) tools_loge_exit("too long superkey\n");
 
     char *kimg = NULL;
     int kimg_len = 0;
     read_file(kimg_path, &kimg, &kimg_len);
 
     preset_t *preset = get_preset(kimg, kimg_len);
-    if (!preset) tools_error_exit("not patched kernel image\n");
+    if (!preset) tools_loge_exit("not patched kernel image\n");
 
     char *origin_key = strdup((char *)preset->setup.superkey);
     strcpy((char *)preset->setup.superkey, superkey);
@@ -435,7 +571,7 @@ int reset_key(const char *kimg_path, const char *out_path, const char *superkey)
 
 int dump_kallsym(const char *kimg_path)
 {
-    if (!kimg_path) tools_error_exit("empty kernel image\n");
+    if (!kimg_path) tools_loge_exit("empty kernel image\n");
     set_log_enable(true);
     // read image files
     char *kimg = NULL;

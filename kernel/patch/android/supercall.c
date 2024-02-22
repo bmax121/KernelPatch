@@ -53,7 +53,6 @@ static long call_reset_su_path(const char *__user upath)
 {
     char path[SU_PATH_MAX_LEN];
     strncpy_from_user_nofault(path, upath, sizeof(path));
-    if (strlen(path) < SU_PATH_MIN_LEN - 1) return -EINVAL;
     return su_reset_path(path);
 }
 

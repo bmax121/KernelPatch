@@ -32,6 +32,7 @@ struct allow_pkg_info
 static char magiskpolicy_path[] = APATCH_BIN_FLODER "magiskpolicy";
 static char pkg_cfg_path[] = APATCH_FLODER "package_config";
 static char su_path_path[] = APATCH_FLODER "su_path";
+static char skip_sepolicy_path[] = APATCH_FLODER "skip_sepolicy";
 
 static char boot0_log_path[] = APATCH_LOG_FLODER "kpatch_0.log";
 static char boot1_log_path[] = APATCH_LOG_FLODER "kpatch_1.log";
@@ -112,7 +113,7 @@ static void load_config_allow_uids()
 
     FILE *fallow = fopen(pkg_cfg_path, "r");
     if (fallow == NULL) {
-        log_kernel("%d open %s error: %s", getpid(), pkg_cfg_path, strerror(errno));
+        log_kernel("%d open %s error: %s\n", getpid(), pkg_cfg_path, strerror(errno));
         return;
     }
 
@@ -166,7 +167,7 @@ static void load_config_su_path()
 {
     FILE *file = fopen(su_path_path, "rb");
     if (file == NULL) {
-        log_kernel("%d open %s error: %s", getpid(), su_path_path, strerror(errno));
+        log_kernel("%d open %s error: %s\n", getpid(), su_path_path, strerror(errno));
         return;
     }
     char linebuf[SU_PATH_MAX_LEN] = { '\0' };
@@ -178,6 +179,13 @@ static void load_config_su_path()
 
 static void fork_for_result(const char *exec, char *const *argv)
 {
+    char cmd[4096] = { '\0' };
+    for (int i = 0;; i++) {
+        if (!argv[i]) break;
+        strncat(cmd, argv[i], sizeof(cmd) - strlen(cmd) - 1);
+        strncat(cmd, " ", sizeof(cmd) - strlen(cmd) - 1);
+    }
+
     pid_t pid = fork();
     if (pid < 0) {
         log_kernel("%d fork %s error: %d\n", getpid(), exec, pid);
@@ -189,45 +197,56 @@ static void fork_for_result(const char *exec, char *const *argv)
         sprintf(kver, "%x", sc_k_ver(key));
         setenv("KERNEL_VER", kver, 1);
         int rc = execv(exec, argv);
-        log_kernel("%d exec %s error: %s\n", getpid(), exec, strerror(errno));
+        log_kernel("%d exec %s error: %s\n", getpid(), cmd, strerror(errno));
     } else {
         int status;
         wait(&status);
-        log_kernel("%d wait %s status: 0x%x\n", getpid(), exec, status);
+        log_kernel("%d wait %s status: 0x%x\n", getpid(), cmd, status);
     }
 }
 
-static void load_magisk_policy()
-{
-    char *argv[] = { magiskpolicy_path, "--magisk", "--live", NULL };
-    fork_for_result(magiskpolicy_path, argv);
-}
-
-static void init()
+static void post_fs_data_init()
 {
     struct su_profile profile = { .uid = getuid() };
     sc_su(key, &profile);
 
-    log_kernel("%d starting android user init, from kernel: %d\n", getpid(), from_kernel);
+    log_kernel("%d starting android user post_fs_data_init, from kernel: %d\n", getpid(), from_kernel);
 
-    if (!opendir(APATCH_FLODER)) mkdir(APATCH_FLODER, 0700);
-    if (!opendir(APATCH_LOG_FLODER)) mkdir(APATCH_LOG_FLODER, 0700);
+    if (!access(APATCH_FLODER, F_OK)) mkdir(APATCH_FLODER, 0700);
+    if (!access(APATCH_LOG_FLODER, F_OK)) mkdir(APATCH_LOG_FLODER, 0700);
 
     if (from_kernel) save_dmegs(boot0_log_path);
 
-    log_kernel("%d load selinux policy.\n", getpid());
-    load_magisk_policy();
-    log_kernel("%d reset su path.\n", getpid());
+    char current_exe[1024] = { '\0' };
+    if (readlink("/proc/self/exe", current_exe, sizeof(current_exe) - 1)) {
+        if (!strcmp(current_exe, KPATCH_DEV_PATH)) {
+            log_kernel("%d copy %s to %s.\n", getpid(), current_exe, KPATCH_DATA_PATH);
+
+            char *const cp_argv[] = { "/system/bin/cp", current_exe, KPATCH_DATA_PATH, NULL };
+            fork_for_result(cp_argv[0], cp_argv);
+
+            char *const rm_argv[] = { "/system/bin/rm", current_exe, NULL };
+            fork_for_result(rm_argv[0], rm_argv);
+        }
+    }
+
+    if (!access(skip_sepolicy_path, F_OK)) {
+        char *argv[] = { magiskpolicy_path, "--magisk", "--live", NULL };
+        fork_for_result(magiskpolicy_path, argv);
+    }
+
     load_config_su_path();
-    log_kernel("%d load allow uids.\n", getpid());
     load_config_allow_uids();
 
-    log_kernel("%d finished android user init.\n", getpid());
+    log_kernel("%d finished android user post_fs_data_init.\n", getpid());
 
     if (from_kernel) save_dmegs(boot1_log_path);
 }
 
-static struct option const longopts[] = { { "kernel", no_argument, NULL, 'k' }, { NULL, 0, NULL, 0 } };
+static struct option const longopts[] = {
+    { "kernel", no_argument, NULL, 'k' },
+    { NULL, 0, NULL, 0 },
+};
 
 int android_user(int argc, char **argv)
 {
@@ -247,9 +266,10 @@ int android_user(int argc, char **argv)
         }
     }
 
-    if (!strcmp("init", scmd)) {
-        init();
+    if (!strcmp("post-fs-data-init", scmd)) {
+        post_fs_data_init();
     } else if (!strcmp("post-fs-data", scmd) || !strcmp("services", scmd) || !strcmp("boot-completed", scmd)) {
+        // todo: move to apd
         struct su_profile profile = {
             .uid = getuid(),
             .to_uid = 0,

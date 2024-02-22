@@ -17,18 +17,18 @@
 extern bool log_enable;
 
 #define tools_logi(fmt, ...) \
-    if (log_enable) fprintf(stdout, "[+] %s; " fmt, __FILE__, ##__VA_ARGS__);
+    if (log_enable) fprintf(stdout, "[+] " fmt, ##__VA_ARGS__);
 
 #define tools_logw(fmt, ...) \
-    if (log_enable) fprintf(stdout, "[?] %s; " fmt, __FILE__, ##__VA_ARGS__);
+    if (log_enable) fprintf(stdout, "[?] " fmt, ##__VA_ARGS__);
 
 #define tools_loge(fmt, ...) \
-    if (log_enable) fprintf(stdout, "[-] error %s:%d/%s(); " fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__);
+    if (log_enable) fprintf(stdout, "[-] %s:%d/%s(); " fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__);
 
-#define tools_error_exit(fmt, ...)                                                                  \
-    do {                                                                                            \
-        fprintf(stdout, "[-] error %s:%d/%s(); " fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
-        exit(EXIT_FAILURE);                                                                         \
+#define tools_loge_exit(fmt, ...)                                                             \
+    do {                                                                                      \
+        fprintf(stderr, "[-] %s:%d/%s(); " fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
+        exit(EXIT_FAILURE);                                                                   \
     } while (0)
 
 #define SZ_4K 0x1000
@@ -56,8 +56,8 @@ void write_file(const char *path, const char *con, int len, bool append);
 
 void read_file_align(const char *path, char **con, int *len, int align);
 
-int64_t int_unpack(void *ptr, int32_t size, int32_t is_be);
-uint64_t uint_unpack(void *ptr, int32_t size, int32_t is_be);
+int64_t int_unpack(void *ptr, int32_t size, bool is_be);
+uint64_t uint_unpack(void *ptr, int32_t size, bool is_be);
 
 static inline void read_file(const char *path, char **con, int *len)
 {

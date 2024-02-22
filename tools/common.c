@@ -40,15 +40,15 @@ int32_t relo_branch_func(const char *img, int32_t func_offset)
 void read_file_align(const char *path, char **con, int *out_len, int align)
 {
     FILE *fp = fopen(path, "rb");
-    if (!fp) tools_error_exit("open file: %s, %s\n", path, strerror(errno));
+    if (!fp) tools_loge_exit("open file: %s, %s\n", path, strerror(errno));
     fseek(fp, 0, SEEK_END);
-    long len = ftell(fp);
+    int len = (int)ftell(fp);
     fseek(fp, 0, SEEK_SET);
-    long align_len = align_ceil(len, align);
+    int align_len = (int)align_ceil(len, align);
     char *buf = (char *)malloc(align_len);
     memset(buf + len, 0, align_len - len);
     int readlen = fread(buf, 1, len, fp);
-    if (readlen != len) tools_error_exit("read file: %s incomplete\n", path);
+    if (readlen != len) tools_loge_exit("read file: %s incomplete\n", path);
     fclose(fp);
     *con = buf;
     *out_len = align_len;
@@ -56,48 +56,50 @@ void read_file_align(const char *path, char **con, int *out_len, int align)
 
 void write_file(const char *path, const char *con, int len, bool append)
 {
-    FILE *fout = fopen(path, append ? "a" : "w");
-    if (!fout) tools_error_exit("open %s %s\n", path, strerror(errno));
+    FILE *fout = fopen(path, append ? "ab" : "wb");
+    if (!fout) tools_loge_exit("open %s %s\n", path, strerror(errno));
     int writelen = fwrite(con, 1, len, fout);
-    if (writelen != len) tools_error_exit("write file: %s incomplete\n", path);
+    if (writelen != len) tools_loge_exit("write file: %s incomplete\n", path);
     fclose(fout);
 }
 
-int64_t int_unpack(void *ptr, int32_t size, int32_t is_be)
+int64_t int_unpack(void *ptr, int32_t size, bool is_be)
 {
-    int16_t res16;
-    int32_t res32;
+    bool swp = is_be ^ is_be();
     int64_t res64;
+    int32_t res32;
+    int16_t res16;
     switch (size) {
     case 8:
         res64 = *(int64_t *)ptr;
-        return is_be ? i64be(res64) : i64le(res64);
+        return swp ? i64swp(res64) : res64;
     case 4:
         res32 = *(int32_t *)ptr;
-        return is_be ? i32be(res32) : i32le(res32);
+        return swp ? i32swp(res32) : res32;
     case 2:
         res16 = *(int16_t *)ptr;
-        return is_be ? i16be(res16) : i16le(res16);
+        return swp ? i16swp(res16) : res16;
     default:
         return *(int8_t *)ptr;
     }
 }
 
-uint64_t uint_unpack(void *ptr, int32_t size, int32_t is_be)
+uint64_t uint_unpack(void *ptr, int32_t size, bool is_be)
 {
-    uint16_t res16;
-    uint32_t res32;
+    bool swp = is_be ^ is_be();
     uint64_t res64;
+    uint32_t res32;
+    uint16_t res16;
     switch (size) {
     case 8:
         res64 = *(uint64_t *)ptr;
-        return is_be ? u64be(res64) : u64le(res64);
+        return swp ? u64swp(res64) : res64;
     case 4:
         res32 = *(uint32_t *)ptr;
-        return is_be ? u32be(res32) : u32le(res32);
+        return swp ? u32swp(res32) : res32;
     case 2:
         res16 = *(uint16_t *)ptr;
-        return is_be ? u16be(res16) : u16le(res16);
+        return swp ? u16swp(res16) : res16;
     default:
         return *(uint8_t *)ptr;
     }

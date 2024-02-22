@@ -38,7 +38,8 @@ struct module
     char *args, *ctl_args;
 
     mod_initcall_t *init;
-    mod_ctlcall_t *ctl;
+    mod_ctl0call_t *ctl0;
+    mod_ctl1call_t *ctl1;
     mod_exitcall_t *exit;
 
     unsigned int size;
@@ -50,10 +51,11 @@ struct module
     struct list_head list;
 };
 
-int load_module(const void *data, int len, const char *args, void *__user reserved);
-int load_module_path(const char *path, const char *args, void *__user reserved);
-int control_module(const char *name, const char *ctl_args, char *__user out_msg, int outlen);
-int unload_module(const char *name, void *__user reserved);
+long load_module(const void *data, int len, const char *args, const char *event, void *__user reserved);
+long load_module_path(const char *path, const char *args, void *__user reserved);
+long module_control0(const char *name, const char *ctl_args, char *__user out_msg, int outlen);
+long module_control1(const char *name, void *a1, void *a2, void *a3);
+long unload_module(const char *name, void *__user reserved);
 struct module *find_module(const char *name);
 
 int get_module_nums();

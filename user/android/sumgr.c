@@ -40,9 +40,8 @@ int su_nums(const char *key)
 
 int su_list(const char *key)
 {
-    int nums = sc_su_uid_nums(key);
-    uid_t uids[nums];
-    int rc = sc_su_allow_uids(key, uids, nums);
+    uid_t uids[256];
+    int rc = sc_su_allow_uids(key, uids, sizeof(uids) / sizeof(uids[0]));
     if (rc > 0) {
         for (int i = 0; i < rc; i++) {
             fprintf(stdout, "%d\n", uids[i]);
@@ -101,7 +100,7 @@ void usage(int status)
             "num                               Get the number of uids with the aforementioned permissions.\n"
             "list                              List aforementioned uids.\n"
             "profile <UID>                     Get the profile of the uid configuration.\n"
-            "reset <PATH>                      Reset '/system/bin/kp' to PATH. The length of PATH must be between 14-63.\n"
+            "reset <PATH>                      Reset '/system/bin/kp' to PATH. The length of PATH must be between 1-127.\n"
             "path                              Get current su PATH.\n"
             "");
     }

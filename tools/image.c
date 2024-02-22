@@ -60,14 +60,14 @@ int32_t get_kernel_info(kernel_info_t *kinfo, const char *img, int32_t imglen)
 
     if (!strncmp("UNCOMPRESSED_IMG", img, strlen("UNCOMPRESSED_IMG"))) {
         kinfo->img_offset = 0x14;
-        tools_error_exit("kernel image with UNCOMPRESSED_IMG header\n");
+        tools_loge_exit("kernel image with UNCOMPRESSED_IMG header\n");
     }
 
     kinfo->is_be = 0;
 
     arm64_hdr_t *khdr = (arm64_hdr_t *)(img + kinfo->img_offset);
     if (strncmp(khdr->magic, KERNEL_MAGIC, strlen(KERNEL_MAGIC))) {
-        tools_error_exit("kernel image magic error: %s\n", khdr->magic);
+        tools_loge_exit("kernel image magic error: %s\n", khdr->magic);
     }
 
     kinfo->uefi = !strncmp((const char *)khdr->hdr.efi.mz, EFI_MAGIC_SIG, strlen(EFI_MAGIC_SIG));
@@ -85,7 +85,7 @@ int32_t get_kernel_info(kernel_info_t *kinfo, const char *img, int32_t imglen)
 
     b_primary_entry_insn = u32le(b_primary_entry_insn);
     if ((b_primary_entry_insn & 0xFC000000) != 0x14000000) {
-        tools_error_exit("kernel primary entry: %x\n", b_primary_entry_insn);
+        tools_loge_exit("kernel primary entry: %x\n", b_primary_entry_insn);
     } else {
         uint32_t imm = (b_primary_entry_insn & 0x03ffffff) << 2;
         kinfo->primary_entry_offset = imm + b_stext_insn_offset;
@@ -97,7 +97,7 @@ int32_t get_kernel_info(kernel_info_t *kinfo, const char *img, int32_t imglen)
     uint8_t flag = u64le(khdr->kernel_flag_le) & 0x0f;
     kinfo->is_be = flag & 0x01;
 
-    if (kinfo->is_be) tools_error_exit("kernel unexpected arm64 big endian img\n");
+    if (kinfo->is_be) tools_loge_exit("kernel unexpected arm64 big endian img\n");
 
     switch ((flag & 0b0110) >> 1) {
     case 2: // 16k
