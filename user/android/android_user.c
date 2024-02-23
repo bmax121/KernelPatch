@@ -230,7 +230,7 @@ static void post_fs_data_init()
         }
     }
 
-    if (!access(skip_sepolicy_path, F_OK)) {
+    if (access(skip_sepolicy_path, F_OK)) {
         char *argv[] = { magiskpolicy_path, "--magisk", "--live", NULL };
         fork_for_result(magiskpolicy_path, argv);
     }
