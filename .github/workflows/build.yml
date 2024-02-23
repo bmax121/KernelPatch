@@ -3,10 +3,9 @@ name: Build CI
 on:
   workflow_dispatch:
     inputs:
-      environment:
+      releaseBody:
         description: "Release Body"
-        type: environment
-        required: true
+        default: "..."
 
 jobs:
   Build-kpimg:
@@ -84,6 +83,8 @@ jobs:
             kpm-demo/hello/demo-hello.kpm
             kpm-demo/inlinehook/demo-inlinehook.kpm
             kpm-demo/syscallhook/demo-syscallhook.kpm
+          generateReleaseNotes: true
+          omitBodyDuringUpdate: true
           allowUpdates: true
           makeLatest: true
           replacesArtifacts: true
@@ -122,6 +123,7 @@ jobs:
             kpuser.zip
           allowUpdates: true
           replacesArtifacts: true
+          omitBodyDuringUpdate: true
 
   Build-android-kpatch-kptools:
     runs-on: ubuntu-latest
@@ -195,6 +197,7 @@ jobs:
             tools/build/android/kptools-android
           allowUpdates: true
           replacesArtifacts: true
+          omitBodyDuringUpdate: true
 
   Build-kptools-linux:
     runs-on: ubuntu-latest
@@ -237,6 +240,7 @@ jobs:
             tools/build/kptools-linux
           allowUpdates: true
           replacesArtifacts: true
+          omitBodyDuringUpdate: true
 
   Build-kptools-windows-msys2:
     runs-on: windows-2022
@@ -290,6 +294,7 @@ jobs:
             kptools-msys2-win.7z
           allowUpdates: true
           replacesArtifacts: true
+          omitBodyDuringUpdate: true
 
   Build-kptools-windows-llvm:
     runs-on: ubuntu-latest
@@ -336,6 +341,7 @@ jobs:
             kptools-llvm-win.zip
           allowUpdates: true
           replacesArtifacts: true
+          omitBodyDuringUpdate: true
 
   Build-kptools-mac:
     runs-on: macos-latest
@@ -377,3 +383,4 @@ jobs:
             tools/build/kptools-mac
           allowUpdates: true
           replacesArtifacts: true
+          omitBodyDuringUpdate: true
