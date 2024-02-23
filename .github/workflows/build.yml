@@ -1,22 +1,12 @@
 name: Build CI
 
 on:
-  push:
-    branches: ["main"]
-    paths:
-      - ".github/workflows/build.yml"
-      - "kernel/**"
-      - "user/**"
-      - "tools/**"
-      - "version"
-  pull_request:
-    branches: ["main"]
-    paths:
-      - ".github/workflows/build.yml"
-      - "kernel/**"
-      - "user/**"
-      - "tools/**"
-      - "version"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Release Body"
+        type: environment
+        required: true
 
 jobs:
   Build-kpimg:
@@ -94,7 +84,6 @@ jobs:
             kpm-demo/hello/demo-hello.kpm
             kpm-demo/inlinehook/demo-inlinehook.kpm
             kpm-demo/syscallhook/demo-syscallhook.kpm
-          # generateReleaseNotes: true
           allowUpdates: true
           makeLatest: true
           replacesArtifacts: true
