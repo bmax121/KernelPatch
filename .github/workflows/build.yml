@@ -94,7 +94,7 @@ jobs:
             kpm-demo/hello/demo-hello.kpm
             kpm-demo/inlinehook/demo-inlinehook.kpm
             kpm-demo/syscallhook/demo-syscallhook.kpm
-          generateReleaseNotes: true
+          # generateReleaseNotes: true
           allowUpdates: true
           makeLatest: true
           replacesArtifacts: true
@@ -254,53 +254,53 @@ jobs:
     permissions:
       contents: write
     steps:
-    - name: Checkout
-      uses: actions/checkout@v3
-    - name: Generate version
-      shell: pwsh
-      run: |
-        $MAJOR = (Select-String -Path version -Pattern '#define MAJOR').Line.Split(' ')[2]
-        $MINOR = (Select-String -Path version -Pattern '#define MINOR').Line.Split(' ')[2]
-        $PATCH = (Select-String -Path version -Pattern '#define PATCH').Line.Split(' ')[2]
-        $VERSION = "$MAJOR.$MINOR.$PATCH"
-        Write-Output "Generated Version: $VERSION"
-        "VERSION=$VERSION" | Out-File -FilePath $env:GITHUB_ENV -Append
-        Add-Content -Path $env:GITHUB_OUTPUT -Value "VERSION=$VERSION"
-    - uses: msys2/setup-msys2@v2
-      with:
-        update: true
-        msystem: ucrt64
-        path-type: inherit
-        install: >-
-          msys/make
-          msys/gcc
-    - name: Copyfile
-      shell: pwsh
-      run: |
-        cp .\kernel\include\preset.h .\tools\
-        cd tools
-        (Get-Content -Path "Makefile") -replace '\$\(CC\)', " x86_64-pc-msys-gcc.exe" | Set-Content -Path "Makefile"
-        (Get-Content -Path "Makefile") -replace '\${CC}', "x86_64-pc-msys-gcc.exe" | Set-Content -Path "Makefile"
-    - name: build
-      shell: cmd
-      run: |
-        cd tools
-        msys2 -c 'make'
-        
-    - name: Copyfile2
-      shell: pwsh
-      run: |
-        cp .\tools\kptools.exe .\tools\kptools-msys2.exe
-        7z a kptools-msys2-win .\tools\kptools-msys2.exe D:\a\_temp\msys64\usr\bin\msys-2.0.dll
-    - name: Release
-      uses: ncipollo/release-action@v1.12.0
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        tag: ${{ env.VERSION }}
-        artifacts: |
-          kptools-msys2-win.7z
-        allowUpdates: true
-        replacesArtifacts: true
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Generate version
+        shell: pwsh
+        run: |
+          $MAJOR = (Select-String -Path version -Pattern '#define MAJOR').Line.Split(' ')[2]
+          $MINOR = (Select-String -Path version -Pattern '#define MINOR').Line.Split(' ')[2]
+          $PATCH = (Select-String -Path version -Pattern '#define PATCH').Line.Split(' ')[2]
+          $VERSION = "$MAJOR.$MINOR.$PATCH"
+          Write-Output "Generated Version: $VERSION"
+          "VERSION=$VERSION" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "VERSION=$VERSION"
+      - uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          msystem: ucrt64
+          path-type: inherit
+          install: >-
+            msys/make
+            msys/gcc
+      - name: Copyfile
+        shell: pwsh
+        run: |
+          cp .\kernel\include\preset.h .\tools\
+          cd tools
+          (Get-Content -Path "Makefile") -replace '\$\(CC\)', " x86_64-pc-msys-gcc.exe" | Set-Content -Path "Makefile"
+          (Get-Content -Path "Makefile") -replace '\${CC}', "x86_64-pc-msys-gcc.exe" | Set-Content -Path "Makefile"
+      - name: build
+        shell: cmd
+        run: |
+          cd tools
+          msys2 -c 'make'
+
+      - name: Copyfile2
+        shell: pwsh
+        run: |
+          cp .\tools\kptools.exe .\tools\kptools-msys2.exe
+          7z a kptools-msys2-win .\tools\kptools-msys2.exe D:\a\_temp\msys64\usr\bin\msys-2.0.dll
+      - name: Release
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ env.VERSION }}
+          artifacts: |
+            kptools-msys2-win.7z
+          allowUpdates: true
+          replacesArtifacts: true
 
   Build-kptools-windows-llvm:
     runs-on: ubuntu-latest
