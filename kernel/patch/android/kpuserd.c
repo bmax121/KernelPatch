@@ -103,14 +103,25 @@ static int extract_kpatch_call_back(const patch_extra_item_t *extra, const char 
     return 0;
 }
 
-static void before_first_stage()
+static void try_extract_kpatch()
 {
     const char *path = KPATCH_DEV_PATH;
-    on_each_extra_item(extract_kpatch_call_back, (void *)path);
+    struct file *fp = filp_open(path, O_RDONLY, 0);
+    if (IS_ERR(fp)) {
+        on_each_extra_item(extract_kpatch_call_back, (void *)path);
+    } else {
+        filp_close(fp, 0);
+    }
+}
+
+static void before_first_stage()
+{
+    try_extract_kpatch();
 }
 
 static void before_second_stage()
 {
+    try_extract_kpatch();
 }
 
 static void on_zygote_start()
