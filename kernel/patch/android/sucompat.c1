@@ -180,10 +180,10 @@ int su_allow_uids(uid_t *__user uuids, int unum)
             goto out;
         }
         uid_t uid = pos->profile.uid;
-        int cplen = seq_copy_to_user(uuids + num, &uid, sizeof(uid));
+        int cplen = compat_copy_to_user(uuids + num, &uid, sizeof(uid));
         logkfd("uid: %d\n", uid);
         if (cplen <= 0) {
-            logkfd("seq_copy_to_user error: %d", cplen);
+            logkfd("compat_copy_to_user error: %d", cplen);
             rc = cplen;
             goto out;
         }
@@ -203,10 +203,10 @@ int su_allow_uid_profile(uid_t uid, struct su_profile *__user uprofile)
     list_for_each_entry(pos, &allow_uid_list, list)
     {
         if (pos->profile.uid != uid) continue;
-        int cplen = seq_copy_to_user(uprofile, &pos->profile, sizeof(struct su_profile));
+        int cplen = compat_copy_to_user(uprofile, &pos->profile, sizeof(struct su_profile));
         logkfd("profile: %d %d %s\n", uid, pos->profile.to_uid, pos->profile.scontext);
         if (cplen <= 0) {
-            logkfd("seq_copy_to_user error: %d", cplen);
+            logkfd("compat_copy_to_user error: %d", cplen);
             rc = cplen;
             goto out;
         }
@@ -244,7 +244,7 @@ int su_get_path(char *__user ubuf, int buf_len)
     if (len <= 0) return -EINVAL;
     if (buf_len < len) return -ENOBUFS;
     logkfi("%s\n", current_su_path);
-    return seq_copy_to_user(ubuf, current_su_path, len + 1);
+    return compat_copy_to_user(ubuf, current_su_path, len + 1);
 }
 
 // todo: rcu_dereference_protected
@@ -261,7 +261,7 @@ static void *__user copy_to_user_stack(void *data, size_t len)
     uintptr_t addr = current_user_stack_pointer();
     addr -= len;
     addr &= 0xFFFFFFFFFFFFFFF0;
-    seq_copy_to_user((void *)addr, data, len);
+    compat_copy_to_user((void *)addr, data, len);
     return (void *)addr;
 }
 
@@ -290,7 +290,7 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
     }
     filename = (struct filename *)args->args[filename_index];
 
-    if (IS_ERR(filename)) return;
+    if (!filename || IS_ERR(filename)) return;
 
     if (!strcmp(current_su_path, filename->name)) {
         uid_t uid = current_uid();
@@ -302,7 +302,7 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
         commit_su(to_uid, sctx);
 
         struct file *filp = filp_open(apd_path, O_RDONLY, 0);
-        if (IS_ERR(filp)) {
+        if (!filp || IS_ERR(filp)) {
             logkfi("call su uid: %d, to_uid: %d, sctx: %s\n", uid, to_uid, sctx);
             strcpy((char *)filename->name, sh_path);
         } else {
@@ -311,9 +311,9 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
             strcpy((char *)filename->name, apd_path);
             const char *__user p0 =
                 get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], 0);
-            int sz = seq_copy_to_user((char *__user)p0, default_su_path, sizeof(default_su_path));
+            int sz = compat_copy_to_user((char *__user)p0, default_su_path, sizeof(default_su_path));
             if (sz != sizeof(default_su_path)) {
-                logkfe("seq_copy_to_user error: %d\n", sz);
+                logkfe("compat_copy_to_user error: %d\n", sz);
             }
         }
         kvfree(profile);
@@ -322,11 +322,11 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
         void *ua1 = (void *)args->args[filename_index + 2];
         // key
         const char __user *p1 = get_user_arg_ptr(ua0, ua1, 1);
-        if (IS_ERR(p1)) return;
+        if (!p1 || IS_ERR(p1)) return;
 
         // auth skey
         char arg1[SUPER_KEY_LEN];
-        if (strncpy_from_user_nofault(arg1, p1, sizeof(arg1)) <= 0) return;
+        if (compact_strncpy_from_user(arg1, p1, sizeof(arg1)) <= 0) return;
         if (superkey_auth(arg1)) return;
 
         commit_su(0, 0);
@@ -334,14 +334,14 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
         // real exec
         const char __user *p2 = get_user_arg_ptr(ua0, ua1, 2);
 
-        if (IS_ERR(p2)) {
+        if (!p2 || IS_ERR(p2)) {
             strcpy((char *)filename->name, sh_path);
             return;
         }
 
 #define EMBEDDED_NAME_MAX (PATH_MAX - sizeof(*filename) - 128) // enough
 
-        int len = strncpy_from_user_nofault((char *)filename->name, p2, EMBEDDED_NAME_MAX);
+        int len = compact_strncpy_from_user((char *)filename->name, p2, EMBEDDED_NAME_MAX);
         if (unlikely(len < 0)) return;
 
         // user_arg_ptr
@@ -359,14 +359,14 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
         // for (int i = 3; i < 10; i++) {
         //     const char *pn =
         //         get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], i);
-        //     if (IS_ERR(pn)) break;
-        //     strncpy_from_user_nofault(option, pn, sizeof(option));
+        //     if (!pn || IS_ERR(pn)) break;
+        //     compact_strncpy_from_user(option, pn, sizeof(option));
         //     if (!strcmp("--path", option)) {
         //         i++;
         //         pn =
         //             get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], i);
-        //         if (IS_ERR(pn)) break;
-        //         strncpy_from_user_nofault(option, pn, sizeof(option));
+        //         if (!pn || IS_ERR(pn)) break;
+        //         compact_strncpy_from_user(option, pn, sizeof(option));
         //         strcpy((char *)filename->name, option);
         //     }
         // }
@@ -377,6 +377,7 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
 
 // long do_faccessat(int dfd, const char __user *filename, int mode, int flags)
 // SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
+// SYSCALL_DEFINE4(faccessat2, int, dfd, const char __user *, filename, int, mode, int, flags)
 static void before_faccessat(hook_fargs4_t *args, void *udata)
 {
     uid_t uid = current_uid();
@@ -386,7 +387,7 @@ static void before_faccessat(hook_fargs4_t *args, void *udata)
 
     char __user *filename = (char __user *)args->arg1;
     char buf[SU_PATH_MAX_LEN];
-    strncpy_from_user_nofault(buf, filename, sizeof(buf));
+    compact_strncpy_from_user(buf, filename, sizeof(buf));
     if (strcmp(buf, local_su_path)) return;
 
     logkfd("uid: %d\n", uid);
@@ -395,6 +396,7 @@ static void before_faccessat(hook_fargs4_t *args, void *udata)
 }
 
 // int vfs_statx(int dfd, struct filename *filename, int flags, struct kstat *stat, u32 request_mask)
+// int do_statx(int dfd, struct filename *filename, unsigned int flags, unsigned int mask, struct statx __user *buffer)
 // int vfs_fstatat(int dfd, const char __user *filename, struct kstat *stat, int flags)
 // int do_statx(int dfd, struct filename *filename, unsigned int flags, unsigned int mask, struct statx __user *buffer)
 // int do_statx(int dfd, const char __user *filename, unsigned flags, unsigned int mask, struct statx __user *buffer)
@@ -415,12 +417,12 @@ static void before_stat(hook_fargs8_t *args, void *udata)
     // assume this is kernel address
     if ((((uintptr_t)args->arg1) & 0xFFFF000000000000) == 0xFFFF000000000000) {
         filename = (struct filename *)args->arg1;
-        if (IS_ERR(filename)) return;
+        if (!filename || IS_ERR(filename)) return;
         if (strcmp(filename->name, local_su_path)) return;
     } else {
         u_filename = (char *)args->arg1;
         char buf[SU_PATH_MAX_LEN];
-        strncpy_from_user_nofault(buf, u_filename, sizeof(buf));
+        compact_strncpy_from_user(buf, u_filename, sizeof(buf));
         if (strcmp(buf, local_su_path)) return;
     }
 
@@ -429,13 +431,13 @@ static void before_stat(hook_fargs8_t *args, void *udata)
         strcpy((char *)filename->name, sh_path);
     } else {
         logkfd("1 uid: %d\n", uid);
-        int sz = seq_copy_to_user(u_filename, sh_path, sizeof(sh_path));
+        int sz = compat_copy_to_user(u_filename, sh_path, sizeof(sh_path));
         if (sz == sizeof(sh_path)) {
             change_flag = 1;
             args->local.data[0] = change_flag;
             args->local.data[1] = (uint64_t)local_su_path;
         } else {
-            // logkfe("seq_copy_to_user error: %d\n", sz);
+            // logkfe("compat_copy_to_user error: %d\n", sz);
             args->arg1 = (uint64_t)android_sh_user_path();
         }
     }
@@ -446,8 +448,8 @@ static void after_stat(hook_fargs8_t *args, void *udata)
     int change_flag = args->local.data[0];
     if (change_flag) {
         const char *local_su_path = (const char *)args->local.data[1];
-        int sz = seq_copy_to_user((void *)args->arg1, local_su_path, strlen(local_su_path) + 1);
-        if (sz != strlen(local_su_path) + 1) logkfe("seq_copy_to_user error: %d\n", sz);
+        int sz = compat_copy_to_user((void *)args->arg1, local_su_path, strlen(local_su_path) + 1);
+        if (sz != strlen(local_su_path) + 1) logkfe("compat_copy_to_user error: %d\n", sz);
     }
 }
 
@@ -458,15 +460,15 @@ static void after_stat(hook_fargs8_t *args, void *udata)
 //     args->local.data[0] = change_flag;
 
 //     char buf[sizeof(su_path)];
-//     strncpy_from_user_nofault(buf, (char *__user)args->arg0, sizeof(buf));
+//     compact_strncpy_from_user(buf, (char *__user)args->arg0, sizeof(buf));
 //     if (strcmp(su_path, buf)) return;
 
 //     uid_t uid = current_uid();
 //     if (!is_allow_uid(uid)) return;
 
 //     logkfd("uid: %d\n", uid);
-//     int sz = seq_copy_to_user((char *__user)args->arg0, sh_path, sizeof(sh_path));
-//     if (sz != sizeof(sh_path)) logkfe("seq_copy_to_user error: %d\n", sz);
+//     int sz = compat_copy_to_user((char *__user)args->arg0, sh_path, sizeof(sh_path));
+//     if (sz != sizeof(sh_path)) logkfe("compat_copy_to_user error: %d\n", sz);
 
 //     change_flag = 1;
 //     args->local.data[0] = change_flag;
@@ -476,8 +478,8 @@ static void after_stat(hook_fargs8_t *args, void *udata)
 // {
 //     int change_flag = args->local.data[0];
 //     if (change_flag) {
-//         int sz = seq_copy_to_user((void *)args->arg0, su_path, sizeof(su_path));
-//         if (sz != sizeof(su_path)) logkfe("seq_copy_to_user error: %d\n", sz);
+//         int sz = compat_copy_to_user((void *)args->arg0, su_path, sizeof(su_path));
+//         if (sz != sizeof(su_path)) logkfe("compat_copy_to_user error: %d\n", sz);
 //     }
 // }
 
@@ -497,7 +499,9 @@ int su_compat_init()
     };
     su_add_allow_uid(default_shell_profile.uid, &default_shell_profile, 1);
 
-    // state
+    hook_err_t err = HOOK_NO_ERR;
+
+    // stat
     unsigned long vfs_stat_addr = get_preset_patch_sym()->vfs_statx;
     if (!vfs_stat_addr) vfs_stat_addr = get_preset_patch_sym()->do_statx;
     if (!vfs_stat_addr) vfs_stat_addr = get_preset_patch_sym()->vfs_fstatat;
@@ -506,7 +510,7 @@ int su_compat_init()
         rc = -ENOENT;
         goto out;
     } else {
-        hook_err_t err = hook_wrap8((void *)vfs_stat_addr, before_stat, after_stat, 0);
+        err |= hook_wrap8((void *)vfs_stat_addr, before_stat, after_stat, 0);
         if (err) {
             log_boot("hook vfs_fstatat error: %d\n", err);
             rc = err;
@@ -514,15 +518,24 @@ int su_compat_init()
         }
     }
 
+    unsigned long xxx = kallsyms_lookup_name("vfs_stat");
+    logkd("aaaaaaaaaaaaaaa %llx\n", xxx);
+    err |= hook_wrap8((void *)xxx, before_stat, after_stat, 0);
+
     // access
-    unsigned long faccessat_addr = get_preset_patch_sym()->do_faccessat;
-    if (!faccessat_addr) faccessat_addr = get_preset_patch_sym()->sys_faccessat;
-    if (!faccessat_addr) {
-        log_boot("no symbol do_faccessat or sys_faccessat\n");
-        rc = -ENOENT;
-        goto out;
+    unsigned long do_accessat_addr = get_preset_patch_sym()->do_faccessat;
+    if (do_accessat_addr) {
+        err |= hook_wrap4((void *)do_accessat_addr, before_faccessat, 0, 0);
+        if (err) {
+            log_boot("hook do_faccessat error: %d\n", err);
+            rc = err;
+            goto out;
+        }
     } else {
-        hook_err_t err = hook_wrap4((void *)faccessat_addr, before_faccessat, 0, 0);
+        unsigned long faccessat_addr = get_preset_patch_sym()->sys_faccessat;
+        unsigned long faccessat2_addr = get_preset_patch_sym()->sys_faccessat;
+        err |= hook_wrap4((void *)faccessat_addr, before_faccessat, 0, 0);
+        err |= hook_wrap4((void *)faccessat2_addr, before_faccessat, 0, 0);
         if (err) {
             log_boot("hook do_faccessat error: %d\n", err);
             rc = err;
@@ -531,7 +544,7 @@ int su_compat_init()
     }
 
     // execv
-    hook_err_t err = add_execv_hook(before_do_execve, 0, 0);
+    err |= add_execv_hook(before_do_execve, 0, 0);
     if (err) {
         log_boot("hook add execv error: %d\n", err);
         rc = err;

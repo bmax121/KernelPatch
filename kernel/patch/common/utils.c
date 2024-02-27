@@ -11,6 +11,8 @@
 #include <symbol.h>
 #include <asm/processor.h>
 #include <predata.h>
+#include <linux/ptrace.h>
+#include <linux/err.h>
 
 int trace_seq_copy_to_user(void __user *to, const void *from, int n)
 {
@@ -40,7 +42,7 @@ int seq_buf_copy_to_user(void __user *to, const void *from, int n)
     return seq_buf_to_user(&seq_buf, to, n);
 }
 
-int __must_check seq_copy_to_user(void __user *to, const void *from, int n)
+int __must_check compat_copy_to_user(void __user *to, const void *from, int n)
 {
     int copy_len;
     if (kfunc(seq_buf_to_user)) {
@@ -50,11 +52,11 @@ int __must_check seq_copy_to_user(void __user *to, const void *from, int n)
     }
     return copy_len;
 }
-KP_EXPORT_SYMBOL(seq_copy_to_user);
+KP_EXPORT_SYMBOL(compat_copy_to_user);
 
 #include <linux/uaccess.h>
 
-long strncpy_from_user_nofault(char *dest, const char __user *src, long count)
+long compact_strncpy_from_user(char *dest, const char __user *src, long count)
 {
     if (kfunc(strncpy_from_user)) {
         long rc = kfunc(strncpy_from_user)(dest, src, count);
@@ -66,30 +68,45 @@ long strncpy_from_user_nofault(char *dest, const char __user *src, long count)
         }
         return rc;
     }
-    kfunc_call(strncpy_from_user_nofault, dest, src, count);
+    kfunc_call(compact_strncpy_from_user, dest, src, count);
     kfunc_call(strncpy_from_unsafe_user, dest, src, count);
     return 0;
 }
-KP_EXPORT_SYMBOL(strncpy_from_user_nofault);
+KP_EXPORT_SYMBOL(compact_strncpy_from_user);
+
+int16_t pt_regs_offset = -1;
 
 struct pt_regs *_task_pt_reg(struct task_struct *task)
 {
     unsigned long stack = (unsigned long)task_stack_page(task);
     uintptr_t addr = (uintptr_t)(thread_size + stack);
-#ifndef ANDROID
-    if (kver < VERSION(4, 4, 19)) {
-        addr -= sizeof(struct pt_regs_lt4419);
-    } else
-#endif
-        if (kver < VERSION(4, 14, 0)) {
-        addr -= sizeof(struct pt_regs_lt4140);
-    } else if (kver < VERSION(5, 10, 0)) {
-        addr -= sizeof(struct pt_regs_lt5100);
+    if (likely(pt_regs_offset > 0)) {
+        addr -= pt_regs_offset;
     } else {
-        addr -= sizeof(struct pt_regs);
+#ifndef ANDROID
+        if (kver < VERSION(4, 4, 19)) {
+            addr -= sizeof(struct pt_regs_lt4419);
+        } else
+#endif
+            if (kver < VERSION(4, 14, 0)) {
+            addr -= sizeof(struct pt_regs_lt4140);
+        } else if (kver < VERSION(5, 10, 0)) {
+            addr -= sizeof(struct pt_regs_lt5100);
+        } else {
+            addr -= sizeof(struct pt_regs);
+        }
     }
-    struct pt_regs *regs;
-    regs = (struct pt_regs *)(addr);
-    return regs;
+
+    return (struct pt_regs *)(addr);
 }
 KP_EXPORT_SYMBOL(_task_pt_reg);
+
+void *__user __must_check copy_to_user_stack(const void *data, int len)
+{
+    uintptr_t addr = current_user_stack_pointer();
+    addr -= len;
+    addr &= 0xFFFFFFFFFFFFFFF8;
+    int cplen = compat_copy_to_user((void *)addr, data, len);
+    return cplen > 0 ? (void *__user)addr : (void *)(long)cplen;
+}
+KP_EXPORT_SYMBOL(copy_to_user_stack);

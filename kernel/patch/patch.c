@@ -20,6 +20,7 @@ int linux_libs_symbol_init();
 int resolve_struct();
 int task_observer();
 int bypass_kcfi();
+int resolve_pt_regs();
 
 void print_bootlog()
 {
@@ -79,12 +80,15 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
     if ((rc = supercall_install())) goto out;
     log_boot("supercall_install done: %d\n", rc);
 
-#ifdef ANDROID
-    if ((rc = kpuserd_init())) goto out;
-    log_boot("kpuserd_init done: %d\n", rc);
+    if ((rc = resolve_pt_regs())) goto out;
 
     if ((rc = su_compat_init())) goto out;
     log_boot("su_compat_init done: %d\n", rc);
+
+#ifdef ANDROID
+
+    // if ((rc = kpuserd_init())) goto out;
+    // log_boot("kpuserd_init done: %d\n", rc);
 #endif
 
 out:

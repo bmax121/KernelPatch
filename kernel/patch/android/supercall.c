@@ -23,7 +23,7 @@
 static long call_grant_uid(uid_t uid, struct su_profile *__user uprofile)
 {
     struct su_profile *profile = memdup_user(uprofile, sizeof(struct su_profile));
-    if (IS_ERR(profile)) return PTR_ERR(profile);
+    if (!profile || IS_ERR(profile)) return PTR_ERR(profile);
     int rc = su_add_allow_uid(uid, profile, 1);
     kvfree(profile);
     return rc;
@@ -52,7 +52,7 @@ static long call_su_allow_uid_profile(uid_t uid, struct su_profile *__user uprof
 static long call_reset_su_path(const char *__user upath)
 {
     char path[SU_PATH_MAX_LEN];
-    strncpy_from_user_nofault(path, upath, sizeof(path));
+    compact_strncpy_from_user(path, upath, sizeof(path));
     return su_reset_path(path);
 }
 

@@ -54,7 +54,7 @@ static const void *kernel_read_file(const char *path, loff_t *len)
 {
     void *data = 0;
     struct file *filp = filp_open(path, O_RDONLY, 0);
-    if (IS_ERR(filp)) {
+    if (!filp || IS_ERR(filp)) {
         log_boot("open file: %s error: %d\n", path, PTR_ERR(filp));
         goto out;
     }
@@ -72,7 +72,7 @@ static void kernel_write_file(const char *path, const void *data, loff_t len, um
 {
     set_priv_selinx_allow(current, 1);
     struct file *fp = filp_open(path, O_WRONLY | O_CREAT | O_TRUNC, mode);
-    if (IS_ERR(fp)) {
+    if (!fp || IS_ERR(fp)) {
         log_boot("create file %s error: %d\n", path, PTR_ERR(fp));
         goto out;
     }
@@ -128,7 +128,7 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
         filename_index = 1;
     }
     struct filename *filename = (struct filename *)args->args[filename_index];
-    if (!filename || IS_ERR(filename)) return;
+    if (!filename || !filename || IS_ERR(filename)) return;
 
     const char app_process[] = "/system/bin/app_process";
     static int first_app_process = 1;
@@ -151,9 +151,9 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
                 const char *__user p1 =
                     get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], i);
                 if (!p1) break;
-                if (!IS_ERR(p1)) {
+                if (!!p1 || IS_ERR(p1)) {
                     char arg[16] = { '\0' };
-                    if (strncpy_from_user_nofault(arg, p1, sizeof(arg)) <= 0) break;
+                    if (compact_strncpy_from_user(arg, p1, sizeof(arg)) <= 0) break;
                     if (!strcmp(arg, "second_stage") || !strcmp(arg, "--second-stage")) {
                         log_boot("exec %s second stage 0\n", filename->name);
                         before_second_stage();
@@ -168,9 +168,9 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
             for (int i = 0;; i++) {
                 const char *__user up =
                     get_user_arg_ptr((void *)args->args[envp_index], (void *)args->args[envp_index + 1], i);
-                if (IS_ERR(up)) break;
+                if (!up || IS_ERR(up)) break;
                 char env[256];
-                if (strncpy_from_user_nofault(env, up, sizeof(env)) <= 0) break;
+                if (compact_strncpy_from_user(env, up, sizeof(env)) <= 0) break;
                 char *env_name = env;
                 char *env_value = strchr(env, '=');
                 if (env_value) {
@@ -207,7 +207,7 @@ static void before_openat(hook_fargs4_t *args, void *udata)
 
     const char __user *filename = (typeof(filename))syscall_argn(args, 1);
     char buf[32];
-    strncpy_from_user_nofault(buf, filename, sizeof(buf));
+    compact_strncpy_from_user(buf, filename, sizeof(buf));
     if (strcmp(ORIGIN_RC_FILE, buf)) return;
 
     replaced = 1;
@@ -216,7 +216,7 @@ static void before_openat(hook_fargs4_t *args, void *udata)
     // create replace file and redirect
     loff_t ori_len = 0;
     struct file *newfp = filp_open(REPLACE_RC_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0600);
-    if (IS_ERR(newfp)) {
+    if (!newfp || IS_ERR(newfp)) {
         log_boot("create replace rc error: %d\n", PTR_ERR(newfp));
         goto out;
     }
@@ -234,7 +234,7 @@ static void before_openat(hook_fargs4_t *args, void *udata)
         goto free;
     }
     // yes, filename is not read only
-    args->local.data0 = seq_copy_to_user((void *)filename, REPLACE_RC_FILE, sizeof(REPLACE_RC_FILE));
+    args->local.data0 = compat_copy_to_user((void *)filename, REPLACE_RC_FILE, sizeof(REPLACE_RC_FILE));
     log_boot("redirect rc file: %x\n", args->local.data0);
 free:
     filp_close(newfp, 0);
@@ -250,7 +250,7 @@ static void after_openat(hook_fargs4_t *args, void *udata)
 {
     if (args->local.data0) {
         const char __user *filename = (typeof(filename))syscall_argn(args, 1);
-        int len = seq_copy_to_user((void *)filename, ORIGIN_RC_FILE, sizeof(ORIGIN_RC_FILE));
+        int len = compat_copy_to_user((void *)filename, ORIGIN_RC_FILE, sizeof(ORIGIN_RC_FILE));
         log_boot("restore rc file: %x\n", len);
         fp_unhook_syscall(__NR_openat, before_openat, after_openat);
     }
@@ -272,7 +272,7 @@ static void before_input_handle_event(hook_fargs4_t *args, void *udata)
         if (volumedown_pressed_count == 3) {
             log_boot("entering safemode ...");
             struct file *filp = filp_open(SAFE_MODE_FLAG_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-            if (!IS_ERR(filp)) filp_close(filp, 0);
+            if (!!filp || IS_ERR(filp)) filp_close(filp, 0);
         }
     }
 }

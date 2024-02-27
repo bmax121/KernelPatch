@@ -244,7 +244,7 @@ KP_EXPORT_SYMBOL(fp_unhook);
 hook_err_t fp_hook_wrap(uintptr_t fp_addr, int32_t argno, void *before, void *after, void *udata)
 {
     hook_err_t err = HOOK_NO_ERR;
-    if (!fp_addr) return -HOOK_INPUT_NULL;
+    if (is_bad_address((void *)fp_addr)) return -HOOK_BAD_ADDRESS;
     fp_hook_chain_t *chain = hook_get_mem_from_origin(fp_addr);
     if (!chain) {
         chain = (fp_hook_chain_t *)hook_mem_zalloc(fp_addr, FUNCTION_POINTER_CHAIN);
@@ -281,6 +281,7 @@ KP_EXPORT_SYMBOL(fp_hook_wrap);
 
 void fp_hook_unwrap(uintptr_t fp_addr, void *before, void *after)
 {
+    if (is_bad_address((void *)fp_addr)) return;
     fp_hook_chain_t *chain = (fp_hook_chain_t *)hook_get_mem_from_origin(fp_addr);
     if (!chain) return;
     for (int i = 0; i < FP_HOOK_CHAIN_NUM; i++) {

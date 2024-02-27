@@ -122,10 +122,12 @@ struct patch_symbol
             uint64_t slow_avc_audit;
             uint64_t input_handle_event;
             uint64_t vfs_statx;
+            uint64_t vfs_stat;
             uint64_t do_statx;
             uint64_t vfs_fstatat;
             uint64_t do_faccessat;
             uint64_t sys_faccessat;
+            uint64_t sys_faccessat2;
         };
         char _cap[PATCH_SYMBOL_LEN];
     };

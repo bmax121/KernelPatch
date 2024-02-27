@@ -6,22 +6,6 @@
 #include "symbol.h"
 #include "common.h"
 
-int32_t get_symbol_offset_zero(kallsym_t *info, char *img, char *symbol)
-{
-    int32_t offset = get_symbol_offset(info, img, symbol);
-    return offset > 0 ? offset : 0;
-}
-
-int32_t get_symbol_offset_exit(kallsym_t *info, char *img, char *symbol)
-{
-    int32_t offset = get_symbol_offset(info, img, symbol);
-    if (offset >= 0) {
-        return offset;
-    } else {
-        tools_loge_exit("no symbol %s\n", symbol);
-    }
-}
-
 struct on_each_symbol_struct
 {
     const char *symbol;
@@ -45,6 +29,29 @@ int32_t find_suffixed_symbol(kallsym_t *kallsym, char *img_buf, const char *symb
     struct on_each_symbol_struct udata = { symbol, 0 };
     on_each_symbol(kallsym, img_buf, &udata, on_each_symbol_callbackup);
     return udata.addr;
+}
+
+int32_t get_symbol_offset_zero(kallsym_t *info, char *img, char *symbol)
+{
+    int32_t offset = get_symbol_offset(info, img, symbol);
+    return offset > 0 ? offset : 0;
+}
+
+int32_t get_symbol_offset_exit(kallsym_t *info, char *img, char *symbol)
+{
+    int32_t offset = get_symbol_offset(info, img, symbol);
+    if (offset >= 0) {
+        return offset;
+    } else {
+        tools_loge_exit("no symbol %s\n", symbol);
+    }
+}
+
+int32_t try_get_symbol_offset_zero(kallsym_t *info, char *img, char *symbol)
+{
+    int32_t offset = get_symbol_offset(info, img, symbol);
+    if (offset > 0) return offset;
+    return find_suffixed_symbol(info, img, symbol);
 }
 
 // todo
@@ -98,11 +105,8 @@ int fillin_patch_symbol(kallsym_t *kallsym, char *img_buf, int imglen, patch_sym
 {
     symbol->panic = get_symbol_offset_zero(kallsym, img_buf, "panic");
 
-    symbol->rest_init = get_symbol_offset_zero(kallsym, img_buf, "rest_init");
-    symbol->cgroup_init = get_symbol_offset_zero(kallsym, img_buf, "cgroup_init");
-    if (!symbol->rest_init && !symbol->cgroup_init) {
-        symbol->rest_init = find_suffixed_symbol(kallsym, img_buf, "rest_init");
-    }
+    symbol->rest_init = try_get_symbol_offset_zero(kallsym, img_buf, "rest_init");
+    if (!symbol->rest_init) symbol->cgroup_init = try_get_symbol_offset_zero(kallsym, img_buf, "cgroup_init");
     if (!symbol->rest_init && !symbol->cgroup_init) tools_loge_exit("no symbol rest_init");
 
     symbol->kernel_init = get_symbol_offset_zero(kallsym, img_buf, "kernel_init");
@@ -111,52 +115,36 @@ int fillin_patch_symbol(kallsym_t *kallsym, char *img_buf, int imglen, patch_sym
     symbol->__cfi_slowpath_diag = get_symbol_offset_zero(kallsym, img_buf, "__cfi_slowpath_diag");
     symbol->__cfi_slowpath = get_symbol_offset_zero(kallsym, img_buf, "__cfi_slowpath");
 
-    symbol->copy_process = get_symbol_offset_zero(kallsym, img_buf, "copy_process");
-    symbol->cgroup_post_fork = get_symbol_offset_zero(kallsym, img_buf, "cgroup_post_fork");
-    if (!symbol->copy_process && !symbol->cgroup_post_fork) {
-        symbol->copy_process = find_suffixed_symbol(kallsym, img_buf, "copy_process");
-    }
+    symbol->copy_process = try_get_symbol_offset_zero(kallsym, img_buf, "copy_process");
+    if (!symbol->copy_process) symbol->cgroup_post_fork = get_symbol_offset_zero(kallsym, img_buf, "cgroup_post_fork");
     if (!symbol->copy_process && !symbol->cgroup_post_fork) tools_loge_exit("no symbol copy_process");
 
-    symbol->__do_execve_file = get_symbol_offset_zero(kallsym, img_buf, "__do_execve_file");
-    symbol->do_execveat_common = get_symbol_offset_zero(kallsym, img_buf, "do_execveat_common");
-    symbol->do_execve_common = get_symbol_offset_zero(kallsym, img_buf, "do_execve_common");
-    if (!symbol->__do_execve_file && !symbol->do_execveat_common && !symbol->do_execve_common) {
-        symbol->__do_execve_file = find_suffixed_symbol(kallsym, img_buf, "__do_execve_file");
-        symbol->do_execveat_common = find_suffixed_symbol(kallsym, img_buf, "do_execveat_common");
-        symbol->do_execve_common = find_suffixed_symbol(kallsym, img_buf, "do_execve_common");
-    }
+    symbol->__do_execve_file = try_get_symbol_offset_zero(kallsym, img_buf, "__do_execve_file");
+    symbol->do_execveat_common = try_get_symbol_offset_zero(kallsym, img_buf, "do_execveat_common");
+    symbol->do_execve_common = try_get_symbol_offset_zero(kallsym, img_buf, "do_execve_common");
     if (!symbol->__do_execve_file && !symbol->do_execveat_common && !symbol->do_execve_common)
         tools_loge_exit("no symbol execve");
 
-    symbol->avc_denied = get_symbol_offset_zero(kallsym, img_buf, "avc_denied");
-    if (!symbol->avc_denied) {
-        // gcc -fipa-sra eg: avc_denied.isra.5
-        symbol->avc_denied = find_suffixed_symbol(kallsym, img_buf, "avc_denied");
-    }
+    //  gcc -fipa-sra eg: avc_denied.isra.5
+    symbol->avc_denied = try_get_symbol_offset_zero(kallsym, img_buf, "avc_denied");
     if (!symbol->avc_denied && is_android) tools_loge_exit("no symbol avc_denied");
 
-    symbol->slow_avc_audit = get_symbol_offset_zero(kallsym, img_buf, "slow_avc_audit");
+    symbol->slow_avc_audit = try_get_symbol_offset_zero(kallsym, img_buf, "slow_avc_audit");
 
     symbol->input_handle_event = get_symbol_offset_zero(kallsym, img_buf, "input_handle_event");
 
-    symbol->vfs_statx = get_symbol_offset_zero(kallsym, img_buf, "vfs_statx");
-    symbol->do_statx = get_symbol_offset_zero(kallsym, img_buf, "do_statx");
-    symbol->vfs_fstatat = get_symbol_offset_zero(kallsym, img_buf, "vfs_fstatat");
-    if (!symbol->vfs_statx && !symbol->do_statx && !symbol->vfs_fstatat) {
-        symbol->vfs_statx = find_suffixed_symbol(kallsym, img_buf, "vfs_statx");
-        symbol->do_statx = find_suffixed_symbol(kallsym, img_buf, "do_statx");
-        symbol->vfs_fstatat = find_suffixed_symbol(kallsym, img_buf, "vfs_fstatat");
-    }
+    symbol->vfs_statx = try_get_symbol_offset_zero(kallsym, img_buf, "vfs_statx");
+    symbol->do_statx = try_get_symbol_offset_zero(kallsym, img_buf, "do_statx");
+    symbol->vfs_fstatat = try_get_symbol_offset_zero(kallsym, img_buf, "vfs_fstatat");
     if (!symbol->vfs_statx && !symbol->do_statx && !symbol->vfs_fstatat) tools_loge_exit("no symbol stat");
 
-    symbol->do_faccessat = get_symbol_offset_zero(kallsym, img_buf, "do_faccessat");
-    symbol->sys_faccessat = get_symbol_offset_zero(kallsym, img_buf, "sys_faccessat");
-    if (!symbol->do_faccessat && !symbol->sys_faccessat) {
-        symbol->do_faccessat = find_suffixed_symbol(kallsym, img_buf, "do_faccessat");
-        symbol->sys_faccessat = find_suffixed_symbol(kallsym, img_buf, "sys_faccessat");
+    symbol->do_faccessat = try_get_symbol_offset_zero(kallsym, img_buf, "do_faccessat");
+    if (!symbol->do_faccessat) {
+        symbol->sys_faccessat = get_symbol_offset_zero(kallsym, img_buf, "sys_faccessat");
+        symbol->sys_faccessat2 = get_symbol_offset_zero(kallsym, img_buf, "sys_faccessat2");
     }
-    if (!symbol->do_faccessat && !symbol->sys_faccessat) tools_loge_exit("no symbol accessat");
+    // if (!symbol->do_faccessat && (!symbol->sys_faccessat || !symbol->sys_faccessat2))
+    //     tools_loge_exit("no symbol accessat");
 
     if ((is_be() ^ target_is_be)) {
         for (int64_t *pos = (int64_t *)symbol; pos <= (int64_t *)symbol; pos++) {

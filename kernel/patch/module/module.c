@@ -502,7 +502,7 @@ long load_module_path(const char *path, const char *args, void *__user reserved)
     logkfd("%s\n", path);
 
     struct file *filp = filp_open(path, O_RDONLY, 0);
-    if (unlikely(IS_ERR(filp))) {
+    if (unlikely(!filp || IS_ERR(filp))) {
         logkfe("open module: %s error\n", path);
         rc = PTR_ERR(filp);
         goto out;

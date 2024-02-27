@@ -36,6 +36,7 @@ typedef uint32_t inst_mask_t;
 #define INST_CBNZ 0x35000000
 #define INST_TBZ 0x36000000
 #define INST_TBNZ 0x37000000
+#define INST_HINT 0xD503201F
 #define INST_IGNORE 0x0
 
 #define MASK_B 0xFC000000
@@ -54,6 +55,7 @@ typedef uint32_t inst_mask_t;
 #define MASK_CBNZ 0x7F000000u
 #define MASK_TBZ 0x7F000000u
 #define MASK_TBNZ 0x7F000000u
+#define MASK_HINT 0xFFFFF01F
 #define MASK_IGNORE 0x0
 
 static inst_mask_t masks[] = {
@@ -107,16 +109,38 @@ static uint64_t relo_in_tramp(hook_t *hook, uint64_t addr)
 }
 
 #ifdef HOOK_INTO_BRANCH_FUNC
-uint64_t branch_func_addr(uint64_t addr)
+
+static uint64_t branch_func_addr_once(uint64_t addr)
 {
+    uint64_t ret = addr;
     uint32_t inst = *(uint32_t *)addr;
     if ((inst & MASK_B) == INST_B) {
         uint64_t imm26 = bits32(inst, 25, 0);
         uint64_t imm64 = sign64_extend(imm26 << 2u, 28u);
-        addr += imm64;
+        ret = addr + imm64;
+    } else {
+        addr += 4;
+        uint32_t inst1 = *(uint32_t *)addr;
+        if (((inst & MASK_HINT) == INST_HINT) && ((inst1 & MASK_B) == INST_B)) {
+            uint64_t imm26 = bits32(inst1, 25, 0);
+            uint64_t imm64 = sign64_extend(imm26 << 2u, 28u);
+            ret = addr + imm64;
+        }
     }
-    return addr;
+    return ret;
 }
+
+uint64_t branch_func_addr(uint64_t addr)
+{
+    uint64_t ret;
+    for (;;) {
+        ret = branch_func_addr_once(addr);
+        if (ret == addr) break;
+        addr = ret;
+    }
+    return ret;
+}
+
 #endif
 
 hook_err_t relo_b(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
@@ -532,9 +556,11 @@ static __noinline hook_err_t relocate_inst(hook_t *hook, uint64_t inst_addr, uin
 
 hook_err_t hook_prepare(hook_t *hook)
 {
-    if (!hook->func_addr || !hook->origin_addr || !hook->replace_addr || !hook->relo_addr) {
-        return -HOOK_INPUT_NULL;
-    }
+    if (is_bad_address((void *)hook->func_addr)) return -HOOK_BAD_ADDRESS;
+    if (is_bad_address((void *)hook->origin_addr)) return -HOOK_BAD_ADDRESS;
+    if (is_bad_address((void *)hook->replace_addr)) return -HOOK_BAD_ADDRESS;
+    if (is_bad_address((void *)hook->relo_addr)) return -HOOK_BAD_ADDRESS;
+
     // backup origin instruction
     for (int i = 0; i < TRAMPOLINE_NUM; i++) {
         hook->origin_insts[i] = *((uint32_t *)hook->origin_addr + i);
@@ -604,7 +630,7 @@ hook_err_t hook(void *func, void *replace, void **backup)
 {
     hook_err_t err = HOOK_NO_ERR;
     if (!func || !replace || !backup) {
-        return -HOOK_INPUT_NULL;
+        return -HOOK_BAD_ADDRESS;
     }
     uint64_t origin_addr = branch_func_addr((uintptr_t)func);
     hook_t *hook = (hook_t *)hook_mem_zalloc(origin_addr, INLINE);
@@ -724,9 +750,10 @@ KP_EXPORT_SYMBOL(hook_chain_remove);
 // todo: lock
 hook_err_t hook_wrap(void *func, int32_t argno, void *before, void *after, void *udata)
 {
-    if (!func) return -HOOK_INPUT_NULL;
+    if (is_bad_address(func)) return -HOOK_BAD_ADDRESS;
     uint64_t faddr = (uint64_t)func;
     uint64_t origin = branch_func_addr(faddr);
+    if (is_bad_address(func)) return -HOOK_BAD_ADDRESS;
     hook_chain_t *chain = (hook_chain_t *)hook_get_mem_from_origin(origin);
     if (chain) return hook_chain_add(chain, before, after, udata);
     chain = (hook_chain_t *)hook_mem_zalloc(origin, INLINE_CHAIN);
@@ -757,8 +784,10 @@ KP_EXPORT_SYMBOL(hook_wrap);
 
 void hook_unwrap_remove(void *func, void *before, void *after, int remove)
 {
+    if (is_bad_address(func)) return;
     uint64_t faddr = (uint64_t)func;
     uint64_t origin = branch_func_addr(faddr);
+    if (is_bad_address(func)) return;
     hook_chain_t *chain = (hook_chain_t *)hook_get_mem_from_origin(origin);
     if (!chain) return;
     hook_chain_remove(chain, before, after);

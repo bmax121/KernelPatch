@@ -16,6 +16,7 @@ extern uintptr_t *sys_call_table;
 extern int has_syscall_wrapper;
 
 const char __user *get_user_arg_ptr(void *a0, void *a1, int nr);
+int set_user_arg_ptr(void *a0, void *a1, int nr, void *__user val);
 
 long raw_syscall0(long nr);
 long raw_syscall1(long nr, long arg0);
@@ -49,9 +50,15 @@ static inline void set_syscall_argn(void *fdata_args, int n, uint64_t val)
     args[n] = val;
 }
 
+static inline void *syscall_argn_p(void *fdata_args, int n)
+{
+    return syscall_args(fdata_args) + n;
+}
+
 static inline hook_err_t fp_hook_syscalln(int nr, int narg, void *before, void *after, void *udata)
 {
     uintptr_t fp_addr = (uintptr_t)(sys_call_table + nr);
+    if (has_syscall_wrapper) narg = 1;
     return fp_hook_wrap(fp_addr, narg, before, after, udata);
 }
 
@@ -61,9 +68,15 @@ static inline void fp_unhook_syscall(int nr, void *before, void *after)
     fp_hook_unwrap(fp_addr, before, after);
 }
 
+/*
+xxx.cfi_jt example:
+hint #0x22
+b #0xfffffffffeb452f4
+*/
 static inline hook_err_t inline_hook_syscalln(int nr, int narg, void *before, void *after, void *udata)
 {
     uintptr_t fp = sys_call_table[nr];
+    if (has_syscall_wrapper) narg = 1;
     return hook_wrap((void *)fp, narg, before, after, udata);
 }
 
