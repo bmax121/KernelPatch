@@ -115,19 +115,9 @@ struct patch_symbol
             uint64_t __cfi_slowpath;
             uint64_t copy_process;
             uint64_t cgroup_post_fork;
-            uint64_t __do_execve_file;
-            uint64_t do_execveat_common;
-            uint64_t do_execve_common;
             uint64_t avc_denied;
             uint64_t slow_avc_audit;
             uint64_t input_handle_event;
-            uint64_t vfs_statx;
-            uint64_t vfs_stat;
-            uint64_t do_statx;
-            uint64_t vfs_fstatat;
-            uint64_t do_faccessat;
-            uint64_t sys_faccessat;
-            uint64_t sys_faccessat2;
         };
         char _cap[PATCH_SYMBOL_LEN];
     };
@@ -160,15 +150,19 @@ typedef int32_t extra_item_type;
 
 // todo
 #define EXTRA_EVENT_PAGING_INIT "paging-init"
+
 #define EXTRA_EVENT_PRE_KERNEL_INIT "pre-kernel-init"
 #define EXTRA_EVENT_KPM_DEFAULT EXTRA_EVENT_PRE_KERNEL_INIT
 #define EXTRA_EVENT_POST_KERNEL_INIT "post-kernel-init"
-#define EXTRA_EVENT_PRE_INIT "pre-init"
-#define EXTRA_EVENT_POST_INIT "post-init"
-#define EXTRA_EVENT_PRE_SECOND_STAGE "pre-second-stage"
-#define EXTRA_EVENT_POST_SECOND_STAGE "post-second-stage"
-#define EXTRA_EVENT_PRE_ZYGOTE_START "pre-zygote-start"
-#define EXTRA_EVENT_POST_ZYGOTE_START "post-zygote-start"
+
+#define EXTRA_EVENT_PRE_FIRST_STAGE "pre-init-first-stage"
+#define EXTRA_EVENT_POST_FIRST_STAGE "post-init-first-stage"
+
+#define EXTRA_EVENT_PRE_EXEC_INIT "pre-exec-init"
+#define EXTRA_EVENT_POST_EXEC_INIT "post-exec-init"
+
+#define EXTRA_EVENT_PRE_SECOND_STAGE "pre-init-second-stage"
+#define EXTRA_EVENT_POST_SECOND_STAGE "post-init-second-stage"
 
 struct _patch_extra_item
 {

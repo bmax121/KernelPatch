@@ -200,7 +200,7 @@ static void post_fs_data_init()
             char *const cp_argv[] = { "/system/bin/cp", current_exe, KPATCH_DATA_PATH, NULL };
             fork_for_result(cp_argv[0], cp_argv);
 
-            char *const rm_argv[] = { "/system/bin/unlink", current_exe, NULL };
+            char *const rm_argv[] = { "/system/bin/rm", current_exe, NULL };
             fork_for_result(rm_argv[0], rm_argv);
         }
     }
@@ -229,7 +229,9 @@ int android_user(int argc, char **argv)
     if (!sc_ready(key)) return -EFAULT;
 
     char *scmd = argv[1];
-    if (scmd == NULL) return -1;
+    if (scmd == NULL) return -EINVAL;
+
+    log_kernel("cmd: %s\n", scmd);
 
     int optc;
     while ((optc = getopt_long(argc, argv, "k", longopts, NULL)) != -1) {

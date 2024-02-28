@@ -119,12 +119,6 @@ int fillin_patch_symbol(kallsym_t *kallsym, char *img_buf, int imglen, patch_sym
     if (!symbol->copy_process) symbol->cgroup_post_fork = get_symbol_offset_zero(kallsym, img_buf, "cgroup_post_fork");
     if (!symbol->copy_process && !symbol->cgroup_post_fork) tools_loge_exit("no symbol copy_process");
 
-    symbol->__do_execve_file = try_get_symbol_offset_zero(kallsym, img_buf, "__do_execve_file");
-    symbol->do_execveat_common = try_get_symbol_offset_zero(kallsym, img_buf, "do_execveat_common");
-    symbol->do_execve_common = try_get_symbol_offset_zero(kallsym, img_buf, "do_execve_common");
-    if (!symbol->__do_execve_file && !symbol->do_execveat_common && !symbol->do_execve_common)
-        tools_loge_exit("no symbol execve");
-
     //  gcc -fipa-sra eg: avc_denied.isra.5
     symbol->avc_denied = try_get_symbol_offset_zero(kallsym, img_buf, "avc_denied");
     if (!symbol->avc_denied && is_android) tools_loge_exit("no symbol avc_denied");
@@ -132,19 +126,6 @@ int fillin_patch_symbol(kallsym_t *kallsym, char *img_buf, int imglen, patch_sym
     symbol->slow_avc_audit = try_get_symbol_offset_zero(kallsym, img_buf, "slow_avc_audit");
 
     symbol->input_handle_event = get_symbol_offset_zero(kallsym, img_buf, "input_handle_event");
-
-    symbol->vfs_statx = try_get_symbol_offset_zero(kallsym, img_buf, "vfs_statx");
-    symbol->do_statx = try_get_symbol_offset_zero(kallsym, img_buf, "do_statx");
-    symbol->vfs_fstatat = try_get_symbol_offset_zero(kallsym, img_buf, "vfs_fstatat");
-    if (!symbol->vfs_statx && !symbol->do_statx && !symbol->vfs_fstatat) tools_loge_exit("no symbol stat");
-
-    symbol->do_faccessat = try_get_symbol_offset_zero(kallsym, img_buf, "do_faccessat");
-    if (!symbol->do_faccessat) {
-        symbol->sys_faccessat = get_symbol_offset_zero(kallsym, img_buf, "sys_faccessat");
-        symbol->sys_faccessat2 = get_symbol_offset_zero(kallsym, img_buf, "sys_faccessat2");
-    }
-    // if (!symbol->do_faccessat && (!symbol->sys_faccessat || !symbol->sys_faccessat2))
-    //     tools_loge_exit("no symbol accessat");
 
     if ((is_be() ^ target_is_be)) {
         for (int64_t *pos = (int64_t *)symbol; pos <= (int64_t *)symbol; pos++) {

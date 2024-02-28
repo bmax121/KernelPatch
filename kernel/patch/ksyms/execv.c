@@ -6,8 +6,14 @@
 #include <asm/ptrace.h>
 #include <linux/ptrace.h>
 #include <log.h>
+#include <preset.h>
 
 static int first_init_execed = 0;
+
+static void before_first_exec()
+{
+    log_boot("event: %s\n", EXTRA_EVENT_PRE_EXEC_INIT);
+}
 
 // https://elixir.bootlin.com/linux/v6.1/source/fs/exec.c#L2087
 // SYSCALL_DEFINE3(execve, const char __user *, filename, const char __user *const __user *, argv,
@@ -16,10 +22,13 @@ static int first_init_execed = 0;
 // https://elixir.bootlin.com/linux/v6.1/source/fs/exec.c#L2095
 // SYSCALL_DEFINE5(execveat, int, fd, const char __user *, filename, const char __user *const __user *, argv,
 //                 const char __user *const __user *, envp, int, flags)
-static void before_execve(hook_fargs5_t *args, void *udata)
+static void before_execve(hook_fargs3_t *args, void *udata)
 {
     if (first_init_execed) return;
     first_init_execed = 1;
+    before_first_exec();
+
+    log_boot("kernel stack:\n");
 
     uint64_t arg0 = syscall_argn(args, 0);
     uint64_t arg1 = syscall_argn(args, 1);
@@ -38,14 +47,11 @@ static void before_execve(hook_fargs5_t *args, void *udata)
             struct pt_regs *regs = (struct pt_regs *)i;
             if (regs->orig_x0 == arg0 && regs->syscallno == nr && regs->regs[8] == nr) {
                 pt_regs_offset = addr - i;
-                log_boot("pt_regs offset of stack top: %llx\n", pt_regs_offset);
                 break;
             }
         }
     }
-    if (pt_regs_offset < 0) {
-        log_boot("can't resolve pt_regs\n");
-    }
+    log_boot("    pt_regs offset: %x\n", pt_regs_offset);
 }
 
 static void after_execv(hook_fargs5_t *args, void *udata)
@@ -56,7 +62,16 @@ static void after_execv(hook_fargs5_t *args, void *udata)
 
 int resolve_pt_regs()
 {
-    inline_hook_syscalln(__NR_execve, 3, before_execve, after_execv, (void *)__NR_execve);
-    inline_hook_syscalln(__NR_execveat, 5, before_execve, after_execv, (void *)__NR_execveat);
-    return 0;
+    hook_err_t ret = 0;
+    hook_err_t rc = HOOK_NO_ERR;
+
+    rc = inline_hook_syscalln(__NR_execve, 3, before_execve, after_execv, (void *)__NR_execve);
+    log_boot("hook rc: %d\n", rc);
+    ret |= rc;
+
+    rc = inline_hook_syscalln(__NR_execveat, 5, before_execve, after_execv, (void *)__NR_execveat);
+    log_boot("hook rc: %d\n", rc);
+    ret |= rc;
+
+    return rc;
 }

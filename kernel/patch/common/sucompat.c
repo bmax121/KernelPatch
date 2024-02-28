@@ -67,6 +67,7 @@ static struct su_profile *search_allow_uid(uid_t uid)
     {
         if (pos->uid == uid) {
             // make a deep copy
+            // todo: use stack
             struct su_profile *profile = (struct su_profile *)vmalloc(sizeof(struct su_profile));
             memcpy(profile, &pos->profile, sizeof(struct su_profile));
             rcu_read_unlock();
@@ -344,6 +345,8 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
 
         commit_su(0, 0);
 
+        // command
+
         // shift args
         *uargv += 2 * 8;
     }
@@ -457,18 +460,25 @@ int su_compat_init()
     };
     su_add_allow_uid(default_shell_profile.uid, &default_shell_profile, 1);
 
-    hook_err_t err = HOOK_NO_ERR;
+    hook_err_t rc = HOOK_NO_ERR;
 
-    err |= inline_hook_syscalln(__NR_execve, 3, before_execve, after_execve, (void *)__NR_execve);
-    err |= inline_hook_syscalln(__NR_execveat, 5, before_execveat, after_execveat, (void *)__NR_execveat);
+    rc = inline_hook_syscalln(__NR_execve, 3, before_execve, after_execve, (void *)__NR_execve);
+    log_boot("hook rc: %d\n", rc);
 
-    err |= inline_hook_syscalln(__NR3264_fstatat, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
-                                (void *)__NR3264_fstatat);
+    rc = inline_hook_syscalln(__NR_execveat, 5, before_execveat, after_execveat, (void *)__NR_execveat);
+    log_boot("hook rc: %d\n", rc);
 
-    err |= inline_hook_syscalln(__NR_faccessat, 3, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
-                                (void *)__NR_faccessat);
-    err |= inline_hook_syscalln(__NR_faccessat2, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
-                                (void *)__NR_faccessat2);
+    rc = inline_hook_syscalln(__NR3264_fstatat, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
+                              (void *)__NR3264_fstatat);
+    log_boot("hook rc: %d\n", rc);
 
-    return err;
+    rc = inline_hook_syscalln(__NR_faccessat, 3, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
+                              (void *)__NR_faccessat);
+    log_boot("hook rc: %d\n", rc);
+
+    rc = inline_hook_syscalln(__NR_faccessat2, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
+                              (void *)__NR_faccessat2);
+    log_boot("hook rc: %d\n", rc);
+
+    return rc;
 }
