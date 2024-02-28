@@ -376,6 +376,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
         extra_config_t *config = extra_configs + i;
         extra_num++;
         extra_size += sizeof(patch_extra_item_t);
+        if (!config->set_args)config->item->args_size=0;
         extra_size += config->item->args_size;
         extra_size += config->item->con_size;
         tools_logi("extra item num: %d, size: 0x%x\n", extra_num, extra_size);
