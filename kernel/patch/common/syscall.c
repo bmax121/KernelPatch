@@ -69,7 +69,7 @@ const char __user *get_user_arg_ptr(void *a0, void *a1, int nr)
     return uptr;
 }
 
-int set_user_arg_ptr(void *a0, void *a1, int nr, void *__user val)
+int set_user_arg_ptr(void *a0, void *a1, int nr, uintptr_t val)
 {
     char __user *const __user *native = (char __user *const __user *)a0;
     int size = 8;
@@ -78,8 +78,8 @@ int set_user_arg_ptr(void *a0, void *a1, int nr, void *__user val)
         if (a0) size = 4; // compat
     }
     native = (char __user *const __user *)((unsigned long)native + nr * size);
-
-    int cplen = compat_copy_to_user((void *)native, val, size);
+    uintptr_t valarr[1] = { val };
+    int cplen = compat_copy_to_user((void *)native, (void *)valarr, size);
     return cplen == size ? 0 : cplen;
 }
 

@@ -87,8 +87,9 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
 
 #ifdef ANDROID
 
-    // if ((rc = kpuserd_init())) goto out;
-    // log_boot("kpuserd_init done: %d\n", rc);
+    if ((rc = kpuserd_init())) goto out;
+    log_boot("kpuserd_init done: %d\n", rc);
+
 #endif
 
 out:

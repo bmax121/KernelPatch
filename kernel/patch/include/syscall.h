@@ -16,7 +16,7 @@ extern uintptr_t *sys_call_table;
 extern int has_syscall_wrapper;
 
 const char __user *get_user_arg_ptr(void *a0, void *a1, int nr);
-int set_user_arg_ptr(void *a0, void *a1, int nr, void *__user val);
+int set_user_arg_ptr(void *a0, void *a1, int nr, uintptr_t val);
 
 long raw_syscall0(long nr);
 long raw_syscall1(long nr, long arg0);

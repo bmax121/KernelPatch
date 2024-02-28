@@ -128,7 +128,7 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
         filename_index = 1;
     }
     struct filename *filename = (struct filename *)args->args[filename_index];
-    if (!filename || !filename || IS_ERR(filename)) return;
+    if (!filename || IS_ERR(filename)) return;
 
     const char app_process[] = "/system/bin/app_process";
     static int first_app_process = 1;
@@ -150,15 +150,14 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
             for (int i = 1;; i++) {
                 const char *__user p1 =
                     get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], i);
-                if (!p1) break;
-                if (!!p1 || IS_ERR(p1)) {
-                    char arg[16] = { '\0' };
-                    if (compact_strncpy_from_user(arg, p1, sizeof(arg)) <= 0) break;
-                    if (!strcmp(arg, "second_stage") || !strcmp(arg, "--second-stage")) {
-                        log_boot("exec %s second stage 0\n", filename->name);
-                        before_second_stage();
-                        init_second_stage_executed = 1;
-                    }
+                if (!p1 || IS_ERR(p1)) break;
+
+                char arg[16] = { '\0' };
+                if (compact_strncpy_from_user(arg, p1, sizeof(arg)) <= 0) break;
+                if (!strcmp(arg, "second_stage") || !strcmp(arg, "--second-stage")) {
+                    log_boot("exec %s second stage 0\n", filename->name);
+                    before_second_stage();
+                    init_second_stage_executed = 1;
                 }
             }
         }
@@ -194,8 +193,6 @@ static void before_do_execve(hook_fargs8_t *args, void *udata)
         remove_execv_hook(before_do_execve, 0);
     }
 }
-
-static void after_openat(hook_fargs4_t *args, void *udata);
 
 static void before_openat(hook_fargs4_t *args, void *udata)
 {
@@ -259,7 +256,6 @@ static void after_openat(hook_fargs4_t *args, void *udata)
 #define EV_KEY 0x01
 #define KEY_VOLUMEDOWN 114
 
-/* Modified from KernelSU */
 // void input_handle_event(struct input_dev *dev, unsigned int type, unsigned int code, int value)
 static void before_input_handle_event(hook_fargs4_t *args, void *udata)
 {
@@ -272,7 +268,7 @@ static void before_input_handle_event(hook_fargs4_t *args, void *udata)
         if (volumedown_pressed_count == 3) {
             log_boot("entering safemode ...");
             struct file *filp = filp_open(SAFE_MODE_FLAG_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-            if (!!filp || IS_ERR(filp)) filp_close(filp, 0);
+            if (filp && !IS_ERR(filp)) filp_close(filp, 0);
         }
     }
 }
@@ -280,14 +276,11 @@ static void before_input_handle_event(hook_fargs4_t *args, void *udata)
 int kpuserd_init()
 {
     int rc = 0;
-    hook_err_t err = add_execv_hook(before_do_execve, 0, 0);
-    if (err) {
-        log_boot("hook add execv error: %d\n", err);
-        rc = err;
-        goto out;
-    }
+    hook_err_t err = HOOK_NO_ERR;
+    err |= inline_hook_syscalln(__NR_execve, 3, before_execve, after_execve, (void *)__NR_execve);
+    err |= inline_hook_syscalln(__NR_execveat, 5, before_execveat, after_execveat, (void *)__NR_execveat);
 
-    fp_hook_syscalln(__NR_openat, 4, before_openat, after_openat, 0);
+    err |= inline_hook_syscalln(__NR_openat, 4, before_openat, after_openat, 0);
 
     unsigned long input_handle_event_addr = get_preset_patch_sym()->input_handle_event;
     if (!input_handle_event_addr) {

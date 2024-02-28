@@ -254,7 +254,7 @@ static uid_t current_uid()
     return uid;
 }
 
-// #define TRY_DIRECT_MODIFY_USER
+#define TRY_DIRECT_MODIFY_USER
 
 static void handle_before_execve(hook_local_t *hook_local, char **__user u_filename_p, char **__user uargv, void *udata)
 {
@@ -284,16 +284,15 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
             if (cplen > 0) {
                 hook_local->data0 = cplen;
                 hook_local->data1 = (uint64_t)u_filename_p;
-                logkfi("call su uid: %d, to_uid: %d, sctx: %s, cplen: %d\n", uid, to_uid, sctx, cplen);
             } else {
                 void *uptr = copy_to_user_stack(sh_path, sizeof(sh_path));
                 if (uptr && !IS_ERR(uptr)) {
                     *u_filename_p = (char *__user)uptr;
                 }
             }
+            logkfi("call su uid: %d, to_uid: %d, sctx: %s, cplen: %d\n", uid, to_uid, sctx, cplen);
         } else {
             filp_close(filp, 0);
-
             // command
             int cplen = 0;
 #ifdef TRY_DIRECT_MODIFY_USER
@@ -320,11 +319,15 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
             argv_cplen = compat_copy_to_user((void *__user)p1, default_su_path, sizeof(default_su_path));
 #endif
             if (argv_cplen <= 0) {
-                sp = sp ? sp - sizeof(default_su_path) : current_user_stack_pointer();
+                sp = sp ?: current_user_stack_pointer();
+                sp -= sizeof(default_su_path);
                 sp &= 0xFFFFFFFFFFFFFFF8;
-                logkd("aaaaaaaaaa %llx, %llx\n", *uargv, sp);
-                int rc = set_user_arg_ptr(0, *uargv, 0, (void *)sp);
-                logkd("aaaaaaa rc: %d\n", rc);
+                argv_cplen = compat_copy_to_user((void *)sp, default_su_path, sizeof(default_su_path));
+                if (argv_cplen > 0) {
+                    int rc = set_user_arg_ptr(0, *uargv, 0, sp);
+                    if (rc < 0) { // todo: modify entire argv
+                    }
+                }
             }
             logkfi("call apd uid: %d, to_uid: %d, sctx: %s, cplen: %d, %d\n", uid, to_uid, sctx, cplen, argv_cplen);
         }
@@ -338,6 +341,7 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
         char arg1[SUPER_KEY_LEN];
         if (compact_strncpy_from_user(arg1, p1, sizeof(arg1)) <= 0) return;
         if (superkey_auth(arg1)) return;
+
         commit_su(0, 0);
 
         // shift args
@@ -420,13 +424,13 @@ static void su_handler_arg1_ufilename_before(hook_fargs6_t *args, void *udata)
         if (cplen > 0) {
             args->local.data0 = cplen;
             args->local.data1 = (uint64_t)ufilename;
-            logkfi("su uid: %d, cp: %d\n", uid, cplen);
+            // logkfi("su uid: %d, cp: %d\n", uid, cplen);
         } else {
             void *uptr = copy_to_user_stack(sh_path, sizeof(sh_path));
             if (uptr && !IS_ERR(uptr)) {
                 set_syscall_argn(args, 1, (uint64_t)uptr);
             }
-            logkfi("su uid: %d, cp stack: %llx\n", uid, uptr);
+            // logkfi("su uid: %d, cp stack: %llx\n", uid, uptr);
         }
     }
 }

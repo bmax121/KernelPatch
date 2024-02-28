@@ -70,22 +70,6 @@ static void replace_cgroup_post_fork(struct task_struct *p, void *a1)
     prepare_task_ext(new, current);
 }
 
-unsigned long execv_hook_addr = 0;
-
-// int do_execveat_common(int fd, struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp, int flags)
-// int __do_execve_file(int fd, struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp, int flags,
-//                      struct file *file);
-// static int do_execve_common(struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp)
-hook_err_t add_execv_hook(hook_chain8_callback before, hook_chain8_callback after, void *udata)
-{
-    return hook_wrap8((void *)execv_hook_addr, before, after, udata);
-}
-
-void remove_execv_hook(hook_chain8_callback before, hook_chain8_callback after)
-{
-    hook_unwrap((void *)execv_hook_addr, before, after);
-}
-
 int task_observer()
 {
     int rc = 0;
@@ -113,24 +97,6 @@ int task_observer()
             hook((void *)cgroup_post_fork_addr, (void *)replace_cgroup_post_fork, (void **)&backup_cgroup_post_fork);
         if (err != HOOK_NO_ERR) {
             log_boot("hook cgroup_post_fork: %llx, error: %d\n", cgroup_post_fork_addr, err);
-            rc = err;
-            goto out;
-        }
-    }
-
-    // hook execv
-    execv_hook_addr = get_preset_patch_sym()->__do_execve_file;
-    if (!execv_hook_addr) execv_hook_addr = get_preset_patch_sym()->do_execveat_common;
-    if (!execv_hook_addr) execv_hook_addr = get_preset_patch_sym()->do_execve_common;
-
-    if (!execv_hook_addr) {
-        log_boot("no symbol for execv hook\n");
-        rc = -ENOENT;
-        goto out;
-    } else {
-        hook_err_t err = hook_wrap8((void *)execv_hook_addr, 0, 0, 0);
-        if (err) {
-            log_boot("hook execv: %llx, error: %d\n", execv_hook_addr, err);
             rc = err;
             goto out;
         }
