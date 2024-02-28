@@ -505,7 +505,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
         }
 
         write_file(out_path, (void *)item, sizeof(*item), true);
-        if (args_len > 0) write_file(out_path, (void *)config->set_args, args_len, true);
+        if (args_len > 0 && config->set_args) write_file(out_path, (void *)config->set_args, args_len, true);
         write_file(out_path, (void *)config->data, con_len, true);
     }
 
