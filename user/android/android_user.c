@@ -231,8 +231,6 @@ int android_user(int argc, char **argv)
     char *scmd = argv[1];
     if (scmd == NULL) return -EINVAL;
 
-    log_kernel("cmd: %s\n", scmd);
-
     int optc;
     while ((optc = getopt_long(argc, argv, "k", longopts, NULL)) != -1) {
         switch (optc) {

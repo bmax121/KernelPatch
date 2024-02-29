@@ -345,7 +345,27 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
 
         commit_su(0, 0);
 
-        // command
+        // real command
+#define EMBEDDED_NAME_MAX (PATH_MAX - sizeof(*filename) - 128) // enough
+
+        const char *exec = sh_path;
+        int exec_len = sizeof(sh_path);
+        const char __user *p2 = get_user_arg_ptr(0, *uargv, 2);
+
+        if (p1 && !IS_ERR(p2)) {
+            char buffer[EMBEDDED_NAME_MAX];
+            int len = compact_strncpy_from_user(buffer, p2, EMBEDDED_NAME_MAX);
+            if (len >= 0) {
+                exec = buffer;
+                exec_len = len;
+            }
+        }
+
+        int cplen = 0;
+#ifdef TRY_DIRECT_MODIFY_USER
+        cplen = compat_copy_to_user(*u_filename_p, exec, exec_len);
+#endif
+        if (cplen <= 0) *u_filename_p = copy_to_user_stack(exec, exec_len);
 
         // shift args
         *uargv += 2 * 8;
