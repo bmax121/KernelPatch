@@ -169,9 +169,9 @@ static void fork_for_result(const char *exec, char *const *argv)
         setenv("SUPERKEY", key, 1);
         char kpver[16] = { '\0' }, kver[16] = { '\0' };
         sprintf(kpver, "%x", sc_kp_ver(key));
-        setenv("KERNEL_PATCH_VER", kpver, 1);
+        setenv("KERNELPATCH_VERSION", kpver, 1);
         sprintf(kver, "%x", sc_k_ver(key));
-        setenv("KERNEL_VER", kver, 1);
+        setenv("KERNEL_VERSION", kver, 1);
         int rc = execv(exec, argv);
         log_kernel("%d exec %s error: %s\n", getpid(), cmd, strerror(errno));
     } else {
@@ -194,15 +194,13 @@ static void post_fs_data_init()
     char *dmesg_argv[] = { "/system/bin/dmesg", ">", boot0_log_path, "2>&1", NULL };
     fork_for_result(dmesg_argv[0], dmesg_argv);
 
-    char current_exe[1024] = { '\0' };
-    if (readlink("/proc/self/exe", current_exe, sizeof(current_exe) - 1)) {
-        if (!strcmp(current_exe, KPATCH_DEV_PATH)) {
-            char *const cp_argv[] = { "/system/bin/cp", current_exe, KPATCH_DATA_PATH, NULL };
-            fork_for_result(cp_argv[0], cp_argv);
+    char current_exe[512] = { '\0' };
+    if (from_kernel && readlink("/proc/self/exe", current_exe, sizeof(current_exe) - 1)) {
+        char *const cp_argv[] = { "/system/bin/cp", current_exe, KPATCH_DATA_PATH, NULL };
+        fork_for_result(cp_argv[0], cp_argv);
 
-            char *const rm_argv[] = { "/system/bin/rm", current_exe, NULL };
-            fork_for_result(rm_argv[0], rm_argv);
-        }
+        char *const rm_argv[] = { "/system/bin/rm", current_exe, NULL };
+        fork_for_result(rm_argv[0], rm_argv);
     }
 
     if (!access(skip_sepolicy_path, F_OK)) {
@@ -213,7 +211,7 @@ static void post_fs_data_init()
     load_config_su_path();
     load_config_allow_uids();
 
-    log_kernel("%d finished android user post_fs_data_init.\n", getpid());
+    log_kernel("%d finished android user post-fs-data-init.\n", getpid());
 
     dmesg_argv[2] = boot1_log_path;
     fork_for_result(dmesg_argv[0], dmesg_argv);
@@ -245,7 +243,6 @@ int android_user(int argc, char **argv)
     if (!strcmp("post-fs-data-init", scmd)) {
         post_fs_data_init();
     } else if (!strcmp("post-fs-data", scmd) || !strcmp("services", scmd) || !strcmp("boot-completed", scmd)) {
-        // todo: move to apd
         struct su_profile profile = {
             .uid = getuid(),
             .to_uid = 0,
