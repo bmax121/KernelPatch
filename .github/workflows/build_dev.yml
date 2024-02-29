@@ -17,6 +17,8 @@ on:
       - "user/**"
       - "tools/**"
       - "version"
+  workflow_call:
+  workflow_dispatch:
 
 jobs:
   Build-kpimg:

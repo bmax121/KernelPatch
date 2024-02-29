@@ -83,10 +83,10 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
     rc = resolve_pt_regs();
     log_boot("resolve_pt_regs done: %d\n", rc);
 
+#ifdef ANDROID
     rc = su_compat_init();
     log_boot("su_compat_init done: %d\n", rc);
 
-#ifdef ANDROID
     rc = kpuserd_init();
     log_boot("kpuserd_init done: %d\n", rc);
 #endif
