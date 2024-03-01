@@ -98,6 +98,7 @@ out:
 static int extra_load_kpm_callback(const patch_extra_item_t *extra, const char *args, const void *data, void *udata)
 {
     const char *event = (const char *)udata;
+
     if (extra->type == EXTRA_TYPE_KPM) {
         if (!strcmp(event, extra->event) || (!extra->event[0] && !strcmp(EXTRA_EVENT_KPM_DEFAULT, event))) {
             int rc = load_module(data, extra->con_size, args, event, 0);
