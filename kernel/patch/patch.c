@@ -95,12 +95,11 @@ out:
     return;
 }
 
-static int extra_load_kpm_callback(const patch_extra_item_t *extra, const char *args, const void *data, void *udata)
+static int pre_ki_kpm(const patch_extra_item_t *extra, const char *args, const void *data, void *udata)
 {
     const char *event = (const char *)udata;
-
     if (extra->type == EXTRA_TYPE_KPM) {
-        if (!strcmp(event, extra->event) || (!extra->event[0] && !strcmp(EXTRA_EVENT_KPM_DEFAULT, event))) {
+        if (!strcmp(EXTRA_EVENT_PRE_KERNEL_INIT, extra->event) || !extra->event[0]) {
             int rc = load_module(data, extra->con_size, args, event, 0);
             log_boot("%s loading extra kpm return: %d\n", event, rc);
         }
@@ -108,16 +107,10 @@ static int extra_load_kpm_callback(const patch_extra_item_t *extra, const char *
     return 0;
 }
 
-static int extra_load_kpm(const char *event)
-{
-    on_each_extra_item(extra_load_kpm_callback, (void *)event);
-    return 0;
-}
-
 static void before_kernel_init(hook_fargs4_t *args, void *udata)
 {
     log_boot("event: %s\n", EXTRA_EVENT_PRE_KERNEL_INIT);
-    extra_load_kpm(EXTRA_EVENT_PRE_KERNEL_INIT);
+    on_each_extra_item(pre_ki_kpm, 0);
 }
 
 static void after_kernel_init(hook_fargs4_t *args, void *udata)

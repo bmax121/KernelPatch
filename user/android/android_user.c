@@ -181,18 +181,42 @@ static void fork_for_result(const char *exec, char *const *argv)
     }
 }
 
+// static void save_dmegs(const char *file)
+// {
+//     char *dmesg_argv[] = {
+//         "/system/bin/dmesg",
+//         NULL,
+//     };
+//     pid_t pid = fork();
+
+//     if (pid < 0) {
+//         log_kernel("%d fork for dmesg error: %d\n", getpid(), pid);
+//     } else if (pid == 0) {
+//         int fd = open(file, O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IWUSR);
+//         dup2(fd, 1);
+//         dup2(fd, 2);
+//         close(fd);
+//         int rc = execv(dmesg_argv[0], dmesg_argv);
+//         log_kernel("%d exec dmesg > %s error: %s\n", getpid(), file, strerror(errno));
+//     } else {
+//         int status;
+//         wait(&status);
+//         log_kernel("%d wait dmesg status: 0x%x\n", getpid(), status);
+//     }
+// }
+
 static void post_fs_data_init()
 {
     struct su_profile profile = { .uid = getuid() };
     sc_su(key, &profile);
 
+    char *dmesg_argv[] = { "/system/bin/dmesg", ">", boot0_log_path, NULL };
+    fork_for_result(dmesg_argv[0], dmesg_argv);
+
     log_kernel("%d starting android user post-fs-data-init\n", getpid());
 
     if (access(APATCH_FLODER, F_OK)) mkdir(APATCH_FLODER, 0700);
     if (access(APATCH_LOG_FLODER, F_OK)) mkdir(APATCH_LOG_FLODER, 0700);
-
-    char *dmesg_argv[] = { "/system/bin/dmesg", ">", boot0_log_path, "2>&1", NULL };
-    fork_for_result(dmesg_argv[0], dmesg_argv);
 
     char current_exe[512] = { '\0' };
     if (from_kernel && readlink("/proc/self/exe", current_exe, sizeof(current_exe) - 1)) {
@@ -213,8 +237,8 @@ static void post_fs_data_init()
 
     log_kernel("%d finished android user post-fs-data-init.\n", getpid());
 
-    dmesg_argv[2] = boot1_log_path;
-    fork_for_result(dmesg_argv[0], dmesg_argv);
+    char *dmesg_argv_1[] = { "/system/bin/dmesg", ">", boot1_log_path, NULL };
+    fork_for_result(dmesg_argv_1[0], dmesg_argv_1);
 }
 
 static struct option const longopts[] = {
@@ -264,7 +288,7 @@ int android_user(int argc, char **argv)
         char log_path[128] = { '\0' };
         sprintf(log_path, "%s/kpatch_%s.log", APATCH_LOG_FLODER, scmd);
 
-        char *dmesg_argv[] = { "/system/bin/dmesg", ">", log_path, "2>&1", NULL };
+        char *dmesg_argv[] = { "/system/bin/dmesg", ">", log_path, NULL };
         fork_for_result(dmesg_argv[0], dmesg_argv);
 
     } else {
