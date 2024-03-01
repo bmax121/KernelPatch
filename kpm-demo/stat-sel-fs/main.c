@@ -10,16 +10,11 @@
 #include <kputils.h>
 #include <linux/string.h>
 
-KPM_NAME("kpm-shmem");
+KPM_NAME("stat-sel-fs");
 KPM_VERSION("1.0.0");
 KPM_LICENSE("GPL v2");
 KPM_AUTHOR("bmax121");
-KPM_DESCRIPTION("Share memory between processes");
-
-/*
- * This module's main functionality is to map any address of any process to any other process. 
- * Of course, this means you can easily manipulate data of other processes. 
-*/
+KPM_DESCRIPTION("Modify the attribute of selinux-fs");
 
 static long init(const char *args, const char *event, void *__user reserved)
 {

@@ -161,17 +161,20 @@ int parse_image_patch_info(const char *kimg, int kimg_len, patched_kimg_t *pimg)
 
     // extra
     int extra_offset = align_kimg_len + old_preset->setup.kpimg_size;
+    if (extra_offset > kimg_len) tools_loge_exit("kpimg length mismatch\n");
+    if (extra_offset == kimg_len) return 0;
+
     int extra_size = old_preset->setup.extra_size;
+    const char *item_pos = kimg + extra_offset;
 
-    const char *item_addr = kimg + extra_offset;
-
-    while (item_addr < item_addr + extra_size) {
-        patch_extra_item_t *item = (patch_extra_item_t *)item_addr;
+    while (item_pos < kimg + extra_offset + extra_size) {
+        patch_extra_item_t *item = (patch_extra_item_t *)item_pos;
+        if (strcmp(EXTRA_HDR_MAGIC, item->magic)) break;
         if (item->type == EXTRA_TYPE_NONE) break;
         pimg->embed_item[pimg->embed_item_num++] = item;
-        item_addr += sizeof(patch_extra_item_t);
-        item_addr += item->args_size;
-        item_addr += item->con_size;
+        item_pos += sizeof(patch_extra_item_t);
+        item_pos += item->args_size;
+        item_pos += item->con_size;
     }
 
     return 0;
@@ -200,10 +203,12 @@ int print_image_patch_info(patched_kimg_t *pimg)
 
     if (pimg->banner[strlen(pimg->banner) - 1] != '\n') fprintf(stdout, "\n");
     fprintf(stdout, "patched=%s\n", preset ? "true" : "false");
-    fprintf(stdout, "extra_num=%d\n", pimg->embed_item_num);
 
     if (preset) {
         print_preset_info(preset);
+
+        fprintf(stdout, INFO_EXTRA_SESSION "\n");
+        fprintf(stdout, "num=%d\n", pimg->embed_item_num);
 
         for (int i = 0; i < pimg->embed_item_num; i++) {
             patch_extra_item_t *item = pimg->embed_item[i];
@@ -356,6 +361,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
             }
         }
         if (!item) tools_loge_exit("empty extra item\n");
+        strcpy(item->magic, EXTRA_HDR_MAGIC);
         config->item = item;
         item->type = config->extra_type;
         if (config->set_args) item->args_size = align_ceil(strlen(config->set_args), EXTRA_ALIGN);

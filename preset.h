@@ -132,8 +132,6 @@ _Static_assert(sizeof(patch_symbol_t) == PATCH_SYMBOL_LEN, "sizeof patch_symbol_
 #define EXTRA_NAME_LEN 0x20
 #define EXTRA_EVENT_LEN 0x20
 
-#define EXTRA_HDR_MAGIC "kpe"
-
 typedef int32_t extra_item_type;
 
 #define EXTRA_TYPE_NONE 0
@@ -172,13 +170,12 @@ struct _patch_extra_item
     {
         struct
         {
-            char magic[4];
-            int32_t priority;
-            int32_t args_size;
-            int32_t con_size;
             extra_item_type type;
             char name[EXTRA_NAME_LEN];
             char event[EXTRA_EVENT_LEN];
+            int32_t priority;
+            int32_t args_size;
+            int32_t con_size;
         };
         char _cap[PATCH_EXTRA_ITEM_LEN];
     };
