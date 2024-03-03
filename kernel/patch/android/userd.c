@@ -244,24 +244,36 @@ static void after_execveat(hook_fargs5_t *args, void *udata)
     handle_after_execve(&args->local);
 }
 
-#define ORIGIN_RC_FILE "/system/etc/init/atrace.rc"
-#define REPLACE_RC_FILE "/dev/.atrace.rc"
+#define ORIGIN_RC_FILE "/init.environ.rc"
+#define REPLACE_RC_FILE "/dev/anduser.rc"
 
-static const char patch_rc[] = ""
-                               "\n"
-                               "on late-init\n"
-                               "    rm " REPLACE_RC_FILE "\n"
-                               "on post-fs-data\n"
-                               "    exec -- " SUPERCMD " %s " KPATCH_DEV_PATH " %s android_user post-fs-data-init -k\n"
-                               "    exec -- " SUPERCMD " %s " KPATCH_DATA_PATH " %s android_user post-fs-data -k\n"
-                               "on nonencrypted\n"
-                               "    exec -- " SUPERCMD " %s " KPATCH_DATA_PATH " %s android_user services -k\n"
-                               "on property:vold.decrypt=trigger_restart_framework\n"
-                               "    exec -- " SUPERCMD " %s " KPATCH_DATA_PATH " %s android_user services -k\n"
-                               "on property:sys.boot_completed=1\n"
-                               "    exec -- " SUPERCMD " %s " KPATCH_DATA_PATH " %s android_user boot-completed -k\n"
-                               "\n\n"
-                               "";
+static const char user_rc_data[] = { //
+    "\n"
+    "\n"
+    "on early-init\n"
+    "    exec -- " SUPERCMD " %s " KPATCH_DEV_PATH " %s android_user early-init -k\n"
+
+    "on post-fs-data\n"
+    "    exec -- " SUPERCMD " %s " KPATCH_DEV_PATH " %s android_user post-fs-data-init -k\n"
+    "    exec -- " SUPERCMD " %s " KPATCH_DATA_PATH " %s android_user post-fs-data-init -k\n"
+    "    exec -- " SUPERCMD " %s " KPATCH_DATA_PATH " %s android_user post-fs-data -k\n"
+
+    "on nonencrypted\n"
+    "    exec -- " SUPERCMD " %s " KPATCH_DATA_PATH " %s android_user services -k\n"
+
+    "on property:vold.decrypt=trigger_restart_framework\n"
+    "    exec -- " SUPERCMD " %s " KPATCH_DATA_PATH " %s android_user services -k\n"
+
+    "on property:sys.boot_completed=1\n"
+    "    rm " REPLACE_RC_FILE "\n"
+    "    rm " KPATCH_DEV_PATH "\n"
+    "    exec -- " SUPERCMD " %s " KPATCH_DATA_PATH " %s android_user boot-completed -k\n"
+    "\n\n"
+    ""
+};
+
+// todo: struct file *do_filp_open(int dfd, struct filename *pathname, const struct open_flags *op)
+// todo: import rc
 
 // https://elixir.bootlin.com/linux/v6.1/source/fs/open.c#L1337
 // SYSCALL_DEFINE4(openat, int, dfd, const char __user *, filename, int, flags, umode_t, mode)
@@ -291,17 +303,21 @@ static void before_openat(hook_fargs4_t *args, void *udata)
         goto out;
     }
 
+    loff_t off = 0;
     const char *ori_rc_data = kernel_read_file(ORIGIN_RC_FILE, &ori_len);
     if (!ori_rc_data) goto out;
-
-    char *replace_rc_data = vmalloc(sizeof(patch_rc) + 10 * SUPER_KEY_LEN);
-    const char *sk = get_superkey();
-    sprintf(replace_rc_data, patch_rc, sk, sk, sk, sk, sk, sk, sk, sk, sk, sk);
-
-    loff_t off = 0;
-    kernel_write(newfp, replace_rc_data, strlen(replace_rc_data), &off);
     kernel_write(newfp, ori_rc_data, ori_len, &off);
-    if (off != strlen(replace_rc_data) + ori_len) {
+    if (off != ori_len) {
+        log_boot("write replace rc error: %x\n", off);
+        goto free;
+    }
+
+    char added_rc_data[2048];
+    const char *sk = get_superkey();
+    sprintf(added_rc_data, user_rc_data, sk, sk, sk, sk, sk, sk, sk, sk, sk, sk, sk, sk, sk, sk);
+
+    kernel_write(newfp, added_rc_data, strlen(added_rc_data), &off);
+    if (off != strlen(added_rc_data) + ori_len) {
         log_boot("write replace rc error: %x\n", off);
         goto free;
     }
@@ -321,7 +337,6 @@ static void before_openat(hook_fargs4_t *args, void *udata)
 free:
     filp_close(newfp, 0);
     kvfree(ori_rc_data);
-    kvfree(replace_rc_data);
 
 out:
     args->local.data2 = 1;

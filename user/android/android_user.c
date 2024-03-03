@@ -34,8 +34,8 @@ static char pkg_cfg_path[] = APATCH_FLODER "package_config";
 static char su_path_path[] = APATCH_FLODER "su_path";
 static char skip_sepolicy_path[] = APATCH_FLODER "skip_sepolicy";
 
-static char boot0_log_path[] = ADB_FLODER "kpatch_0.log";
-static char boot1_log_path[] = ADB_FLODER "kpatch_1.log";
+static char post_fs_data_log_0[] = APATCH_LOG_FLODER "post_fs_data_0.log";
+static char post_fs_data_log_1[] = APATCH_LOG_FLODER "post_fs_data_1.log";
 
 extern const char *key;
 static bool from_kernel = false;
@@ -181,51 +181,77 @@ static void fork_for_result(const char *exec, char *const *argv)
     }
 }
 
-// static void save_dmegs(const char *file)
-// {
-//     char *dmesg_argv[] = {
-//         "/system/bin/dmesg",
-//         NULL,
-//     };
-//     pid_t pid = fork();
+static void save_dmegs(const char *file)
+{
+    char *dmesg_argv[] = {
+        "/system/bin/dmesg",
+        NULL,
+    };
+    pid_t pid = fork();
 
-//     if (pid < 0) {
-//         log_kernel("%d fork for dmesg error: %d\n", getpid(), pid);
-//     } else if (pid == 0) {
-//         int fd = open(file, O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IWUSR);
-//         dup2(fd, 1);
-//         dup2(fd, 2);
-//         close(fd);
-//         int rc = execv(dmesg_argv[0], dmesg_argv);
-//         log_kernel("%d exec dmesg > %s error: %s\n", getpid(), file, strerror(errno));
-//     } else {
-//         int status;
-//         wait(&status);
-//         log_kernel("%d wait dmesg status: 0x%x\n", getpid(), status);
-//     }
-// }
+    if (pid < 0) {
+        log_kernel("%d fork for dmesg error: %d\n", getpid(), pid);
+    } else if (pid == 0) {
+        int fd = open(file, O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IWUSR);
+        dup2(fd, 1);
+        dup2(fd, 2);
+        close(fd);
+        int rc = execv(dmesg_argv[0], dmesg_argv);
+        log_kernel("%d exec dmesg > %s error: %s\n", getpid(), file, strerror(errno));
+    } else {
+        int status;
+        wait(&status);
+        log_kernel("%d wait dmesg status: 0x%x\n", getpid(), status);
+    }
+}
+
+static void early_init()
+{
+    struct su_profile profile = { .uid = getuid() };
+    sc_su(key, &profile);
+
+    log_kernel("%d starting android user early-init\n", getpid());
+
+    save_dmegs(EARLY_INIT_LOG_0);
+
+    // todo:
+
+    save_dmegs(EARLY_INIT_LOG_1);
+}
 
 static void post_fs_data_init()
 {
     struct su_profile profile = { .uid = getuid() };
     sc_su(key, &profile);
 
-    char *dmesg_argv[] = { "/system/bin/dmesg", ">", boot0_log_path, NULL };
+    char current_exe[256] = { '\0' };
+    readlink("/proc/self/exe", current_exe, sizeof(current_exe) - 1);
+
+    log_kernel("%d starting android user post-fs-data-init, exec: %s\n", getpid(), current_exe);
+
+    char *dmesg_argv[] = { "/system/bin/dmesg", ">", post_fs_data_log_0, NULL };
     fork_for_result(dmesg_argv[0], dmesg_argv);
 
-    log_kernel("%d starting android user post-fs-data-init\n", getpid());
+    if (!strcmp(current_exe, KPATCH_DEV_PATH)) {
+        char *const cp_argv[] = { "/system/bin/mv", current_exe, KPATCH_DATA_PATH, NULL };
+        fork_for_result(cp_argv[0], cp_argv);
+        return;
+    }
 
     if (access(APATCH_FLODER, F_OK)) mkdir(APATCH_FLODER, 0700);
     if (access(APATCH_LOG_FLODER, F_OK)) mkdir(APATCH_LOG_FLODER, 0700);
 
-    char current_exe[512] = { '\0' };
-    if (from_kernel && readlink("/proc/self/exe", current_exe, sizeof(current_exe) - 1)) {
-        char *const cp_argv[] = { "/system/bin/cp", current_exe, KPATCH_DATA_PATH, NULL };
-        fork_for_result(cp_argv[0], cp_argv);
+    save_dmegs(post_fs_data_log_0);
 
-        char *const rm_argv[] = { "/system/bin/rm", current_exe, NULL };
-        fork_for_result(rm_argv[0], rm_argv);
-    }
+    char *cp_argv[] = { "/system/bin/cp", KPATCH_DEV_PATH, KPATCH_DATA_PATH, NULL };
+    fork_for_result(cp_argv[0], cp_argv);
+
+    cp_argv[1] = EARLY_INIT_LOG_0;
+    cp_argv[2] = APATCH_LOG_FLODER;
+    fork_for_result(cp_argv[0], cp_argv);
+
+    cp_argv[1] = EARLY_INIT_LOG_1;
+    fork_for_result(cp_argv[0], cp_argv);
 
     if (!access(skip_sepolicy_path, F_OK)) {
         char *argv[] = { magiskpolicy_path, "--magisk", "--live", NULL };
@@ -237,8 +263,7 @@ static void post_fs_data_init()
 
     log_kernel("%d finished android user post-fs-data-init.\n", getpid());
 
-    char *dmesg_argv_1[] = { "/system/bin/dmesg", ">", boot1_log_path, NULL };
-    fork_for_result(dmesg_argv_1[0], dmesg_argv_1);
+    save_dmegs(post_fs_data_log_1);
 }
 
 static struct option const longopts[] = {
@@ -264,7 +289,9 @@ int android_user(int argc, char **argv)
         }
     }
 
-    if (!strcmp("post-fs-data-init", scmd)) {
+    if (!strcmp("early-init", scmd)) {
+        early_init();
+    } else if (!strcmp("post-fs-data-init", scmd)) {
         post_fs_data_init();
     } else if (!strcmp("post-fs-data", scmd) || !strcmp("services", scmd) || !strcmp("boot-completed", scmd)) {
         struct su_profile profile = {
@@ -286,7 +313,7 @@ int android_user(int argc, char **argv)
         fork_for_result(APD_PATH, apd_argv);
 
         char log_path[128] = { '\0' };
-        sprintf(log_path, "%s/kpatch_%s.log", APATCH_LOG_FLODER, scmd);
+        sprintf(log_path, "%s/trigger_%s.log", APATCH_LOG_FLODER, scmd);
 
         char *dmesg_argv[] = { "/system/bin/dmesg", ">", log_path, NULL };
         fork_for_result(dmesg_argv[0], dmesg_argv);

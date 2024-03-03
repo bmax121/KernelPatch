@@ -59,23 +59,21 @@ static void allow_reclaim_callback(struct rcu_head *rcu)
     kvfree(allow);
 }
 
-static struct su_profile *search_allow_uid(uid_t uid)
+static struct su_profile search_allow_uid(uid_t uid)
 {
     rcu_read_lock();
     struct allow_uid *pos;
+    struct su_profile profile = { 0 };
     list_for_each_entry_rcu(pos, &allow_uid_list, list)
     {
         if (pos->uid == uid) {
-            // make a deep copy
-            // todo: use stack
-            struct su_profile *profile = (struct su_profile *)vmalloc(sizeof(struct su_profile));
-            memcpy(profile, &pos->profile, sizeof(struct su_profile));
+            memcpy(&profile, &pos->profile, sizeof(struct su_profile));
             rcu_read_unlock();
             return profile;
         }
     }
     rcu_read_unlock();
-    return 0;
+    return profile;
 }
 
 static int is_allow_uid(uid_t uid)
@@ -269,11 +267,11 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
 
     if (!strcmp(current_su_path, filename)) {
         uid_t uid = current_uid();
-        struct su_profile *profile = search_allow_uid(uid);
-        if (!profile) return;
+        if (!is_allow_uid(uid)) return;
+        struct su_profile profile = search_allow_uid(uid);
 
-        uid_t to_uid = profile->to_uid;
-        const char *sctx = profile->scontext;
+        uid_t to_uid = profile.to_uid;
+        const char *sctx = profile.scontext;
         commit_su(to_uid, sctx);
 
         struct file *filp = filp_open(apd_path, O_RDONLY, 0);
@@ -285,13 +283,14 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
             if (cplen > 0) {
                 hook_local->data0 = cplen;
                 hook_local->data1 = (uint64_t)u_filename_p;
+                logkfi("call su uid: %d, to_uid: %d, sctx: %s, cplen: %d\n", uid, to_uid, sctx, cplen);
             } else {
                 void *uptr = copy_to_user_stack(sh_path, sizeof(sh_path));
                 if (uptr && !IS_ERR(uptr)) {
                     *u_filename_p = (char *__user)uptr;
                 }
+                logkfi("call su uid: %d, to_uid: %d, sctx: %s, uptr: %llx\n", uid, to_uid, sctx, uptr);
             }
-            logkfi("call su uid: %d, to_uid: %d, sctx: %s, cplen: %d\n", uid, to_uid, sctx, cplen);
         } else {
             filp_close(filp, 0);
             // command
@@ -327,12 +326,13 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
                 if (argv_cplen > 0) {
                     int rc = set_user_arg_ptr(0, *uargv, 0, sp);
                     if (rc < 0) { // todo: modify entire argv
+                        logkfi("call apd argv error, uid: %d, to_uid: %d, sctx: %s, rc: %d\n", uid, to_uid, sctx, rc);
                     }
                 }
             }
             logkfi("call apd uid: %d, to_uid: %d, sctx: %s, cplen: %d, %d\n", uid, to_uid, sctx, cplen, argv_cplen);
         }
-        kvfree(profile);
+
     } else if (!strcmp(SUPERCMD, filename)) {
         // key
         const char __user *p1 = get_user_arg_ptr(0, *uargv, 1);
