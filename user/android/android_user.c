@@ -229,12 +229,9 @@ static void post_fs_data_init()
 
     log_kernel("%d starting android user post-fs-data-init, exec: %s\n", getpid(), current_exe);
 
-    char *dmesg_argv[] = { "/system/bin/dmesg", ">", post_fs_data_log_0, NULL };
-    fork_for_result(dmesg_argv[0], dmesg_argv);
-
     if (!strcmp(current_exe, KPATCH_DEV_PATH)) {
-        char *const cp_argv[] = { "/system/bin/mv", current_exe, KPATCH_DATA_PATH, NULL };
-        fork_for_result(cp_argv[0], cp_argv);
+        char *const args[] = { "/system/bin/mv", current_exe, KPATCH_DATA_PATH, NULL };
+        fork_for_result(args[0], args);
         return;
     }
 
@@ -243,15 +240,15 @@ static void post_fs_data_init()
 
     save_dmegs(post_fs_data_log_0);
 
-    char *cp_argv[] = { "/system/bin/cp", KPATCH_DEV_PATH, KPATCH_DATA_PATH, NULL };
-    fork_for_result(cp_argv[0], cp_argv);
+    char *log_args[] = { "/system/bin/mv", KPATCH_DEV_PATH, KPATCH_DATA_PATH, NULL };
+    fork_for_result(log_args[0], log_args);
 
-    cp_argv[1] = EARLY_INIT_LOG_0;
-    cp_argv[2] = APATCH_LOG_FLODER;
-    fork_for_result(cp_argv[0], cp_argv);
+    log_args[1] = EARLY_INIT_LOG_0;
+    log_args[2] = APATCH_LOG_FLODER;
+    fork_for_result(log_args[0], log_args);
 
-    cp_argv[1] = EARLY_INIT_LOG_1;
-    fork_for_result(cp_argv[0], cp_argv);
+    log_args[1] = EARLY_INIT_LOG_1;
+    fork_for_result(log_args[0], log_args);
 
     if (!access(skip_sepolicy_path, F_OK)) {
         char *argv[] = { magiskpolicy_path, "--magisk", "--live", NULL };

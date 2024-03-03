@@ -30,6 +30,7 @@
 #include <linux/slab.h>
 #include <linux/umh.h>
 #include <uapi/scdefs.h>
+#include <uapi/linux/stat.h>
 
 static const void *kernel_read_file(const char *path, loff_t *len)
 {
@@ -108,12 +109,18 @@ static void pre_user_exec_init()
 {
     log_boot("event: %s\n", EXTRA_EVENT_PRE_EXEC_INIT);
     try_extract_kpatch(EXTRA_EVENT_PRE_EXEC_INIT);
+
+    // struct file *work_dir = filp_open(KPATCH_DEV_WORK_DIR, O_DIRECTORY | O_CREAT, S_IRUSR);
+    // if (!work_dir || IS_ERR(work_dir)) {
+    //     log_boot("creat work dir error: %s\n", KPATCH_DEV_WORK_DIR);
+    //     return;
+    // }
+    // filp_close(work_dir, 0);
 }
 
 static void pre_init_second_stage()
 {
     log_boot("event: %s\n", EXTRA_EVENT_PRE_SECOND_STAGE);
-    try_extract_kpatch(EXTRA_EVENT_PRE_SECOND_STAGE);
 }
 
 static void on_first_app_process()
@@ -267,6 +274,8 @@ static const char user_rc_data[] = { //
     "on property:sys.boot_completed=1\n"
     "    rm " REPLACE_RC_FILE "\n"
     "    rm " KPATCH_DEV_PATH "\n"
+    "    rm " EARLY_INIT_LOG_0 "\n"
+    "    rm " EARLY_INIT_LOG_1 "\n"
     "    exec -- " SUPERCMD " %s " KPATCH_DATA_PATH " %s android_user boot-completed -k\n"
     "\n\n"
     ""
