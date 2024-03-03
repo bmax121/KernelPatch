@@ -240,11 +240,7 @@ static void post_fs_data_init()
 
     save_dmegs(post_fs_data_log_0);
 
-    char *log_args[] = { "/system/bin/mv", KPATCH_DEV_PATH, KPATCH_DATA_PATH, NULL };
-    fork_for_result(log_args[0], log_args);
-
-    log_args[1] = EARLY_INIT_LOG_0;
-    log_args[2] = APATCH_LOG_FLODER;
+    char *log_args[] = { "/system/bin/mv", EARLY_INIT_LOG_0, APATCH_LOG_FLODER, NULL };
     fork_for_result(log_args[0], log_args);
 
     log_args[1] = EARLY_INIT_LOG_1;
