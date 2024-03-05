@@ -228,8 +228,8 @@ int supercall_install()
     int rc = 0;
     hash_key_val = hash_key(get_superkey());
 
-    hook_err_t err = inline_hook_syscalln(__NR_supercall, 6, before, 0, 0);
-    // hook_err_t err = fp_hook_syscalln(__NR_supercall, 6, before, 0, 0);
+    // hook_err_t err = inline_hook_syscalln(__NR_supercall, 6, before, 0, 0);
+    hook_err_t err = fp_hook_syscalln(__NR_supercall, 6, before, 0, 0);
     if (err) {
         log_boot("install supercall hook error: %d\n", err);
         rc = err;
