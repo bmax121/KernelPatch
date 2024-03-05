@@ -60,7 +60,7 @@ int32_t get_kernel_info(kernel_info_t *kinfo, const char *img, int32_t imglen)
 
     if (!strncmp("UNCOMPRESSED_IMG", img, strlen("UNCOMPRESSED_IMG"))) {
         kinfo->img_offset = 0x14;
-        tools_loge_exit("kernel image with UNCOMPRESSED_IMG header\n");
+        tools_logw("kernel image with UNCOMPRESSED_IMG header\n");
     }
 
     kinfo->is_be = 0;

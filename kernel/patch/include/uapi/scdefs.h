@@ -66,6 +66,7 @@ struct su_profile
 #define ANDROID_SU_PATH "/system/bin/kp"
 #define KPATCH_DATA_PATH "/data/adb/kpatch"
 #define KPATCH_DEV_PATH "/dev/kpatch"
+#define KPATCH_DEV_WORK_DIR "/dev/kpatch_work/"
 #define APD_PATH "/data/adb/apd"
 #define SUPERCMD "/system/bin/truncate"
 
@@ -74,6 +75,8 @@ struct su_profile
 #define APATCH_BIN_FLODER "/data/adb/ap/bin/"
 #define APATCH_LOG_FLODER "/data/adb/ap/log/"
 #define SAFE_MODE_FLAG_FILE "/dev/.sefemode"
+#define EARLY_INIT_LOG_0 "/dev/early_init_0.log"
+#define EARLY_INIT_LOG_1 "/dev/early_init_1.log"
 
 #define ALL_ALLOW_SCONTEXT "u:r:magisk:s0"
 

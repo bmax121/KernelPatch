@@ -24,6 +24,7 @@ int set_priv_selinx_allow(struct task_struct *task, int val)
 {
     struct task_ext *ext = get_task_ext(task);
     ext->priv_selinux_allow = val;
+    dsb(ish);
     return 0;
 }
 

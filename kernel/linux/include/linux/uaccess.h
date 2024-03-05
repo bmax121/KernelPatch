@@ -13,7 +13,7 @@
 // unsigned long __must_check copy_in_user(void __user *to, const void __user *from, unsigned long n);
 
 //  >= 5.8, On success, returns the length of the string INCLUDING the trailing NUL.
-extern long kfunc_def(strncpy_from_user_nofault)(char *dst, const void __user *unsafe_addr, long count);
+extern long kfunc_def(compact_strncpy_from_user)(char *dst, const void __user *unsafe_addr, long count);
 /**
  * strncpy_from_unsafe_user: - Copy a NUL terminated string from unsafe user
  *				address.
@@ -58,7 +58,7 @@ extern long kfunc_def(strnlen_user_nofault)(const void __user *unsafe_addr, long
 extern long kfunc_def(strnlen_unsafe_user)(const void __user *unsafe_addr, long count);
 extern long kfunc_def(strnlen_user)(const char __user *str, long n);
 
-long strncpy_from_user_nofault(char *dest, const char __user *src, long count);
+long compact_strncpy_from_user(char *dest, const char __user *src, long count);
 
 static inline long strnlen_user_nofault(const char __user *str, long n)
 {

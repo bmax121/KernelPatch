@@ -17,6 +17,7 @@
 #include <linux/err.h>
 #include <uapi/asm-generic/errno.h>
 #include <predata.h>
+#include <kputils.h>
 
 uintptr_t *sys_call_table = 0;
 KP_EXPORT_SYMBOL(sys_call_table);
@@ -45,6 +46,7 @@ struct user_arg_ptr_compat
     } ptr;
 };
 
+// actually, a0 is true if it is compact
 const char __user *get_user_arg_ptr(void *a0, void *a1, int nr)
 {
     char __user *const __user *native = (char __user *const __user *)a0;
@@ -55,7 +57,7 @@ const char __user *get_user_arg_ptr(void *a0, void *a1, int nr)
     }
     native = (char __user *const __user *)((unsigned long)native + nr * size);
     char __user **upptr = memdup_user(native, size);
-    if (IS_ERR(upptr)) return ERR_PTR((long)upptr);
+    if (!upptr || IS_ERR(upptr)) return ERR_PTR((long)upptr);
 
     char __user *uptr;
     if (size == 8) {
@@ -65,6 +67,20 @@ const char __user *get_user_arg_ptr(void *a0, void *a1, int nr)
     }
     kvfree(upptr);
     return uptr;
+}
+
+int set_user_arg_ptr(void *a0, void *a1, int nr, uintptr_t val)
+{
+    char __user *const __user *native = (char __user *const __user *)a0;
+    int size = 8;
+    if (has_config_compat) {
+        native = (char __user *const __user *)a1;
+        if (a0) size = 4; // compat
+    }
+    native = (char __user *const __user *)((unsigned long)native + nr * size);
+    uintptr_t valarr[1] = { val };
+    int cplen = compat_copy_to_user((void *)native, (void *)valarr, size);
+    return cplen == size ? 0 : cplen;
 }
 
 typedef long (*warp_raw_syscall_f)(const struct pt_regs *regs);

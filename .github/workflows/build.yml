@@ -1,11 +1,8 @@
 name: Build CI
 
 on:
+  workflow_call:
   workflow_dispatch:
-    inputs:
-      releaseBody:
-        description: "Release Body"
-        default: "..."
 
 jobs:
   Build-kpimg:
@@ -294,7 +291,6 @@ jobs:
             kptools-msys2-win.7z
           allowUpdates: true
           replacesArtifacts: true
-          omitBodyDuringUpdate: true
 
   Build-kptools-windows-llvm:
     runs-on: ubuntu-latest

@@ -83,8 +83,8 @@ void print_preset_info(preset_t *preset)
     setup_preset_t *setup = &preset->setup;
     version_t ver = header->kp_version;
     uint32_t ver_num = (ver.major << 16) + (ver.minor << 8) + ver.patch;
-    bool is_android = header->config_flags | CONFIG_ANDROID;
-    bool is_debug = header->config_flags | CONFIG_DEBUG;
+    bool is_android = (header->config_flags | CONFIG_ANDROID) == CONFIG_ANDROID;
+    bool is_debug = (header->config_flags & CONFIG_DEBUG) == CONFIG_DEBUG;
 
     fprintf(stdout, INFO_KP_IMG_SESSION "\n");
     fprintf(stdout, "version=0x%x\n", ver_num);
@@ -97,11 +97,7 @@ void print_preset_info(preset_t *preset)
     while (pos < setup->additional + ADDITIONAL_LEN) {
         int len = *pos;
         if (!len) break;
-        pos++;
-        char backup = *(pos + len);
-        *(pos + len) = 0;
-        fprintf(stdout, "%s\n", pos);
-        *(pos + len) = backup;
+        fprintf(stdout, "%s\n", strndup(++pos, len));
         pos += len;
     }
 }
@@ -165,17 +161,20 @@ int parse_image_patch_info(const char *kimg, int kimg_len, patched_kimg_t *pimg)
 
     // extra
     int extra_offset = align_kimg_len + old_preset->setup.kpimg_size;
+    if (extra_offset > kimg_len) tools_loge_exit("kpimg length mismatch\n");
+    if (extra_offset == kimg_len) return 0;
+
     int extra_size = old_preset->setup.extra_size;
+    const char *item_pos = kimg + extra_offset;
 
-    const char *item_addr = kimg + extra_offset;
-
-    while (item_addr < item_addr + extra_size) {
-        patch_extra_item_t *item = (patch_extra_item_t *)item_addr;
+    while (item_pos < kimg + extra_offset + extra_size) {
+        patch_extra_item_t *item = (patch_extra_item_t *)item_pos;
+        if (strcmp(EXTRA_HDR_MAGIC, item->magic)) break;
         if (item->type == EXTRA_TYPE_NONE) break;
         pimg->embed_item[pimg->embed_item_num++] = item;
-        item_addr += sizeof(patch_extra_item_t);
-        item_addr += item->args_size;
-        item_addr += item->con_size;
+        item_pos += sizeof(patch_extra_item_t);
+        item_pos += item->args_size;
+        item_pos += item->con_size;
     }
 
     return 0;
@@ -208,6 +207,9 @@ int print_image_patch_info(patched_kimg_t *pimg)
 
     if (preset) {
         print_preset_info(preset);
+
+        fprintf(stdout, INFO_EXTRA_SESSION "\n");
+        fprintf(stdout, "num=%d\n", pimg->embed_item_num);
 
         for (int i = 0; i < pimg->embed_item_num; i++) {
             patch_extra_item_t *item = pimg->embed_item[i];
@@ -360,6 +362,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
             }
         }
         if (!item) tools_loge_exit("empty extra item\n");
+        strcpy(item->magic, EXTRA_HDR_MAGIC);
         config->item = item;
         item->type = config->extra_type;
         if (config->set_args) item->args_size = align_ceil(strlen(config->set_args), EXTRA_ALIGN);
@@ -378,15 +381,21 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
         extra_size += sizeof(patch_extra_item_t);
         extra_size += config->item->args_size;
         extra_size += config->item->con_size;
-        tools_logi("extra item num: %d, size: 0x%x\n", extra_num, extra_size);
     }
 
     // copy to out image
     int ori_kimg_len = pimg.ori_kimg_len;
     int align_kimg_len = align_ceil(ori_kimg_len, SZ_4K);
     int out_img_len = align_kimg_len + kpimg_len;
-    tools_logi("layout kimg: 0x0-0x%x, kpimg: 0x%x-0x%x, extra: 0x%x-0x%x\n", ori_kimg_len, align_kimg_len, kpimg_len,
-               align_kimg_len + kpimg_len, extra_size);
+    int out_all_len = out_img_len + extra_size;
+
+    int start_offset = align_kernel_size;
+    if (out_all_len > start_offset) {
+        start_offset = align_ceil(out_all_len, SZ_4K);
+        tools_logi("patch overlap, move start from 0x%x to 0x%x\n", align_kernel_size, start_offset);
+    }
+    tools_logi("layout kimg: 0x0-0x%x, kpimg: 0x%x,0x%x, extra: 0x%x,0x%x, end: 0x%x, start: 0x%x\n", ori_kimg_len,
+               align_kimg_len, kpimg_len, out_img_len, extra_size, out_all_len, start_offset);
 
     char *out_img = (char *)malloc(out_img_len);
     memcpy(out_img, pimg.kimg, ori_kimg_len);
@@ -417,7 +426,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     setup->kernel_size = kinfo->kernel_size;
     setup->page_shift = kinfo->page_shift;
     setup->setup_offset = align_kimg_len;
-    setup->start_offset = align_kernel_size;
+    setup->start_offset = start_offset;
     setup->extra_size = extra_size;
 
     int map_start, map_max_size;
@@ -437,6 +446,8 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
         setup->kernel_size = i64swp(setup->kernel_size);
         setup->page_shift = i64swp(setup->page_shift);
         setup->setup_offset = i64swp(setup->setup_offset);
+        setup->start_offset = i64swp(setup->start_offset);
+        setup->extra_size = i64swp(setup->extra_size);
         setup->map_offset = i64swp(setup->map_offset);
         setup->map_max_size = i64swp(setup->map_max_size);
         setup->kallsyms_lookup_name_offset = i64swp(setup->kallsyms_lookup_name_offset);

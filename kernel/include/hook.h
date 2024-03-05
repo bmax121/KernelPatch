@@ -14,7 +14,7 @@
 typedef enum
 {
     HOOK_NO_ERR = 0,
-    HOOK_INPUT_NULL = 4089,
+    HOOK_BAD_ADDRESS = 4089,
     HOOK_NO_MEM = 4090,
     HOOK_BAD_RELO = 4091,
     HOOK_TRANSIT_NO_MEM = 4092,
@@ -228,6 +228,11 @@ typedef struct _fphook_chain
     void *afters[FP_HOOK_CHAIN_NUM];
     uint32_t transit[TRANSIT_INST_NUM];
 } fp_hook_chain_t __attribute__((aligned(8)));
+
+static inline int is_bad_address(void *addr)
+{
+    return ((uint64_t)addr & 0x8000000000000000) != 0x8000000000000000;
+}
 
 int32_t branch_from_to(uint32_t *tramp_buf, uint64_t src_addr, uint64_t dst_addr);
 int32_t branch_relative(uint32_t *buf, uint64_t src_addr, uint64_t dst_addr);

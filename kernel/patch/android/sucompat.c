@@ -41,7 +41,6 @@ static const char sh_path[] = ANDROID_SH_PATH;
 static const char default_su_path[] = ANDROID_SU_PATH;
 static const char *current_su_path = 0;
 static const char apd_path[] = APD_PATH;
-static const char kpatch_supercmd[] = SUPERCMD;
 
 struct allow_uid
 {
@@ -60,22 +59,21 @@ static void allow_reclaim_callback(struct rcu_head *rcu)
     kvfree(allow);
 }
 
-static struct su_profile *search_allow_uid(uid_t uid)
+static struct su_profile search_allow_uid(uid_t uid)
 {
     rcu_read_lock();
     struct allow_uid *pos;
+    struct su_profile profile = { 0 };
     list_for_each_entry_rcu(pos, &allow_uid_list, list)
     {
         if (pos->uid == uid) {
-            // make a deep copy
-            struct su_profile *profile = (struct su_profile *)vmalloc(sizeof(struct su_profile));
-            memcpy(profile, &pos->profile, sizeof(struct su_profile));
+            memcpy(&profile, &pos->profile, sizeof(struct su_profile));
             rcu_read_unlock();
             return profile;
         }
     }
     rcu_read_unlock();
-    return 0;
+    return profile;
 }
 
 static int is_allow_uid(uid_t uid)
@@ -180,10 +178,10 @@ int su_allow_uids(uid_t *__user uuids, int unum)
             goto out;
         }
         uid_t uid = pos->profile.uid;
-        int cplen = seq_copy_to_user(uuids + num, &uid, sizeof(uid));
+        int cplen = compat_copy_to_user(uuids + num, &uid, sizeof(uid));
         logkfd("uid: %d\n", uid);
         if (cplen <= 0) {
-            logkfd("seq_copy_to_user error: %d", cplen);
+            logkfd("compat_copy_to_user error: %d", cplen);
             rc = cplen;
             goto out;
         }
@@ -203,10 +201,10 @@ int su_allow_uid_profile(uid_t uid, struct su_profile *__user uprofile)
     list_for_each_entry(pos, &allow_uid_list, list)
     {
         if (pos->profile.uid != uid) continue;
-        int cplen = seq_copy_to_user(uprofile, &pos->profile, sizeof(struct su_profile));
+        int cplen = compat_copy_to_user(uprofile, &pos->profile, sizeof(struct su_profile));
         logkfd("profile: %d %d %s\n", uid, pos->profile.to_uid, pos->profile.scontext);
         if (cplen <= 0) {
-            logkfd("seq_copy_to_user error: %d", cplen);
+            logkfd("compat_copy_to_user error: %d", cplen);
             rc = cplen;
             goto out;
         }
@@ -244,7 +242,7 @@ int su_get_path(char *__user ubuf, int buf_len)
     if (len <= 0) return -EINVAL;
     if (buf_len < len) return -ENOBUFS;
     logkfi("%s\n", current_su_path);
-    return seq_copy_to_user(ubuf, current_su_path, len + 1);
+    return compat_copy_to_user(ubuf, current_su_path, len + 1);
 }
 
 // todo: rcu_dereference_protected
@@ -255,236 +253,221 @@ static uid_t current_uid()
     return uid;
 }
 
-/* KernelSU idea */
-static void *__user copy_to_user_stack(void *data, size_t len)
+#define TRY_DIRECT_MODIFY_USER
+
+static void handle_before_execve(hook_local_t *hook_local, char **__user u_filename_p, char **__user uargv, void *udata)
 {
-    uintptr_t addr = current_user_stack_pointer();
-    addr -= len;
-    addr &= 0xFFFFFFFFFFFFFFF0;
-    seq_copy_to_user((void *)addr, data, len);
-    return (void *)addr;
-}
+    // copy to user len
+    hook_local->data0 = 0;
 
-static inline char *__user android_sh_user_path()
-{
-    return (char *__user)copy_to_user_stack((void *)sh_path, sizeof(sh_path));
-}
+    char __user *ufilename = *u_filename_p;
+    char filename[SU_PATH_MAX_LEN];
+    int flen = compact_strncpy_from_user(filename, ufilename, sizeof(filename));
+    if (flen <= 0) return;
 
-static inline char *__user android_su_user_path()
-{
-    int len = strlen(current_su_path);
-    return (char *__user)copy_to_user_stack((void *)current_su_path, len);
-}
-
-// int do_execveat_common(int fd, struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp, int flags)
-// int __do_execve_file(int fd, struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp, int flags,
-//                      struct file *file);
-// static int do_execve_common(struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp)
-static void before_do_execve(hook_fargs8_t *args, void *udata)
-{
-    struct filename *filename;
-    int filename_index = 0;
-    if ((((uintptr_t)args->arg0) & 0xFFFF000000000000) != 0xFFFF000000000000) {
-        // int, AT_FDCWD(ffffff9c) or fd
-        filename_index = 1;
-    }
-    filename = (struct filename *)args->args[filename_index];
-
-    if (IS_ERR(filename)) return;
-
-    if (!strcmp(current_su_path, filename->name)) {
+    if (!strcmp(current_su_path, filename)) {
         uid_t uid = current_uid();
-        struct su_profile *profile = search_allow_uid(uid);
-        if (!profile) return;
+        if (!is_allow_uid(uid)) return;
+        struct su_profile profile = search_allow_uid(uid);
 
-        uid_t to_uid = profile->to_uid;
-        const char *sctx = profile->scontext;
+        uid_t to_uid = profile.to_uid;
+        const char *sctx = profile.scontext;
         commit_su(to_uid, sctx);
 
         struct file *filp = filp_open(apd_path, O_RDONLY, 0);
-        if (IS_ERR(filp)) {
-            logkfi("call su uid: %d, to_uid: %d, sctx: %s\n", uid, to_uid, sctx);
-            strcpy((char *)filename->name, sh_path);
+        if (!filp || IS_ERR(filp)) {
+            int cplen = 0;
+#ifdef TRY_DIRECT_MODIFY_USER
+            cplen = compat_copy_to_user(*u_filename_p, sh_path, sizeof(sh_path));
+#endif
+            if (cplen > 0) {
+                hook_local->data0 = cplen;
+                hook_local->data1 = (uint64_t)u_filename_p;
+                logkfi("call su uid: %d, to_uid: %d, sctx: %s, cplen: %d\n", uid, to_uid, sctx, cplen);
+            } else {
+                void *uptr = copy_to_user_stack(sh_path, sizeof(sh_path));
+                if (uptr && !IS_ERR(uptr)) {
+                    *u_filename_p = (char *__user)uptr;
+                }
+                logkfi("call su uid: %d, to_uid: %d, sctx: %s, uptr: %llx\n", uid, to_uid, sctx, uptr);
+            }
         } else {
             filp_close(filp, 0);
-            logkfi("call apd uid: %d, to_uid: %d, sctx: %s\n", uid, to_uid, sctx);
-            strcpy((char *)filename->name, apd_path);
-            const char *__user p0 =
-                get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], 0);
-            int sz = seq_copy_to_user((char *__user)p0, default_su_path, sizeof(default_su_path));
-            if (sz != sizeof(default_su_path)) {
-                logkfe("seq_copy_to_user error: %d\n", sz);
+            // command
+            int cplen = 0;
+#ifdef TRY_DIRECT_MODIFY_USER
+            cplen = compat_copy_to_user(*u_filename_p, apd_path, sizeof(apd_path));
+#endif
+            uint64_t sp = 0;
+            if (cplen > 0) {
+                hook_local->data0 = cplen;
+                hook_local->data1 = (uint64_t)u_filename_p;
+            } else {
+                sp = current_user_stack_pointer();
+                sp -= sizeof(apd_path);
+                sp &= 0xFFFFFFFFFFFFFFF8;
+                cplen = compat_copy_to_user((void *)sp, apd_path, sizeof(apd_path));
+                if (cplen > 0) {
+                    *u_filename_p = (char *)sp;
+                }
             }
-        }
-        kvfree(profile);
-    } else if (!strcmp(kpatch_supercmd, filename->name)) {
-        void *ua0 = (void *)args->args[filename_index + 1];
-        void *ua1 = (void *)args->args[filename_index + 2];
-        // key
-        const char __user *p1 = get_user_arg_ptr(ua0, ua1, 1);
-        if (IS_ERR(p1)) return;
 
-        // auth skey
+            // args0
+            int argv_cplen = 0;
+#ifdef TRY_DIRECT_MODIFY_USER
+            const char __user *p1 = get_user_arg_ptr(0, *uargv, 0);
+            argv_cplen = compat_copy_to_user((void *__user)p1, default_su_path, sizeof(default_su_path));
+#endif
+            if (argv_cplen <= 0) {
+                sp = sp ?: current_user_stack_pointer();
+                sp -= sizeof(default_su_path);
+                sp &= 0xFFFFFFFFFFFFFFF8;
+                argv_cplen = compat_copy_to_user((void *)sp, default_su_path, sizeof(default_su_path));
+                if (argv_cplen > 0) {
+                    int rc = set_user_arg_ptr(0, *uargv, 0, sp);
+                    if (rc < 0) { // todo: modify entire argv
+                        logkfi("call apd argv error, uid: %d, to_uid: %d, sctx: %s, rc: %d\n", uid, to_uid, sctx, rc);
+                    }
+                }
+            }
+            logkfi("call apd uid: %d, to_uid: %d, sctx: %s, cplen: %d, %d\n", uid, to_uid, sctx, cplen, argv_cplen);
+        }
+
+    } else if (!strcmp(SUPERCMD, filename)) {
+        // key
+        const char __user *p1 = get_user_arg_ptr(0, *uargv, 1);
+        if (!p1 || IS_ERR(p1)) return;
+
+        // auth key
         char arg1[SUPER_KEY_LEN];
-        if (strncpy_from_user_nofault(arg1, p1, sizeof(arg1)) <= 0) return;
+        if (compact_strncpy_from_user(arg1, p1, sizeof(arg1)) <= 0) return;
         if (superkey_auth(arg1)) return;
 
         commit_su(0, 0);
 
-        // real exec
-        const char __user *p2 = get_user_arg_ptr(ua0, ua1, 2);
-
-        if (IS_ERR(p2)) {
-            strcpy((char *)filename->name, sh_path);
-            return;
-        }
-
+        // real command
 #define EMBEDDED_NAME_MAX (PATH_MAX - sizeof(*filename) - 128) // enough
 
-        int len = strncpy_from_user_nofault((char *)filename->name, p2, EMBEDDED_NAME_MAX);
-        if (unlikely(len < 0)) return;
+        const char *exec = sh_path;
+        int exec_len = sizeof(sh_path);
+        const char __user *p2 = get_user_arg_ptr(0, *uargv, 2);
 
-        // user_arg_ptr
-        if (has_config_compat) {
-            if (ua0) {
-                args->args[filename_index + 2] += 2 * 4;
-            } else {
-                args->args[filename_index + 2] += 2 * 8;
+        if (p1 && !IS_ERR(p2)) {
+            char buffer[EMBEDDED_NAME_MAX];
+            int len = compact_strncpy_from_user(buffer, p2, EMBEDDED_NAME_MAX);
+            if (len >= 0) {
+                exec = buffer;
+                exec_len = len;
             }
-        } else {
-            args->args[filename_index + 1] += 2 * 8;
         }
 
-        // char option[128];
-        // for (int i = 3; i < 10; i++) {
-        //     const char *pn =
-        //         get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], i);
-        //     if (IS_ERR(pn)) break;
-        //     strncpy_from_user_nofault(option, pn, sizeof(option));
-        //     if (!strcmp("--path", option)) {
-        //         i++;
-        //         pn =
-        //             get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], i);
-        //         if (IS_ERR(pn)) break;
-        //         strncpy_from_user_nofault(option, pn, sizeof(option));
-        //         strcpy((char *)filename->name, option);
-        //     }
-        // }
-    }
+        int cplen = 0;
+#ifdef TRY_DIRECT_MODIFY_USER
+        cplen = compat_copy_to_user(*u_filename_p, exec, exec_len);
+#endif
+        if (cplen <= 0) *u_filename_p = copy_to_user_stack(exec, exec_len);
 
-    return;
+        // shift args
+        *uargv += 2 * 8;
+    }
 }
 
-// long do_faccessat(int dfd, const char __user *filename, int mode, int flags)
+static void handle_after_execve(hook_local_t *hook_local)
+{
+    int cplen = hook_local->data0;
+    char **__user u_filename_p = (char **__user)hook_local->data1;
+    if (cplen > 0) {
+        compat_copy_to_user((void *)*u_filename_p, current_su_path, cplen);
+    }
+}
+
+// https://elixir.bootlin.com/linux/v6.1/source/fs/exec.c#L2087
+// SYSCALL_DEFINE3(execve, const char __user *, filename, const char __user *const __user *, argv,
+//                 const char __user *const __user *, envp)
+static void before_execve(hook_fargs3_t *args, void *udata)
+{
+    void *arg0p = syscall_argn_p(args, 0);
+    void *arg1p = syscall_argn_p(args, 1);
+    handle_before_execve(&args->local, (char **)arg0p, (char **)arg1p, udata);
+}
+
+static void after_execve(hook_fargs3_t *args, void *udata)
+{
+    handle_after_execve(&args->local);
+}
+
+// https://elixir.bootlin.com/linux/v6.1/source/fs/exec.c#L2095
+// SYSCALL_DEFINE5(execveat, int, fd, const char __user *, filename, const char __user *const __user *, argv,
+//                 const char __user *const __user *, envp, int, flags)
+static void before_execveat(hook_fargs5_t *args, void *udata)
+{
+    void *arg1p = syscall_argn_p(args, 1);
+    void *arg2p = syscall_argn_p(args, 2);
+    handle_before_execve(&args->local, (char **)arg1p, (char **)arg2p, udata);
+}
+
+static void after_execveat(hook_fargs5_t *args, void *udata)
+{
+    handle_after_execve(&args->local);
+}
+
+// https://elixir.bootlin.com/linux/v6.1/source/fs/stat.c#L431
+// SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
+// 		struct stat __user *, statbuf, int, flag)
+
+// https://elixir.bootlin.com/linux/v6.1/source/fs/open.c#L492
 // SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
-static void before_faccessat(hook_fargs4_t *args, void *udata)
+
+// https://elixir.bootlin.com/linux/v6.1/source/fs/open.c#L497
+// SYSCALL_DEFINE4(faccessat2, int, dfd, const char __user *, filename, int, mode, int, flags)
+
+// https://elixir.bootlin.com/linux/v6.1/source/fs/stat.c#L661
+// SYSCALL_DEFINE5(statx,
+// 		int, dfd, const char __user *, filename, unsigned, flags,
+// 		unsigned int, mask,
+// 		struct statx __user *, buffer)
+static void su_handler_arg1_ufilename_before(hook_fargs6_t *args, void *udata)
 {
-    uid_t uid = current_uid();
-    if (!is_allow_uid(uid)) return;
-
-    const char *local_su_path = current_su_path;
-
-    char __user *filename = (char __user *)args->arg1;
-    char buf[SU_PATH_MAX_LEN];
-    strncpy_from_user_nofault(buf, filename, sizeof(buf));
-    if (strcmp(buf, local_su_path)) return;
-
-    logkfd("uid: %d\n", uid);
-    args->ret = 0;
-    args->skip_origin = 1;
-}
-
-// int vfs_statx(int dfd, struct filename *filename, int flags, struct kstat *stat, u32 request_mask)
-// int vfs_fstatat(int dfd, const char __user *filename, struct kstat *stat, int flags)
-// int do_statx(int dfd, struct filename *filename, unsigned int flags, unsigned int mask, struct statx __user *buffer)
-// int do_statx(int dfd, const char __user *filename, unsigned flags, unsigned int mask, struct statx __user *buffer)
-// int vfs_statx(int dfd, const char __user *filename, int flags, struct kstat *stat, u32 request_mask)
-static void before_stat(hook_fargs8_t *args, void *udata)
-{
-    int change_flag = 0;
-    args->local.data[0] = change_flag;
+    // copy to user len
+    args->local.data0 = 0;
 
     uid_t uid = current_uid();
     if (!is_allow_uid(uid)) return;
 
-    struct filename *filename = 0;
-    char *__user u_filename = 0;
+    char __user *ufilename = (char __user *)syscall_argn(args, 1);
+    char filename[SU_PATH_MAX_LEN];
+    int flen = compact_strncpy_from_user(filename, ufilename, sizeof(filename));
+    if (flen <= 0) return;
 
-    const char *local_su_path = current_su_path;
-
-    // assume this is kernel address
-    if ((((uintptr_t)args->arg1) & 0xFFFF000000000000) == 0xFFFF000000000000) {
-        filename = (struct filename *)args->arg1;
-        if (IS_ERR(filename)) return;
-        if (strcmp(filename->name, local_su_path)) return;
-    } else {
-        u_filename = (char *)args->arg1;
-        char buf[SU_PATH_MAX_LEN];
-        strncpy_from_user_nofault(buf, u_filename, sizeof(buf));
-        if (strcmp(buf, local_su_path)) return;
-    }
-
-    if (filename) {
-        logkfd("0 uid: %d\n", uid);
-        strcpy((char *)filename->name, sh_path);
-    } else {
-        logkfd("1 uid: %d\n", uid);
-        int sz = seq_copy_to_user(u_filename, sh_path, sizeof(sh_path));
-        if (sz == sizeof(sh_path)) {
-            change_flag = 1;
-            args->local.data[0] = change_flag;
-            args->local.data[1] = (uint64_t)local_su_path;
+    if (!strcmp(current_su_path, filename)) {
+        int cplen = 0;
+#ifdef TRY_DIRECT_MODIFY_USER
+        cplen = compat_copy_to_user(ufilename, sh_path, sizeof(sh_path));
+#endif
+        if (cplen > 0) {
+            args->local.data0 = cplen;
+            args->local.data1 = (uint64_t)ufilename;
+            // logkfi("su uid: %d, cp: %d\n", uid, cplen);
         } else {
-            // logkfe("seq_copy_to_user error: %d\n", sz);
-            args->arg1 = (uint64_t)android_sh_user_path();
+            void *uptr = copy_to_user_stack(sh_path, sizeof(sh_path));
+            if (uptr && !IS_ERR(uptr)) {
+                set_syscall_argn(args, 1, (uint64_t)uptr);
+            }
+            // logkfi("su uid: %d, cp stack: %llx\n", uid, uptr);
         }
     }
 }
 
-static void after_stat(hook_fargs8_t *args, void *udata)
+static void su_handler_arg1_ufilename_after(hook_fargs6_t *args, void *udata)
 {
-    int change_flag = args->local.data[0];
-    if (change_flag) {
-        const char *local_su_path = (const char *)args->local.data[1];
-        int sz = seq_copy_to_user((void *)args->arg1, local_su_path, strlen(local_su_path) + 1);
-        if (sz != strlen(local_su_path) + 1) logkfe("seq_copy_to_user error: %d\n", sz);
+    int cplen = args->local.data0;
+    if (cplen > 0) {
+        compat_copy_to_user((void *)args->local.data1, current_su_path, cplen);
     }
 }
-
-// // static ssize_t path_getxattr(const char __user *pathname, const char __user *name, void __user *value, size_t size, unsigned int lookup_flags)
-// static void before_path_getxattr(hook_fargs5_t *args, void *udata)
-// {
-//     int change_flag = 0;
-//     args->local.data[0] = change_flag;
-
-//     char buf[sizeof(su_path)];
-//     strncpy_from_user_nofault(buf, (char *__user)args->arg0, sizeof(buf));
-//     if (strcmp(su_path, buf)) return;
-
-//     uid_t uid = current_uid();
-//     if (!is_allow_uid(uid)) return;
-
-//     logkfd("uid: %d\n", uid);
-//     int sz = seq_copy_to_user((char *__user)args->arg0, sh_path, sizeof(sh_path));
-//     if (sz != sizeof(sh_path)) logkfe("seq_copy_to_user error: %d\n", sz);
-
-//     change_flag = 1;
-//     args->local.data[0] = change_flag;
-// }
-
-// static void after_path_getxattr(hook_fargs5_t *args, void *udata)
-// {
-//     int change_flag = args->local.data[0];
-//     if (change_flag) {
-//         int sz = seq_copy_to_user((void *)args->arg0, su_path, sizeof(su_path));
-//         if (sz != sizeof(su_path)) logkfe("seq_copy_to_user error: %d\n", sz);
-//     }
-// }
 
 int su_compat_init()
 {
-    int rc = 0;
-
     current_su_path = default_su_path;
 
     INIT_LIST_HEAD(&allow_uid_list);
@@ -497,62 +480,25 @@ int su_compat_init()
     };
     su_add_allow_uid(default_shell_profile.uid, &default_shell_profile, 1);
 
-    // state
-    unsigned long vfs_stat_addr = get_preset_patch_sym()->vfs_statx;
-    if (!vfs_stat_addr) vfs_stat_addr = get_preset_patch_sym()->do_statx;
-    if (!vfs_stat_addr) vfs_stat_addr = get_preset_patch_sym()->vfs_fstatat;
-    if (!vfs_stat_addr) {
-        log_boot("no symbol vfs_fstatat, do_statx or vfs_statx\n");
-        rc = -ENOENT;
-        goto out;
-    } else {
-        hook_err_t err = hook_wrap8((void *)vfs_stat_addr, before_stat, after_stat, 0);
-        if (err) {
-            log_boot("hook vfs_fstatat error: %d\n", err);
-            rc = err;
-            goto out;
-        }
-    }
+    hook_err_t rc = HOOK_NO_ERR;
 
-    // access
-    unsigned long faccessat_addr = get_preset_patch_sym()->do_faccessat;
-    if (!faccessat_addr) faccessat_addr = get_preset_patch_sym()->sys_faccessat;
-    if (!faccessat_addr) {
-        log_boot("no symbol do_faccessat or sys_faccessat\n");
-        rc = -ENOENT;
-        goto out;
-    } else {
-        hook_err_t err = hook_wrap4((void *)faccessat_addr, before_faccessat, 0, 0);
-        if (err) {
-            log_boot("hook do_faccessat error: %d\n", err);
-            rc = err;
-            goto out;
-        }
-    }
+    rc = inline_hook_syscalln(__NR_execve, 3, before_execve, after_execve, (void *)__NR_execve);
+    log_boot("hook rc: %d\n", rc);
 
-    // execv
-    hook_err_t err = add_execv_hook(before_do_execve, 0, 0);
-    if (err) {
-        log_boot("hook add execv error: %d\n", err);
-        rc = err;
-        goto out;
-    }
+    rc = inline_hook_syscalln(__NR_execveat, 5, before_execveat, after_execveat, (void *)__NR_execveat);
+    log_boot("hook rc: %d\n", rc);
 
-    // xattr
-    // unsigned long path_getxattr_addr = kallsyms_lookup_name("path_getxattr");
-    // if (!path_getxattr_addr) {
-    //     log_boot("no symbol do_faccessat or sys_faccessat\n");
-    //     rc = -ENOENT;
-    //     goto out;
-    // } else {
-    // hook_err_t err = hook_wrap5((void *)path_getxattr_addr, before_path_getxattr, after_path_getxattr, 0);
-    // if (err) {
-    //     log_boot("hook do_faccessat error: %d\n", err);
-    //     rc = err;
-    //     goto out;
-    // }
-    // }
+    rc = inline_hook_syscalln(__NR3264_fstatat, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
+                              (void *)__NR3264_fstatat);
+    log_boot("hook rc: %d\n", rc);
 
-out:
+    rc = inline_hook_syscalln(__NR_faccessat, 3, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
+                              (void *)__NR_faccessat);
+    log_boot("hook rc: %d\n", rc);
+
+    rc = inline_hook_syscalln(__NR_faccessat2, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
+                              (void *)__NR_faccessat2);
+    log_boot("hook rc: %d\n", rc);
+
     return rc;
 }

@@ -4,7 +4,7 @@ on:
   push:
     branches: ["dev"]
     paths:
-      - ".github/workflows/build_dev.yml"
+      - ".github/workflows/build.yml"
       - "kernel/**"
       - "user/**"
       - "tools/**"
@@ -12,11 +12,13 @@ on:
   pull_request:
     branches: ["dev"]
     paths:
-      - ".github/workflows/build_dev.yml"
+      - ".github/workflows/build.yml"
       - "kernel/**"
       - "user/**"
       - "tools/**"
       - "version"
+  workflow_call:
+  workflow_dispatch:
 
 jobs:
   Build-kpimg:

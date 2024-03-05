@@ -40,7 +40,7 @@ void before_openat_0(hook_fargs4_t *args, void *udata)
     umode_t mode = (int)syscall_argn(args, 3);
 
     char buf[1024];
-    strncpy_from_user_nofault(buf, filename, sizeof(buf));
+    compact_strncpy_from_user(buf, filename, sizeof(buf));
 
     struct task_struct *task = current;
     pid_t pid = -1, tgid = -1;

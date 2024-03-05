@@ -45,7 +45,7 @@ static long hello_control0(const char *args, char *__user out_msg, int outlen)
     pr_info("kpm hello control0, args: %s\n", args);
     char echo[64] = "echo: ";
     strncat(echo, args, 48);
-    seq_copy_to_user(out_msg, echo, sizeof(echo));
+    compat_copy_to_user(out_msg, echo, sizeof(echo));
     return 0;
 }
 

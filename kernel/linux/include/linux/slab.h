@@ -33,6 +33,7 @@ void *kmalloc_node_trace(struct kmem_cache *s, gfp_t gfpflags, int node, size_t 
 void *kmalloc_large(size_t size, gfp_t flags);
 void *kmalloc_large_node(size_t size, gfp_t flags, int node);
 
+// todo: kernel version specified different gfp_t
 static inline void *kmalloc(size_t size, gfp_t flags)
 {
     kfunc_call(kmalloc, size, flags);

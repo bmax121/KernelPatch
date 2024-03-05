@@ -23,7 +23,7 @@ phys_addr_t pid_virt_to_phys(pid_t pid, uintptr_t vaddr)
     int rc = 0;
 
     // struct mm_struct *mm = get_task_mm(task);
-    // if (IS_ERR(mm)) {
+    // if (!mm || IS_ERR(mm)) {
     //     // todo
     // }
     // uintptr_t pgd = *(uintptr_t *)((uintptr_t)mm + mm_struct_offset.pgd_offset);

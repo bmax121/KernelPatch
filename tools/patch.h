@@ -16,7 +16,7 @@
 #define INFO_KERNEL_IMG_SESSION "[kernel]"
 #define INFO_KP_IMG_SESSION "[kpimg]"
 #define INFO_ADDITIONAL_SESSION "[additional]"
-#define INFO_EXTRA_SESSION "[extra]"
+#define INFO_EXTRA_SESSION "[extras]"
 #define INFO_EXTRA_SESSION_N "[extra %d]"
 
 #define EXTRA_ITEM_MAX_NUM 32
