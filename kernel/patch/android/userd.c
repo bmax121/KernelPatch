@@ -214,8 +214,8 @@ static void handle_after_execve(hook_local_t *hook_local)
 {
     int unhook = hook_local->data7;
     if (unhook) {
-        inline_unhook_syscall(__NR_execve, before_execve, after_execve);
-        inline_unhook_syscall(__NR_execveat, before_execveat, after_execveat);
+        fp_unhook_syscall(__NR_execve, before_execve, after_execve);
+        fp_unhook_syscall(__NR_execveat, before_execveat, after_execveat);
     }
 }
 
@@ -359,7 +359,7 @@ static void after_openat(hook_fargs4_t *args, void *udata)
         log_boot("restore rc file: %x\n", args->local.data0);
     }
     if (args->local.data2) {
-        inline_unhook_syscall(__NR_openat, before_openat, after_openat);
+        fp_unhook_syscall(__NR_openat, before_openat, after_openat);
     }
 }
 
@@ -388,15 +388,15 @@ int kpuserd_init()
     hook_err_t ret = 0;
     hook_err_t rc = HOOK_NO_ERR;
 
-    rc = inline_hook_syscalln(__NR_execve, 3, before_execve, after_execve, (void *)__NR_execve);
+    rc = fp_hook_syscalln(__NR_execve, 3, before_execve, after_execve, (void *)__NR_execve);
     log_boot("hook rc: %d\n", rc);
     ret |= rc;
 
-    rc = inline_hook_syscalln(__NR_execveat, 5, before_execveat, after_execveat, (void *)__NR_execveat);
+    rc = fp_hook_syscalln(__NR_execveat, 5, before_execveat, after_execveat, (void *)__NR_execveat);
     log_boot("hook rc: %d\n", rc);
     ret |= rc;
 
-    rc = inline_hook_syscalln(__NR_openat, 4, before_openat, after_openat, 0);
+    rc = fp_hook_syscalln(__NR_openat, 4, before_openat, after_openat, 0);
     log_boot("hook rc: %d\n", rc);
     ret |= rc;
 

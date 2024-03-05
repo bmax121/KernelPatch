@@ -482,22 +482,22 @@ int su_compat_init()
 
     hook_err_t rc = HOOK_NO_ERR;
 
-    rc = inline_hook_syscalln(__NR_execve, 3, before_execve, after_execve, (void *)__NR_execve);
+    rc = fp_hook_syscalln(__NR_execve, 3, before_execve, after_execve, (void *)__NR_execve);
     log_boot("hook rc: %d\n", rc);
 
-    rc = inline_hook_syscalln(__NR_execveat, 5, before_execveat, after_execveat, (void *)__NR_execveat);
+    rc = fp_hook_syscalln(__NR_execveat, 5, before_execveat, after_execveat, (void *)__NR_execveat);
     log_boot("hook rc: %d\n", rc);
 
-    rc = inline_hook_syscalln(__NR3264_fstatat, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
-                              (void *)__NR3264_fstatat);
+    rc = fp_hook_syscalln(__NR3264_fstatat, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
+                          (void *)__NR3264_fstatat);
     log_boot("hook rc: %d\n", rc);
 
-    rc = inline_hook_syscalln(__NR_faccessat, 3, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
-                              (void *)__NR_faccessat);
+    rc = fp_hook_syscalln(__NR_faccessat, 3, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
+                          (void *)__NR_faccessat);
     log_boot("hook rc: %d\n", rc);
 
-    rc = inline_hook_syscalln(__NR_faccessat2, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
-                              (void *)__NR_faccessat2);
+    rc = fp_hook_syscalln(__NR_faccessat2, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
+                          (void *)__NR_faccessat2);
     log_boot("hook rc: %d\n", rc);
 
     return rc;
