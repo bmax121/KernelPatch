@@ -284,6 +284,7 @@ int android_user(int argc, char **argv)
     } else if (!strcmp("post-fs-data-init", scmd)) {
         post_fs_data_init();
     } else if (!strcmp("post-fs-data", scmd) || !strcmp("services", scmd) || !strcmp("boot-completed", scmd)) {
+        // todo: move to apd
         struct su_profile profile = {
             .uid = getuid(),
             .to_uid = 0,

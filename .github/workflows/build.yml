@@ -81,6 +81,7 @@ jobs:
             kpm-demo/inlinehook/demo-inlinehook.kpm
             kpm-demo/syscallhook/demo-syscallhook.kpm
           generateReleaseNotes: true
+          omitBodyDuringUpdate: true
           allowUpdates: true
           makeLatest: true
           replacesArtifacts: true
@@ -119,6 +120,7 @@ jobs:
             kpuser.zip
           allowUpdates: true
           replacesArtifacts: true
+          omitBodyDuringUpdate: true
 
   Build-android-kpatch-kptools:
     runs-on: ubuntu-latest
@@ -192,6 +194,7 @@ jobs:
             tools/build/android/kptools-android
           allowUpdates: true
           replacesArtifacts: true
+          omitBodyDuringUpdate: true
 
   Build-kptools-linux:
     runs-on: ubuntu-latest
@@ -234,6 +237,7 @@ jobs:
             tools/build/kptools-linux
           allowUpdates: true
           replacesArtifacts: true
+          omitBodyDuringUpdate: true
 
   Build-kptools-windows-msys2:
     runs-on: windows-2022
@@ -333,6 +337,7 @@ jobs:
             kptools-llvm-win.zip
           allowUpdates: true
           replacesArtifacts: true
+          omitBodyDuringUpdate: true
 
   Build-kptools-mac:
     runs-on: macos-latest
@@ -374,3 +379,4 @@ jobs:
             tools/build/kptools-mac
           allowUpdates: true
           replacesArtifacts: true
+          omitBodyDuringUpdate: true

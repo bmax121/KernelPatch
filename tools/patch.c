@@ -207,6 +207,7 @@ int print_image_patch_info(patched_kimg_t *pimg)
 
     if (pimg->banner[strlen(pimg->banner) - 1] != '\n') fprintf(stdout, "\n");
     fprintf(stdout, "patched=%s\n", preset ? "true" : "false");
+    fprintf(stdout, "extra_num=%d\n", pimg->embed_item_num);
 
     if (preset) {
         print_preset_info(preset);
