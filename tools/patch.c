@@ -97,7 +97,11 @@ void print_preset_info(preset_t *preset)
     while (pos < setup->additional + ADDITIONAL_LEN) {
         int len = *pos;
         if (!len) break;
-        fprintf(stdout, "%s\n", strndup(++pos, len));
+        pos++;
+        char backup = *(pos + len);
+        *(pos + len) = 0;
+        fprintf(stdout, "%s\n", pos);
+        *(pos + len) = backup;
         pos += len;
     }
 }
