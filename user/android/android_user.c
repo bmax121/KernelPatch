@@ -32,7 +32,6 @@ struct allow_pkg_info
 static char magiskpolicy_path[] = APATCH_BIN_FLODER "magiskpolicy";
 static char pkg_cfg_path[] = APATCH_FLODER "package_config";
 static char su_path_path[] = APATCH_FLODER "su_path";
-static char skip_sepolicy_path[] = APATCH_FLODER "skip_sepolicy";
 
 static char post_fs_data_log_0[] = APATCH_LOG_FLODER "post_fs_data_0.log";
 static char post_fs_data_log_1[] = APATCH_LOG_FLODER "post_fs_data_1.log";
@@ -246,10 +245,8 @@ static void post_fs_data_init()
     log_args[1] = EARLY_INIT_LOG_1;
     fork_for_result(log_args[0], log_args);
 
-    if (!access(skip_sepolicy_path, F_OK)) {
-        char *argv[] = { magiskpolicy_path, "--magisk", "--live", NULL };
-        fork_for_result(magiskpolicy_path, argv);
-    }
+    char *argv[] = { magiskpolicy_path, "--magisk", "--live", NULL };
+    fork_for_result(magiskpolicy_path, argv);
 
     load_config_su_path();
     load_config_allow_uids();
