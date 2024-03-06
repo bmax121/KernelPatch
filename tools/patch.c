@@ -83,13 +83,13 @@ void print_preset_info(preset_t *preset)
     setup_preset_t *setup = &preset->setup;
     version_t ver = header->kp_version;
     uint32_t ver_num = (ver.major << 16) + (ver.minor << 8) + ver.patch;
-    bool is_android = (header->config_flags | CONFIG_ANDROID) == CONFIG_ANDROID;
-    bool is_debug = (header->config_flags & CONFIG_DEBUG) == CONFIG_DEBUG;
+    bool is_android = header->config_flags & CONFIG_ANDROID;
+    bool is_debug = header->config_flags & CONFIG_DEBUG;
 
     fprintf(stdout, INFO_KP_IMG_SESSION "\n");
     fprintf(stdout, "version=0x%x\n", ver_num);
     fprintf(stdout, "compile_time=%s\n", header->compile_time);
-    fprintf(stdout, "config=%s,%s\n", is_debug ? "debug" : "release", is_android ? "android" : "linux");
+    fprintf(stdout, "config=%s,%s\n", is_android ? "android" : "linux", is_debug ? "debug" : "release");
     fprintf(stdout, "superkey=%s\n", setup->superkey);
 
     fprintf(stdout, INFO_ADDITIONAL_SESSION "\n");
@@ -412,11 +412,11 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     setup_header_t *header = &preset->header;
     version_t ver = header->kp_version;
     uint32_t ver_num = (ver.major << 16) + (ver.minor << 8) + ver.patch;
-    bool is_android = header->config_flags | CONFIG_ANDROID;
-    bool is_debug = header->config_flags | CONFIG_DEBUG;
+    bool is_android = header->config_flags & CONFIG_ANDROID;
+    bool is_debug = header->config_flags & CONFIG_DEBUG;
     tools_logi("kpimg version: %x\n", ver_num);
     tools_logi("kpimg compile time: %s\n", header->compile_time);
-    tools_logi("kpimg config: %s, %s\n", is_debug ? "debug" : "release", is_android ? "android" : "linux");
+    tools_logi("kpimg config: %s, %s\n", is_android ? "android" : "linux", is_debug ? "debug" : "release");
 
     setup_preset_t *setup = &preset->setup;
     memset(setup, 0, sizeof(preset->setup));

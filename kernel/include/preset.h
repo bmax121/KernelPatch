@@ -22,8 +22,8 @@
 #define MEMORY_RW_SIZE (2 << 20)
 #define MAP_ALIGN 0x10
 
-#define CONFIG_DEBUG 0x1
-#define CONFIG_ANDROID 0x2
+#define CONFIG_DEBUG (1 << 0)
+#define CONFIG_ANDROID (1 << 1)
 
 #define MAP_SYMBOL_NUM (5)
 #define MAP_SYMBOL_SIZE (MAP_SYMBOL_NUM * 8)
