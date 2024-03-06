@@ -282,8 +282,8 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
 #if 0
 #include <stdio.h>
     FILE *frelo = fopen("./kernel.relo", "wb+");
-    fwrite(img, imglen, 1, frelo);
-    tools_logi("===== write relo kernel image ====\n");
+    int w_len = fwrite(img, 1, imglen, frelo);
+    tools_logi("===== write relo kernel image: %d ====\n", w_len);
     fclose(frelo);
 #endif
 

@@ -31,6 +31,12 @@ extern bool log_enable;
         exit(EXIT_FAILURE);                                                                   \
     } while (0)
 
+#define tools_log_errno_exit(fmt, ...)                                                                           \
+    do {                                                                                                         \
+        fprintf(stderr, "[-] %s:%d/%s(); %s" fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__, strerror(errno)); \
+        exit(errno);                                                                                             \
+    } while (0)
+
 #define SZ_4K 0x1000
 
 #define align_floor(x, align) ((uint64_t)(x) & ~((uint64_t)(align)-1))
