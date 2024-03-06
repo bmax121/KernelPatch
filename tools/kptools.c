@@ -31,7 +31,7 @@ const char *program_name = NULL;
 void print_usage(char **argv)
 {
     char *c =
-        "Kernel Image Patch Tools. v%x\n"
+        "Kernel Image Patch Tools. version: %x\n"
         "\n"
         "Usage: %s COMMAND [Options...]\n"
         "\n"
@@ -109,7 +109,8 @@ int main(int argc, char *argv[])
     const char *additional[16] = { 0 };
 
     int extra_config_num = 0;
-    extra_config_t extra_configs[EXTRA_ITEM_MAX_NUM] = { 0 };
+    extra_config_t *extra_configs = (extra_config_t *)malloc(sizeof(extra_config_t) * EXTRA_ITEM_MAX_NUM);
+    memset(extra_configs, 0, sizeof(extra_config_t) * EXTRA_ITEM_MAX_NUM);
     extra_config_t *config = NULL;
 
     char cmd = '\0';
@@ -201,5 +202,8 @@ int main(int argc, char *argv[])
     else {
         print_usage(argv);
     }
+
+    free(extra_configs);
+
     return ret;
 }

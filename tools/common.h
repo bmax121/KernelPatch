@@ -31,10 +31,11 @@ extern bool log_enable;
         exit(EXIT_FAILURE);                                                                   \
     } while (0)
 
-#define tools_log_errno_exit(fmt, ...)                                                                           \
-    do {                                                                                                         \
-        fprintf(stderr, "[-] %s:%d/%s(); %s" fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__, strerror(errno)); \
-        exit(errno);                                                                                             \
+#define tools_log_errno_exit(fmt, ...)                                                                 \
+    do {                                                                                               \
+        fprintf(stderr, "[-] %s:%d/%s(); " fmt " - %s\n", __FILE__, __LINE__, __func__, ##__VA_ARGS__, \
+                strerror(errno));                                                                      \
+        exit(errno);                                                                                   \
     } while (0)
 
 #define SZ_4K 0x1000

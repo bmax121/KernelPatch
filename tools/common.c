@@ -40,7 +40,7 @@ int32_t relo_branch_func(const char *img, int32_t func_offset)
 void read_file_align(const char *path, char **con, int *out_len, int align)
 {
     FILE *fp = fopen(path, "rb");
-    if (!fp) tools_log_errno_exit("open file: %s\n", path);
+    if (!fp) tools_log_errno_exit("open file %s\n", path);
     fseek(fp, 0, SEEK_END);
     int len = (int)ftell(fp);
     fseek(fp, 0, SEEK_SET);
@@ -48,7 +48,7 @@ void read_file_align(const char *path, char **con, int *out_len, int align)
     char *buf = (char *)malloc(align_len);
     memset(buf + len, 0, align_len - len);
     int readlen = fread(buf, 1, len, fp);
-    if (readlen != len) tools_log_errno_exit("read file: %s\n", path);
+    if (readlen != len) tools_log_errno_exit("read file %s\n", path);
     fclose(fp);
     *con = buf;
     *out_len = align_len;
@@ -57,9 +57,9 @@ void read_file_align(const char *path, char **con, int *out_len, int align)
 void write_file(const char *path, const char *con, int len, bool append)
 {
     FILE *fout = fopen(path, append ? "ab" : "wb");
-    if (!fout) tools_log_errno_exit("open file: %s\n", path);
+    if (!fout) tools_log_errno_exit("open file %s\n", path);
     int writelen = fwrite(con, 1, len, fout);
-    if (writelen != len) tools_log_errno_exit("write file: %s\n", path);
+    if (writelen != len) tools_log_errno_exit("write file %s\n", path);
     fclose(fout);
 }
 
