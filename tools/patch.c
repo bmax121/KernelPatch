@@ -327,8 +327,9 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
 
         patch_extra_item_t *item = NULL;
         if (config->is_path) {
-            patch_extra_item_t _item = { 0 };
-            item = &_item;
+            // todo: free
+            item = (patch_extra_item_t *)malloc(sizeof(patch_extra_item_t));
+            memset(item, 0, sizeof(patch_extra_item_t));
             const char *path = config->path;
             char *data;
             int len = 0;
