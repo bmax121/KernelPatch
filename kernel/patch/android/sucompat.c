@@ -477,6 +477,7 @@ int su_compat_init()
     struct su_profile default_shell_profile = {
         .uid = 2000,
         .to_uid = 0,
+        .scontext = ALL_ALLOW_SCONTEXT,
     };
     su_add_allow_uid(default_shell_profile.uid, &default_shell_profile, 1);
 
