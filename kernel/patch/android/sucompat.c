@@ -376,6 +376,7 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
     }
 }
 
+#ifdef TRY_DIRECT_MODIFY_USER
 static void handle_after_execve(hook_local_t *hook_local)
 {
     int cplen = hook_local->data0;
@@ -384,6 +385,7 @@ static void handle_after_execve(hook_local_t *hook_local)
         compat_copy_to_user((void *)*u_filename_p, current_su_path, cplen);
     }
 }
+#endif
 
 // https://elixir.bootlin.com/linux/v6.1/source/fs/exec.c#L2087
 // SYSCALL_DEFINE3(execve, const char __user *, filename, const char __user *const __user *, argv,
@@ -395,10 +397,14 @@ static void before_execve(hook_fargs3_t *args, void *udata)
     handle_before_execve(&args->local, (char **)arg0p, (char **)arg1p, udata);
 }
 
+#ifdef TRY_DIRECT_MODIFY_USER
 static void after_execve(hook_fargs3_t *args, void *udata)
 {
     handle_after_execve(&args->local);
 }
+#else
+#define after_execve 0
+#endif
 
 // https://elixir.bootlin.com/linux/v6.1/source/fs/exec.c#L2095
 // SYSCALL_DEFINE5(execveat, int, fd, const char __user *, filename, const char __user *const __user *, argv,
@@ -410,10 +416,14 @@ static void before_execveat(hook_fargs5_t *args, void *udata)
     handle_before_execve(&args->local, (char **)arg1p, (char **)arg2p, udata);
 }
 
+#ifdef TRY_DIRECT_MODIFY_USER
 static void after_execveat(hook_fargs5_t *args, void *udata)
 {
     handle_after_execve(&args->local);
 }
+#else
+#define after_execveat 0
+#endif
 
 // https://elixir.bootlin.com/linux/v6.1/source/fs/stat.c#L431
 // SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
@@ -462,6 +472,7 @@ static void su_handler_arg1_ufilename_before(hook_fargs6_t *args, void *udata)
     }
 }
 
+#ifdef TRY_DIRECT_MODIFY_USER
 static void su_handler_arg1_ufilename_after(hook_fargs6_t *args, void *udata)
 {
     int cplen = args->local.data0;
@@ -469,6 +480,9 @@ static void su_handler_arg1_ufilename_after(hook_fargs6_t *args, void *udata)
         compat_copy_to_user((void *)args->local.data1, current_su_path, cplen);
     }
 }
+#else
+#define su_handler_arg1_ufilename_after 0
+#endif
 
 int su_compat_init()
 {
