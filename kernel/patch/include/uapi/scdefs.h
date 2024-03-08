@@ -64,6 +64,7 @@ struct su_profile
 #define SU_PATH_MAX_LEN 128
 
 #define ANDROID_SU_PATH "/system/bin/kp"
+#define ANDROID_LEGACY_SU_PATH "/system/bin/su"
 #define KPATCH_DATA_PATH "/data/adb/kpatch"
 #define KPATCH_DEV_PATH "/dev/kpatch"
 #define KPATCH_DEV_WORK_DIR "/dev/kpatch_work/"

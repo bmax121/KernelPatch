@@ -253,7 +253,7 @@ static uid_t current_uid()
     return uid;
 }
 
-#define TRY_DIRECT_MODIFY_USER
+// #define TRY_DIRECT_MODIFY_USER
 
 static void handle_before_execve(hook_local_t *hook_local, char **__user u_filename_p, char **__user uargv, void *udata)
 {
@@ -312,21 +312,25 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
                 }
             }
 
-            // args0
+            // change args[0] to ANDROID_SU_PATH or ANDROID_LEGACY_SU_PATH if it's not
+            // check filename instead of args[0] for convenient
             int argv_cplen = 0;
+            if (strcmp(ANDROID_SU_PATH, filename) && strcmp(ANDROID_LEGACY_SU_PATH, filename)) {
 #ifdef TRY_DIRECT_MODIFY_USER
-            const char __user *p1 = get_user_arg_ptr(0, *uargv, 0);
-            argv_cplen = compat_copy_to_user((void *__user)p1, default_su_path, sizeof(default_su_path));
+                const char __user *p1 = get_user_arg_ptr(0, *uargv, 0);
+                argv_cplen = compat_copy_to_user((void *__user)p1, default_su_path, sizeof(default_su_path));
 #endif
-            if (argv_cplen <= 0) {
-                sp = sp ?: current_user_stack_pointer();
-                sp -= sizeof(default_su_path);
-                sp &= 0xFFFFFFFFFFFFFFF8;
-                argv_cplen = compat_copy_to_user((void *)sp, default_su_path, sizeof(default_su_path));
-                if (argv_cplen > 0) {
-                    int rc = set_user_arg_ptr(0, *uargv, 0, sp);
-                    if (rc < 0) { // todo: modify entire argv
-                        logkfi("call apd argv error, uid: %d, to_uid: %d, sctx: %s, rc: %d\n", uid, to_uid, sctx, rc);
+                if (argv_cplen <= 0) {
+                    sp = sp ?: current_user_stack_pointer();
+                    sp -= sizeof(default_su_path);
+                    sp &= 0xFFFFFFFFFFFFFFF8;
+                    argv_cplen = compat_copy_to_user((void *)sp, default_su_path, sizeof(default_su_path));
+                    if (argv_cplen > 0) {
+                        int rc = set_user_arg_ptr(0, *uargv, 0, sp);
+                        if (rc < 0) { // todo: modify entire argv
+                            logkfi("call apd argv error, uid: %d, to_uid: %d, sctx: %s, rc: %d\n", uid, to_uid, sctx,
+                                   rc);
+                        }
                     }
                 }
             }
