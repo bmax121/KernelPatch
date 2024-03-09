@@ -2,16 +2,16 @@
 
 ## 什么是 KernelPatch Module (KPM)
 
-  **KPM is an ELF file that can be loaded and run within the kernel space by KernelPatch.**  
+  **KPM 是一个 ELF 文件可以由KernelPatch在内核空间中加载和运行.**  
 
-## How to write a KPM
+## 如何写一个 KPM
 
-  Here are a few examples that you can use to quickly understand.  
+  以下是一些你可以用来快速理解的例子。
 
-1. A simple hello world KPM: [hello-world](/kpm-demo/hello)  
-2. How to do kernel function inline-hook via KPM: [inline-hook](/kpm-demo/inlinehook)  
-3. How to hook system call via KPM: [syscallhook](/kpm-demo/syscallhook)  
+1. 一个简单的 hello world KPM: [hello-world](/kpm-demo/hello)  
+2. 如何通过KPM实现内核函数内联挂钩: [inline-hook](/kpm-demo/inlinehook)  
+3. 如何 hook 系统调用通过 KPM: [syscallhook](/kpm-demo/syscallhook)  
 
-### Working without Kernel source tree
+### 在没有内核源码树的情况下工作
 
-### Working with Kernel soruce tree
+### 使用内核源码树工作
