@@ -14,7 +14,7 @@ kptools 有以下用途:
 ### [kpimg](/kernel/)
 
 - kpimg 是特殊设计的ELF.  
-- kpimg 接管内核启动过程, performs 所有的内核动态修补, 并且通过系统调用导出功能为用户使用.  
+- kpimg 接管内核启动过程, 为所有的内核执行动态修补, 并且通过系统调用导出功能为用户使用.  
 - 如果你不需要太多的功能或者想要自定义, 你可以分离[kernel/base](/kernel/base)中的代码使用.
 
 - [SuperCall](./super-syscall.md)
