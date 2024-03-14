@@ -26,7 +26,7 @@ static inline void mmput_async(struct mm_struct *mm)
     kfunc_direct_call_void(mmput_async, mm);
 }
 
-struct mm_struct *get_task_mm(struct task_struct *task)
+static inline struct mm_struct *get_task_mm(struct task_struct *task)
 {
     kfunc_direct_call(get_task_mm, task);
 }

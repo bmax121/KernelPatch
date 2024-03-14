@@ -157,7 +157,6 @@ void kfunc_def(fork_init)(void) = 0;
 void kfunc_def(set_mm_exe_file)(struct mm_struct *mm, struct file *new_exe_file) = 0;
 struct file *kfunc_def(get_mm_exe_file)(struct mm_struct *mm) = 0;
 struct file *kfunc_def(get_task_exe_file)(struct task_struct *task) = 0;
-struct mm_struct *kfunc_def(get_task_mm)(struct task_struct *task) = 0;
 struct mm_struct *kfunc_def(mm_access)(struct task_struct *task, unsigned int mode) = 0;
 void kfunc_def(exit_mm_release)(struct task_struct *tsk, struct mm_struct *mm) = 0;
 void kfunc_def(exec_mm_release)(struct task_struct *tsk, struct mm_struct *mm) = 0;
@@ -180,7 +179,6 @@ static void _linux_kernel_fork_sym_match(const char *name, unsigned long addr)
     // kfunc_match(set_mm_exe_file, name, addr);
     // kfunc_match(get_mm_exe_file, name, addr);
     // kfunc_match(get_task_exe_file, name, addr);
-    // kfunc_match(get_task_mm, name, addr);
     // kfunc_match(mm_access, name, addr);
     // kfunc_match(exit_mm_release, name, addr);
     // kfunc_match(exec_mm_release, name, addr);
