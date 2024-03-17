@@ -16,9 +16,9 @@ INCLUDE_FLAGS := $(foreach dir,$(INCLUDE_DIRS),-I$(KP_DIR)/kernel/$(dir))
 
 objs := main.o
 
-all: shmem.kpm
+all: fstat.kpm
 
-shmem.kpm: ${objs}
+fstat.kpm: ${objs}
 	${CC} -r -o $@ $^
 
 %.o: %.c

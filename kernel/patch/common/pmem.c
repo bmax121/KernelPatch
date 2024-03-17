@@ -8,6 +8,11 @@
 #include <pgtable.h>
 #include <linux/err.h>
 
+//void free_task(struct task_struct *tsk)
+// EXPORT_SYMBOL(free_task);
+// void __put_task_struct(struct task_struct *tsk)
+//EXPORT_SYMBOL_GPL(__put_task_struct);
+
 uint64_t *local_pgtable_entry(uint64_t pgd, uint64_t va)
 {
     uint64_t pxd_bits = page_shift - 3;
