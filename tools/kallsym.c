@@ -445,7 +445,7 @@ static int find_num_syms(kallsym_t *info, char *img, int32_t imglen)
     return 0;
 }
 
-static int find_markers(kallsym_t *info, char *img, int32_t imglen)
+static int find_markers_1(kallsym_t *info, char *img, int32_t imglen)
 {
     int32_t elem_size = get_markers_elem_size(info);
     int32_t cand = info->kallsyms_token_table_offset - elem_size;
@@ -470,6 +470,48 @@ static int find_markers(kallsym_t *info, char *img, int32_t imglen)
     info->_marker_num = marker_num;
     tools_logi("kallsyms_markers range: [0x%08x, 0x%08x), count: 0x%08x\n", cand, marker_end, marker_num);
     return 0;
+}
+
+static int find_markers_2(kallsym_t *info, char *img, int32_t imglen)
+{
+    int32_t elem_size = get_markers_elem_size(info);
+    int32_t cand = info->kallsyms_token_table_offset - KSYM_MIN_MARKER * elem_size;
+
+    int64_t marker, last_marker = 0x7fffffff;
+    int count = 0;
+    while (cand > 0x1000) {
+        marker = int_unpack(img + cand, elem_size, info->is_be);
+        if (last_marker > marker) {
+            count++;
+            if (!marker && count > KSYM_MIN_MARKER) break;
+        } else {
+            count = 0;
+            last_marker = 0x7fffffff;
+        }
+
+        last_marker = marker;
+        cand -= elem_size;
+    }
+
+    if (count < KSYM_MIN_MARKER) {
+        tools_logw("find kallsyms_markers error\n");
+        return -1;
+    }
+
+    int32_t marker_end = cand + count * elem_size + elem_size;
+    info->kallsyms_markers_offset = cand;
+    info->_marker_num = count;
+
+    tools_logi("kallsyms_markers range: [0x%08x, 0x%08x), count: 0x%08x\n", cand, marker_end, count);
+    return 0;
+}
+
+static inline int find_markers(kallsym_t *info, char *img, int32_t imglen)
+{
+    // todo: remove one
+    int rc = find_markers_1(info, img, imglen);
+    if (!rc) return rc;
+    return find_markers_2(info, img, imglen);
 }
 
 static int decompress_symbol_name(kallsym_t *info, char *img, int32_t *pos_to_next, char *out_type, char *out_symbol)

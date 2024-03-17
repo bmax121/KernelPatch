@@ -251,7 +251,7 @@ static void after_execveat(hook_fargs5_t *args, void *udata)
     handle_after_execve(&args->local);
 }
 
-#define ORIGIN_RC_FILE "/init.environ.rc"
+#define ORIGIN_RC_FILE "/system/etc/init/atrace.rc"
 #define REPLACE_RC_FILE "/dev/anduser.rc"
 
 static const char user_rc_data[] = { //
