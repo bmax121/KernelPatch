@@ -285,6 +285,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     kimg = okimg;
     if (kimg_len >= 20 && !strncmp("UNCOMPRESSED_IMG", kimg, 16)) {
         kimg += 20;
+        kimg_len -= 20;
         has_uncompressed_img = true;
         tools_logw("kernel image with UNCOMPRESSED_IMG header\n");
     }
@@ -580,8 +581,15 @@ int unpatch_img(const char *kimg_path, const char *out_path)
     preset_t *preset = get_preset(kimg, kimg_len);
     if (!preset) tools_loge_exit("not patched kernel image\n");
 
-    memcpy(kimg, preset->setup.header_backup, sizeof(preset->setup.header_backup));
-    int kimg_size = preset->setup.kimg_size ?: ((char *)preset - kimg);
+    int kimg_size;
+    if (kimg_len >= 20 && !strncmp("UNCOMPRESSED_IMG", kimg, 16)) {
+        memcpy(kimg + 20, preset->setup.header_backup, sizeof(preset->setup.header_backup));
+        kimg_size = preset->setup.kimg_size ? preset->setup.kimg_size + 20 : ((char *)preset - kimg);
+        *(uint32_t *)(kimg + 16) = (uint32_t)(((*(uint32_t *)(kimg + 16)) != (uint32_t)(kimg_len - 20)) ? i32swp(kimg_size - 20) : kimg_size - 20);
+    } else {
+        memcpy(kimg, preset->setup.header_backup, sizeof(preset->setup.header_backup));
+        kimg_size = preset->setup.kimg_size ?: ((char *)preset - kimg);
+    }
 
     write_file(out_path, kimg, kimg_size, false);
     free(kimg);
