@@ -816,13 +816,6 @@ int analyze_kallsym_info(kallsym_t *info, char *img, int32_t imglen, enum arch_t
     if (arch == ARM64) info->try_relo = 1;
     if (is_64) info->asm_PTR_size = 8;
 
-    info->img_offset = 0;
-    if (!strncmp("UNCOMPRESSED_IMG", img, strlen("UNCOMPRESSED_IMG"))) {
-        info->img_offset = 0x14;
-    }
-    img += info->img_offset;
-    imglen -= info->img_offset;
-
     int rc = -1;
     static int32_t (*base_funcs[])(kallsym_t *, char *, int32_t) = {
         find_linux_banner,
@@ -856,8 +849,6 @@ out:
 
 int32_t get_symbol_index_offset(kallsym_t *info, char *img, int32_t index)
 {
-    img = img + info->img_offset;
-
     int32_t elem_size;
     int32_t pos;
     if (info->has_relative_base) {
@@ -874,8 +865,6 @@ int32_t get_symbol_index_offset(kallsym_t *info, char *img, int32_t index)
 
 int get_symbol_offset_and_size(kallsym_t *info, char *img, char *symbol, int32_t *size)
 {
-    img = img + info->img_offset;
-
     char decomp[KSYM_SYMBOL_LEN] = { '\0' };
     char type = 0;
     *size = 0;
@@ -904,8 +893,6 @@ int get_symbol_offset_and_size(kallsym_t *info, char *img, char *symbol, int32_t
 
 int get_symbol_offset(kallsym_t *info, char *img, char *symbol)
 {
-    img = img + info->img_offset;
-
     char decomp[KSYM_SYMBOL_LEN] = { '\0' };
     char type = 0;
     char **tokens = info->kallsyms_token_table;
@@ -925,8 +912,6 @@ int get_symbol_offset(kallsym_t *info, char *img, char *symbol)
 
 int dump_all_symbols(kallsym_t *info, char *img)
 {
-    img = img + info->img_offset;
-
     char symbol[KSYM_SYMBOL_LEN] = { '\0' };
     char type = 0;
     char **tokens = info->kallsyms_token_table;
@@ -943,8 +928,6 @@ int dump_all_symbols(kallsym_t *info, char *img)
 int on_each_symbol(kallsym_t *info, char *img, void *userdata,
                    int32_t (*fn)(int32_t index, char type, const char *symbol, int32_t offset, void *userdata))
 {
-    img = img + info->img_offset;
-
     char symbol[KSYM_SYMBOL_LEN] = { '\0' };
     char type = 0;
     char **tokens = info->kallsyms_token_table;

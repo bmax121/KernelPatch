@@ -63,8 +63,6 @@ typedef struct
     int32_t is_64;
     int32_t is_be;
 
-    int32_t img_offset;
-
     struct
     {
         uint8_t _;

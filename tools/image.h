@@ -14,7 +14,6 @@ typedef struct
 {
     int8_t is_be; // 0: little, 1: big
     int8_t uefi; //
-    int32_t img_offset;
     int32_t load_offset;
     int32_t kernel_size;
     int32_t page_shift;
