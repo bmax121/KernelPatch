@@ -23,6 +23,50 @@
 #include "symbol.h"
 #include "kpm.h"
 
+void read_kernel_file(const char *path, kernel_file_t *kernel_file)
+{
+    int img_offset = 0;
+    read_file(path, &kernel_file->kfile, &kernel_file->kfile_len);
+    kernel_file->is_uncompressed_img = kernel_file->kfile_len >= 20 && !strncmp("UNCOMPRESSED_IMG", kernel_file->kfile, 16);
+    if (kernel_file->is_uncompressed_img) img_offset = 20;
+    kernel_file->kimg = kernel_file->kfile + img_offset;
+    kernel_file->kimg_len = kernel_file->kfile_len - img_offset;
+}
+
+void update_kernel_file_img_len(kernel_file_t *kernel_file, int kimg_len, bool is_different_endian)
+{
+    kernel_file->kimg_len = kimg_len;
+    if (kernel_file->is_uncompressed_img) {
+        *(uint32_t *)(kernel_file->kfile + 16) = (uint32_t)(is_different_endian ? i32swp(kimg_len) : kimg_len);
+        kernel_file->kfile_len = kimg_len + 20;
+    } else {
+        kernel_file->kfile_len = kimg_len;
+    }
+}
+
+void new_kernel_file(kernel_file_t *kernel_file, kernel_file_t *old, int kimg_len, bool is_different_endian)
+{
+    int prefix_len = old->kimg - old->kfile;
+    int new_len = kimg_len + prefix_len;
+    kernel_file->kfile = (char *)malloc(new_len);
+    kernel_file->kimg = kernel_file->kfile + prefix_len;
+    memcpy(kernel_file->kfile, old->kfile, prefix_len);
+    kernel_file->is_uncompressed_img = old->is_uncompressed_img;
+    update_kernel_file_img_len(kernel_file, kimg_len, is_different_endian);
+}
+
+void write_kernel_file(kernel_file_t *kernel_file, const char *path)
+{
+    write_file(path, kernel_file->kfile, kernel_file->kfile_len, false);
+}
+
+void free_kernel_file(kernel_file_t *kernel_file)
+{
+    free(kernel_file->kfile);
+    kernel_file->kfile = NULL;
+    kernel_file->kimg = NULL;
+}
+
 preset_t *get_preset(const char *kimg, int kimg_len)
 {
     char magic[MAGIC_LEN] = KP_MAGIC;
@@ -188,13 +232,10 @@ int parse_image_patch_info_path(const char *kimg_path, patched_kimg_t *pimg)
 {
     if (!kimg_path) tools_loge_exit("empty kernel image\n");
 
-    char *kimg;
-    int kimg_len;
-    int img_offset = 0;
-    read_file(kimg_path, &kimg, &kimg_len);
-    if (kimg_len >= 20 && !strncmp("UNCOMPRESSED_IMG", kimg, 16)) img_offset = 20;
-    int rc = parse_image_patch_info(kimg + img_offset, kimg_len - img_offset, pimg);
-    free(kimg);
+    kernel_file_t kernel_file;
+    read_kernel_file(kimg_path, &kernel_file);
+    int rc = parse_image_patch_info(kernel_file.kimg, kernel_file.kimg_len, pimg);
+    free_kernel_file(&kernel_file);
     return rc;
 }
 
@@ -249,14 +290,11 @@ int print_image_patch_info(patched_kimg_t *pimg)
 int print_image_patch_info_path(const char *kimg_path)
 {
     patched_kimg_t pimg = { 0 };
-    char *kimg;
-    int kimg_len;
-    int img_offset = 0;
-    read_file(kimg_path, &kimg, &kimg_len);
-    if (kimg_len >= 20 && !strncmp("UNCOMPRESSED_IMG", kimg, 16)) img_offset = 20;
-    int rc = parse_image_patch_info(kimg + img_offset, kimg_len - img_offset, &pimg);
+    kernel_file_t kernel_file;
+    read_kernel_file(kimg_path, &kernel_file);
+    int rc = parse_image_patch_info(kernel_file.kimg, kernel_file.kimg_len, &pimg);
     print_image_patch_info(&pimg);
-    free(kimg);
+    free_kernel_file(&kernel_file);
     return rc;
 }
 
@@ -265,6 +303,12 @@ static int extra_compare(const void *a, const void *b)
     extra_config_t *pa = (extra_config_t *)a;
     extra_config_t *pb = (extra_config_t *)b;
     return -(pa->priority - pb->priority);
+}
+
+static void extra_append(char *kimg, const void *data, int len, int *offset)
+{
+    memcpy(kimg + *offset, data, len);
+    *offset += len;
 }
 
 int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey,
@@ -278,18 +322,11 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     if (!superkey) tools_loge_exit("empty superkey\n");
 
     patched_kimg_t pimg = { 0 };
-    char *okimg, *kimg;
-    int kimg_len;
-    bool has_uncompressed_img = false;
-    read_file(kimg_path, &okimg, &kimg_len);
-    kimg = okimg;
-    if (kimg_len >= 20 && !strncmp("UNCOMPRESSED_IMG", kimg, 16)) {
-        kimg += 20;
-        kimg_len -= 20;
-        has_uncompressed_img = true;
-        tools_logw("kernel image with UNCOMPRESSED_IMG header\n");
-    }
-    int rc = parse_image_patch_info(kimg, kimg_len, &pimg);
+    kernel_file_t kernel_file;
+    read_kernel_file(kimg_path, &kernel_file);
+    if (kernel_file.is_uncompressed_img) tools_logw("kernel image with UNCOMPRESSED_IMG header\n");
+
+    int rc = parse_image_patch_info(kernel_file.kimg, kernel_file.kimg_len, &pimg);
     if (rc) tools_loge_exit("parse kernel image error\n");
     // print_image_patch_info(&pimg);
 
@@ -416,13 +453,14 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     tools_logi("layout kimg: 0x0-0x%x, kpimg: 0x%x,0x%x, extra: 0x%x,0x%x, end: 0x%x, start: 0x%x\n", ori_kimg_len,
                align_kimg_len, kpimg_len, out_img_len, extra_size, out_all_len, start_offset);
 
-    char *out_img = (char *)malloc(out_img_len);
-    memcpy(out_img, pimg.kimg, ori_kimg_len);
-    memset(out_img + ori_kimg_len, 0, align_kimg_len - ori_kimg_len);
-    memcpy(out_img + align_kimg_len, kpimg, kpimg_len);
+    kernel_file_t out_kernel_file;
+    new_kernel_file(&out_kernel_file, &kernel_file, out_all_len, (bool)(is_be() ^ kinfo->is_be));
+    memcpy(out_kernel_file.kimg, pimg.kimg, ori_kimg_len);
+    memset(out_kernel_file.kimg + ori_kimg_len, 0, align_kimg_len - ori_kimg_len);
+    memcpy(out_kernel_file.kimg + align_kimg_len, kpimg, kpimg_len);
 
     // set preset
-    preset_t *preset = (preset_t *)(out_img + align_kimg_len);
+    preset_t *preset = (preset_t *)(out_kernel_file.kimg + align_kimg_len);
 
     setup_header_t *header = &preset->header;
     version_t ver = header->kp_version;
@@ -491,7 +529,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     int paging_init_offset = get_symbol_offset_exit(&kallsym, kallsym_kimg, "paging_init");
     setup->paging_init_offset = relo_branch_func(kallsym_kimg, paging_init_offset);
     int text_offset = align_kimg_len + SZ_4K;
-    b((uint32_t *)(out_img + kinfo->b_stext_insn_offset), kinfo->b_stext_insn_offset, text_offset);
+    b((uint32_t *)(out_kernel_file.kimg + kinfo->b_stext_insn_offset), kinfo->b_stext_insn_offset, text_offset);
 
     // additional [len key=value] set
     char *addition_pos = setup->additional;
@@ -512,10 +550,8 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
         addition_pos += kvlen;
     }
 
-    // write out
-    write_file(out_path, out_img, out_img_len, false);
-
-    // write extra
+    // append extra
+    int current_offset = out_img_len;
     for (int i = 0; i < extra_config_num; i++) {
         extra_config_t *config = extra_configs + i;
         patch_extra_item_t *item = config->item;
@@ -534,34 +570,22 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
             item->args_size = i32swp(item->args_size);
         }
 
-        write_file(out_path, (void *)item, sizeof(*item), true);
-        if (args_len > 0) write_file(out_path, (void *)config->set_args, args_len, true);
-        write_file(out_path, (void *)config->data, con_len, true);
+        extra_append(out_kernel_file.kimg, item, sizeof(*item), &current_offset);
+        if (args_len > 0) extra_append(out_kernel_file.kimg, config->set_args, args_len, &current_offset);
+        extra_append(out_kernel_file.kimg, (void *)config->data, con_len, &current_offset);
     }
 
     // guard extra
     patch_extra_item_t empty_item = { 0 };
-    write_file(out_path, (void *)&empty_item, sizeof(empty_item), true);
+    extra_append(out_kernel_file.kimg, &empty_item, sizeof(empty_item), &current_offset);
 
-    if (has_uncompressed_img) {
-        // now, we know the length of kernel which required by uncompress_img header
-        char *kernel_img;
-        int kernel_len;
-        read_file(out_path, &kernel_img, &kernel_len);
-        char *uncompressed_img = (char *)malloc(kernel_len + 20);
-        memcpy(uncompressed_img, "UNCOMPRESSED_IMG", 16);
-        *(uint32_t *)(uncompressed_img + 16) = (uint32_t)((is_be() ^ kinfo->is_be) ? i32swp(kernel_len) : kernel_len);
-        memcpy(uncompressed_img + 20, kernel_img, kernel_len);
-        write_file(out_path, uncompressed_img, kernel_len + 20, false);
-        free(uncompressed_img);
-        free(kernel_img);
-    }
+    write_kernel_file(&out_kernel_file, out_path);
 
     // free
     free(kallsym_kimg);
     free(kpimg);
-    free(out_img);
-    free(okimg);
+    free_kernel_file(&out_kernel_file);
+    free_kernel_file(&kernel_file);
 
     tools_logi("patch done: %s\n", out_path);
 
@@ -574,25 +598,19 @@ int unpatch_img(const char *kimg_path, const char *out_path)
     if (!kimg_path) tools_loge_exit("empty kernel image\n");
     if (!out_path) tools_loge_exit("empty out image path\n");
 
-    char *kimg = NULL;
-    int kimg_len = 0;
-    read_file(kimg_path, &kimg, &kimg_len);
+    kernel_file_t kernel_file;
+    read_kernel_file(kimg_path, &kernel_file);
 
-    preset_t *preset = get_preset(kimg, kimg_len);
+    preset_t *preset = get_preset(kernel_file.kimg, kernel_file.kimg_len);
     if (!preset) tools_loge_exit("not patched kernel image\n");
 
-    int kimg_size;
-    if (kimg_len >= 20 && !strncmp("UNCOMPRESSED_IMG", kimg, 16)) {
-        memcpy(kimg + 20, preset->setup.header_backup, sizeof(preset->setup.header_backup));
-        kimg_size = preset->setup.kimg_size ? preset->setup.kimg_size + 20 : ((char *)preset - kimg);
-        *(uint32_t *)(kimg + 16) = (uint32_t)(((*(uint32_t *)(kimg + 16)) != (uint32_t)(kimg_len - 20)) ? i32swp(kimg_size - 20) : kimg_size - 20);
-    } else {
-        memcpy(kimg, preset->setup.header_backup, sizeof(preset->setup.header_backup));
-        kimg_size = preset->setup.kimg_size ?: ((char *)preset - kimg);
-    }
+    // todo: check whether the endian is different or not
+    memcpy(kernel_file.kimg, preset->setup.header_backup, sizeof(preset->setup.header_backup));
+    int kimg_size = preset->setup.kimg_size ?: ((char *)preset - kernel_file.kimg);
+    update_kernel_file_img_len(&kernel_file, kimg_size, false);
 
-    write_file(out_path, kimg, kimg_size, false);
-    free(kimg);
+    write_kernel_file(&kernel_file, out_path);
+    free_kernel_file(&kernel_file);
     return 0;
 }
 
@@ -605,21 +623,20 @@ int reset_key(const char *kimg_path, const char *out_path, const char *superkey)
     if (strlen(superkey) <= 0) tools_loge_exit("empty superkey\n");
     if (strlen(superkey) >= SUPER_KEY_LEN) tools_loge_exit("too long superkey\n");
 
-    char *kimg = NULL;
-    int kimg_len = 0;
-    read_file(kimg_path, &kimg, &kimg_len);
+    kernel_file_t kernel_file;
+    read_kernel_file(kimg_path, &kernel_file);
 
-    preset_t *preset = get_preset(kimg, kimg_len);
+    preset_t *preset = get_preset(kernel_file.kimg, kernel_file.kimg_len);
     if (!preset) tools_loge_exit("not patched kernel image\n");
 
     char *origin_key = strdup((char *)preset->setup.superkey);
     strcpy((char *)preset->setup.superkey, superkey);
     tools_logi("reset superkey: %s -> %s\n", origin_key, preset->setup.superkey);
 
-    write_file(out_path, kimg, kimg_len, false);
+    write_kernel_file(&kernel_file, out_path);
 
     free(origin_key);
-    free(kimg);
+    free_kernel_file(&kernel_file);
 
     return 0;
 }
@@ -629,19 +646,16 @@ int dump_kallsym(const char *kimg_path)
     if (!kimg_path) tools_loge_exit("empty kernel image\n");
     set_log_enable(true);
     // read image files
-    char *kimg = NULL;
-    int kimg_len = 0, img_offset = 0;
-    read_file(kimg_path, &kimg, &kimg_len);
-
-    if (kimg_len >= 20 && !strncmp("UNCOMPRESSED_IMG", kimg, 16)) img_offset = 20;
+    kernel_file_t kernel_file;
+    read_kernel_file(kimg_path, &kernel_file);
 
     kallsym_t kallsym;
-    if (analyze_kallsym_info(&kallsym, kimg + img_offset, kimg_len - img_offset, ARM64, 1)) {
+    if (analyze_kallsym_info(&kallsym, kernel_file.kimg, kernel_file.kimg_len, ARM64, 1)) {
         fprintf(stdout, "analyze_kallsym_info error\n");
         return -1;
     }
-    dump_all_symbols(&kallsym, kimg + img_offset);
+    dump_all_symbols(&kallsym, kernel_file.kimg);
     set_log_enable(false);
-    free(kimg);
+    free_kernel_file(&kernel_file);
     return 0;
 }
