@@ -570,14 +570,14 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
             item->args_size = i32swp(item->args_size);
         }
 
-        extra_append(out_kernel_file.kimg, item, sizeof(*item), &current_offset);
-        if (args_len > 0) extra_append(out_kernel_file.kimg, config->set_args, args_len, &current_offset);
+        extra_append(out_kernel_file.kimg, (void *)item, sizeof(*item), &current_offset);
+        if (args_len > 0) extra_append(out_kernel_file.kimg, (void *)config->set_args, args_len, &current_offset);
         extra_append(out_kernel_file.kimg, (void *)config->data, con_len, &current_offset);
     }
 
     // guard extra
     patch_extra_item_t empty_item = { 0 };
-    extra_append(out_kernel_file.kimg, &empty_item, sizeof(empty_item), &current_offset);
+    extra_append(out_kernel_file.kimg, (void *)&empty_item, sizeof(empty_item), &current_offset);
 
     write_kernel_file(&out_kernel_file, out_path);
 

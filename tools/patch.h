@@ -59,7 +59,6 @@ typedef struct
 
 void read_kernel_file(const char *path, kernel_file_t *kernel_file);
 void new_kernel_file(kernel_file_t *kernel_file, kernel_file_t *old, int kimg_len, bool is_different_endian);
-void append_kernel_file(kernel_file_t *kernel_file, const void *data, int len);
 void update_kernel_file_img_len(kernel_file_t *kernel_file, int kimg_len, bool is_different_endian);
 void write_kernel_file(kernel_file_t *kernel_file, const char *path);
 void free_kernel_file(kernel_file_t *kernel_file);
