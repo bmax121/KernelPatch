@@ -50,6 +50,19 @@ typedef struct
     patch_extra_item_t *item;
 } extra_config_t;
 
+typedef struct
+{
+    char *kfile, *kimg;
+    int kfile_len, kimg_len;
+    bool is_uncompressed_img;
+} kernel_file_t;
+
+void read_kernel_file(const char *path, kernel_file_t *kernel_file);
+void new_kernel_file(kernel_file_t *kernel_file, kernel_file_t *old, int kimg_len, bool is_different_endian);
+void update_kernel_file_img_len(kernel_file_t *kernel_file, int kimg_len, bool is_different_endian);
+void write_kernel_file(kernel_file_t *kernel_file, const char *path);
+void free_kernel_file(kernel_file_t *kernel_file);
+
 preset_t *get_preset(const char *kimg, int kimg_len);
 
 uint32_t get_kpimg_version(const char *kpimg_path);
