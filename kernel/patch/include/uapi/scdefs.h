@@ -75,7 +75,7 @@ struct su_profile
 #define APATCH_FLODER "/data/adb/ap/"
 #define APATCH_BIN_FLODER "/data/adb/ap/bin/"
 #define APATCH_LOG_FLODER "/data/adb/ap/log/"
-#define SAFE_MODE_FLAG_FILE "/dev/.sefemode"
+#define SAFE_MODE_FLAG_FILE "/dev/.safemode"
 #define EARLY_INIT_LOG_0 "/dev/early_init_0.log"
 #define EARLY_INIT_LOG_1 "/dev/early_init_1.log"
 
