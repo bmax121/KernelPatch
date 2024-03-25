@@ -33,9 +33,6 @@ static char magiskpolicy_path[] = APATCH_BIN_FLODER "magiskpolicy";
 static char pkg_cfg_path[] = APATCH_FLODER "package_config";
 static char su_path_path[] = APATCH_FLODER "su_path";
 
-static char post_fs_data_log_0[] = APATCH_LOG_FLODER "post_fs_data_0.log";
-static char post_fs_data_log_1[] = APATCH_LOG_FLODER "post_fs_data_1.log";
-
 extern const char *key;
 static bool from_kernel = false;
 
@@ -180,12 +177,8 @@ static void fork_for_result(const char *exec, char *const *argv)
     }
 }
 
-static void save_dmegs(const char *file)
+static void save_log(char **argv, const char *file)
 {
-    char *dmesg_argv[] = {
-        "/system/bin/dmesg",
-        NULL,
-    };
     pid_t pid = fork();
 
     if (pid < 0) {
@@ -195,13 +188,31 @@ static void save_dmegs(const char *file)
         dup2(fd, 1);
         dup2(fd, 2);
         close(fd);
-        int rc = execv(dmesg_argv[0], dmesg_argv);
-        log_kernel("%d exec dmesg > %s error: %s\n", getpid(), file, strerror(errno));
+        int rc = execv(argv[0], argv);
+        log_kernel("%d save log > %s error: %s\n", getpid(), file, strerror(errno));
     } else {
         int status;
         wait(&status);
-        log_kernel("%d wait dmesg status: 0x%x\n", getpid(), status);
+        log_kernel("%d save log status: 0x%x\n", getpid(), status);
     }
+}
+
+static void save_dmegs(const char *file)
+{
+    char *dmesg_argv[] = {
+        "/system/bin/dmesg",
+        NULL,
+    };
+    save_log(dmesg_argv, file);
+}
+
+static void save_logcat(const char *file)
+{
+    char *argv[] = {
+        "/system/bin/logcat",
+        NULL,
+    };
+    save_log(argv, file);
 }
 
 static void early_init()
@@ -237,8 +248,6 @@ static void post_fs_data_init()
     if (access(APATCH_FLODER, F_OK)) mkdir(APATCH_FLODER, 0700);
     if (access(APATCH_LOG_FLODER, F_OK)) mkdir(APATCH_LOG_FLODER, 0700);
 
-    save_dmegs(post_fs_data_log_0);
-
     char *log_args[] = { "/system/bin/cp", "-f", EARLY_INIT_LOG_0, APATCH_LOG_FLODER, NULL };
     fork_for_result(log_args[0], log_args);
 
@@ -252,8 +261,6 @@ static void post_fs_data_init()
     load_config_allow_uids();
 
     log_kernel("%d finished android user post-fs-data-init.\n", getpid());
-
-    save_dmegs(post_fs_data_log_1);
 }
 
 static struct option const longopts[] = {
@@ -291,10 +298,7 @@ int android_user(int argc, char **argv)
             .scontext = ALL_ALLOW_SCONTEXT,
         };
         sc_su(key, &profile);
-#if 0
-#undef APD_PATH
-#define APD_PATH "/data/local/tmp/apd"
-#endif
+
         char *apd_argv[] = {
             APD_PATH,
             scmd,
@@ -303,11 +307,12 @@ int android_user(int argc, char **argv)
 
         fork_for_result(APD_PATH, apd_argv);
 
-        char log_path[128] = { '\0' };
-        sprintf(log_path, "%s/trigger_%s.log", APATCH_LOG_FLODER, scmd);
+        if (access(APATCH_LOG_FLODER, F_OK)) mkdir(APATCH_LOG_FLODER, 0700);
 
-        char *dmesg_argv[] = { "/system/bin/dmesg", ">", log_path, NULL };
-        fork_for_result(dmesg_argv[0], dmesg_argv);
+        char log_path[256] = { '\0' };
+
+        sprintf(log_path, APATCH_LOG_FLODER "trigger_%s.dmesg.log", scmd);
+        save_dmegs(log_path);
 
     } else {
         log_kernel("invalid android user cmd: %s\n", scmd);

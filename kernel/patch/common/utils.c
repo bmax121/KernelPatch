@@ -13,7 +13,24 @@
 #include <predata.h>
 #include <linux/ptrace.h>
 #include <linux/err.h>
+#include <linux/errno.h>
 
+int kfunc_def(xt_data_to_user)(void __user *dst, const void *src, int usersize, int size, int aligned_size);
+
+static inline int compat_xt_data_copy_to_user(void __user *dst, const void *src, int size)
+{
+    kfunc_direct_call(xt_data_to_user, dst, src, size, size, size);
+}
+
+// todo: static method
+int kfunc_def(bits_to_user)(unsigned long *bits, unsigned int maxbit, unsigned int maxlen, void __user *p, int compat);
+
+static inline int compat_bits_copy_to_user(void __user *dst, const void *src, int size)
+{
+    kfunc_direct_call(bits_to_user, src, size * sizeof(long), size, dst, 0);
+}
+
+// todo: n > page_size
 int trace_seq_copy_to_user(void __user *to, const void *from, int n)
 {
     unsigned char trace_seq_data[page_size + 0x20];
@@ -42,14 +59,26 @@ int seq_buf_copy_to_user(void __user *to, const void *from, int n)
     return seq_buf_to_user(&seq_buf, to, n);
 }
 
+// return copied length
 int __must_check compat_copy_to_user(void __user *to, const void *from, int n)
 {
     int copy_len;
     if (kfunc(seq_buf_to_user)) {
         copy_len = seq_buf_copy_to_user((void *__user)to, from, n);
+    } else if (kfunc(bits_to_user)) {
+        // bits_to_user, str_to_user
+        // int ret = compat_bits_to_user(to, from, n);
+        // if (ret == n) return -EFAULT;
+        // copy_len -= ret;
+    } else if (kfunc(xt_data_to_user)) {
+        // xt_data_to_user, xt_obj_to_user
+        // int ret = compat_xt_data_copy_to_user(to, from, n);
+        // if (ret == n) return -EFAULT;
+        // copy_len -= ret;
     } else {
         copy_len = trace_seq_copy_to_user((void *__user)to, from, n);
     }
+    // alt: copy_arg_to_user,
     return copy_len;
 }
 KP_EXPORT_SYMBOL(compat_copy_to_user);

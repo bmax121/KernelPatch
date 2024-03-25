@@ -58,16 +58,22 @@ jobs:
           mv kpimg.elf kpimg.elf-android
 
           cd ..
-          cd kpm-demo
-          cd hello
+          cd kpms
+
+          cd demo-hello
           make
           mv hello.kpm demo-hello.kpm
-          cd ../inlinehook
+
+          cd ../demo-inlinehook
           make
           mv inlinehook.kpm demo-inlinehook.kpm
-          cd ../syscallhook
+
+          cd ../demo-syscallhook
           make
           mv syscallhook.kpm demo-syscallhook.kpm
+
+          cd ../make-shamiko-happy
+          make
 
       - name: Upload elf
         uses: actions/upload-artifact@v3
