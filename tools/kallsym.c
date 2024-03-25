@@ -254,6 +254,7 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
     tools_logi("find arm64 relocation table range: [0x%08x, 0x%08x), count: 0x%08x\n", cand_start, cand_end, rela_num);
 
     // apply relocations
+    int32_t max_offset = imglen - 8;
     int32_t apply_num = 0;
     for (cand = cand_start; cand < cand_end; cand += 24) {
         uint64_t r_offset = uint_unpack(img + cand, 8, info->is_be);
@@ -264,11 +265,14 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
             // tools_logw("warn ignore arm64 relocation r_offset: 0x%08lx at 0x%08x\n", r_offset, cand);
             continue;
         }
+
         int32_t offset = r_offset - kernel_va;
-        if (offset >= imglen) {
-            // tools_logw("apply relocations error\n");
-            continue;
+        if (offset < 0 || offset >= max_offset) {
+            tools_logw("bad rela offset: 0x%08lx\n", r_offset);
+            info->try_relo = 0;
+            return -1;
         }
+
         uint64_t value = uint_unpack(img + offset, 8, info->is_be);
         if (value == r_addend) continue;
         *(uint64_t *)(img + offset) = value + r_addend;
@@ -834,11 +838,17 @@ int analyze_kallsym_info(kallsym_t *info, char *img, int32_t imglen, enum arch_t
     if (!rc) goto out;
 
     // 2nd
+    if (!info->try_relo) {
+        memcpy(copied_img, img, imglen);
+        rc = retry_relo_retry(info, copied_img, imglen);
+        if (!rc) goto out;
+    }
+
+    // 3rd
     if (info->elf64_kernel_base != ELF64_KERNEL_MIN_VA) {
         info->elf64_kernel_base = ELF64_KERNEL_MIN_VA;
         memcpy(copied_img, img, imglen);
         rc = retry_relo_retry(info, copied_img, imglen);
-        if (!rc) goto out;
     }
 
 out:
