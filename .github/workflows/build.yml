@@ -83,9 +83,10 @@ jobs:
           artifacts: |
             kernel/kpimg-linux
             kernel/kpimg-android
-            kpm-demo/hello/demo-hello.kpm
-            kpm-demo/inlinehook/demo-inlinehook.kpm
-            kpm-demo/syscallhook/demo-syscallhook.kpm
+            kpms/demo-hello/demo-hello.kpm
+            kpms/demo-inlinehook/demo-inlinehook.kpm
+            kpms/demo-syscallhook/demo-syscallhook.kpm
+            kpms/make-shamiko-happy/shamiko.kpm
           generateReleaseNotes: true
           omitBodyDuringUpdate: true
           allowUpdates: true
