@@ -56,16 +56,9 @@ typedef struct
 
 int32_t get_kernel_info(kernel_info_t *kinfo, const char *img, int32_t imglen)
 {
-    kinfo->img_offset = 0;
-
-    if (!strncmp("UNCOMPRESSED_IMG", img, strlen("UNCOMPRESSED_IMG"))) {
-        kinfo->img_offset = 0x14;
-        tools_logw("kernel image with UNCOMPRESSED_IMG header\n");
-    }
-
     kinfo->is_be = 0;
 
-    arm64_hdr_t *khdr = (arm64_hdr_t *)(img + kinfo->img_offset);
+    arm64_hdr_t *khdr = (arm64_hdr_t *)img;
     if (strncmp(khdr->magic, KERNEL_MAGIC, strlen(KERNEL_MAGIC))) {
         tools_loge_exit("kernel image magic error: %s\n", khdr->magic);
     }
@@ -76,10 +69,10 @@ int32_t get_kernel_info(kernel_info_t *kinfo, const char *img, int32_t imglen)
     uint32_t b_stext_insn_offset;
     if (kinfo->uefi) {
         b_primary_entry_insn = khdr->hdr.efi.b_insn;
-        b_stext_insn_offset = 4 + kinfo->img_offset;
+        b_stext_insn_offset = 4;
     } else {
         b_primary_entry_insn = khdr->hdr.nefi.b_insn;
-        b_stext_insn_offset = 0 + kinfo->img_offset;
+        b_stext_insn_offset = 0;
     }
     kinfo->b_stext_insn_offset = b_stext_insn_offset;
 
@@ -122,7 +115,7 @@ int32_t get_kernel_info(kernel_info_t *kinfo, const char *img, int32_t imglen)
 
 int32_t kernel_resize(kernel_info_t *kinfo, char *img, int32_t size)
 {
-    arm64_hdr_t *khdr = (arm64_hdr_t *)(img + kinfo->img_offset);
+    arm64_hdr_t *khdr = (arm64_hdr_t *)img;
     uint64_t ksize = size;
     if (is_be() ^ kinfo->is_be) ksize = u64swp(size);
     khdr->kernel_size_le = ksize;

@@ -254,6 +254,7 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
     tools_logi("find arm64 relocation table range: [0x%08x, 0x%08x), count: 0x%08x\n", cand_start, cand_end, rela_num);
 
     // apply relocations
+    int32_t max_offset = imglen - 8;
     int32_t apply_num = 0;
     for (cand = cand_start; cand < cand_end; cand += 24) {
         uint64_t r_offset = uint_unpack(img + cand, 8, info->is_be);
@@ -264,11 +265,14 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
             // tools_logw("warn ignore arm64 relocation r_offset: 0x%08lx at 0x%08x\n", r_offset, cand);
             continue;
         }
+
         int32_t offset = r_offset - kernel_va;
-        if (offset >= imglen) {
-            // tools_logw("apply relocations error\n");
-            continue;
+        if (offset < 0 || offset >= max_offset) {
+            tools_logw("bad rela offset: 0x%" PRIx64 "\n", r_offset);
+            info->try_relo = 0;
+            return -1;
         }
+
         uint64_t value = uint_unpack(img + offset, 8, info->is_be);
         if (value == r_addend) continue;
         *(uint64_t *)(img + offset) = value + r_addend;
@@ -445,7 +449,7 @@ static int find_num_syms(kallsym_t *info, char *img, int32_t imglen)
     return 0;
 }
 
-static int find_markers(kallsym_t *info, char *img, int32_t imglen)
+static int find_markers_1(kallsym_t *info, char *img, int32_t imglen)
 {
     int32_t elem_size = get_markers_elem_size(info);
     int32_t cand = info->kallsyms_token_table_offset - elem_size;
@@ -470,6 +474,48 @@ static int find_markers(kallsym_t *info, char *img, int32_t imglen)
     info->_marker_num = marker_num;
     tools_logi("kallsyms_markers range: [0x%08x, 0x%08x), count: 0x%08x\n", cand, marker_end, marker_num);
     return 0;
+}
+
+static int find_markers_2(kallsym_t *info, char *img, int32_t imglen)
+{
+    int32_t elem_size = get_markers_elem_size(info);
+    int32_t cand = info->kallsyms_token_table_offset - KSYM_MIN_MARKER * elem_size;
+
+    int64_t marker, last_marker = 0x7fffffff;
+    int count = 0;
+    while (cand > 0x1000) {
+        marker = int_unpack(img + cand, elem_size, info->is_be);
+        if (last_marker > marker) {
+            count++;
+            if (!marker && count > KSYM_MIN_MARKER) break;
+        } else {
+            count = 0;
+            last_marker = 0x7fffffff;
+        }
+
+        last_marker = marker;
+        cand -= elem_size;
+    }
+
+    if (count < KSYM_MIN_MARKER) {
+        tools_logw("find kallsyms_markers error\n");
+        return -1;
+    }
+
+    int32_t marker_end = cand + count * elem_size + elem_size;
+    info->kallsyms_markers_offset = cand;
+    info->_marker_num = count;
+
+    tools_logi("kallsyms_markers range: [0x%08x, 0x%08x), count: 0x%08x\n", cand, marker_end, count);
+    return 0;
+}
+
+static inline int find_markers(kallsym_t *info, char *img, int32_t imglen)
+{
+    // todo: remove one
+    int rc = find_markers_1(info, img, imglen);
+    if (!rc) return rc;
+    return find_markers_2(info, img, imglen);
 }
 
 static int decompress_symbol_name(kallsym_t *info, char *img, int32_t *pos_to_next, char *out_type, char *out_symbol)
@@ -774,13 +820,6 @@ int analyze_kallsym_info(kallsym_t *info, char *img, int32_t imglen, enum arch_t
     if (arch == ARM64) info->try_relo = 1;
     if (is_64) info->asm_PTR_size = 8;
 
-    info->img_offset = 0;
-    if (!strncmp("UNCOMPRESSED_IMG", img, strlen("UNCOMPRESSED_IMG"))) {
-        info->img_offset = 0x14;
-    }
-    img += info->img_offset;
-    imglen -= info->img_offset;
-
     int rc = -1;
     static int32_t (*base_funcs[])(kallsym_t *, char *, int32_t) = {
         find_linux_banner,
@@ -799,11 +838,17 @@ int analyze_kallsym_info(kallsym_t *info, char *img, int32_t imglen, enum arch_t
     if (!rc) goto out;
 
     // 2nd
+    if (!info->try_relo) {
+        memcpy(copied_img, img, imglen);
+        rc = retry_relo_retry(info, copied_img, imglen);
+        if (!rc) goto out;
+    }
+
+    // 3rd
     if (info->elf64_kernel_base != ELF64_KERNEL_MIN_VA) {
         info->elf64_kernel_base = ELF64_KERNEL_MIN_VA;
         memcpy(copied_img, img, imglen);
         rc = retry_relo_retry(info, copied_img, imglen);
-        if (!rc) goto out;
     }
 
 out:
@@ -814,8 +859,6 @@ out:
 
 int32_t get_symbol_index_offset(kallsym_t *info, char *img, int32_t index)
 {
-    img = img + info->img_offset;
-
     int32_t elem_size;
     int32_t pos;
     if (info->has_relative_base) {
@@ -832,8 +875,6 @@ int32_t get_symbol_index_offset(kallsym_t *info, char *img, int32_t index)
 
 int get_symbol_offset_and_size(kallsym_t *info, char *img, char *symbol, int32_t *size)
 {
-    img = img + info->img_offset;
-
     char decomp[KSYM_SYMBOL_LEN] = { '\0' };
     char type = 0;
     *size = 0;
@@ -862,8 +903,6 @@ int get_symbol_offset_and_size(kallsym_t *info, char *img, char *symbol, int32_t
 
 int get_symbol_offset(kallsym_t *info, char *img, char *symbol)
 {
-    img = img + info->img_offset;
-
     char decomp[KSYM_SYMBOL_LEN] = { '\0' };
     char type = 0;
     char **tokens = info->kallsyms_token_table;
@@ -883,8 +922,6 @@ int get_symbol_offset(kallsym_t *info, char *img, char *symbol)
 
 int dump_all_symbols(kallsym_t *info, char *img)
 {
-    img = img + info->img_offset;
-
     char symbol[KSYM_SYMBOL_LEN] = { '\0' };
     char type = 0;
     char **tokens = info->kallsyms_token_table;
@@ -901,8 +938,6 @@ int dump_all_symbols(kallsym_t *info, char *img)
 int on_each_symbol(kallsym_t *info, char *img, void *userdata,
                    int32_t (*fn)(int32_t index, char type, const char *symbol, int32_t offset, void *userdata))
 {
-    img = img + info->img_offset;
-
     char symbol[KSYM_SYMBOL_LEN] = { '\0' };
     char type = 0;
     char **tokens = info->kallsyms_token_table;

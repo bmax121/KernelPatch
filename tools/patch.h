@@ -24,18 +24,18 @@
 typedef struct
 {
     const char *kimg;
-    int kimg_len;
+    int32_t kimg_len;
+    int32_t ori_kimg_len;
     const char *banner;
-    int ori_kimg_len;
     kernel_info_t kinfo;
     preset_t *preset;
-    int embed_item_num;
+    int32_t embed_item_num;
     patch_extra_item_t *embed_item[EXTRA_ITEM_MAX_NUM];
 } patched_kimg_t;
 
 typedef struct
 {
-    int extra_type;
+    int32_t extra_type;
     bool is_path;
     union
     {
@@ -45,10 +45,23 @@ typedef struct
     const char *set_args;
     const char *set_name;
     const char *set_event;
-    int priority;
+    int32_t priority;
     const char *data;
     patch_extra_item_t *item;
 } extra_config_t;
+
+typedef struct
+{
+    char *kfile, *kimg;
+    int32_t kfile_len, kimg_len;
+    bool is_uncompressed_img;
+} kernel_file_t;
+
+void read_kernel_file(const char *path, kernel_file_t *kernel_file);
+void new_kernel_file(kernel_file_t *kernel_file, kernel_file_t *old, int32_t kimg_len, bool is_different_endian);
+void update_kernel_file_img_len(kernel_file_t *kernel_file, int32_t kimg_len, bool is_different_endian);
+void write_kernel_file(kernel_file_t *kernel_file, const char *path);
+void free_kernel_file(kernel_file_t *kernel_file);
 
 preset_t *get_preset(const char *kimg, int kimg_len);
 
