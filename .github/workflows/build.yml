@@ -66,6 +66,7 @@ jobs:
 
           cd ../make-shamiko-happy
           make
+          mv syscallhook.kpm demo-make-shamiko-happy.kpm
 
       - name: Upload elf
         uses: actions/upload-artifact@v3
@@ -86,7 +87,7 @@ jobs:
             kpms/demo-hello/demo-hello.kpm
             kpms/demo-inlinehook/demo-inlinehook.kpm
             kpms/demo-syscallhook/demo-syscallhook.kpm
-            kpms/make-shamiko-happy/shamiko.kpm
+            kpms/make-shamiko-happy/demo-make-shamiko-happy.kpm
           generateReleaseNotes: true
           omitBodyDuringUpdate: true
           allowUpdates: true

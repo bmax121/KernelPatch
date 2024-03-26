@@ -16,9 +16,9 @@ INCLUDE_FLAGS := $(foreach dir,$(INCLUDE_DIRS),-I$(KP_DIR)/kernel/$(dir))
 
 objs := main.o
 
-all: shamiko.kpm
+all: make-shamiko-happy.kpm
 
-shamiko.kpm: ${objs}
+make-shamiko-happy.kpm: ${objs}
 	${CC} -r -o $@ $^
 
 %.o: %.c
