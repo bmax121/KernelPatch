@@ -66,11 +66,11 @@ int resolve_pt_regs()
     hook_err_t rc = HOOK_NO_ERR;
 
     rc = fp_hook_syscalln(__NR_execve, 3, before_execve, after_execv, (void *)__NR_execve);
-    log_boot("hook rc: %d\n", rc);
+    log_boot("hook __NR_execve rc: %d\n", rc);
     ret |= rc;
 
     rc = fp_hook_syscalln(__NR_execveat, 5, before_execve, after_execv, (void *)__NR_execveat);
-    log_boot("hook rc: %d\n", rc);
+    log_boot("hook __NR_execveat rc: %d\n", rc);
     ret |= rc;
 
     return rc;

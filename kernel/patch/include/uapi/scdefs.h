@@ -26,6 +26,10 @@ static inline long hash_key(const char *key)
 #define SUPERCALL_KERNELPATCH_VER 0x1008
 #define SUPERCALL_KERNEL_VER 0x1009
 
+#define SUPERCALL_SKEY_GET 0x100a
+#define SUPERCALL_SKEY_SET 0x100b
+#define SUPERCALL_SKEY_ROOT_ENABLE 0x100c
+
 #define SUPERCALL_SU 0x1010
 #define SUPERCALL_SU_TASK 0x1011 // syscall(__NR_gettid)
 
@@ -67,15 +71,17 @@ struct su_profile
 #define ANDROID_LEGACY_SU_PATH "/system/bin/su"
 #define KPATCH_DATA_PATH "/data/adb/kpatch"
 #define KPATCH_DEV_PATH "/dev/kpatch"
-#define KPATCH_DEV_WORK_DIR "/dev/kpatch_work/"
+#define KPATCH_DEV_WORK_DIR "/dev/kp/"
+#define KERNELPATCH_DATA_DIR "/data/adb/kp"
+#define KERNELPATCH_MODULE_DATA_DIR KERNELPATCH_DATA_DIR "/modules"
 #define APD_PATH "/data/adb/apd"
 #define SUPERCMD "/system/bin/truncate"
 
 #define ADB_FLODER "/data/adb/"
 #define APATCH_FLODER "/data/adb/ap/"
-#define APATCH_BIN_FLODER "/data/adb/ap/bin/"
-#define APATCH_LOG_FLODER "/data/adb/ap/log/"
-#define SAFE_MODE_FLAG_FILE "/dev/.sefemode"
+#define APATCH_BIN_FLODER APATCH_FLODER "bin/"
+#define APATCH_LOG_FLODER APATCH_FLODER "log/"
+#define SAFE_MODE_FLAG_FILE "/dev/.safemode"
 #define EARLY_INIT_LOG_0 "/dev/early_init_0.log"
 #define EARLY_INIT_LOG_1 "/dev/early_init_1.log"
 

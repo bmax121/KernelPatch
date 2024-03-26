@@ -22,6 +22,7 @@
 #include "preset.h"
 #include "symbol.h"
 #include "kpm.h"
+#include "sha256.h"
 
 void read_kernel_file(const char *path, kernel_file_t *kernel_file)
 {
@@ -122,6 +123,16 @@ const char *extra_type_str(extra_item_type extra_type)
     }
 }
 
+static char *bytes_to_hexstr(const unsigned char *data, int len)
+{
+    char *buf = (char *)malloc(2 * len + 1);
+    buf[2 * len] = '\0';
+    for (int i = 0; i < len; i++) {
+        sprintf(&buf[2 * i], "%02x", data[i]);
+    }
+    return buf;
+}
+
 void print_preset_info(preset_t *preset)
 {
     setup_header_t *header = &preset->header;
@@ -137,9 +148,21 @@ void print_preset_info(preset_t *preset)
     fprintf(stdout, "config=%s,%s\n", is_android ? "android" : "linux", is_debug ? "debug" : "release");
     fprintf(stdout, "superkey=%s\n", setup->superkey);
 
+    // todo: remove compat version
+    if (ver_num > 0xa04) {
+        char *hexstr = bytes_to_hexstr(setup->root_superkey, ROOT_SUPER_KEY_HASH_LEN);
+        fprintf(stdout, "root_superkey=%s\n", hexstr);
+        free(hexstr);
+    }
+
     fprintf(stdout, INFO_ADDITIONAL_SESSION "\n");
-    char *pos = setup->additional;
-    while (pos < setup->additional + ADDITIONAL_LEN) {
+    char *addition = setup->additional;
+    // todo: remove compat version
+    if (ver_num <= 0xa04) {
+        addition -= (ROOT_SUPER_KEY_HASH_LEN + SETUP_PRESERVE_LEN);
+    }
+    char *pos = addition;
+    while (pos < addition + ADDITIONAL_LEN) {
         int len = *pos;
         if (!len) break;
         pos++;
@@ -258,8 +281,6 @@ int print_image_patch_info(patched_kimg_t *pimg)
     if (preset) {
         print_preset_info(preset);
 
-        fprintf(stdout, "extra_num=%d\n", pimg->embed_item_num);
-
         fprintf(stdout, INFO_EXTRA_SESSION "\n");
         fprintf(stdout, "num=%d\n", pimg->embed_item_num);
 
@@ -316,7 +337,7 @@ static void extra_append(char *kimg, const void *data, int len, int *offset)
 }
 
 int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey,
-                     const char **additional, const char *kpatch_path, extra_config_t *extra_configs,
+                     bool root_key, const char **additional, const char *kpatch_path, extra_config_t *extra_configs,
                      int extra_config_num)
 {
     set_log_enable(true);
@@ -526,8 +547,21 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     fillin_patch_symbol(&kallsym, kallsym_kimg, ori_kimg_len, &setup->patch_symbol, kinfo->is_be, 0);
 
     // superkey
-    strncpy((char *)setup->superkey, superkey, SUPER_KEY_LEN - 1);
-    tools_logi("superkey: %s\n", setup->superkey);
+    if (!root_key) {
+        tools_logi("superkey: %s\n", superkey);
+        strncpy((char *)setup->superkey, superkey, SUPER_KEY_LEN - 1);
+    } else {
+        int len = SHA256_BLOCK_SIZE > ROOT_SUPER_KEY_HASH_LEN ? ROOT_SUPER_KEY_HASH_LEN : SHA256_BLOCK_SIZE;
+        BYTE buf[SHA256_BLOCK_SIZE];
+        SHA256_CTX ctx;
+        sha256_init(&ctx);
+        sha256_update(&ctx, (const BYTE *)superkey, strnlen(superkey, SUPER_KEY_LEN));
+        sha256_final(&ctx, buf);
+        memcpy(setup->root_superkey, buf, len);
+        char *hexstr = bytes_to_hexstr(setup->root_superkey, len);
+        tools_logi("root superkey hash: %s\n", hexstr);
+        free(hexstr);
+    }
 
     // modify kernel entry
     int paging_init_offset = get_symbol_offset_exit(&kallsym, kallsym_kimg, "paging_init");

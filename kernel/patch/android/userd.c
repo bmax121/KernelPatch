@@ -10,6 +10,7 @@
 #include <asm-generic/compat.h>
 #include <uapi/asm-generic/errno.h>
 #include <syscall.h>
+#include <symbol.h>
 #include <kconfig.h>
 #include <linux/uaccess.h>
 #include <linux/string.h>
@@ -146,7 +147,7 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
 
     char __user *ufilename = *u_filename_p;
     char filename[SU_PATH_MAX_LEN];
-    int flen = compact_strncpy_from_user(filename, ufilename, sizeof(filename));
+    int flen = compat_strncpy_from_user(filename, ufilename, sizeof(filename));
     if (flen <= 0) return;
 
     if (!strcmp(system_bin_init, filename) || !strcmp(root_init, filename)) {
@@ -163,7 +164,7 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
                 if (!p1 || IS_ERR(p1)) break;
 
                 char arg[16] = { '\0' };
-                if (compact_strncpy_from_user(arg, p1, sizeof(arg)) <= 0) break;
+                if (compat_strncpy_from_user(arg, p1, sizeof(arg)) <= 0) break;
 
                 if (!strcmp(arg, "second_stage") || !strcmp(arg, "--second-stage")) {
                     log_boot("exec %s second stage 0\n", filename);
@@ -179,7 +180,7 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
                 if (!uenv || IS_ERR(uenv)) break;
 
                 char env[256];
-                if (compact_strncpy_from_user(env, uenv, sizeof(env)) <= 0) break;
+                if (compat_strncpy_from_user(env, uenv, sizeof(env)) <= 0) break;
                 char *env_name = env;
                 char *env_value = strchr(env, '=');
                 if (env_value) {
@@ -300,7 +301,7 @@ static void before_openat(hook_fargs4_t *args, void *udata)
 
     const char __user *filename = (typeof(filename))syscall_argn(args, 1);
     char buf[32];
-    compact_strncpy_from_user(buf, filename, sizeof(buf));
+    compat_strncpy_from_user(buf, filename, sizeof(buf));
     if (strcmp(ORIGIN_RC_FILE, buf)) return;
 
     replaced = 1;
@@ -366,6 +367,9 @@ static void after_openat(hook_fargs4_t *args, void *udata)
 #define EV_KEY 0x01
 #define KEY_VOLUMEDOWN 114
 
+int android_is_safe_mode = 0;
+KP_EXPORT_SYMBOL(android_is_safe_mode);
+
 // void input_handle_event(struct input_dev *dev, unsigned int type, unsigned int code, int value)
 static void before_input_handle_event(hook_fargs4_t *args, void *udata)
 {
@@ -377,6 +381,7 @@ static void before_input_handle_event(hook_fargs4_t *args, void *udata)
         volumedown_pressed_count++;
         if (volumedown_pressed_count == 3) {
             log_boot("entering safemode ...");
+            android_is_safe_mode = 1;
             struct file *filp = filp_open(SAFE_MODE_FLAG_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0666);
             if (filp && !IS_ERR(filp)) filp_close(filp, 0);
         }
@@ -389,22 +394,22 @@ int kpuserd_init()
     hook_err_t rc = HOOK_NO_ERR;
 
     rc = fp_hook_syscalln(__NR_execve, 3, before_execve, after_execve, (void *)__NR_execve);
-    log_boot("hook rc: %d\n", rc);
+    log_boot("hook __NR_execve rc: %d\n", rc);
     ret |= rc;
 
     rc = fp_hook_syscalln(__NR_execveat, 5, before_execveat, after_execveat, (void *)__NR_execveat);
-    log_boot("hook rc: %d\n", rc);
+    log_boot("hook __NR_execveat rc: %d\n", rc);
     ret |= rc;
 
     rc = fp_hook_syscalln(__NR_openat, 4, before_openat, after_openat, 0);
-    log_boot("hook rc: %d\n", rc);
+    log_boot("hook __NR_openat rc: %d\n", rc);
     ret |= rc;
 
     unsigned long input_handle_event_addr = get_preset_patch_sym()->input_handle_event;
     if (!input_handle_event_addr) {
         rc = hook_wrap4((void *)input_handle_event_addr, before_input_handle_event, 0, 0);
         ret |= rc;
-        log_boot("hook rc: %d\n", rc);
+        log_boot("hook input_handle_event rc: %d\n", rc);
     }
 
     return ret;

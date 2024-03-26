@@ -14,38 +14,40 @@
 #include <linux/ptrace.h>
 #include <linux/err.h>
 #include <linux/errno.h>
+#include <linux/random.h>
 
-int kfunc_def(xt_data_to_user)(void __user *dst, const void *src, int usersize, int size, int aligned_size);
+extern int kfunc_def(xt_data_to_user)(void __user *dst, const void *src, int usersize, int size, int aligned_size);
 
 static inline int compat_xt_data_copy_to_user(void __user *dst, const void *src, int size)
 {
     kfunc_direct_call(xt_data_to_user, dst, src, size, size, size);
 }
 
-// todo: static method
-int kfunc_def(bits_to_user)(unsigned long *bits, unsigned int maxbit, unsigned int maxlen, void __user *p, int compat);
+extern int kfunc_def(bits_to_user)(unsigned long *bits, unsigned int maxbit, unsigned int maxlen, void __user *p,
+                                   int compat);
 
 static inline int compat_bits_copy_to_user(void __user *dst, const void *src, int size)
 {
-    kfunc_direct_call(bits_to_user, src, size * sizeof(long), size, dst, 0);
+    kfunc_direct_call(bits_to_user, (unsigned long *)src, size * sizeof(unsigned long), size, dst, 0);
 }
 
-// todo: n > page_size
-int trace_seq_copy_to_user(void __user *to, const void *from, int n)
+__noinline int trace_seq_copy_to_user(void __user *to, const void *from, int n)
 {
+    // todo: n > page_size
+    if (n > page_size) return 0;
+
     unsigned char trace_seq_data[page_size + 0x20];
     struct trace_seq *trace_seq = (struct trace_seq *)trace_seq_data;
     int *fp = (int *)(((uintptr_t)trace_seq) + page_size);
     int *plen = fp;
     int *preadpos = fp + 1;
     int *pfull = fp + 2;
-    unsigned char *pbuffer = (unsigned char *)trace_seq;
     *plen = n;
     *preadpos = 0;
     *pfull = 0;
-    if (n > page_size) return 0;
-    memcpy(pbuffer, from, n);
-    int sz = trace_seq_to_user(trace_seq, to, n);
+
+    memcpy((void *)trace_seq, from, n);
+    int sz = kfunc(trace_seq_to_user)(trace_seq, to, n);
     return sz;
 }
 
@@ -56,37 +58,46 @@ int seq_buf_copy_to_user(void __user *to, const void *from, int n)
     seq_buf.len = n;
     seq_buf.readpos = 0;
     seq_buf.buffer = (void *)from;
-    return seq_buf_to_user(&seq_buf, to, n);
+    return kfunc(seq_buf_to_user)(&seq_buf, to, n);
 }
 
-// return copied length
+/**
+ * @brief 
+ * 
+ * @param to 
+ * @param from 
+ * @param n 
+ * @return int copied lenght
+ */
 int __must_check compat_copy_to_user(void __user *to, const void *from, int n)
 {
-    int copy_len;
+    int cplen = 0;
+
     if (kfunc(seq_buf_to_user)) {
-        copy_len = seq_buf_copy_to_user((void *__user)to, from, n);
-    } else if (kfunc(bits_to_user)) {
-        // bits_to_user, str_to_user
-        // int ret = compat_bits_to_user(to, from, n);
-        // if (ret == n) return -EFAULT;
-        // copy_len -= ret;
+        cplen = seq_buf_copy_to_user(to, from, n);
     } else if (kfunc(xt_data_to_user)) {
         // xt_data_to_user, xt_obj_to_user
-        // int ret = compat_xt_data_copy_to_user(to, from, n);
-        // if (ret == n) return -EFAULT;
-        // copy_len -= ret;
+        cplen = compat_xt_data_copy_to_user(to, from, n);
+        if (!cplen) cplen = n;
+    } else if (kfunc(bits_to_user)) {
+        // bits_to_user, str_to_user
+        cplen = compat_bits_copy_to_user(to, from, n);
+    } else if (kfunc(trace_seq_to_user)) {
+        cplen = trace_seq_copy_to_user(to, from, n);
     } else {
-        copy_len = trace_seq_copy_to_user((void *__user)to, from, n);
+        logke("no compat_copy_to_user\n");
+        // copy_arg_to_user,
     }
-    // alt: copy_arg_to_user,
-    return copy_len;
+    return cplen;
 }
 KP_EXPORT_SYMBOL(compat_copy_to_user);
 
 #include <linux/uaccess.h>
 
-long compact_strncpy_from_user(char *dest, const char __user *src, long count)
+long compat_strncpy_from_user(char *dest, const char __user *src, long count)
 {
+    kfunc_call(strncpy_from_user_nofault, dest, src, count);
+    kfunc_call(strncpy_from_unsafe_user, dest, src, count);
     if (kfunc(strncpy_from_user)) {
         long rc = kfunc(strncpy_from_user)(dest, src, count);
         if (rc >= count) {
@@ -97,11 +108,9 @@ long compact_strncpy_from_user(char *dest, const char __user *src, long count)
         }
         return rc;
     }
-    kfunc_call(compact_strncpy_from_user, dest, src, count);
-    kfunc_call(strncpy_from_unsafe_user, dest, src, count);
     return 0;
 }
-KP_EXPORT_SYMBOL(compact_strncpy_from_user);
+KP_EXPORT_SYMBOL(compat_strncpy_from_user);
 
 int16_t pt_regs_offset = -1;
 
@@ -139,3 +148,11 @@ void *__user __must_check copy_to_user_stack(const void *data, int len)
     return cplen > 0 ? (void *__user)addr : (void *)(long)cplen;
 }
 KP_EXPORT_SYMBOL(copy_to_user_stack);
+
+uint64_t get_random_u64(void)
+{
+    kfunc_call(get_random_u64);
+    kfunc_call(get_random_long);
+    return rand_next();
+}
+KP_EXPORT_SYMBOL(get_random_u64);

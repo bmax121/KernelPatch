@@ -35,20 +35,15 @@
 #include <predata.h>
 #include <kconfig.h>
 #include <linux/vmalloc.h>
+#include <sucompat.h>
+#include <symbol.h>
 #include <uapi/linux/limits.h>
 
 static const char sh_path[] = ANDROID_SH_PATH;
 static const char default_su_path[] = ANDROID_SU_PATH;
+static const char legacy_su_path[] = ANDROID_LEGACY_SU_PATH;
 static const char *current_su_path = 0;
 static const char apd_path[] = APD_PATH;
-
-struct allow_uid
-{
-    uid_t uid;
-    struct su_profile profile;
-    struct list_head list;
-    struct rcu_head rcu;
-};
 
 static struct list_head allow_uid_list;
 static spinlock_t list_lock;
@@ -59,7 +54,7 @@ static void allow_reclaim_callback(struct rcu_head *rcu)
     kvfree(allow);
 }
 
-static struct su_profile search_allow_uid(uid_t uid)
+struct su_profile profile_su_allow_uid(uid_t uid)
 {
     rcu_read_lock();
     struct allow_uid *pos;
@@ -75,8 +70,9 @@ static struct su_profile search_allow_uid(uid_t uid)
     rcu_read_unlock();
     return profile;
 }
+KP_EXPORT_SYMBOL(profile_su_allow_uid);
 
-static int is_allow_uid(uid_t uid)
+int is_su_allow_uid(uid_t uid)
 {
     rcu_read_lock();
     struct allow_uid *pos;
@@ -90,6 +86,7 @@ static int is_allow_uid(uid_t uid)
     rcu_read_unlock();
     return 0;
 }
+KP_EXPORT_SYMBOL(is_su_allow_uid);
 
 int su_add_allow_uid(uid_t uid, struct su_profile *profile, int async)
 {
@@ -262,13 +259,13 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
 
     char __user *ufilename = *u_filename_p;
     char filename[SU_PATH_MAX_LEN];
-    int flen = compact_strncpy_from_user(filename, ufilename, sizeof(filename));
+    int flen = compat_strncpy_from_user(filename, ufilename, sizeof(filename));
     if (flen <= 0) return;
 
     if (!strcmp(current_su_path, filename)) {
         uid_t uid = current_uid();
-        if (!is_allow_uid(uid)) return;
-        struct su_profile profile = search_allow_uid(uid);
+        if (!is_su_allow_uid(uid)) return;
+        struct su_profile profile = profile_su_allow_uid(uid);
 
         uid_t to_uid = profile.to_uid;
         const char *sctx = profile.scontext;
@@ -293,6 +290,7 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
             }
         } else {
             filp_close(filp, 0);
+
             // command
             int cplen = 0;
 #ifdef TRY_DIRECT_MODIFY_USER
@@ -312,19 +310,18 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
                 }
             }
 
-            // change args[0] to ANDROID_SU_PATH or ANDROID_LEGACY_SU_PATH if it's not
-            // check filename instead of args[0] for convenient
+            // argv
             int argv_cplen = 0;
-            if (strcmp(ANDROID_SU_PATH, filename) && strcmp(ANDROID_LEGACY_SU_PATH, filename)) {
+            if (strcmp(legacy_su_path, filename)) {
 #ifdef TRY_DIRECT_MODIFY_USER
                 const char __user *p1 = get_user_arg_ptr(0, *uargv, 0);
-                argv_cplen = compat_copy_to_user((void *__user)p1, default_su_path, sizeof(default_su_path));
+                argv_cplen = compat_copy_to_user((void *__user)p1, legacy_su_path, sizeof(legacy_su_path));
 #endif
                 if (argv_cplen <= 0) {
                     sp = sp ?: current_user_stack_pointer();
-                    sp -= sizeof(default_su_path);
+                    sp -= sizeof(legacy_su_path);
                     sp &= 0xFFFFFFFFFFFFFFF8;
-                    argv_cplen = compat_copy_to_user((void *)sp, default_su_path, sizeof(default_su_path));
+                    argv_cplen = compat_copy_to_user((void *)sp, legacy_su_path, sizeof(legacy_su_path));
                     if (argv_cplen > 0) {
                         int rc = set_user_arg_ptr(0, *uargv, 0, sp);
                         if (rc < 0) { // todo: modify entire argv
@@ -344,8 +341,8 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
 
         // auth key
         char arg1[SUPER_KEY_LEN];
-        if (compact_strncpy_from_user(arg1, p1, sizeof(arg1)) <= 0) return;
-        if (superkey_auth(arg1)) return;
+        if (compat_strncpy_from_user(arg1, p1, sizeof(arg1)) <= 0) return;
+        if (auth_superkey(arg1)) return;
 
         commit_su(0, 0);
 
@@ -358,7 +355,7 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
 
         if (p1 && !IS_ERR(p2)) {
             char buffer[EMBEDDED_NAME_MAX];
-            int len = compact_strncpy_from_user(buffer, p2, EMBEDDED_NAME_MAX);
+            int len = compat_strncpy_from_user(buffer, p2, EMBEDDED_NAME_MAX);
             if (len >= 0) {
                 exec = buffer;
                 exec_len = len;
@@ -446,11 +443,11 @@ static void su_handler_arg1_ufilename_before(hook_fargs6_t *args, void *udata)
     args->local.data0 = 0;
 
     uid_t uid = current_uid();
-    if (!is_allow_uid(uid)) return;
+    if (!is_su_allow_uid(uid)) return;
 
     char __user *ufilename = (char __user *)syscall_argn(args, 1);
     char filename[SU_PATH_MAX_LEN];
-    int flen = compact_strncpy_from_user(filename, ufilename, sizeof(filename));
+    int flen = compat_strncpy_from_user(filename, ufilename, sizeof(filename));
     if (flen <= 0) return;
 
     if (!strcmp(current_su_path, filename)) {
@@ -492,32 +489,36 @@ int su_compat_init()
     spin_lock_init(&list_lock);
 
     // default shell
-    struct su_profile default_shell_profile = {
+    struct su_profile default_allow_profile = {
         .uid = 2000,
         .to_uid = 0,
         .scontext = ALL_ALLOW_SCONTEXT,
     };
-    su_add_allow_uid(default_shell_profile.uid, &default_shell_profile, 1);
+    su_add_allow_uid(default_allow_profile.uid, &default_allow_profile, 1);
+
+    // default root
+    default_allow_profile.uid = 0;
+    su_add_allow_uid(default_allow_profile.uid, &default_allow_profile, 1);
 
     hook_err_t rc = HOOK_NO_ERR;
 
     rc = fp_hook_syscalln(__NR_execve, 3, before_execve, after_execve, (void *)__NR_execve);
-    log_boot("hook rc: %d\n", rc);
+    log_boot("hook __NR_execve rc: %d\n", rc);
 
     rc = fp_hook_syscalln(__NR_execveat, 5, before_execveat, after_execveat, (void *)__NR_execveat);
-    log_boot("hook rc: %d\n", rc);
+    log_boot("hook __NR_execveat rc: %d\n", rc);
 
     rc = fp_hook_syscalln(__NR3264_fstatat, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
                           (void *)__NR3264_fstatat);
-    log_boot("hook rc: %d\n", rc);
+    log_boot("hook __NR3264_fstatat rc: %d\n", rc);
 
     rc = fp_hook_syscalln(__NR_faccessat, 3, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
                           (void *)__NR_faccessat);
-    log_boot("hook rc: %d\n", rc);
+    log_boot("hook __NR_faccessat rc: %d\n", rc);
 
     rc = fp_hook_syscalln(__NR_faccessat2, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
                           (void *)__NR_faccessat2);
-    log_boot("hook rc: %d\n", rc);
+    log_boot("hook __NR_faccessat2 rc: %d\n", rc);
 
     return rc;
 }

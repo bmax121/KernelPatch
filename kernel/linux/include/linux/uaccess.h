@@ -13,7 +13,8 @@
 // unsigned long __must_check copy_in_user(void __user *to, const void __user *from, unsigned long n);
 
 //  >= 5.8, On success, returns the length of the string INCLUDING the trailing NUL.
-extern long kfunc_def(compact_strncpy_from_user)(char *dst, const void __user *unsafe_addr, long count);
+extern long kfunc_def(strncpy_from_user_nofault)(char *dst, const void __user *unsafe_addr, long count);
+
 /**
  * strncpy_from_unsafe_user: - Copy a NUL terminated string from unsafe user
  *				address.
@@ -33,6 +34,7 @@ extern long kfunc_def(compact_strncpy_from_user)(char *dst, const void __user *u
  * sets the last byte of @dst buffer to NUL and returns @count.
  */
 extern long kfunc_def(strncpy_from_unsafe_user)(char *dst, const void __user *unsafe_addr, long count);
+
 /**
  * strncpy_from_user: - Copy a NUL terminated string from userspace.
  * @dst:   Destination address, in kernel space.  This buffer must be at
@@ -58,15 +60,6 @@ extern long kfunc_def(strnlen_user_nofault)(const void __user *unsafe_addr, long
 extern long kfunc_def(strnlen_unsafe_user)(const void __user *unsafe_addr, long count);
 extern long kfunc_def(strnlen_user)(const char __user *str, long n);
 
-long compact_strncpy_from_user(char *dest, const char __user *src, long count);
-
-static inline long strnlen_user_nofault(const char __user *str, long n)
-{
-    kfunc_call(strnlen_user_nofault, str, n);
-    kfunc_call(strnlen_unsafe_user, str, n);
-    kfunc_call(strnlen_user, str, n);
-    kfunc_not_found();
-    return 0;
-}
+long compat_strncpy_from_user(char *dest, const char __user *src, long count);
 
 #endif

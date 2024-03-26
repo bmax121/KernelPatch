@@ -52,7 +52,7 @@ static long call_su_allow_uid_profile(uid_t uid, struct su_profile *__user uprof
 static long call_reset_su_path(const char *__user upath)
 {
     char path[SU_PATH_MAX_LEN];
-    compact_strncpy_from_user(path, upath, sizeof(path));
+    compat_strncpy_from_user(path, upath, sizeof(path));
     return su_reset_path(path);
 }
 

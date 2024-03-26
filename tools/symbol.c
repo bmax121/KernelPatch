@@ -16,7 +16,8 @@ static int32_t on_each_symbol_callbackup(int32_t index, char type, const char *s
 {
     struct on_each_symbol_struct *data = (struct on_each_symbol_struct *)userdata;
     int len = strlen(data->symbol);
-    if (strstr(symbol, data->symbol) == symbol && (symbol[len] == '.' || symbol[len] == '$')) {
+    if (strstr(symbol, data->symbol) == symbol && (symbol[len] == '.' || symbol[len] == '$') &&
+        !strstr(symbol, ".cfi_jt")) {
         tools_logi("%s -> %s: type: %c, offset: 0x%08x\n", data->symbol, symbol, type, offset);
         data->addr = offset;
         return 1;
@@ -109,7 +110,7 @@ int fillin_patch_symbol(kallsym_t *kallsym, char *img_buf, int imglen, patch_sym
     if (!symbol->rest_init) symbol->cgroup_init = try_get_symbol_offset_zero(kallsym, img_buf, "cgroup_init");
     if (!symbol->rest_init && !symbol->cgroup_init) tools_loge_exit("no symbol rest_init");
 
-    symbol->kernel_init = get_symbol_offset_zero(kallsym, img_buf, "kernel_init");
+    symbol->kernel_init = try_get_symbol_offset_zero(kallsym, img_buf, "kernel_init");
 
     symbol->report_cfi_failure = get_symbol_offset_zero(kallsym, img_buf, "report_cfi_failure");
     symbol->__cfi_slowpath_diag = get_symbol_offset_zero(kallsym, img_buf, "__cfi_slowpath_diag");

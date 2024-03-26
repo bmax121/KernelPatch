@@ -33,5 +33,3 @@ build/*
 
 # 
 private
-stat-sel-fs
-fake-mem

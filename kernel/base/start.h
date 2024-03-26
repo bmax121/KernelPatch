@@ -23,6 +23,7 @@ typedef struct
     int64_t map_backup_len;
     uint8_t map_backup[MAP_MAX_SIZE];
     uint8_t superkey[SUPER_KEY_LEN];
+    uint8_t root_superkey[ROOT_SUPER_KEY_HASH_LEN];
     patch_symbol_t patch_symbol;
 } start_preset_t;
 #else
@@ -37,7 +38,8 @@ typedef struct
 #define start_map_backup_len_offset (start_map_offset_offset + 8)
 #define start_map_backup_offset (start_map_backup_len_offset + 8)
 #define start_superkey_offset (start_map_backup_offset + MAP_MAX_SIZE)
-#define start_patch_symbol_offset (start_superkey_offset + SUPER_KEY_LEN)
+#define start_root_superkey_offset (start_superkey_offset + SUPER_KEY_LEN)
+#define start_patch_symbol_offset (start_root_superkey_offset + ROOT_SUPER_KEY_HASH_LEN)
 #define start_patch_extra_offset_offset (start_patch_symbol_offset + PATCH_SYMBOL_LEN)
 #define start_patch_extra_size_offset (start_patch_extra_offset_offset + 8)
 #define start_end (start_patch_extra_size_offset + 8)

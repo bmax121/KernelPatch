@@ -11,11 +11,9 @@
 
 // lib/dump_stack.c
 void kfunc_def(dump_stack_lvl)(const char *log_lvl) = 0;
-KP_EXPORT_SYMBOL(kfunc(dump_stack_lvl));
 void kfunc_def(dump_stack)(void) = 0;
-KP_EXPORT_SYMBOL(kfunc(dump_stack));
 
-static void _linux_lib_dump_stack_sym_match(const char *name, unsigned long addr)
+static void _linux_lib_misc(const char *name, unsigned long addr)
 {
     kfunc_match(dump_stack_lvl, name, addr);
     kfunc_match(dump_stack, name, addr);
@@ -23,32 +21,23 @@ static void _linux_lib_dump_stack_sym_match(const char *name, unsigned long addr
 
 #include <linux/uaccess.h>
 
-long kfunc_def(compact_strncpy_from_user)(char *dst, const void __user *unsafe_addr, long count) = 0;
-KP_EXPORT_SYMBOL(kfunc(compact_strncpy_from_user));
+long kfunc_def(strncpy_from_user_nofault)(char *dst, const void __user *unsafe_addr, long count) = 0;
 long kfunc_def(strncpy_from_unsafe_user)(char *dst, const void __user *unsafe_addr, long count) = 0;
-KP_EXPORT_SYMBOL(kfunc(strncpy_from_unsafe_user));
 long kfunc_def(strncpy_from_user)(char *dest, const char __user *src, long count) = 0;
-KP_EXPORT_SYMBOL(kfunc(strncpy_from_user));
+
 long kfunc_def(strnlen_user_nofault)(const void __user *unsafe_addr, long count) = 0;
-KP_EXPORT_SYMBOL(kfunc(strnlen_user_nofault));
 long kfunc_def(strnlen_unsafe_user)(const void __user *unsafe_addr, long count) = 0;
-KP_EXPORT_SYMBOL(kfunc(strnlen_unsafe_user));
 long kfunc_def(strnlen_user)(const char __user *str, long n);
-KP_EXPORT_SYMBOL(kfunc(strnlen_user));
 
 static void _linux_lib_strncpy_from_user_sym_match(const char *name, unsigned long addr)
 {
-    kfunc_match(compact_strncpy_from_user, name, addr);
-    if (!kfunc(compact_strncpy_from_user)) {
-        kfunc_match(strncpy_from_unsafe_user, name, addr);
-    }
+    kfunc_match(strncpy_from_user_nofault, name, addr);
+    kfunc_match(strncpy_from_unsafe_user, name, addr);
     kfunc_match(strncpy_from_user, name, addr);
 
-    kfunc_match(strnlen_user_nofault, name, addr);
-    if (!kfunc(strnlen_user_nofault)) {
-        kfunc_match(strnlen_unsafe_user, name, addr);
-    }
-    kfunc_match(strnlen_user, name, addr);
+    // kfunc_match(strnlen_user_nofault, name, addr);
+    // kfunc_match(strnlen_unsafe_user, name, addr);
+    // kfunc_match(strnlen_user, name, addr);
 }
 
 // lib/string.c
@@ -206,55 +195,19 @@ static void _linux_lib_argv_split_sym_match(const char *name, unsigned long addr
 #include <linux/seq_buf.h>
 #include <linux/trace_seq.h>
 
-int kfunc_def(seq_buf_printf)(struct seq_buf *s, const char *fmt, ...) = 0;
-KP_EXPORT_SYMBOL(kfunc(seq_buf_printf));
 int kfunc_def(seq_buf_to_user)(struct seq_buf *s, char __user *ubuf, int cnt) = 0;
-KP_EXPORT_SYMBOL(kfunc(seq_buf_to_user));
-int kfunc_def(seq_buf_puts)(struct seq_buf *s, const char *str) = 0;
-KP_EXPORT_SYMBOL(kfunc(seq_buf_puts));
-int kfunc_def(seq_buf_putc)(struct seq_buf *s, unsigned char c) = 0;
-KP_EXPORT_SYMBOL(kfunc(seq_buf_putc));
-int kfunc_def(seq_buf_putmem)(struct seq_buf *s, const void *mem, unsigned int len) = 0;
-KP_EXPORT_SYMBOL(kfunc(seq_buf_putmem));
-int kfunc_def(seq_buf_putmem_hex)(struct seq_buf *s, const void *mem, unsigned int len) = 0;
-KP_EXPORT_SYMBOL(kfunc(seq_buf_putmem_hex));
-int kfunc_def(seq_buf_bitmask)(struct seq_buf *s, const unsigned long *maskp, int nmaskbits) = 0;
-KP_EXPORT_SYMBOL(kfunc(seq_buf_bitmask));
-
-int kfunc_def(trace_seq_printf)(struct trace_seq *s, const char *fmt, ...) = 0;
-KP_EXPORT_SYMBOL(kfunc(trace_seq_printf));
 int kfunc_def(trace_seq_to_user)(struct trace_seq *s, char __user *ubuf, int cnt) = 0;
-KP_EXPORT_SYMBOL(kfunc(trace_seq_to_user));
-int kfunc_def(trace_seq_puts)(struct trace_seq *s, const char *str) = 0;
-KP_EXPORT_SYMBOL(kfunc(trace_seq_puts));
-int kfunc_def(trace_seq_putc)(struct trace_seq *s, unsigned char c) = 0;
-KP_EXPORT_SYMBOL(kfunc(trace_seq_putc));
-int kfunc_def(trace_seq_putmem)(struct trace_seq *s, const void *mem, unsigned int len) = 0;
-KP_EXPORT_SYMBOL(kfunc(trace_seq_putmem));
-int kfunc_def(trace_seq_putmem_hex)(struct trace_seq *s, const void *mem, unsigned int len) = 0;
-KP_EXPORT_SYMBOL(kfunc(trace_seq_putmem_hex));
-int kfunc_def(trace_seq_bitmask)(struct trace_seq *s, const unsigned long *maskp, int nmaskbits) = 0;
-KP_EXPORT_SYMBOL(kfunc(trace_seq_bitmask));
+int kfunc_def(xt_data_to_user)(void __user *dst, const void *src, int usersize, int size, int aligned_size) = 0;
+int kfunc_def(bits_to_user)(unsigned long *bits, unsigned int maxbit, unsigned int maxlen, void __user *p,
+                            int compat) = 0;
 
 static void _linux_lib_seq_buf_sym_match(const char *name, unsigned long addr)
 {
     kfunc_match(seq_buf_to_user, name, addr);
-    if (kfunc(seq_buf_to_user)) {
-        kfunc_match(seq_buf_printf, name, addr);
-        kfunc_match(seq_buf_puts, name, addr);
-        // kfunc_match(seq_buf_putc, name, addr);
-        kfunc_match(seq_buf_putmem, name, addr);
-        // kfunc_match(seq_buf_putmem_hex, name, addr);
-        // kfunc_match(seq_buf_bitmask, name, addr);
-    } else {
-        kfunc_match(trace_seq_printf, name, addr);
-        kfunc_match(trace_seq_to_user, name, addr);
-        kfunc_match(trace_seq_puts, name, addr);
-        // kfunc_match(trace_seq_putc, name, addr);
-        kfunc_match(trace_seq_putmem, name, addr);
-        // kfunc_match(trace_seq_putmem_hex, name, addr);
-        // kfunc_match(trace_seq_bitmask, name, addr);
-    }
+    kfunc_match(trace_seq_to_user, name, addr);
+    kfunc_match(xt_data_to_user, name, addr);
+    // todo: static function
+    kfunc_match(bits_to_user, name, addr);
 }
 
 // linux/include/kernel.h
@@ -295,7 +248,7 @@ static void _linux_include_kernel_sym_match(const char *name, unsigned long addr
 
 static int _linux_libs_symbol_init(void *data, const char *name, struct module *m, unsigned long addr)
 {
-    _linux_lib_dump_stack_sym_match(name, addr);
+    _linux_lib_misc(name, addr);
     _linux_lib_strncpy_from_user_sym_match(name, addr);
     _linux_lib_string_sym_match(name, addr);
     _linux_lib_argv_split_sym_match(name, addr);

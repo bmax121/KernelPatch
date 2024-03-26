@@ -50,7 +50,8 @@ void print_usage(char **argv)
         "Options:\n"
         "  -i, --image PATH                 Kernel image path.\n"
         "  -k, --kpimg PATH                 KernelPatch image path.\n"
-        "  -s, --skey PATH                  Set superkey.\n"
+        "  -s, --skey KEY                   Set the superkey and save it directly in the boot.img.\n"
+        "  -S, --root-skey KEY              Set the root-superkey that uses hash verification, and the superkey can be changed dynamically.\n"
         "  -o, --out PATH                   Patched image path.\n"
         "  -a  --addition KEY=VALUE         Add additional information.\n"
 
@@ -86,6 +87,7 @@ int main(int argc, char *argv[])
                                  { "image", required_argument, NULL, 'i' },
                                  { "kpimg", required_argument, NULL, 'k' },
                                  { "skey", required_argument, NULL, 's' },
+                                 { "skey-hash", required_argument, NULL, 'S' },
                                  { "out", required_argument, NULL, 'o' },
                                  { "addition", required_argument, NULL, 'a' },
                                  { "kpatch", required_argument, NULL, 'K' },
@@ -97,13 +99,14 @@ int main(int argc, char *argv[])
                                  { "extra-event", required_argument, NULL, 'V' },
                                  { "extra-args", required_argument, NULL, 'A' },
                                  { 0, 0, 0, 0 } };
-    char *optstr = "hvpurdli:s:k:o:a:K:M:E:T:N:V:A:";
+    char *optstr = "hvpurdli:s:S:k:o:a:K:M:E:T:N:V:A:";
 
     char *kimg_path = NULL;
     char *kpimg_path = NULL;
     char *out_path = NULL;
     char *superkey = NULL;
     char *kpatch_path = NULL;
+    bool root_skey = false;
 
     int additional_num = 0;
     const char *additional[16] = { 0 };
@@ -134,6 +137,8 @@ int main(int argc, char *argv[])
         case 'k':
             kpimg_path = optarg;
             break;
+        case 'S':
+            root_skey = true;
         case 's':
             superkey = optarg;
             break;
@@ -185,8 +190,8 @@ int main(int argc, char *argv[])
         else
             fprintf(stdout, "%x\n", version);
     } else if (cmd == 'p') {
-        ret = patch_update_img(kimg_path, kpimg_path, out_path, superkey, additional, kpatch_path, extra_configs,
-                               extra_config_num);
+        ret = patch_update_img(kimg_path, kpimg_path, out_path, superkey, root_skey, additional, kpatch_path,
+                               extra_configs, extra_config_num);
     } else if (cmd == 'd') {
         ret = dump_kallsym(kimg_path);
     } else if (cmd == 'u') {

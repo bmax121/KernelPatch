@@ -258,13 +258,6 @@ static void layout_symtab(struct module *mod, struct load_info *info)
     strsect->sh_entsize = get_offset(mod, &mod->size, strsect, info->index.str);
 }
 
-static int license_is_gpl_compatible(const char *license)
-{
-    return (strcmp(license, "GPL") == 0 || strcmp(license, "GPL v2") == 0 ||
-            strcmp(license, "GPL and additional rights") == 0 || strcmp(license, "Dual BSD/GPL") == 0 ||
-            strcmp(license, "Dual MIT/GPL") == 0 || strcmp(license, "Dual MPL/GPL") == 0);
-}
-
 static int rewrite_section_headers(struct load_info *info)
 {
     info->sechdrs[0].sh_addr = 0;
@@ -317,7 +310,8 @@ static int move_module(struct module *mod, struct load_info *info)
     }
     mod->info.name = info->info.name - info->info.base + mod->info.base;
     mod->info.version = info->info.version - info->info.base + mod->info.base;
-    mod->info.license = info->info.license - info->info.base + mod->info.base;
+
+    if (info->info.license) mod->info.license = info->info.license - info->info.base + mod->info.base;
     if (info->info.author) mod->info.author = info->info.author - info->info.base + mod->info.base;
     if (info->info.description) mod->info.description = info->info.description - info->info.base + mod->info.base;
 
@@ -366,10 +360,6 @@ static int setup_load_info(struct load_info *info)
     logkd("    version: %s\n", version);
 
     const char *license = get_modinfo(info, "license");
-    if (!license || !license_is_gpl_compatible(license)) {
-        logkd("module license incompatible\n");
-        return -ENOEXEC;
-    }
     info->info.license = license;
     logkd("    license: %s\n", license);
 

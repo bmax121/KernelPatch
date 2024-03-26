@@ -47,6 +47,7 @@ static void usage(int status)
                 "hello       If KernelPatch installed, '%s' will echoed.\n"
                 "kpver       Print KernelPatch version.\n"
                 "kver        Print Kernel version.\n"
+                "key         Manager the superkey.\n"
                 "su          KernelPatch Substitute User.\n"
                 "kpm         KernelPatch Module manager.\n"
 #ifdef ANDROID
@@ -58,6 +59,7 @@ static void usage(int status)
     exit(status);
 }
 
+// todo: refactor
 int main(int argc, char **argv)
 {
     strcat(program_name, argv[0]);
@@ -93,6 +95,7 @@ int main(int argc, char **argv)
         { "hello", SUPERCALL_HELLO },
         { "kpver", SUPERCALL_KERNELPATCH_VER },
         { "kver", SUPERCALL_KERNEL_VER },
+        { "key", 'K' },
         { "su", 's' },
         { "kpm", 'k' },
 
@@ -131,6 +134,9 @@ int main(int argc, char **argv)
     case 's':
         strcat(program_name, " su");
         return su_main(argc - 2, argv + 2);
+    case 'K':
+        strcat(program_name, " key");
+        return skey_main(argc - 2, argv + 2);
     case 'k':
         strcat(program_name, " kpm");
         return kpm_main(argc - 2, argv + 2);

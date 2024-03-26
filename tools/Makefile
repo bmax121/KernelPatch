@@ -6,6 +6,7 @@ ifdef DEBUG
 endif
 
 objs := image.o kallsym.o kptools.o order.o insn.o patch.o symbol.o kpm.o common.o
+objs += sha256.o
 
 .PHONY: all
 all: kptools

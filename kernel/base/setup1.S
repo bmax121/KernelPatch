@@ -103,6 +103,12 @@ start_prepare:
     mov x2, #SUPER_KEY_LEN
     bl memcpy8
 
+    // memcpy(start_preset.root_superkey, setup_preset.root_superkey, ROOT_SUPER_KEY_HASH_LEN);
+    add x0, x11, #start_root_superkey_offset;
+    add x1, x10, #setup_root_superkey_offset
+    mov x2, #ROOT_SUPER_KEY_HASH_LEN
+    bl memcpy8
+
     // memcpy(&start_preset.patch_symbol, &setup_preset.patch_symbol, sizeof(header.patch_symbol));
     add x0, x11, #start_patch_symbol_offset;
     add x1, x10, #setup_patch_symbol_offset

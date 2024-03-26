@@ -95,7 +95,7 @@ out:
     return;
 }
 
-static int pre_ki_kpm(const patch_extra_item_t *extra, const char *args, const void *data, void *udata)
+static int pre_kernel_init(const patch_extra_item_t *extra, const char *args, const void *data, void *udata)
 {
     const char *event = (const char *)udata;
     if (extra->type == EXTRA_TYPE_KPM) {
@@ -110,7 +110,7 @@ static int pre_ki_kpm(const patch_extra_item_t *extra, const char *args, const v
 static void before_kernel_init(hook_fargs4_t *args, void *udata)
 {
     log_boot("event: %s\n", EXTRA_EVENT_PRE_KERNEL_INIT);
-    on_each_extra_item(pre_ki_kpm, 0);
+    on_each_extra_item(pre_kernel_init, 0);
 }
 
 static void after_kernel_init(hook_fargs4_t *args, void *udata)
@@ -125,7 +125,7 @@ int patch()
     unsigned long panic_addr = get_preset_patch_sym()->panic;
     if (panic_addr) {
         hook_err_t rc = hook_wrap12((void *)panic_addr, before_panic, 0, 0);
-        log_boot("hook rc: %d\n", rc);
+        log_boot("hook panic rc: %d\n", rc);
         ret |= rc;
     }
 
@@ -134,7 +134,7 @@ int patch()
     if (!init_addr) init_addr = get_preset_patch_sym()->cgroup_init;
     if (init_addr) {
         hook_err_t rc = hook_wrap4((void *)init_addr, before_rest_init, 0, (void *)init_addr);
-        log_boot("hook rc: %d\n", rc);
+        log_boot("hook rest_init rc: %d\n", rc);
         ret |= rc;
     }
 
@@ -142,7 +142,7 @@ int patch()
     unsigned long kernel_init_addr = get_preset_patch_sym()->kernel_init;
     if (kernel_init_addr) {
         hook_err_t rc = hook_wrap4((void *)kernel_init_addr, before_kernel_init, after_kernel_init, 0);
-        log_boot("hook rc: %d\n", rc);
+        log_boot("hook kernel_init rc: %d\n", rc);
         ret |= rc;
     }
 

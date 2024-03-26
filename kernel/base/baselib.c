@@ -277,7 +277,7 @@ char *lib_strncpy(char *dst, const char *src, size_t n)
         *q++ = ch = *p++;
         if (!ch) break;
     }
-    lib_memset(q, 0, n);
+    *q = '\0';
     return dst;
 }
 
