@@ -78,6 +78,7 @@ static inline void synchronize_rcu(void)
 static inline unsigned long get_completed_synchronize_rcu(void)
 {
     kfunc_call(get_completed_synchronize_rcu)
+    return 0;
 }
 static inline void get_completed_synchronize_rcu_full(struct rcu_gp_oldstate *rgosp)
 {
@@ -136,18 +137,22 @@ static inline void rcu_irq_work_resched(void)
 static inline int rcu_read_lock_held(void)
 {
     kfunc_call(rcu_read_lock_held);
+    return 0;
 }
 static inline int rcu_read_lock_bh_held(void)
 {
     kfunc_call(rcu_read_lock_bh_held);
+    return 0;
 }
 static inline int rcu_read_lock_sched_held(void)
 {
     kfunc_call(rcu_read_lock_sched_held);
+    return 0;
 }
 static inline int rcu_read_lock_any_held(void)
 {
     kfunc_call(rcu_read_lock_any_held);
+    return 0;
 }
 
 static inline void rcu_init_nohz(void)
@@ -157,10 +162,12 @@ static inline void rcu_init_nohz(void)
 static inline int rcu_nocb_cpu_offload(int cpu)
 {
     kfunc_call(rcu_nocb_cpu_offload, cpu);
+    return 0;
 }
 static inline int rcu_nocb_cpu_deoffload(int cpu)
 {
     kfunc_call(rcu_nocb_cpu_deoffload, cpu);
+    return 0;
 }
 static inline void rcu_nocb_flush_deferred_wakeup(void)
 {
