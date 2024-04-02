@@ -12,6 +12,6 @@ Aqui estão alguns exemplos que você pode usar para entender rapidamente.
 2. Como fazer inline-hook da função do kernel via KPM: [inline-hook](/kpm-demo/inlinehook)
 3. Como conectar uma chamada do sistema via KPM: [syscall-hook](/kpm-demo/syscallhook)
 
-### Funcionando sem árvore de origem do kernel
+### Funcionando sem a árvore de origem do kernel
 
 ### Funcionando com a árvore de origem do kernel
