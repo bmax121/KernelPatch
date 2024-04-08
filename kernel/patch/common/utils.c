@@ -118,7 +118,7 @@ struct pt_regs *_task_pt_reg(struct task_struct *task)
 {
     unsigned long stack = (unsigned long)task_stack_page(task);
     uintptr_t addr = (uintptr_t)(thread_size + stack);
-    if (likely(pt_regs_offset > 0)) {
+    if (pt_regs_offset > 0) {
         addr -= pt_regs_offset;
     } else {
 #ifndef ANDROID

@@ -46,7 +46,7 @@ struct user_arg_ptr_compat
     } ptr;
 };
 
-// actually, a0 is true if it is compact
+// actually, a0 is true if it is compat
 const char __user *get_user_arg_ptr(void *a0, void *a1, int nr)
 {
     char __user *const __user *native = (char __user *const __user *)a0;

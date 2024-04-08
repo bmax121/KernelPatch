@@ -250,7 +250,158 @@ static uid_t current_uid()
     return uid;
 }
 
+// #define SU_COMPAT_HOOK_SYSCALL
 // #define TRY_DIRECT_MODIFY_USER
+
+#ifndef SU_COMPAT_HOOK_SYSCALL
+
+// int do_execveat_common(int fd, struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp, int flags)
+// int __do_execve_file(int fd, struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp, int flags,
+//                      struct file *file);
+// static int do_execve_common(struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp)
+static void before_do_execve(hook_fargs8_t *args, void *udata)
+{
+    struct filename *filename;
+    int filename_index = 1;
+
+    if (udata && (((uintptr_t)args->arg0) & 0xF000000000000000) == 0xF000000000000000) {
+        // int, AT_FDCWD(ffffff9c) or fd
+        filename_index = 0;
+    }
+
+    filename = (struct filename *)args->args[filename_index];
+    if (!filename || IS_ERR(filename)) return;
+
+    if (!strcmp(current_su_path, filename->name)) {
+        uid_t uid = current_uid();
+        if (!is_su_allow_uid(uid)) return;
+        struct su_profile profile = profile_su_allow_uid(uid);
+
+        uid_t to_uid = profile.to_uid;
+        const char *sctx = profile.scontext;
+        commit_su(to_uid, sctx);
+
+        struct file *filp = filp_open(apd_path, O_RDONLY, 0);
+        if (!filp || IS_ERR(filp)) {
+            logkfi("call su uid: %d, to_uid: %d, sctx: %s\n", uid, to_uid, sctx);
+            strcpy((char *)filename->name, sh_path);
+        } else {
+            filp_close(filp, 0);
+            strcpy((char *)filename->name, apd_path);
+            int cplen = 0;
+            if (strcmp(legacy_su_path, filename->name)) {
+                const char *__user p0 =
+                    get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], 0);
+                cplen = compat_copy_to_user((char *__user)p0, legacy_su_path, sizeof(legacy_su_path));
+            }
+            logkfi("call apd uid: %d, to_uid: %d, sctx: %s, cplen: %d\n", uid, to_uid, sctx, cplen);
+        }
+    } else if (!strcmp(SUPERCMD, filename->name)) {
+        void *ua0 = (void *)args->args[filename_index + 1];
+        void *ua1 = (void *)args->args[filename_index + 2];
+
+        // key
+        const char __user *p1 = get_user_arg_ptr(ua0, ua1, 1);
+        if (IS_ERR(p1)) return;
+
+        // auth skey
+        char arg1[SUPER_KEY_LEN];
+        arg1[0] = '\0';
+        if (compat_strncpy_from_user(arg1, p1, sizeof(arg1)) <= 0) return;
+        if (auth_superkey(arg1)) return;
+
+        commit_su(0, 0);
+
+        // real command
+#define EMBEDDED_NAME_MAX (PATH_MAX - sizeof(*filename) - 128) // enough
+
+        const char __user *p2 = get_user_arg_ptr(ua0, ua1, 2);
+        if (!p2 || IS_ERR(p2)) {
+            strcpy((char *)filename->name, sh_path);
+        } else {
+            compat_strncpy_from_user((char *)filename->name, p2, EMBEDDED_NAME_MAX);
+        }
+        logkfi("supercmd %s\n", filename->name);
+
+        // shift args
+        args->args[filename_index + (has_config_compat ? 2 : 1)] += 2 * ((has_config_compat && ua0) ? 4 : 8);
+    }
+    return;
+}
+
+// static long do_faccessat(int dfd, const char __user *filename, int mode, int flags)
+// SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
+// SYSCALL_DEFINE4(faccessat2, int, dfd, const char __user *, filename, int, mode, int, flags)
+static void before_faccessat(hook_fargs4_t *args, void *udata)
+{
+    uid_t uid = current_uid();
+    if (!is_su_allow_uid(uid)) return;
+
+    char __user *filename = (char __user *)args->arg1;
+
+    int is_syscall = (uint64_t)udata;
+    if (is_syscall) filename = (char __user *)syscall_argn(args, 1);
+
+    char buf[SU_PATH_MAX_LEN];
+    buf[0] = '\0';
+    compat_strncpy_from_user(buf, filename, sizeof(buf));
+    if (strcmp(current_su_path, buf)) return;
+
+    logkfd("uid: %d\n", uid);
+    args->ret = 0;
+    args->skip_origin = 1;
+}
+
+// SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename, struct stat __user *, statbuf, int, flag)
+static void before_sysfstatat(hook_fargs4_t *args, void *udata)
+{
+    uid_t uid = current_uid();
+    if (!is_su_allow_uid(uid)) return;
+
+    char *__user filename = (char *__user)syscall_argn(args, 1);
+
+    char buf[SU_PATH_MAX_LEN];
+    buf[0] = '\0';
+    compat_strncpy_from_user(buf, filename, sizeof(buf));
+    if (!strcmp(current_su_path, buf)) {
+        void *__user uptr = copy_to_user_stack(sh_path, sizeof(sh_path));
+        if (uptr && !IS_ERR(uptr)) set_syscall_argn(args, 1, (uint64_t)uptr);
+        logkfd("uid: %d, %llx\n", uid, uptr);
+    }
+    return;
+}
+
+// int vfs_statx(int dfd, struct filename *filename, int flags, struct kstat *stat, u32 request_mask)
+// int vfs_fstatat(int dfd, const char __user *filename, struct kstat *stat, int flags)
+// int vfs_statx(int dfd, const char __user *filename, int flags, struct kstat *stat, u32 request_mask)
+static void before_stat(hook_fargs8_t *args, void *udata)
+{
+    uid_t uid = current_uid();
+    if (!is_su_allow_uid(uid)) return;
+
+    if ((args->arg1 & 0xF000000000000000) == 0xF000000000000000) {
+        struct filename *filename = (struct filename *)args->arg1;
+        if (IS_ERR(filename)) return;
+        if (!strcmp(current_su_path, filename->name)) {
+            logkfd("0 uid: %d\n", uid);
+            strcpy((char *)filename->name, sh_path);
+            return;
+        }
+    } else {
+        char __user *filename = (char __user *)args->arg1;
+        char buf[SU_PATH_MAX_LEN];
+        buf[0] = '\0';
+        compat_strncpy_from_user(buf, filename, sizeof(buf));
+        if (!strcmp(current_su_path, buf)) {
+            void *__user uptr = copy_to_user_stack(sh_path, sizeof(sh_path));
+            args->arg1 = (uint64_t)uptr;
+            logkfd("1 uid: %d, %llx\n", uid, uptr);
+        }
+        return;
+    }
+}
+
+#else // SU_COMPAT_HOOK_SYSCALL
 
 static void handle_before_execve(hook_local_t *hook_local, char **__user u_filename_p, char **__user uargv, void *udata)
 {
@@ -481,6 +632,8 @@ static void su_handler_arg1_ufilename_after(hook_fargs6_t *args, void *udata)
 #define su_handler_arg1_ufilename_after 0
 #endif
 
+#endif // SU_COMPAT_HOOK_SYSCALL
+
 int su_compat_init()
 {
     current_su_path = default_su_path;
@@ -502,6 +655,52 @@ int su_compat_init()
 
     hook_err_t rc = HOOK_NO_ERR;
 
+#ifndef SU_COMPAT_HOOK_SYSCALL
+
+    struct patch_symbol *symbol = get_preset_patch_sym();
+
+    if (symbol->do_execveat_common) { // [5.9.0, ) or [3.19, 4.19]
+        rc = hook_wrap8((void *)symbol->do_execveat_common, (void *)before_do_execve, 0, 0);
+        log_boot("hook do_execveat_common rc: %d\n", rc);
+    } else if (symbol->__do_execve_file) { // [4.19, 5.9)
+        rc = hook_wrap8((void *)symbol->__do_execve_file, (void *)before_do_execve, 0, 0);
+        log_boot("hook __do_execve_file rc: %d\n", rc);
+    } else if (symbol->do_execve_common) { // (, 3.19)
+        rc = hook_wrap8((void *)symbol->do_execve_common, (void *)before_do_execve, 0, (void *)1);
+        log_boot("hook do_execve_common rc: %d\n", rc);
+    }
+
+    if (symbol->do_faccessat) {
+        rc = hook_wrap4((void *)symbol->do_faccessat, (void *)before_faccessat, 0, 0);
+        log_boot("hook do_faccessat rc: %d\n", rc);
+    } else {
+        if (symbol->sys_faccessat) {
+            rc = hook_wrap4((void *)symbol->sys_faccessat, (void *)before_faccessat, 0, (void *)1);
+            log_boot("hook sys_faccessat rc: %d\n", rc);
+        }
+        if (symbol->sys_faccessat2) {
+            rc = hook_wrap4((void *)symbol->sys_faccessat2, (void *)before_faccessat, 0, (void *)1);
+            log_boot("hook sys_faccessat2 rc: %d\n", rc);
+        }
+    }
+
+    if (symbol->sys_newfstatat) {
+        rc = hook_wrap4((void *)symbol->sys_newfstatat, (void *)before_sysfstatat, 0, (void *)1);
+        log_boot("hook sys_newfstatat rc: %d\n", rc);
+    } else { // never reach
+        if (symbol->vfs_statx) {
+            rc = hook_wrap8((void *)symbol->vfs_statx, (void *)before_stat, 0, (void *)0);
+            log_boot("hook vfs_statx rc: %d\n", rc);
+        }
+
+        if (symbol->vfs_fstatat) {
+            rc = hook_wrap8((void *)symbol->vfs_fstatat, (void *)before_stat, 0, (void *)0);
+            log_boot("hook vfs_fstatat rc: %d\n", rc);
+        }
+    }
+
+#else
+
     rc = fp_hook_syscalln(__NR_execve, 3, before_execve, after_execve, (void *)__NR_execve);
     log_boot("hook __NR_execve rc: %d\n", rc);
 
@@ -519,6 +718,8 @@ int su_compat_init()
     rc = fp_hook_syscalln(__NR_faccessat2, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
                           (void *)__NR_faccessat2);
     log_boot("hook __NR_faccessat2 rc: %d\n", rc);
+
+#endif
 
     return rc;
 }

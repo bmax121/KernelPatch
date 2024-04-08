@@ -52,6 +52,7 @@ void reset_superkey(const char *key)
 {
     lib_strncpy(superkey, key, SUPER_KEY_LEN - 1);
     superkey[SUPER_KEY_LEN - 1] = '\0';
+    dsb(ish);
 }
 
 void enable_auth_root_key(int enable)
