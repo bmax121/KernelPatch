@@ -118,22 +118,22 @@ struct pt_regs *_task_pt_reg(struct task_struct *task)
 {
     unsigned long stack = (unsigned long)task_stack_page(task);
     uintptr_t addr = (uintptr_t)(thread_size + stack);
-    if (pt_regs_offset > 0) {
-        addr -= pt_regs_offset;
-    } else {
+    // if (pt_regs_offset > 0) {
+    //     addr -= pt_regs_offset;
+    // } else {
 #ifndef ANDROID
-        if (kver < VERSION(4, 4, 19)) {
-            addr -= sizeof(struct pt_regs_lt4419);
-        } else
+    if (kver < VERSION(4, 4, 19)) {
+        addr -= sizeof(struct pt_regs_lt4419);
+    } else
 #endif
-            if (kver < VERSION(4, 14, 0)) {
-            addr -= sizeof(struct pt_regs_lt4140);
-        } else if (kver < VERSION(5, 10, 0)) {
-            addr -= sizeof(struct pt_regs_lt5100);
-        } else {
-            addr -= sizeof(struct pt_regs);
-        }
+        if (kver < VERSION(4, 14, 0)) {
+        addr -= sizeof(struct pt_regs_lt4140);
+    } else if (kver < VERSION(5, 10, 0)) {
+        addr -= sizeof(struct pt_regs_lt5100);
+    } else {
+        addr -= sizeof(struct pt_regs);
     }
+    // }
 
     return (struct pt_regs *)(addr);
 }
