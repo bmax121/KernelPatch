@@ -475,7 +475,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
         start_offset = align_ceil(out_all_len, SZ_4K);
         tools_logi("patch overlap, move start from 0x%x to 0x%x\n", align_kernel_size, start_offset);
     }
-    tools_logi("layout kimg: 0x0-0x%x, kpimg: 0x%x,0x%x, extra: 0x%x,0x%x, end: 0x%x, start: 0x%x\n", ori_kimg_len,
+    tools_logi("layout kimg: 0x0,0x%x, kpimg: 0x%x,0x%x, extra: 0x%x,0x%x, end: 0x%x, start: 0x%x\n", ori_kimg_len,
                align_kimg_len, kpimg_len, out_img_len, extra_size, out_all_len, start_offset);
 
     kernel_file_t out_kernel_file;

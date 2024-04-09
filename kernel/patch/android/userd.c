@@ -128,8 +128,6 @@ static void on_first_app_process()
 {
 }
 
-#define TRY_DIRECT_MODIFY_USER
-
 static void handle_before_execve(hook_local_t *hook_local, char **__user u_filename_p, char **__user uargv,
                                  char **__user uenvp, void *udata)
 {

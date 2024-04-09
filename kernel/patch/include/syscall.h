@@ -13,6 +13,7 @@
 #include <uapi/asm-generic/unistd.h>
 
 extern uintptr_t *sys_call_table;
+extern uintptr_t *compat_sys_call_table;
 extern int has_syscall_wrapper;
 
 const char __user *get_user_arg_ptr(void *a0, void *a1, int nr);
@@ -68,6 +69,21 @@ static inline void fp_unhook_syscall(int nr, void *before, void *after)
     fp_hook_unwrap(fp_addr, before, after);
 }
 
+static inline hook_err_t fp_hook_compat_syscalln(int nr, int narg, void *before, void *after, void *udata)
+{
+    if (!compat_sys_call_table) return HOOK_BAD_ADDRESS;
+    uintptr_t fp_addr = (uintptr_t)(compat_sys_call_table + nr);
+    if (has_syscall_wrapper) narg = 1;
+    return fp_hook_wrap(fp_addr, narg, before, after, udata);
+}
+
+static inline void fp_unhook_compat_syscall(int nr, void *before, void *after)
+{
+    if (!compat_sys_call_table) return;
+    uintptr_t fp_addr = (uintptr_t)(compat_sys_call_table + nr);
+    fp_hook_unwrap(fp_addr, before, after);
+}
+
 /*
 xxx.cfi_jt example:
 hint #0x22
@@ -83,6 +99,21 @@ static inline hook_err_t inline_hook_syscalln(int nr, int narg, void *before, vo
 static inline void inline_unhook_syscall(int nr, void *before, void *after)
 {
     uintptr_t fp = sys_call_table[nr];
+    hook_unwrap((void *)fp, before, after);
+}
+
+static inline hook_err_t inline_hook_compat_syscalln(int nr, int narg, void *before, void *after, void *udata)
+{
+    if (!compat_sys_call_table) return HOOK_BAD_ADDRESS;
+    uintptr_t fp = compat_sys_call_table[nr];
+    if (has_syscall_wrapper) narg = 1;
+    return hook_wrap((void *)fp, narg, before, after, udata);
+}
+
+static inline void inline_unhook_compat_syscall(int nr, void *before, void *after)
+{
+    if (!compat_sys_call_table) return;
+    uintptr_t fp = compat_sys_call_table[nr];
     hook_unwrap((void *)fp, before, after);
 }
 

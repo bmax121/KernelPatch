@@ -22,6 +22,9 @@
 uintptr_t *sys_call_table = 0;
 KP_EXPORT_SYMBOL(sys_call_table);
 
+uintptr_t *compat_sys_call_table = 0;
+KP_EXPORT_SYMBOL(compat_sys_call_table);
+
 int has_syscall_wrapper = 0;
 KP_EXPORT_SYMBOL(has_syscall_wrapper);
 
@@ -71,15 +74,18 @@ const char __user *get_user_arg_ptr(void *a0, void *a1, int nr)
 
 int set_user_arg_ptr(void *a0, void *a1, int nr, uintptr_t val)
 {
+    uintptr_t valp = (uintptr_t)&val;
     char __user *const __user *native = (char __user *const __user *)a0;
     int size = 8;
     if (has_config_compat) {
         native = (char __user *const __user *)a1;
-        if (a0) size = 4; // compat
+        if (a0) {
+            size = 4; // compat
+            valp += 4;
+        }
     }
     native = (char __user *const __user *)((unsigned long)native + nr * size);
-    uintptr_t valarr[1] = { val };
-    int cplen = compat_copy_to_user((void *)native, (void *)valarr, size);
+    int cplen = compat_copy_to_user((void *)native, (void *)valp, size);
     return cplen == size ? 0 : cplen;
 }
 
@@ -256,6 +262,9 @@ int syscall_init()
         goto out;
     }
     log_boot("sys_call_table addr: %llx\n", sys_call_table);
+
+    compat_sys_call_table = (typeof(compat_sys_call_table))kallsyms_lookup_name("compat_sys_call_table");
+    log_boot("compat_sys_call_table addr: %llx\n", compat_sys_call_table);
 
     has_config_compat = 0;
     has_syscall_wrapper = 0;
