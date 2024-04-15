@@ -274,16 +274,17 @@ struct page;
 struct address_space;
 struct task_struct;
 
+char *kfunc_def(strndup_user)(const char __user *, long) = 0;
+void *kfunc_def(memdup_user)(const void __user *, size_t) = 0;
+void *kfunc_def(vmemdup_user)(const void __user *, size_t) = 0;
+void *kfunc_def(memdup_user_nul)(const void __user *, size_t) = 0;
+
 void kfunc_def(kfree_const)(const void *x) = 0;
 char *kfunc_def(kstrdup)(const char *s, gfp_t gfp) = 0;
 const char *kfunc_def(kstrdup_const)(const char *s, gfp_t gfp) = 0;
 char *kfunc_def(kstrndup)(const char *s, size_t max, gfp_t gfp) = 0;
 void *kfunc_def(kmemdup)(const void *src, size_t len, gfp_t gfp) = 0;
 char *kfunc_def(kmemdup_nul)(const char *s, size_t len, gfp_t gfp) = 0;
-void *kfunc_def(memdup_user)(const void __user *src, size_t len) = 0;
-void *kfunc_def(vmemdup_user)(const void __user *src, size_t len) = 0;
-char *kfunc_def(strndup_user)(const char __user *s, long n) = 0;
-void *kfunc_def(memdup_user_nul)(const void __user *src, size_t len) = 0;
 unsigned long kfunc_def(vm_mmap)(struct file *file, unsigned long addr, unsigned long len, unsigned long prot,
                                  unsigned long flag, unsigned long offset) = 0;
 void *kfunc_def(kvmalloc_node)(size_t size, gfp_t flags, int node) = 0;
@@ -311,7 +312,7 @@ static void _linux_mm_utils_sym_match(const char *name, unsigned long addr)
     kfunc_match(memdup_user, name, addr);
     // kfunc_match(vmemdup_user, name, addr);
     kfunc_match(strndup_user, name, addr);
-    kfunc_match(memdup_user_nul, name, addr);
+    // kfunc_match(memdup_user_nul, name, addr);
     // kfunc_match(vm_mmap, name, addr);
     // kfunc_match(kvmalloc_node, name, addr);
     kfunc_match(kvfree, name, addr);

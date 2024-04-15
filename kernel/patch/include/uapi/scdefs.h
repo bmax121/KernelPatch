@@ -69,6 +69,7 @@ struct su_profile
 
 #define ANDROID_SU_PATH "/system/bin/kp"
 #define ANDROID_LEGACY_SU_PATH "/system/bin/su"
+#define ANDROID_ECHO_PATH "/system/bin/echo"
 #define KPATCH_DATA_PATH "/data/adb/kpatch"
 #define KPATCH_DEV_PATH "/dev/kpatch"
 #define KPATCH_DEV_WORK_DIR "/dev/kp/"

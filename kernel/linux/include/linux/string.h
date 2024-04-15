@@ -6,11 +6,15 @@
 #include <linux/gfp.h>
 #include <linux/panic.h>
 
+extern char *kfunc_def(strndup_user)(const char __user *, long);
+extern void *kfunc_def(memdup_user)(const void __user *, size_t);
+extern void *kfunc_def(vmemdup_user)(const void __user *, size_t);
+extern void *kfunc_def(memdup_user_nul)(const void __user *, size_t);
+
 extern void kfunc_def(kfree_const)(const void *x);
 extern char *kfunc_def(kstrdup)(const char *s, gfp_t gfp);
 extern const char *kfunc_def(kstrdup_const)(const char *s, gfp_t gfp);
 extern char *kfunc_def(kstrndup)(const char *s, size_t len, gfp_t gfp);
-extern void *kfunc_def(memdup_user)(const void __user *src, size_t len);
 extern void *kfunc_def(kmemdup)(const void *src, size_t len, gfp_t gfp);
 extern char *kfunc_def(kmemdup_nul)(const char *s, size_t len, gfp_t gfp);
 extern char **kfunc_def(argv_split)(gfp_t gfp, const char *str, int *argcp);
@@ -90,6 +94,11 @@ static inline void *kmemdup(const void *src, size_t len, gfp_t gfp)
 static inline char *kmemdup_nul(const char *s, size_t len, gfp_t gfp)
 {
     kfunc_direct_call(kmemdup_nul, s, len, gfp);
+}
+
+static inline char *strndup_user(const void __user *s, long len)
+{
+    kfunc_direct_call(strndup_user, s, len);
 }
 
 static inline void *memdup_user(const void __user *src, size_t len)

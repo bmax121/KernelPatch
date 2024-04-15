@@ -96,8 +96,6 @@ KP_EXPORT_SYMBOL(compat_copy_to_user);
 
 long compat_strncpy_from_user(char *dest, const char __user *src, long count)
 {
-    kfunc_call(strncpy_from_user_nofault, dest, src, count);
-    kfunc_call(strncpy_from_unsafe_user, dest, src, count);
     if (kfunc(strncpy_from_user)) {
         long rc = kfunc(strncpy_from_user)(dest, src, count);
         if (rc >= count) {
@@ -108,6 +106,8 @@ long compat_strncpy_from_user(char *dest, const char __user *src, long count)
         }
         return rc;
     }
+    kfunc_call(strncpy_from_user_nofault, dest, src, count);
+    kfunc_call(strncpy_from_unsafe_user, dest, src, count);
     return 0;
 }
 KP_EXPORT_SYMBOL(compat_strncpy_from_user);

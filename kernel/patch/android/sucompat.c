@@ -42,6 +42,7 @@
 static const char sh_path[] = ANDROID_SH_PATH;
 static const char default_su_path[] = ANDROID_SU_PATH;
 static const char legacy_su_path[] = ANDROID_LEGACY_SU_PATH;
+static const char echo_path[] = ANDROID_ECHO_PATH;
 static const char *current_su_path = 0;
 static const char apd_path[] = APD_PATH;
 
@@ -396,6 +397,66 @@ static void before_sysfstatat(hook_fargs4_t *args, void *udata)
 
 // #define TRY_DIRECT_MODIFY_USER
 
+static void handle_supercmd(char **__user u_filename_p, char **__user uargv)
+{
+    // allow root-allowed user use supercmd
+    static int allow_root_supercmd = 1;
+
+    // key
+    const char __user *p1 = get_user_arg_ptr(0, *uargv, 1);
+    if (!p1 || IS_ERR(p1)) return;
+
+    // auth key
+    char arg1[SUPER_KEY_LEN];
+    if (compat_strncpy_from_user(arg1, p1, sizeof(arg1)) <= 0) return;
+
+    if (!auth_superkey(arg1)) {
+        commit_su(0, 0);
+    } else if (allow_root_supercmd && !strcmp("cmd_as_root", arg1)) {
+        uid_t uid = current_uid();
+        if (!is_su_allow_uid(uid)) return;
+        struct su_profile profile = profile_su_allow_uid(uid);
+        commit_su(profile.to_uid, profile.scontext);
+    } else {
+        return;
+    }
+
+    // args, [2, 16)
+    const char *parr[16] = { 0 };
+    for (int i = 2; i < sizeof(parr) / sizeof(parr[0]); i++) {
+        const char __user *ua = get_user_arg_ptr(0, *uargv, i);
+        if (!ua || IS_ERR(ua)) break;
+        const char *a = strndup_user(ua, 256);
+        if (IS_ERR(a)) break;
+        parr[i] = a;
+    }
+
+    const char *cmd = parr[2];
+    if (!cmd) goto free;
+
+    if (!strcmp(cmd, "help")) {
+    } else if (!strcmp(parr[3], "su")) {
+    } else {
+    }
+
+free:
+    // free args
+    for (int i = 2; i < sizeof(parr) / sizeof(parr[0]); i++) {
+        const char *a = parr[i];
+        if (!a) break;
+        kfree(a);
+    }
+
+    //     int cplen = 0;
+    // #ifdef TRY_DIRECT_MODIFY_USER
+    //     cplen = compat_copy_to_user(*u_filename_p, exec, exec_len);
+    // #endif
+    //     if (cplen <= 0) *u_filename_p = copy_to_user_stack(exec, exec_len);
+
+    //     // shift args
+    //     *uargv += 2 * (0 ? 4 : 8);
+}
+
 static void handle_before_execve(hook_local_t *hook_local, char **__user u_filename_p, char **__user uargv, void *udata)
 {
 #ifdef TRY_DIRECT_MODIFY_USER
@@ -485,41 +546,9 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
         }
 
     } else if (!strcmp(SUPERCMD, filename)) {
-        // key
-        const char __user *p1 = get_user_arg_ptr(is_compact, *uargv, 1);
-        if (!p1 || IS_ERR(p1)) return;
-
-        // auth key
-        char arg1[SUPER_KEY_LEN];
-        if (compat_strncpy_from_user(arg1, p1, sizeof(arg1)) <= 0) return;
-        if (auth_superkey(arg1)) return;
-
-        commit_su(0, 0);
-
-        // real command
-#define EMBEDDED_NAME_MAX (PATH_MAX - sizeof(*filename) - 128) // enough
-
-        const char *exec = sh_path;
-        int exec_len = sizeof(sh_path);
-        const char __user *p2 = get_user_arg_ptr(is_compact, *uargv, 2);
-
-        if (p1 && !IS_ERR(p2)) {
-            char buffer[EMBEDDED_NAME_MAX];
-            int len = compat_strncpy_from_user(buffer, p2, EMBEDDED_NAME_MAX);
-            if (len >= 0) {
-                exec = buffer;
-                exec_len = len;
-            }
-        }
-
-        int cplen = 0;
-#ifdef TRY_DIRECT_MODIFY_USER
-        cplen = compat_copy_to_user(*u_filename_p, exec, exec_len);
-#endif
-        if (cplen <= 0) *u_filename_p = copy_to_user_stack(exec, exec_len);
-
-        // shift args
-        *uargv += 2 * (is_compact ? 4 : 8);
+        if (is_compact) return;
+        handle_supercmd(u_filename_p, uargv);
+        return;
     }
 }
 
