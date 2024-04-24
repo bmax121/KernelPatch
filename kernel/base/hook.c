@@ -333,11 +333,14 @@ int32_t branch_from_to(uint32_t *tramp_buf, uint64_t src_addr, uint64_t dst_addr
 #if 0
     uint32_t len = branch_relative(tramp_buf, src_addr, dst_addr);
     if (len) return len;
-#endif
-    // return branch_absolute(tramp_buf, dst_addr);
+#else
+#if 0
+    return branch_absolute(tramp_buf, dst_addr);
+#else
     return ret_absolute(tramp_buf, dst_addr);
+#endif
+#endif
 }
-KP_EXPORT_SYMBOL(branch_from_to);
 
 // transit0
 typedef uint64_t (*transit0_func_t)();

@@ -23,14 +23,16 @@ int supercall_install();
 #ifdef ANDROID
 int kpuserd_init();
 int su_compat_init();
-int su_add_allow_uid(uid_t uid, struct su_profile *profile, int async);
+int su_add_allow_uid(uid_t uid, uid_t to_uid, const char *scontext, int async);
 int su_remove_allow_uid(uid_t uid, int async);
 int su_allow_uid_nums();
-int su_allow_uids(uid_t *__user uuids, int unum);
-int su_allow_uid_profile(uid_t uid, struct su_profile *__user uprofile);
+int su_allow_uids(int is_user, uid_t *out_uids, int out_num);
+int su_allow_uid_profile(int is_user, uid_t uid, struct su_profile *profile);
 int su_reset_path(const char *path);
-int su_get_path(char *__user ubuf, int buf_len);
-long supercall_android(long cmd, long arg1, long arg2, long arg3);
+const char *su_get_path();
+long supercall_android(long cmd, long arg1, long arg2,
+
+                       long arg3);
 #endif
 
 #endif

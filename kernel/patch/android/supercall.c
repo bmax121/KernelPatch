@@ -18,13 +18,14 @@
 #include <linux/string.h>
 #include <linux/err.h>
 #include <linux/slab.h>
+#include <kputils.h>
 #include <uapi/asm-generic/errno.h>
 
-static long call_grant_uid(uid_t uid, struct su_profile *__user uprofile)
+static long call_grant_uid(struct su_profile *__user uprofile)
 {
     struct su_profile *profile = memdup_user(uprofile, sizeof(struct su_profile));
     if (!profile || IS_ERR(profile)) return PTR_ERR(profile);
-    int rc = su_add_allow_uid(uid, profile, 1);
+    int rc = su_add_allow_uid(profile->uid, profile->to_uid, profile->scontext, 1);
     kvfree(profile);
     return rc;
 }
@@ -41,31 +42,32 @@ static long call_su_allow_uid_nums()
 
 static long call_su_list_allow_uid(uid_t *__user uids, int num)
 {
-    return su_allow_uids(uids, num);
+    return su_allow_uids(1, uids, num);
 }
 
 static long call_su_allow_uid_profile(uid_t uid, struct su_profile *__user uprofile)
 {
-    return su_allow_uid_profile(uid, uprofile);
+    return su_allow_uid_profile(1, uid, uprofile);
 }
 
 static long call_reset_su_path(const char *__user upath)
 {
-    char path[SU_PATH_MAX_LEN];
-    compat_strncpy_from_user(path, upath, sizeof(path));
-    return su_reset_path(path);
+    return su_reset_path(strndup_user(upath, SU_PATH_MAX_LEN));
 }
 
 static long call_su_get_path(char *__user ubuf, int buf_len)
 {
-    return su_get_path(ubuf, buf_len);
+    const char *path = su_get_path();
+    int len = strlen(path);
+    if (buf_len <= len) return -ENOBUFS;
+    return compat_copy_to_user(ubuf, path, len + 1);
 }
 
 long supercall_android(long cmd, long arg1, long arg2, long arg3)
 {
     switch (cmd) {
     case SUPERCALL_SU_GRANT_UID:
-        return call_grant_uid((uid_t)arg1, (struct su_profile * __user) arg2);
+        return call_grant_uid((struct su_profile * __user) arg1);
     case SUPERCALL_SU_REVOKE_UID:
         return call_revoke_uid((uid_t)arg1);
     case SUPERCALL_SU_NUMS:

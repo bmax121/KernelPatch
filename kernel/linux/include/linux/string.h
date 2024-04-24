@@ -66,6 +66,9 @@ extern void *kfunc_def(memchr_inv)(const void *start, int c, size_t bytes);
 extern char *kfunc_def(strreplace)(char *s, char old, char new);
 extern void kfunc_def(fortify_panic)(const char *name);
 
+extern int __must_check kfunc_def(kstrtoull)(const char *s, unsigned int base, unsigned long long *res);
+extern int __must_check kfunc_def(kstrtoll)(const char *s, unsigned int base, long long *res);
+
 static inline void kfree_const(const void *x)
 {
     kfunc_direct_call(kfree_const, x);
@@ -339,6 +342,16 @@ static inline char *strreplace(char *s, char old, char new)
 static inline void fortify_panic(const char *name)
 {
     kfunc_direct_call(fortify_panic, name);
+}
+
+static inline int __must_check kstrtoull(const char *s, unsigned int base, unsigned long long *res)
+{
+    kfunc_direct_call(kstrtoull, s, base, res);
+}
+
+static inline int __must_check kstrtoll(const char *s, unsigned int base, long long *res)
+{
+    kfunc_direct_call(kstrtoll, s, base, res);
 }
 
 #endif

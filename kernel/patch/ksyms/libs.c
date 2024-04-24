@@ -132,6 +132,11 @@ KP_EXPORT_SYMBOL(kfunc(strreplace));
 void kfunc_def(fortify_panic)(const char *name) = 0;
 KP_EXPORT_SYMBOL(kfunc(fortify_panic));
 
+int __must_check kfunc_def(kstrtoull)(const char *s, unsigned int base, unsigned long long *res) = 0;
+KP_EXPORT_SYMBOL(kfunc(kstrtoull));
+int __must_check kfunc_def(kstrtoll)(const char *s, unsigned int base, long long *res) = 0;
+KP_EXPORT_SYMBOL(kfunc(kstrtoll));
+
 static void _linux_lib_string_sym_match(const char *name, unsigned long addr)
 {
     kfunc_match(strncasecmp, name, addr);
@@ -178,6 +183,8 @@ static void _linux_lib_string_sym_match(const char *name, unsigned long addr)
     kfunc_match(memchr_inv, name, addr);
     kfunc_match(strreplace, name, addr);
     // kfunc_match(fortify_panic, name, addr);
+    kfunc_match(kstrtoull, name, addr);
+    kfunc_match(kstrtoll, name, addr);
 }
 
 // lib/argv_split.c

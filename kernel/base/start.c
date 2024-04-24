@@ -41,7 +41,7 @@ KP_EXPORT_SYMBOL(lookup_symbol_attrs);
 void (*printk)(const char *fmt, ...) = 0;
 KP_EXPORT_SYMBOL(printk);
 
-int (*vsprintf)(char *buf, const char *fmt, va_list args) = 0;
+int (*vsnprintf)(char *buf, size_t size, const char *fmt, va_list args);
 
 static struct vm_struct
 {
@@ -116,7 +116,7 @@ void log_boot(const char *fmt, ...)
 {
     va_list va;
     va_start(va, fmt);
-    int ret = vsprintf(boot_log + boot_log_offset, fmt, va);
+    int ret = vsnprintf(boot_log + boot_log_offset, sizeof(boot_log) - boot_log_offset, fmt, va);
     va_end(va);
     printk("KP %s", boot_log + boot_log_offset);
     boot_log_offset += ret;
@@ -389,7 +389,7 @@ static void start_init(uint64_t kimage_voff, uint64_t linear_voff)
     printk = (typeof(printk))kallsyms_lookup_name("printk");
     if (!printk) printk = (typeof(printk))kallsyms_lookup_name("_printk");
 
-    vsprintf = (typeof(vsprintf))kallsyms_lookup_name("vsprintf");
+    vsnprintf = (typeof(vsnprintf))kallsyms_lookup_name("vsnprintf");
 
     log_boot(KERNEL_PATCH_BANNER);
 

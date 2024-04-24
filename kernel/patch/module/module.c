@@ -460,6 +460,7 @@ out:
 // todo: lock
 long unload_module(const char *name, void *__user reserved)
 {
+    if (!name) return -EINVAL;
     logkfe("name: %s\n", name);
 
     rcu_read_lock();
@@ -490,6 +491,7 @@ long load_module_path(const char *path, const char *args, void *__user reserved)
 {
     long rc = 0;
     logkfd("%s\n", path);
+    if (!path) return -EINVAL;
 
     struct file *filp = filp_open(path, O_RDONLY, 0);
     if (unlikely(!filp || IS_ERR(filp))) {
@@ -527,7 +529,7 @@ out:
 
 long module_control0(const char *name, const char *ctl_args, char *__user out_msg, int outlen)
 {
-    if (!ctl_args) return -EINVAL;
+    if (!name || !ctl_args) return -EINVAL;
     int args_len = strlen(ctl_args);
     if (args_len <= 0) return -EINVAL;
 
@@ -653,6 +655,8 @@ int get_module_info(const char *name, char *out_info, int size)
                       "args=%s\n",
                       mod->info.name, mod->info.version, mod->info.license, mod->info.author, mod->info.description,
                       mod->args);
+
+    if (sz > 0) out_info[sz - 1] = '\0';
     logkfd("%s", out_info);
 
     rcu_read_unlock();

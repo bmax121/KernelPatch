@@ -50,6 +50,9 @@ typedef int8_t chain_item_state;
 #define FP_HOOK_CHAIN_NUM 0x20
 
 #define ARM64_NOP 0xd503201f
+#define ARM64_BTI_C 0xd503245f
+#define ARM64_BTI_J 0xd503249f
+#define ARM64_BTI_JC 0xd50324df
 
 typedef struct
 {

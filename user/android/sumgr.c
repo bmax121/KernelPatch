@@ -12,7 +12,7 @@
 
 #include "../supercall.h"
 
-int su_grant(const char *key, uid_t uid, uid_t to_uid, const char *scontext)
+int su_grant(const char *key, uid_t to_uid, const char *scontext)
 {
     struct su_profile profile = { 0 };
     profile.uid = uid;

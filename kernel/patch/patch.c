@@ -87,8 +87,8 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
     rc = su_compat_init();
     log_boot("su_compat_init done: %d\n", rc);
 
-    rc = kpuserd_init();
-    log_boot("kpuserd_init done: %d\n", rc);
+    // rc = kpuserd_init();
+    // log_boot("kpuserd_init done: %d\n", rc);
 #endif
 
 out:

@@ -15,6 +15,8 @@
 #include <linux/err.h>
 #include <linux/errno.h>
 #include <linux/random.h>
+#include <linux/sched.h>
+#include <linux/cred.h>
 
 extern int kfunc_def(xt_data_to_user)(void __user *dst, const void *src, int usersize, int size, int aligned_size);
 
@@ -156,3 +158,12 @@ uint64_t get_random_u64(void)
     return rand_next();
 }
 KP_EXPORT_SYMBOL(get_random_u64);
+
+// todo: rcu_dereference_protected
+uid_t current_uid()
+{
+    struct cred *cred = *(struct cred **)((uintptr_t)current + task_struct_offset.cred_offset);
+    uid_t uid = *(uid_t *)((uintptr_t)cred + cred_offset.uid_offset);
+    return uid;
+}
+KP_EXPORT_SYMBOL(current_uid);
