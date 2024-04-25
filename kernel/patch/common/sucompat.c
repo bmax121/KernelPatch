@@ -39,10 +39,15 @@
 #include <symbol.h>
 #include <uapi/linux/limits.h>
 
+#ifdef ANDROID
 const char sh_path[] = ANDROID_SH_PATH;
 const char default_su_path[] = ANDROID_SU_PATH;
 const char legacy_su_path[] = ANDROID_LEGACY_SU_PATH;
 const char apd_path[] = APD_PATH;
+#else
+const char sh_path[] = LINUX_SH_PATH;
+const char default_su_path[] = LINUX_SU_PATH;
+#endif
 
 static const char *current_su_path = 0;
 
@@ -253,144 +258,6 @@ KP_EXPORT_SYMBOL(su_get_path);
 
 #ifdef SU_COMPAT_INLINE_HOOK
 
-// int do_execveat_common(int fd, struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp, int flags)
-// int __do_execve_file(int fd, struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp, int flags,
-//                      struct file *file);
-// static int do_execve_common(struct filename *filename, struct user_arg_ptr argv, struct user_arg_ptr envp)
-static void before_do_execve(hook_fargs8_t *args, void *udata)
-{
-    struct filename *filename;
-    int filename_index = 1;
-
-    if (udata && (((uintptr_t)args->arg0) & 0xF000000000000000) == 0xF000000000000000) {
-        // int, AT_FDCWD(ffffff9c) or fd
-        filename_index = 0;
-    }
-
-    filename = (struct filename *)args->args[filename_index];
-    if (!filename || IS_ERR(filename)) return;
-
-    if (!strcmp(current_su_path, filename->name)) {
-        uid_t uid = current_uid();
-        if (!is_su_allow_uid(uid)) return;
-        struct su_profile profile = profile_su_allow_uid(uid);
-
-        uid_t to_uid = profile.to_uid;
-        const char *sctx = profile.scontext;
-        commit_su(to_uid, sctx);
-
-        struct file *filp = filp_open(apd_path, O_RDONLY, 0);
-        if (!filp || IS_ERR(filp)) {
-            logkfi("call su uid: %d, to_uid: %d, sctx: %s\n", uid, to_uid, sctx);
-            strcpy((char *)filename->name, sh_path);
-        } else {
-            filp_close(filp, 0);
-            strcpy((char *)filename->name, apd_path);
-            int cplen = 0;
-            if (strcmp(legacy_su_path, filename->name)) {
-                const char *__user p0 =
-                    get_user_arg_ptr((void *)args->args[filename_index + 1], (void *)args->args[filename_index + 2], 0);
-                cplen = compat_copy_to_user((char *__user)p0, legacy_su_path, sizeof(legacy_su_path));
-            }
-            logkfi("call apd uid: %d, to_uid: %d, sctx: %s, cplen: %d\n", uid, to_uid, sctx, cplen);
-        }
-    } else if (!strcmp(SUPERCMD, filename->name)) {
-        void *ua0 = (void *)args->args[filename_index + 1];
-        void *ua1 = (void *)args->args[filename_index + 2];
-
-        // key
-        const char __user *p1 = get_user_arg_ptr(ua0, ua1, 1);
-        if (IS_ERR(p1)) return;
-
-        // auth skey
-        char arg1[SUPER_KEY_LEN];
-        if (compat_strncpy_from_user(arg1, p1, sizeof(arg1)) <= 0) return;
-        if (auth_superkey(arg1)) return;
-
-        commit_su(0, 0);
-
-        // real command
-#define EMBEDDED_NAME_MAX (PATH_MAX - sizeof(*filename) - 128) // enough
-
-        const char __user *p2 = get_user_arg_ptr(ua0, ua1, 2);
-        if (!p2 || IS_ERR(p2)) {
-            strcpy((char *)filename->name, sh_path);
-        } else {
-            compat_strncpy_from_user((char *)filename->name, p2, EMBEDDED_NAME_MAX);
-        }
-        logkfi("supercmd %s\n", filename->name);
-
-        // shift args
-        args->args[filename_index + (has_config_compat ? 2 : 1)] += 2 * ((has_config_compat && ua0) ? 4 : 8);
-    }
-    return;
-}
-
-// SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
-// SYSCALL_DEFINE4(faccessat2, int, dfd, const char __user *, filename, int, mode, int, flags)
-static void before_faccessat(hook_fargs4_t *args, void *udata)
-{
-    uid_t uid = current_uid();
-    if (!is_su_allow_uid(uid)) return;
-
-    char __user *filename = (char __user *)syscall_argn(args, 1);
-
-    char buf[SU_PATH_MAX_LEN];
-    compat_strncpy_from_user(buf, filename, sizeof(buf));
-    if (strcmp(current_su_path, buf)) return;
-
-    logkfd("uid: %d\n", uid);
-    args->ret = 0;
-    args->skip_origin = 1;
-}
-
-// SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename, struct stat __user *, statbuf, int, flag)
-static void before_sysfstatat(hook_fargs4_t *args, void *udata)
-{
-    uid_t uid = current_uid();
-    if (!is_su_allow_uid(uid)) return;
-
-    char *__user filename = (char *__user)syscall_argn(args, 1);
-
-    char buf[SU_PATH_MAX_LEN];
-    compat_strncpy_from_user(buf, filename, sizeof(buf));
-    if (!strcmp(current_su_path, buf)) {
-        void *__user uptr = copy_to_user_stack(sh_path, sizeof(sh_path));
-        if (uptr && !IS_ERR(uptr)) set_syscall_argn(args, 1, (uint64_t)uptr);
-        logkfd("uid: %d, %llx\n", uid, uptr);
-    }
-    return;
-}
-
-// int vfs_statx(int dfd, struct filename *filename, int flags, struct kstat *stat, u32 request_mask)
-// int vfs_fstatat(int dfd, const char __user *filename, struct kstat *stat, int flags)
-// int vfs_statx(int dfd, const char __user *filename, int flags, struct kstat *stat, u32 request_mask)
-// static void before_stat(hook_fargs8_t *args, void *udata)
-// {
-//     uid_t uid = current_uid();
-//     if (!is_su_allow_uid(uid)) return;
-
-//     if ((args->arg1 & 0xF000000000000000) == 0xF000000000000000) {
-//         struct filename *filename = (struct filename *)args->arg1;
-//         if (IS_ERR(filename)) return;
-//         if (!strcmp(current_su_path, filename->name)) {
-//             logkfd("0 uid: %d\n", uid);
-//             strcpy((char *)filename->name, sh_path);
-//             return;
-//         }
-//     } else {
-//         char __user *filename = (char __user *)args->arg1;
-//         char buf[SU_PATH_MAX_LEN];
-//         compat_strncpy_from_user(buf, filename, sizeof(buf));
-//         if (!strcmp(current_su_path, buf)) {
-//             void *__user uptr = copy_to_user_stack(sh_path, sizeof(sh_path));
-//             args->arg1 = (uint64_t)uptr;
-//             logkfd("1 uid: %d, %llx\n", uid, uptr);
-//         }
-//         return;
-//     }
-// }
-
 #else // SU_COMPAT_INLINE_HOOK
 
 // #define TRY_DIRECT_MODIFY_USER
@@ -461,6 +328,7 @@ static void handle_before_execve(hook_fargs3_t *args, char **__user u_filename_p
                 }
             }
 
+#ifdef ANDROID
             // argv
             int argv_cplen = 0;
             if (strcmp(legacy_su_path, filename)) {
@@ -483,6 +351,7 @@ static void handle_before_execve(hook_fargs3_t *args, char **__user u_filename_p
                 }
             }
             logkfi("call apd uid: %d, to_uid: %d, sctx: %s, cplen: %d, %d\n", uid, to_uid, sctx, cplen, argv_cplen);
+#endif
         }
 
     } else if (!strcmp(SUPERCMD, filename)) {

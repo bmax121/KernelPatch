@@ -856,12 +856,11 @@ static int _linux_misc_symbol_init(void *data, const char *name, struct module *
     return 0;
 }
 
-int linux_misc_symbol_init()
+void linux_misc_symbol_init()
 {
 #ifdef INIT_USE_KALLSYMS_LOOKUP_NAME
     _linux_misc_symbol_init(0, 0, 0, 0);
 #else
     kallsyms_on_each_symbol(_linux_misc_symbol_init, 0);
 #endif
-    return 0;
 }

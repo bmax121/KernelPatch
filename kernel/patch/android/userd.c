@@ -84,39 +84,9 @@ static loff_t kernel_write_exec(const char *path, const void *data, loff_t len)
     return kernel_write_file(path, data, len, 0744);
 }
 
-static int extract_kpatch_call_back(const patch_extra_item_t *extra, const char *arg, const void *con, void *udata)
-{
-    const char *event = (const char *)udata;
-    if (extra->type == EXTRA_TYPE_EXEC && !strcmp("kpatch", extra->name)) {
-        loff_t size = kernel_write_exec(KPATCH_DEV_PATH, con, extra->con_size);
-        log_boot("%s extract kpatch size: %d\n", event, (long)size);
-    }
-    return 0;
-}
-
-static void try_extract_kpatch(const char *event)
-{
-    set_priv_selinx_allow(current, 1);
-    struct file *fp = filp_open(KPATCH_DEV_PATH, O_RDONLY, 0);
-    if (!fp || IS_ERR(fp)) {
-        on_each_extra_item(extract_kpatch_call_back, (void *)event);
-    } else {
-        filp_close(fp, 0);
-    }
-    set_priv_selinx_allow(current, 0);
-}
-
 static void pre_user_exec_init()
 {
     log_boot("event: %s\n", EXTRA_EVENT_PRE_EXEC_INIT);
-    try_extract_kpatch(EXTRA_EVENT_PRE_EXEC_INIT);
-
-    // struct file *work_dir = filp_open(KPATCH_DEV_WORK_DIR, O_DIRECTORY | O_CREAT, S_IRUSR);
-    // if (!work_dir || IS_ERR(work_dir)) {
-    //     log_boot("creat work dir error: %s\n", KPATCH_DEV_WORK_DIR);
-    //     return;
-    // }
-    // filp_close(work_dir, 0);
 }
 
 static void pre_init_second_stage()
@@ -213,8 +183,8 @@ static void handle_after_execve(hook_local_t *hook_local)
 {
     int unhook = hook_local->data7;
     if (unhook) {
-        fp_unhook_syscall(__NR_execve, before_execve, after_execve);
-        fp_unhook_syscall(__NR_execveat, before_execveat, after_execveat);
+        fp_unhook_syscalln(__NR_execve, before_execve, after_execve);
+        fp_unhook_syscalln(__NR_execveat, before_execveat, after_execveat);
     }
 }
 
@@ -253,30 +223,26 @@ static void after_execveat(hook_fargs5_t *args, void *udata)
 #define ORIGIN_RC_FILE "/system/etc/init/atrace.rc"
 #define REPLACE_RC_FILE "/dev/anduser.rc"
 
+#define ADB_FLODER "/data/adb/"
+#define AP_DIR "/data/adb/ap/"
+#define AP_BIN_DIR AP_DIR "bin/"
+#define AP_LOG_DIR AP_DIR "log/"
+
+static char pkg_cfg_path[] = AP_DIR "package_config";
+static char su_path_path[] = AP_DIR "su_path";
+
 static const char user_rc_data[] = { //
     "\n"
-    "\n"
-    "on early-init\n"
-    "    exec -- " SUPERCMD " %s " KPATCH_DEV_PATH " %s android_user early-init -k\n"
-
     "on post-fs-data\n"
-    "    exec -- " SUPERCMD " %s " KPATCH_DEV_PATH " %s android_user post-fs-data-init -k\n"
-    "    exec -- " SUPERCMD " %s " KPATCH_DATA_PATH " %s android_user post-fs-data-init -k\n"
-    "    exec -- " SUPERCMD " %s " KPATCH_DATA_PATH " %s android_user post-fs-data -k\n"
-
+    "    exec -- " SUPERCMD " su exec " AP_BIN_DIR "magiskpolicy --live --magisk\n"
+    "    exec -- " SUPERCMD " su exec " APD_PATH " post-fs-data\n"
     "on nonencrypted\n"
-    "    exec -- " SUPERCMD " %s " KPATCH_DATA_PATH " %s android_user services -k\n"
-
+    "    exec -- " SUPERCMD " su exec " APD_PATH " services\n"
     "on property:vold.decrypt=trigger_restart_framework\n"
-    "    exec -- " SUPERCMD " %s " KPATCH_DATA_PATH " %s android_user services -k\n"
-
+    "    exec -- " SUPERCMD " su exec " APD_PATH " services\n"
     "on property:sys.boot_completed=1\n"
-    "    rm " REPLACE_RC_FILE "\n"
-    "    rm " KPATCH_DEV_PATH "\n"
-    "    rm " EARLY_INIT_LOG_0 "\n"
-    "    rm " EARLY_INIT_LOG_1 "\n"
-    "    exec -- " SUPERCMD " %s " KPATCH_DATA_PATH " %s android_user boot-completed -k\n"
-    "\n\n"
+    "    exec -- " SUPERCMD " su exec " APD_PATH " boot-completed\n"
+    "\n"
     ""
 };
 
@@ -358,7 +324,7 @@ static void after_openat(hook_fargs4_t *args, void *udata)
         log_boot("restore rc file: %x\n", args->local.data0);
     }
     if (args->local.data2) {
-        fp_unhook_syscall(__NR_openat, before_openat, after_openat);
+        fp_unhook_syscalln(__NR_openat, before_openat, after_openat);
     }
 }
 

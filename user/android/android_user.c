@@ -29,9 +29,9 @@ struct allow_pkg_info
     const char sctx[SUPERCALL_SCONTEXT_LEN];
 };
 
-static char magiskpolicy_path[] = APATCH_BIN_FLODER "magiskpolicy";
-static char pkg_cfg_path[] = APATCH_FLODER "package_config";
-static char su_path_path[] = APATCH_FLODER "su_path";
+static char magiskpolicy_path[] = AP_BIN_DIR "magiskpolicy";
+static char pkg_cfg_path[] = AP_DIR "package_config";
+static char su_path_path[] = AP_DIR "su_path";
 
 extern const char *key;
 static bool from_kernel = false;
@@ -237,7 +237,7 @@ static void post_fs_data_init()
         return;
     }
 
-    if (access(APATCH_FLODER, F_OK)) mkdir(APATCH_FLODER, 0700);
+    if (access(AP_DIR, F_OK)) mkdir(AP_DIR, 0700);
     if (access(APATCH_LOG_FLODER, F_OK)) mkdir(APATCH_LOG_FLODER, 0700);
 
     char *log_args[] = { "/system/bin/cp", "-f", EARLY_INIT_LOG_0, APATCH_LOG_FLODER, NULL };

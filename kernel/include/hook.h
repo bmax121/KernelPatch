@@ -14,13 +14,12 @@
 typedef enum
 {
     HOOK_NO_ERR = 0,
-    HOOK_BAD_ADDRESS = 4089,
-    HOOK_NO_MEM = 4090,
-    HOOK_BAD_RELO = 4091,
-    HOOK_TRANSIT_NO_MEM = 4092,
-    HOOK_CHAIN_FULL = 4093,
-    HOOK_NOT_HOOK = 4094,
-    HOOK_INST_BUSY = 4095,
+    HOOK_BAD_ADDRESS = 4095,
+    HOOK_DUPLICATED = 4094,
+    HOOK_NO_MEM = 4093,
+    HOOK_BAD_RELO = 4092,
+    HOOK_TRANSIT_NO_MEM = 4091,
+    HOOK_CHAIN_FULL = 4090,
 } hook_err_t;
 
 enum hook_type
@@ -62,8 +61,8 @@ typedef struct
     uint64_t replace_addr;
     uint64_t relo_addr;
     // out
-    int32_t tramp_insts_len;
-    int32_t relo_insts_len;
+    int32_t tramp_insts_num;
+    int32_t relo_insts_num;
     uint32_t origin_insts[TRAMPOLINE_NUM] __attribute__((aligned(8)));
     uint32_t tramp_insts[TRAMPOLINE_NUM] __attribute__((aligned(8)));
     uint32_t relo_insts[RELOCATE_INST_NUM] __attribute__((aligned(8)));
@@ -248,10 +247,43 @@ void hook_uninstall(hook_t *hook);
 hook_err_t hook(void *func, void *replace, void **backup);
 void unhook(void *func);
 
-// todo: hook priority
+/**
+ * @brief 
+ * 
+ * @param chain 
+ * @param before 
+ * @param after 
+ * @param udata 
+ * @return hook_err_t 
+ */
 hook_err_t hook_chain_add(hook_chain_t *chain, void *before, void *after, void *udata);
+/**
+ * @brief 
+ * 
+ * @param chain 
+ * @param before 
+ * @param after 
+ */
 void hook_chain_remove(hook_chain_t *chain, void *before, void *after);
+/**
+ * @brief 
+ * 
+ * @param func 
+ * @param argno 
+ * @param before 
+ * @param after 
+ * @param udata 
+ * @return hook_err_t 
+ */
 hook_err_t hook_wrap(void *func, int32_t argno, void *before, void *after, void *udata);
+/**
+ * @brief 
+ * 
+ * @param func 
+ * @param before 
+ * @param after 
+ * @param remove 
+ */
 void hook_unwrap_remove(void *func, void *before, void *after, int remove);
 
 static inline void hook_unwrap(void *func, void *before, void *after)
@@ -266,9 +298,39 @@ static inline void *hook_chain_origin_func(void *hook_args)
     return (void *)chain->hook.relo_addr;
 }
 
+/**
+ * @brief 
+ * 
+ * @param fp_addr 
+ * @param replace 
+ * @param backup 
+ */
 void fp_hook(uintptr_t fp_addr, void *replace, void **backup);
+/**
+ * @brief 
+ * 
+ * @param fp_addr 
+ * @param backup 
+ */
 void fp_unhook(uintptr_t fp_addr, void *backup);
+/**
+ * @brief 
+ * 
+ * @param fp_addr 
+ * @param argno 
+ * @param before 
+ * @param after 
+ * @param udata 
+ * @return hook_err_t 
+ */
 hook_err_t fp_hook_wrap(uintptr_t fp_addr, int32_t argno, void *before, void *after, void *udata);
+/**
+ * @brief 
+ * 
+ * @param fp_addr 
+ * @param before 
+ * @param after 
+ */
 void fp_hook_unwrap(uintptr_t fp_addr, void *before, void *after);
 
 static inline void hook_chain_install(hook_chain_t *chain)

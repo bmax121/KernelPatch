@@ -14,9 +14,6 @@
 #include <predata.h>
 #include <linux/string.h>
 
-int linux_misc_symbol_init();
-int linux_libs_symbol_init();
-
 int resolve_struct();
 int task_observer();
 int bypass_kcfi();
@@ -53,17 +50,8 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
     int rc = 0;
     log_boot("entering init ...\n");
 
-    if ((rc = linux_libs_symbol_init())) goto out;
-    log_boot("linux_libs_symbol_init done: %d\n", rc);
-
-    if ((rc = linux_misc_symbol_init())) goto out;
-    log_boot("linux_misc_symbol_init done: %d\n", rc);
-
     if ((rc = bypass_kcfi())) goto out;
     log_boot("bypass_kcfi done: %d\n", rc);
-
-    if ((rc = syscall_init())) goto out;
-    log_boot("syscall_init done: %d\n", rc);
 
     if ((rc = resolve_struct())) goto out;
     log_boot("resolve_struct done: %d\n", rc);
@@ -74,34 +62,32 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
     if ((rc = task_observer())) goto out;
     log_boot("task_observer done: %d\n", rc);
 
-    if ((rc = module_init())) goto out;
-    log_boot("module_init done: %d\n", rc);
-
     rc = supercall_install();
     log_boot("supercall_install done: %d\n", rc);
 
     rc = resolve_pt_regs();
     log_boot("resolve_pt_regs done: %d\n", rc);
 
-#ifdef ANDROID
     rc = su_compat_init();
     log_boot("su_compat_init done: %d\n", rc);
 
-    // rc = kpuserd_init();
-    // log_boot("kpuserd_init done: %d\n", rc);
+#ifdef ANDROID
+
+    rc = kpuserd_init();
+    log_boot("kpuserd_init done: %d\n", rc);
+
 #endif
 
 out:
     return;
 }
 
-static int pre_kernel_init(const patch_extra_item_t *extra, const char *args, const void *data, void *udata)
+static int extra_event_pre_kernel_init(const patch_extra_item_t *extra, const char *args, const void *data, void *udata)
 {
-    const char *event = (const char *)udata;
     if (extra->type == EXTRA_TYPE_KPM) {
         if (!strcmp(EXTRA_EVENT_PRE_KERNEL_INIT, extra->event) || !extra->event[0]) {
-            int rc = load_module(data, extra->con_size, args, event, 0);
-            log_boot("%s loading extra kpm return: %d\n", event, rc);
+            int rc = load_module(data, extra->con_size, args, EXTRA_EVENT_PRE_KERNEL_INIT, 0);
+            log_boot("load kpm: %s, rc: %d\n", extra->name, rc);
         }
     }
     return 0;
@@ -110,7 +96,7 @@ static int pre_kernel_init(const patch_extra_item_t *extra, const char *args, co
 static void before_kernel_init(hook_fargs4_t *args, void *udata)
 {
     log_boot("event: %s\n", EXTRA_EVENT_PRE_KERNEL_INIT);
-    on_each_extra_item(pre_kernel_init, 0);
+    on_each_extra_item(extra_event_pre_kernel_init, 0);
 }
 
 static void after_kernel_init(hook_fargs4_t *args, void *udata)
@@ -118,8 +104,19 @@ static void after_kernel_init(hook_fargs4_t *args, void *udata)
     log_boot("event: %s\n", EXTRA_EVENT_POST_KERNEL_INIT);
 }
 
+// internal header
+void linux_misc_symbol_init();
+void linux_libs_symbol_init();
+void module_init();
+void syscall_init();
+
 int patch()
 {
+    linux_libs_symbol_init();
+    linux_misc_symbol_init();
+    module_init();
+    syscall_init();
+
     hook_err_t ret = 0;
 
     unsigned long panic_addr = get_preset_patch_sym()->panic;

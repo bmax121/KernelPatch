@@ -663,9 +663,8 @@ int get_module_info(const char *name, char *out_info, int size)
     return sz;
 }
 
-int module_init()
+void module_init()
 {
     INIT_LIST_HEAD(&modules.list);
     spin_lock_init(&module_lock);
-    return 0;
 }

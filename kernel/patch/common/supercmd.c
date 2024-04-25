@@ -59,13 +59,14 @@ static const char supercmd_help[] =
     "  version:                     Print Kernel version and KernelPatch version,\n "
     "    eg: 50a0a,a06 means kernel version 5.10.10, KernelPatch version 0.10.6.\n"
     "  -c <COMMAND> [...]:          Pass a single COMMAND to the default shell.\n"
+    "  exec <PATH> [...]:           Execute command with full PATH.\n"
     "  sumgr <SubCommand> [...]:    SU permission manager\n"
     "    The default command obtain a shell with the specified TO_UID and SCONTEXT is 'kp',\n"
     "    whose full PATH is '/system/bin/kp'. This can avoid conflicts with the existing 'su' command.\n"
     "    If you wish to modify this PATH, you can use the 'reset' command.\n"
     "    SubCommand:\n"
-    "      grant <UID> [TO_UID] [SCONTEXT]  Grant access permission to UID.\n"
-    "      revoke                           Revoke access permission to UID.\n"
+    "      grant <UID> [TO_UID] [SCONTEXT]  Grant su permission to UID.\n"
+    "      revoke                           Revoke su permission to UID.\n"
     "      num                              Get the number of uids with the aforementioned permissions.\n"
     "      list                             List aforementioned uids.\n"
     "      profile <UID>                    Get the profile of the uid configuration.\n"
@@ -186,11 +187,18 @@ out_opt:
         goto free;
     }
 
-    if (!strcmp("-c", cmd)) {
+    if (!strcmp("help", cmd)) {
+        msg = supercmd_help;
+    } else if (!strcmp("-c", cmd)) {
         *u_filename_p = supercmd_str_to_user_sp(sh_path, &sp);
         *uargv += (carr - parr - 1) * 8;
-    } else if (!strcmp("help", cmd)) {
-        msg = supercmd_help;
+    } else if (!strcmp("exec", cmd)) {
+        if (!carr[1]) {
+            err_msg = "invalid commmand path";
+            goto echo;
+        }
+        *u_filename_p = supercmd_str_to_user_sp(carr[1], &sp);
+        *uargv += 3 * 8;
     } else if (!strcmp("version", cmd)) {
         supercmd_echo(u_filename_p, uargv, &sp, "%x,%x", kver, kpver);
     } else if (!strcmp("key", cmd)) {
@@ -306,12 +314,13 @@ out_opt:
             int offset = 0;
             su_allow_uids(0, uids, num);
 
-            char *msg = buffer + num * sizeof(uid_t);
-            msg[0] = '\0';
+            char *msg_buf = buffer + num * sizeof(uid_t);
+            msg_buf[0] = '\0';
             for (int i = 0; i < num; i++) {
-                offset += sprintf(msg + offset, "%d\n", uids[i]);
+                offset += sprintf(msg_buf + offset, "%d\n", uids[i]);
             };
-            if (offset > 0) msg[offset - 1] = '\0';
+            if (offset > 0) msg_buf[offset - 1] = '\0';
+            msg = msg_buf;
         } else if (!strcmp(sub_cmd, "profile")) {
             unsigned long long uid;
             if (!carr[2] || kstrtoull(carr[2], 10, &uid)) {
@@ -319,7 +328,7 @@ out_opt:
                 goto echo;
             }
             struct su_profile *profile = (struct su_profile *)buffer;
-            rc = su_allow_uid_profile(0, uid, &profile);
+            rc = su_allow_uid_profile(0, uid, profile);
             char *msg = buffer + sizeof(struct su_profile);
             msg[0] = '\0';
             if (!rc)
@@ -334,6 +343,7 @@ out_opt:
     } else if (!strcmp("bootlog", cmd)) {
         msg = get_boot_log();
     } else if (!strcmp("test", cmd)) {
+        msg = "test done...";
     } else {
         err_msg = "invalid command";
     }

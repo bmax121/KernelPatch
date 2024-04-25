@@ -65,26 +65,21 @@ struct su_profile
 #ifdef ANDROID
 
 #define ANDROID_SH_PATH "/system/bin/sh"
+#define LINUX_SH_PATH "/usr/bin/sh"
 #define SU_PATH_MAX_LEN 128
 
 #define ANDROID_SU_PATH "/system/bin/kp"
+#define LINUX_SU_PATH "/usr/bin/kp"
 #define ANDROID_LEGACY_SU_PATH "/system/bin/su"
 #define ANDROID_ECHO_PATH "/system/bin/echo"
-#define KPATCH_DATA_PATH "/data/adb/kpatch"
-#define KPATCH_DEV_PATH "/dev/kpatch"
-#define KPATCH_DEV_WORK_DIR "/dev/kp/"
+#define LINUX_ECHO_PATH "/usr/bin/echo"
+
 #define KERNELPATCH_DATA_DIR "/data/adb/kp"
 #define KERNELPATCH_MODULE_DATA_DIR KERNELPATCH_DATA_DIR "/modules"
 #define APD_PATH "/data/adb/apd"
 #define SUPERCMD "/system/bin/truncate"
 
-#define ADB_FLODER "/data/adb/"
-#define APATCH_FLODER "/data/adb/ap/"
-#define APATCH_BIN_FLODER APATCH_FLODER "bin/"
-#define APATCH_LOG_FLODER APATCH_FLODER "log/"
 #define SAFE_MODE_FLAG_FILE "/dev/.safemode"
-#define EARLY_INIT_LOG_0 "/dev/early_init_0.log"
-#define EARLY_INIT_LOG_1 "/dev/early_init_1.log"
 
 #define ALL_ALLOW_SCONTEXT "u:r:magisk:s0"
 

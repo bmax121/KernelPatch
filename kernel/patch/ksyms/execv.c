@@ -56,8 +56,8 @@ static void before_execve(hook_fargs3_t *args, void *udata)
 
 static void after_execv(hook_fargs5_t *args, void *udata)
 {
-    fp_unhook_syscall(__NR_execve, before_execve, after_execv);
-    fp_unhook_syscall(__NR_execveat, before_execve, after_execv);
+    fp_unhook_syscalln(__NR_execve, before_execve, after_execv);
+    fp_unhook_syscalln(__NR_execveat, before_execve, after_execv);
 }
 
 int resolve_pt_regs()

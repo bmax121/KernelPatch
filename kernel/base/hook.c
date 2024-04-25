@@ -82,7 +82,7 @@ static int32_t relo_len[] = { 6, 8, 6, 4, 4, 6, 6, 6, 8, 8, 8, 8, 6, 6, 6, 6, 2 
 static int is_in_tramp(hook_t *hook, uint64_t addr)
 {
     uint64_t tramp_start = hook->origin_addr;
-    uint64_t tramp_end = tramp_start + hook->tramp_insts_len * 4;
+    uint64_t tramp_end = tramp_start + hook->tramp_insts_num * 4;
     if (addr >= tramp_start && addr < tramp_end) {
         return 1;
     }
@@ -92,7 +92,7 @@ static int is_in_tramp(hook_t *hook, uint64_t addr)
 static uint64_t relo_in_tramp(hook_t *hook, uint64_t addr)
 {
     uint64_t tramp_start = hook->origin_addr;
-    uint64_t tramp_end = tramp_start + hook->tramp_insts_len * 4;
+    uint64_t tramp_end = tramp_start + hook->tramp_insts_num * 4;
     if (!(addr >= tramp_start && addr < tramp_end)) return addr;
     uint32_t addr_inst_index = (addr - tramp_start) / 4;
     uint64_t fix_addr = hook->relo_addr;
@@ -118,14 +118,9 @@ static uint64_t branch_func_addr_once(uint64_t addr)
         uint64_t imm26 = bits32(inst, 25, 0);
         uint64_t imm64 = sign64_extend(imm26 << 2u, 28u);
         ret = addr + imm64;
+    } else if (inst == ARM64_BTI_C || inst == ARM64_BTI_J || inst == ARM64_BTI_JC) {
+        ret = addr + 4;
     } else {
-        addr += 4;
-        uint32_t inst1 = *(uint32_t *)addr;
-        if (((inst & MASK_HINT) == INST_HINT) && ((inst1 & MASK_B) == INST_B)) {
-            uint64_t imm26 = bits32(inst1, 25, 0);
-            uint64_t imm64 = sign64_extend(imm26 << 2u, 28u);
-            ret = addr + imm64;
-        }
     }
     return ret;
 }
@@ -143,9 +138,9 @@ uint64_t branch_func_addr(uint64_t addr)
 
 #endif
 
-hook_err_t relo_b(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
+static hook_err_t relo_b(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
 {
-    uint32_t *buf = hook->relo_insts + hook->relo_insts_len;
+    uint32_t *buf = hook->relo_insts + hook->relo_insts_num;
     uint64_t imm64;
     if (type == INST_BC) {
         uint64_t imm19 = bits32(inst, 23, 5);
@@ -175,9 +170,9 @@ hook_err_t relo_b(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t t
     return HOOK_NO_ERR;
 }
 
-hook_err_t relo_adr(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
+static hook_err_t relo_adr(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
 {
-    uint32_t *buf = hook->relo_insts + hook->relo_insts_len;
+    uint32_t *buf = hook->relo_insts + hook->relo_insts_num;
 
     uint32_t xd = bits32(inst, 4, 0);
     uint64_t immlo = bits32(inst, 30, 29);
@@ -197,9 +192,9 @@ hook_err_t relo_adr(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t
     return HOOK_NO_ERR;
 }
 
-hook_err_t relo_ldr(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
+static hook_err_t relo_ldr(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
 {
-    uint32_t *buf = hook->relo_insts + hook->relo_insts_len;
+    uint32_t *buf = hook->relo_insts + hook->relo_insts_num;
 
     uint32_t rt = bits32(inst, 4, 0);
     uint64_t imm19 = bits32(inst, 23, 5);
@@ -246,9 +241,9 @@ hook_err_t relo_ldr(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t
     return HOOK_NO_ERR;
 }
 
-hook_err_t relo_cb(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
+static hook_err_t relo_cb(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
 {
-    uint32_t *buf = hook->relo_insts + hook->relo_insts_len;
+    uint32_t *buf = hook->relo_insts + hook->relo_insts_num;
 
     uint64_t imm19 = bits32(inst, 23, 5);
     uint64_t offset = sign64_extend((imm19 << 2u), 21u);
@@ -264,9 +259,9 @@ hook_err_t relo_cb(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t 
     return HOOK_NO_ERR;
 }
 
-hook_err_t relo_tb(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
+static hook_err_t relo_tb(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
 {
-    uint32_t *buf = hook->relo_insts + hook->relo_insts_len;
+    uint32_t *buf = hook->relo_insts + hook->relo_insts_num;
 
     uint64_t imm14 = bits32(inst, 18, 5);
     uint64_t offset = sign64_extend((imm14 << 2u), 16u);
@@ -284,7 +279,7 @@ hook_err_t relo_tb(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t 
 
 hook_err_t relo_ignore(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
 {
-    uint32_t *buf = hook->relo_insts + hook->relo_insts_len;
+    uint32_t *buf = hook->relo_insts + hook->relo_insts_num;
     buf[0] = inst;
     buf[1] = ARM64_NOP;
     return HOOK_NO_ERR;
@@ -552,7 +547,7 @@ static __noinline hook_err_t relocate_inst(hook_t *hook, uint64_t inst_addr, uin
         break;
     }
 
-    hook->relo_insts_len += len;
+    hook->relo_insts_num += len;
 
     return rc;
 }
@@ -569,14 +564,19 @@ hook_err_t hook_prepare(hook_t *hook)
         hook->origin_insts[i] = *((uint32_t *)hook->origin_addr + i);
     }
     // trampline to replace_addr
-    hook->tramp_insts_len = branch_from_to(hook->tramp_insts, hook->origin_addr, hook->replace_addr);
+    hook->tramp_insts_num = branch_from_to(hook->tramp_insts, hook->origin_addr, hook->replace_addr);
 
     // relocate
     for (int i = 0; i < sizeof(hook->relo_insts) / sizeof(hook->relo_insts[0]); i++) {
         hook->relo_insts[i] = ARM64_NOP;
     }
 
-    for (int i = 0; i < hook->tramp_insts_len; i++) {
+    uint32_t *bti = hook->relo_insts + hook->relo_insts_num;
+    bti[0] = ARM64_BTI_JC;
+    bti[1] = ARM64_NOP;
+    hook->relo_insts_num += 2;
+
+    for (int i = 0; i < hook->tramp_insts_num; i++) {
         uint64_t inst_addr = hook->origin_addr + i * 4;
         uint32_t inst = hook->origin_insts[i];
         hook_err_t relo_res = relocate_inst(hook, inst_addr, inst);
@@ -586,10 +586,10 @@ hook_err_t hook_prepare(hook_t *hook)
     }
 
     // jump back
-    uint64_t back_src_addr = hook->relo_addr + hook->relo_insts_len * 4;
-    uint64_t back_dst_addr = hook->origin_addr + hook->tramp_insts_len * 4;
-    uint32_t *buf = hook->relo_insts + hook->relo_insts_len;
-    hook->relo_insts_len += branch_from_to(buf, back_src_addr, back_dst_addr);
+    uint64_t back_src_addr = hook->relo_addr + hook->relo_insts_num * 4;
+    uint64_t back_dst_addr = hook->origin_addr + hook->tramp_insts_num * 4;
+    uint32_t *buf = hook->relo_insts + hook->relo_insts_num;
+    hook->relo_insts_num += branch_from_to(buf, back_src_addr, back_dst_addr);
     return HOOK_NO_ERR;
 }
 KP_EXPORT_SYMBOL(hook_prepare);
@@ -604,7 +604,7 @@ void hook_install(hook_t *hook)
     flush_tlb_kernel_page(va);
     // todo:
     // todo: can use aarch64_insn_patch_text_nosync, aarch64_insn_patch_text directly?
-    for (int32_t i = 0; i < hook->tramp_insts_len; i++) {
+    for (int32_t i = 0; i < hook->tramp_insts_num; i++) {
         *((uint32_t *)hook->origin_addr + i) = hook->tramp_insts[i];
     }
     flush_icache_all();
@@ -620,7 +620,7 @@ void hook_uninstall(hook_t *hook)
     uint64_t ori_prot = *entry;
     *entry = (ori_prot | PTE_DBM) & ~PTE_RDONLY;
     flush_tlb_kernel_page(va);
-    for (int32_t i = 0; i < hook->tramp_insts_len; i++) {
+    for (int32_t i = 0; i < hook->tramp_insts_num; i++) {
         *((uint32_t *)hook->origin_addr + i) = hook->origin_insts[i];
     }
     flush_icache_all();
@@ -700,6 +700,7 @@ static hook_err_t hook_chain_prepare(uint32_t *transit, int32_t argno)
     // todo:assert
     if (transit_num >= TRANSIT_INST_NUM) return -HOOK_TRANSIT_NO_MEM;
 
+    // transit[0] = ARM64_BTI_JC;
     transit[0] = ARM64_NOP;
     for (int i = 0; i < transit_num; i++) {
         transit[i + 1] = ((uint32_t *)transit_start)[i];
@@ -710,6 +711,8 @@ static hook_err_t hook_chain_prepare(uint32_t *transit, int32_t argno)
 hook_err_t hook_chain_add(hook_chain_t *chain, void *before, void *after, void *udata)
 {
     for (int i = 0; i < HOOK_CHAIN_NUM; i++) {
+        if (chain->befores[i] == before || chain->afters[i] == after) return -HOOK_DUPLICATED;
+
         // todo: atomic or lock
         if (chain->states[i] == CHAIN_ITEM_STATE_EMPTY) {
             chain->states[i] = CHAIN_ITEM_STATE_BUSY;

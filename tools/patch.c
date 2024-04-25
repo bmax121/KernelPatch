@@ -337,8 +337,7 @@ static void extra_append(char *kimg, const void *data, int len, int *offset)
 }
 
 int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey,
-                     bool root_key, const char **additional, const char *kpatch_path, extra_config_t *extra_configs,
-                     int extra_config_num)
+                     bool root_key, const char **additional, extra_config_t *extra_configs, int extra_config_num)
 {
     set_log_enable(true);
 
@@ -371,18 +370,6 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     char *kpimg = NULL;
     int kpimg_len = 0;
     read_file_align(kpimg_path, &kpimg, &kpimg_len, 0x10);
-
-    // embed kpatch executable
-    if (kpatch_path) {
-        // add new
-        extra_config_t *config = extra_configs + extra_config_num;
-        extra_config_num++;
-        config->extra_type = EXTRA_TYPE_EXEC;
-        config->is_path = true;
-        config->path = kpatch_path;
-        config->priority = __INT32_MAX__;
-        config->set_name = "kpatch";
-    }
 
     // extra
     int extra_size = 0;

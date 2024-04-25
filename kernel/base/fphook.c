@@ -205,6 +205,7 @@ static hook_err_t hook_chain_prepare(uint32_t *transit, int32_t argno)
     // todo: assert
     if (transit_num >= TRANSIT_INST_NUM) return -HOOK_TRANSIT_NO_MEM;
 
+    // transit[0] = ARM64_BTI_C;
     transit[0] = ARM64_NOP;
     for (int i = 0; i < transit_num; i++) {
         transit[i + 1] = ((uint32_t *)transit_start)[i];
@@ -258,6 +259,8 @@ hook_err_t fp_hook_wrap(uintptr_t fp_addr, int32_t argno, void *before, void *af
     }
 
     for (int i = 0; i < FP_HOOK_CHAIN_NUM; i++) {
+        if (chain->befores[i] == before || chain->afters[i] == after) return -HOOK_DUPLICATED;
+
         // todo: atomic or lock
         if (chain->states[i] == CHAIN_ITEM_STATE_EMPTY) {
             chain->states[i] = CHAIN_ITEM_STATE_BUSY;
