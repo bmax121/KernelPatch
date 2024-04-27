@@ -62,8 +62,6 @@ struct su_profile
     char scontext[SUPERCALL_SCONTEXT_LEN];
 };
 
-#ifdef ANDROID
-
 #define ANDROID_SH_PATH "/system/bin/sh"
 #define LINUX_SH_PATH "/usr/bin/sh"
 #define SU_PATH_MAX_LEN 128
@@ -90,8 +88,6 @@ struct su_profile
 #define SUPERCALL_SU_PROFILE 0x1104
 #define SUPERCALL_SU_GET_PATH 0x1110
 #define SUPERCALL_SU_RESET_PATH 0x1111
-
-#endif
 
 #define SUPERCALL_MAX 0x1200
 
