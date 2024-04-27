@@ -278,7 +278,10 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
         const char *sctx = profile.scontext;
         commit_su(to_uid, sctx);
 
-        struct file *filp = filp_open(apd_path, O_RDONLY, 0);
+        struct file *filp = 0;
+#ifdef ANDROID
+        filp = filp_open(apd_path, O_RDONLY, 0);
+#endif
         if (!filp || IS_ERR(filp)) {
             int cplen = 0;
 #ifdef TRY_DIRECT_MODIFY_USER
@@ -296,7 +299,9 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
                 }
                 logkfi("call su uid: %d, to_uid: %d, sctx: %s, uptr: %llx\n", uid, to_uid, sctx, uptr);
             }
-        } else {
+        }
+#ifdef ANDROID
+        else {
             filp_close(filp, 0);
 
             // command
@@ -319,7 +324,6 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
                 }
             }
 
-#ifdef ANDROID
             // argv
             int argv_cplen = 0;
             if (strcmp(legacy_su_path, filename)) {
@@ -342,8 +346,8 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
                 }
             }
             logkfi("call apd uid: %d, to_uid: %d, sctx: %s, cplen: %d, %d\n", uid, to_uid, sctx, cplen, argv_cplen);
-#endif
         }
+#endif // ANDROID
 
     } else if (!strcmp(SUPERCMD, filename)) {
         handle_supercmd(u_filename_p, uargv);

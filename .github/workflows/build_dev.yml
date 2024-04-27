@@ -48,10 +48,10 @@ jobs:
         run: |
           export TARGET_COMPILE=`pwd`/arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-elf/bin/aarch64-none-elf-
           cd kernel
-          make
-          mv kpimg kpimg-linux
-          mv kpimg.elf kpimg.elf-linux
-          make clean
+          # make
+          # mv kpimg kpimg-linux
+          # mv kpimg.elf kpimg.elf-linux
+          # make clean
           export ANDROID=1
           make
           mv kpimg kpimg-android
