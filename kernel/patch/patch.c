@@ -74,8 +74,8 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
 
 #ifdef ANDROID
 
-    // rc = android_user_init();
-    // log_boot("android_user_init done: %d\n", rc);
+    rc = android_user_init();
+    log_boot("android_user_init done: %d\n", rc);
 
 #endif
 
