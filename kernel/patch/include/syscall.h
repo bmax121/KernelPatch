@@ -138,4 +138,18 @@ static inline void inline_unhook_compat_syscalln(int nr, void *before, void *aft
     __inline_unhook_syscalln(nr, 0, before, after);
 }
 
+#define DEFAULT_INLINE_HOOK_SYSCALL
+
+#ifdef DEFAULT_INLINE_HOOK_SYSCALL
+#define hook_syscalln inline_hook_syscalln
+#define unhook_syscalln inline_unhook_syscalln
+#define hook_compat_syscalln inline_hook_compat_syscalln
+#define unhook_compat_syscalln inline_unhook_compat_syscalln
+#else
+#define hook_syscalln fp_hook_syscalln
+#define unhook_syscalln fp_unhook_syscalln
+#define hook_compat_syscalln fp_hook_compat_syscalln
+#define unhook_compat_syscalln fp_unhook_compat_syscalln
+#endif
+
 #endif

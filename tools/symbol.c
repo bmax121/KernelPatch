@@ -120,27 +120,6 @@ int fillin_patch_symbol(kallsym_t *kallsym, char *img_buf, int imglen, patch_sym
     if (!symbol->copy_process) symbol->cgroup_post_fork = get_symbol_offset_zero(kallsym, img_buf, "cgroup_post_fork");
     if (!symbol->copy_process && !symbol->cgroup_post_fork) tools_loge_exit("no symbol copy_process");
 
-    symbol->do_execveat_common = try_get_symbol_offset_zero(kallsym, img_buf, "do_execveat_common");
-    symbol->__do_execve_file = try_get_symbol_offset_zero(kallsym, img_buf, "__do_execve_file");
-    symbol->do_execve_common = try_get_symbol_offset_zero(kallsym, img_buf, "do_execve_common");
-    if (!symbol->do_execveat_common && !symbol->__do_execve_file && !symbol->do_execve_common)
-        tools_loge_exit("no symbol do_execveat_common, __do_execve_file and do_execve_common");
-
-    symbol->do_faccessat = try_get_symbol_offset_zero(kallsym, img_buf, "do_faccessat");
-    symbol->sys_faccessat = get_symbol_offset_zero(kallsym, img_buf, "__arm64_sys_faccessat");
-    if (!symbol->sys_faccessat) symbol->sys_faccessat = get_symbol_offset_zero(kallsym, img_buf, "sys_faccessat");
-    symbol->sys_faccessat2 = get_symbol_offset_zero(kallsym, img_buf, "__arm64_sys_faccessat2");
-    if (!symbol->sys_faccessat2) symbol->sys_faccessat2 = get_symbol_offset_zero(kallsym, img_buf, "sys_faccessat2");
-    if (!symbol->do_faccessat && !symbol->sys_faccessat && !symbol->sys_faccessat)
-        tools_loge_exit("no symbol do_faccessat, sys_faccessat and sys_faccessat2");
-
-    symbol->sys_newfstatat = get_symbol_offset_zero(kallsym, img_buf, "__arm64_sys_newfstatat");
-    if (!symbol->sys_newfstatat) symbol->sys_newfstatat = get_symbol_offset_zero(kallsym, img_buf, "sys_newfstatat");
-    symbol->vfs_statx = try_get_symbol_offset_zero(kallsym, img_buf, "vfs_statx");
-    symbol->vfs_fstatat = try_get_symbol_offset_zero(kallsym, img_buf, "vfs_fstatat");
-    if (!symbol->sys_newfstatat && !symbol->vfs_fstatat && !symbol->vfs_statx)
-        tools_loge_exit("no symbol vfs_statx and vfs_fstatat");
-
     //  gcc -fipa-sra eg: avc_denied.isra.5
     symbol->avc_denied = try_get_symbol_offset_zero(kallsym, img_buf, "avc_denied");
     if (!symbol->avc_denied && is_android) tools_loge_exit("no symbol avc_denied");

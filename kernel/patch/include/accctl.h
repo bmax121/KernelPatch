@@ -21,7 +21,6 @@ int selinux_hook_install();
 int supercall_install();
 
 #ifdef ANDROID
-int kpuserd_init();
 int su_compat_init();
 int su_add_allow_uid(uid_t uid, uid_t to_uid, const char *scontext, int async);
 int su_remove_allow_uid(uid_t uid, int async);

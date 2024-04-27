@@ -117,15 +117,6 @@ struct patch_symbol
             uint64_t __cfi_slowpath;
             uint64_t copy_process;
             uint64_t cgroup_post_fork;
-            uint64_t do_execveat_common;
-            uint64_t __do_execve_file;
-            uint64_t do_execve_common;
-            uint64_t do_faccessat;
-            uint64_t sys_faccessat;
-            uint64_t sys_faccessat2;
-            uint64_t sys_newfstatat;
-            uint64_t vfs_statx;
-            uint64_t vfs_fstatat;
             uint64_t avc_denied;
             uint64_t slow_avc_audit;
             uint64_t input_handle_event;

@@ -632,7 +632,7 @@ int list_modules(char *out_names, int size)
     {
         off += snprintf(out_names + off, size - 1 - off, "%s\n", pos->info.name);
     }
-    out_names[off] = '\0';
+    if (off > 0) out_names[off - 1] = '\0';
 
     rcu_read_unlock();
     return off;

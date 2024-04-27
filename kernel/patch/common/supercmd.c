@@ -16,8 +16,6 @@
 #include <linux/slab.h>
 #include <module.h>
 
-static const char echo_path[] = ANDROID_ECHO_PATH;
-
 static char *__user supercmd_str_to_user_sp(const char *data, uintptr_t *sp)
 {
     int len = strlen(data) + 1;
@@ -28,10 +26,18 @@ static char *__user supercmd_str_to_user_sp(const char *data, uintptr_t *sp)
     return 0;
 }
 
+static void supercmd_exec(char **__user u_filename_p, const char *cmd, uintptr_t *sp)
+{
+    int cplen = 0;
+#if 1
+    cplen = compat_copy_to_user(*u_filename_p, cmd, strlen(cmd) + 1);
+#endif
+    if (cplen <= 0) *u_filename_p = supercmd_str_to_user_sp(cmd, sp);
+}
+
 static void supercmd_echo(char **__user u_filename_p, char **__user uargv, uintptr_t *sp, const char *fmt, ...)
 {
-    const char *__user cmd = supercmd_str_to_user_sp(echo_path, sp);
-    if (!cmd) return;
+    supercmd_exec(u_filename_p, ANDROID_ECHO_PATH, sp);
 
     char buffer[4096];
     va_list va;
@@ -39,6 +45,7 @@ static void supercmd_echo(char **__user u_filename_p, char **__user uargv, uintp
     vsnprintf(buffer, sizeof(buffer), fmt, va);
     va_end(va);
 
+    const char *__user cmd = supercmd_str_to_user_sp(ANDROID_ECHO_PATH, sp);
     const char *__user argv1 = supercmd_str_to_user_sp(buffer, sp);
 
     set_user_arg_ptr(0, *uargv, 0, (uintptr_t)cmd);
@@ -72,7 +79,7 @@ static const char supercmd_help[] =
     "      profile <UID>                    Get the profile of the uid configuration.\n"
     "      reset <PATH>                     Reset '/system/bin/kp' to PATH. The length of PATH must be between 1-127.\n"
     "      path                             Get current su PATH.\n"
-    "  module <SubCommand> [...]:      KernelPatch Module manager\n"
+    "  module <SubCommand> [...]:   KernelPatch Module manager\n"
     "    SubCommand:\n"
     "      load <KPM_PATH> [KPM_ARGS]       Load module with KPM_PATH and KPM_ARGS.\n"
     "      ctl0 <KPM_NAME> <CTL_ARGS>       Control module named KPM_PATH with CTL_ARGS.\n"
@@ -87,7 +94,7 @@ static const char supercmd_help[] =
     "      hash [enable|disable]:           Whether to use hash to verify the root superkey.\n"
     "";
 
-void handle_supercmd(hook_fargs0_t *args, char **__user u_filename_p, char **__user uargv)
+void handle_supercmd(char **__user u_filename_p, char **__user uargv)
 {
     // allow root-allowed user use supercmd
     static int allow_root_supercmd = 1;
@@ -118,16 +125,18 @@ void handle_supercmd(hook_fargs0_t *args, char **__user u_filename_p, char **__u
     for (int i = 2; i < SUPERCMD_ARGS_NO; i++) {
         const char __user *ua = get_user_arg_ptr(0, *uargv, i);
         if (!ua || IS_ERR(ua)) break;
-        const char *a = strndup_user(ua, 256);
+        const char *a = strndup_user(ua, 512);
         if (IS_ERR(a)) break;
+        if (a[0] == '-' && a[1] == 'c') break;
+        if (!strcmp("exec", a)) break;
         parr[i] = a;
     }
 
     uint64_t sp = current_user_stack_pointer();
 
-    // if no any args
+    // if no any more
     if (!parr[2]) {
-        *u_filename_p = supercmd_str_to_user_sp(sh_path, &sp);
+        supercmd_exec(u_filename_p, sh_path, &sp);
         *uargv += 2 * 8;
         commit_su(profile.to_uid, profile.scontext);
         return;
@@ -182,7 +191,7 @@ out_opt:
     const char *cmd = 0;
     if (pi < SUPERCMD_ARGS_NO - 1) cmd = carr[0];
     if (!cmd) {
-        *u_filename_p = supercmd_str_to_user_sp(sh_path, &sp);
+        supercmd_exec(u_filename_p, sh_path, &sp);
         *uargv += pi * 8;
         goto free;
     }
@@ -190,14 +199,14 @@ out_opt:
     if (!strcmp("help", cmd)) {
         msg = supercmd_help;
     } else if (!strcmp("-c", cmd)) {
-        *u_filename_p = supercmd_str_to_user_sp(sh_path, &sp);
+        supercmd_exec(u_filename_p, sh_path, &sp);
         *uargv += (carr - parr - 1) * 8;
     } else if (!strcmp("exec", cmd)) {
         if (!carr[1]) {
             err_msg = "invalid commmand path";
             goto echo;
         }
-        *u_filename_p = supercmd_str_to_user_sp(carr[1], &sp);
+        supercmd_exec(u_filename_p, carr[1], &sp);
         *uargv += 3 * 8;
     } else if (!strcmp("version", cmd)) {
         supercmd_echo(u_filename_p, uargv, &sp, "%x,%x", kver, kpver);
@@ -228,15 +237,16 @@ out_opt:
         } else {
             err_msg = "invalid subcommand";
         }
-    } else if (!strcmp("kpm", cmd)) {
+    } else if (!strcmp("module", cmd)) {
         const char *sub_cmd = carr[1];
         if (!sub_cmd) sub_cmd = "";
         if (!strcmp("num", sub_cmd)) {
             int num = get_module_nums();
             supercmd_echo(u_filename_p, uargv, &sp, "%d", num);
         } else if (!strcmp("list", sub_cmd)) {
+            buffer[0] = '\0';
             list_modules(buffer, sizeof(buffer));
-            supercmd_echo(u_filename_p, uargv, &sp, buffer);
+            msg = buffer;
         } else if (!strcmp("load", sub_cmd)) {
             const char *path = carr[2];
             if (!path) {
@@ -310,7 +320,7 @@ out_opt:
             supercmd_echo(u_filename_p, uargv, &sp, "%d", num);
         } else if (!strcmp(sub_cmd, "list")) {
             int num = su_allow_uid_nums();
-            uid_t *uids = (uid_t *)(buffer + num * sizeof(uid_t));
+            uid_t *uids = (uid_t *)buffer;
             int offset = 0;
             su_allow_uids(0, uids, num);
 

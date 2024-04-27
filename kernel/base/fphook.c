@@ -19,6 +19,7 @@ uint64_t __attribute__((section(".fp.transit0.text"))) __attribute__((__noinline
     uint32_t *vptr = (uint32_t *)this_va;
     while (*--vptr != ARM64_NOP) {
     };
+    vptr--;
     fp_hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, fp_hook_chain_t, transit);
     hook_fargs0_t fargs;
     fargs.skip_origin = 0;
@@ -52,6 +53,7 @@ _fp_transit4(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3)
     uint32_t *vptr = (uint32_t *)this_va;
     while (*--vptr != ARM64_NOP) {
     };
+    vptr--;
     fp_hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, fp_hook_chain_t, transit);
     hook_fargs4_t fargs;
     fargs.skip_origin = 0;
@@ -91,6 +93,7 @@ _fp_transit8(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_
     uint32_t *vptr = (uint32_t *)this_va;
     while (*--vptr != ARM64_NOP) {
     };
+    vptr--;
     fp_hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, fp_hook_chain_t, transit);
     hook_fargs8_t fargs;
     fargs.skip_origin = 0;
@@ -136,6 +139,7 @@ _fp_transit12(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64
     uint32_t *vptr = (uint32_t *)this_va;
     while (*--vptr != ARM64_NOP) {
     };
+    vptr--;
     fp_hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, fp_hook_chain_t, transit);
     hook_fargs12_t fargs;
     fargs.skip_origin = 0;
@@ -205,10 +209,10 @@ static hook_err_t hook_chain_prepare(uint32_t *transit, int32_t argno)
     // todo: assert
     if (transit_num >= TRANSIT_INST_NUM) return -HOOK_TRANSIT_NO_MEM;
 
-    // transit[0] = ARM64_BTI_C;
-    transit[0] = ARM64_NOP;
+    transit[0] = ARM64_BTI_C;
+    transit[1] = ARM64_NOP;
     for (int i = 0; i < transit_num; i++) {
-        transit[i + 1] = ((uint32_t *)transit_start)[i];
+        transit[i + 2] = ((uint32_t *)transit_start)[i];
     }
     return HOOK_NO_ERR;
 }
@@ -259,7 +263,7 @@ hook_err_t fp_hook_wrap(uintptr_t fp_addr, int32_t argno, void *before, void *af
     }
 
     for (int i = 0; i < FP_HOOK_CHAIN_NUM; i++) {
-        if (chain->befores[i] == before || chain->afters[i] == after) return -HOOK_DUPLICATED;
+        if ((before && chain->befores[i] == before) || (after && chain->afters[i] == after)) return -HOOK_DUPLICATED;
 
         // todo: atomic or lock
         if (chain->states[i] == CHAIN_ITEM_STATE_EMPTY) {

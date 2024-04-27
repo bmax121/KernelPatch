@@ -359,7 +359,6 @@ static inline loff_t vfs_llseek(struct file *file, loff_t offset, int whence)
 
 static inline void putname(struct filename *name)
 {
-    // logkd("aaaaaaaaaaa %llx\n", kfunc(putname));
     kfunc_direct_call_void(putname, name);
     // kfunc_direct_call_void(final_putname, name);
 }

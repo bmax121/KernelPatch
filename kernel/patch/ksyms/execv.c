@@ -56,8 +56,8 @@ static void before_execve(hook_fargs3_t *args, void *udata)
 
 static void after_execv(hook_fargs5_t *args, void *udata)
 {
-    fp_unhook_syscalln(__NR_execve, before_execve, after_execv);
-    fp_unhook_syscalln(__NR_execveat, before_execve, after_execv);
+    unhook_syscalln(__NR_execve, before_execve, after_execv);
+    unhook_syscalln(__NR_execveat, before_execve, after_execv);
 }
 
 int resolve_pt_regs()
@@ -65,11 +65,11 @@ int resolve_pt_regs()
     hook_err_t ret = 0;
     hook_err_t rc = HOOK_NO_ERR;
 
-    rc = fp_hook_syscalln(__NR_execve, 3, before_execve, after_execv, (void *)__NR_execve);
+    rc = hook_syscalln(__NR_execve, 3, before_execve, after_execv, (void *)__NR_execve);
     log_boot("hook __NR_execve rc: %d\n", rc);
     ret |= rc;
 
-    rc = fp_hook_syscalln(__NR_execveat, 5, before_execve, after_execv, (void *)__NR_execveat);
+    rc = hook_syscalln(__NR_execveat, 5, before_execve, after_execv, (void *)__NR_execveat);
     log_boot("hook __NR_execveat rc: %d\n", rc);
     ret |= rc;
 

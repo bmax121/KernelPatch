@@ -183,9 +183,8 @@ int su_allow_uids(int is_user, uid_t *out_uids, int out_num)
     struct allow_uid *pos;
     list_for_each_entry(pos, &allow_uid_list, list)
     {
-        if (num >= out_num) {
-            goto out;
-        }
+        if (num >= out_num) goto out;
+
         uid_t uid = pos->profile.uid;
         if (is_user) {
             int cplen = compat_copy_to_user(out_uids + num, &uid, sizeof(uid));
@@ -254,24 +253,16 @@ const char *su_get_path()
 }
 KP_EXPORT_SYMBOL(su_get_path);
 
-// #define SU_COMPAT_INLINE_HOOK
-
-#ifdef SU_COMPAT_INLINE_HOOK
-
-#else // SU_COMPAT_INLINE_HOOK
-
 // #define TRY_DIRECT_MODIFY_USER
 
-static void handle_before_execve(hook_fargs3_t *args, char **__user u_filename_p, char **__user uargv, void *udata)
-{
+#define INLINE_HOOK_SYSCALL
 
+static void handle_before_execve(hook_local_t *hook_local, char **__user u_filename_p, char **__user uargv, void *udata)
+{
 #ifdef TRY_DIRECT_MODIFY_USER
     // copy to user len
-    hook_local_t *hook_local = &args->local;
     hook_local->data0 = 0;
 #endif
-
-    void *is_compact = udata;
 
     char __user *ufilename = *u_filename_p;
     char filename[SU_PATH_MAX_LEN];
@@ -333,7 +324,7 @@ static void handle_before_execve(hook_fargs3_t *args, char **__user u_filename_p
             int argv_cplen = 0;
             if (strcmp(legacy_su_path, filename)) {
 #ifdef TRY_DIRECT_MODIFY_USER
-                const char __user *p1 = get_user_arg_ptr(is_compact, *uargv, 0);
+                const char __user *p1 = get_user_arg_ptr(0, *uargv, 0);
                 argv_cplen = compat_copy_to_user((void *__user)p1, legacy_su_path, sizeof(legacy_su_path));
 #endif
                 if (argv_cplen <= 0) {
@@ -342,7 +333,7 @@ static void handle_before_execve(hook_fargs3_t *args, char **__user u_filename_p
                     sp &= 0xFFFFFFFFFFFFFFF8;
                     argv_cplen = compat_copy_to_user((void *)sp, legacy_su_path, sizeof(legacy_su_path));
                     if (argv_cplen > 0) {
-                        int rc = set_user_arg_ptr(is_compact, *uargv, 0, sp);
+                        int rc = set_user_arg_ptr(0, *uargv, 0, sp);
                         if (rc < 0) { // todo: modify entire argv
                             logkfi("call apd argv error, uid: %d, to_uid: %d, sctx: %s, rc: %d\n", uid, to_uid, sctx,
                                    rc);
@@ -355,17 +346,16 @@ static void handle_before_execve(hook_fargs3_t *args, char **__user u_filename_p
         }
 
     } else if (!strcmp(SUPERCMD, filename)) {
-        if (is_compact) return;
-        handle_supercmd((hook_fargs0_t *)args, u_filename_p, uargv);
+        handle_supercmd(u_filename_p, uargv);
         return;
     }
 }
 
 #ifdef TRY_DIRECT_MODIFY_USER
-static void handle_after_execve(hook_fargs3_t *args)
+static void handle_after_execve(hook_local_t *hook_local)
 {
-    int cplen = args->local.data0;
-    char **__user u_filename_p = (char **__user)args->local.data1;
+    int cplen = hook_local->data0;
+    char **__user u_filename_p = (char **__user)hook_local->data1;
     if (cplen > 0) {
         compat_copy_to_user((void *)*u_filename_p, current_su_path, cplen);
     }
@@ -380,17 +370,18 @@ static void handle_after_execve(hook_fargs3_t *args)
 // https://elixir.bootlin.com/linux/v6.1/source/fs/exec.c#L2087
 // SYSCALL_DEFINE3(execve, const char __user *, filename, const char __user *const __user *, argv,
 //                 const char __user *const __user *, envp)
+
 static void before_execve(hook_fargs3_t *args, void *udata)
 {
     void *arg0p = syscall_argn_p(args, 0);
     void *arg1p = syscall_argn_p(args, 1);
-    handle_before_execve(args, (char **)arg0p, (char **)arg1p, udata);
+    handle_before_execve(&args->local, (char **)arg0p, (char **)arg1p, udata);
 }
 
 #ifdef TRY_DIRECT_MODIFY_USER
 static void after_execve(hook_fargs3_t *args, void *udata)
 {
-    handle_after_execve(args);
+    handle_after_execve(&args->local);
 }
 #else
 #define after_execve 0
@@ -410,13 +401,13 @@ static void before_execveat(hook_fargs5_t *args, void *udata)
 {
     void *arg1p = syscall_argn_p(args, 1);
     void *arg2p = syscall_argn_p(args, 2);
-    handle_before_execve((hook_fargs3_t *)args, (char **)arg1p, (char **)arg2p, udata);
+    handle_before_execve(&args->local, (char **)arg1p, (char **)arg2p, udata);
 }
 
 #ifdef TRY_DIRECT_MODIFY_USER
 static void after_execveat(hook_fargs5_t *args, void *udata)
 {
-    handle_after_execve(args);
+    handle_after_execve(&args->local);
 }
 #else
 #define after_execveat 0
@@ -445,26 +436,28 @@ static void su_handler_arg1_ufilename_before(hook_fargs6_t *args, void *udata)
     uid_t uid = current_uid();
     if (!is_su_allow_uid(uid)) return;
 
-    char __user *ufilename = (char __user *)syscall_argn(args, 1);
+    char __user **u_filename_p = (char __user **)syscall_argn_p(args, 1);
+
     char filename[SU_PATH_MAX_LEN];
-    int flen = compat_strncpy_from_user(filename, ufilename, sizeof(filename));
+    int flen = compat_strncpy_from_user(filename, *u_filename_p, sizeof(filename));
     if (flen <= 0) return;
 
     if (!strcmp(current_su_path, filename)) {
         int cplen = 0;
 #ifdef TRY_DIRECT_MODIFY_USER
-        cplen = compat_copy_to_user(ufilename, sh_path, sizeof(sh_path));
+        cplen = compat_copy_to_user(*u_filename_p, sh_path, sizeof(sh_path));
 #endif
         if (cplen > 0) {
             args->local.data0 = cplen;
-            args->local.data1 = (uint64_t)ufilename;
-            // logkfi("su uid: %d, cp: %d\n", uid, cplen);
+            args->local.data1 = (uint64_t)*u_filename_p;
+            logkfi("su uid: %d, cp: %d\n", uid, cplen);
         } else {
             void *uptr = copy_to_user_stack(sh_path, sizeof(sh_path));
             if (uptr && !IS_ERR(uptr)) {
-                set_syscall_argn(args, 1, (uint64_t)uptr);
+                *u_filename_p = uptr;
+            } else {
+                logkfi("su uid: %d, cp stack error: %d\n", uid, uptr);
             }
-            // logkfi("su uid: %d, cp stack: %llx\n", uid, uptr);
         }
     }
 }
@@ -481,8 +474,6 @@ static void su_handler_arg1_ufilename_after(hook_fargs6_t *args, void *udata)
 #define su_handler_arg1_ufilename_after 0
 #endif
 
-#endif // SU_COMPAT_INLINE_HOOK
-
 int su_compat_init()
 {
     current_su_path = default_su_path;
@@ -490,76 +481,43 @@ int su_compat_init()
     INIT_LIST_HEAD(&allow_uid_list);
     spin_lock_init(&list_lock);
 
-    // default shell, root
+    // default shell
     su_add_allow_uid(2000, 0, ALL_ALLOW_SCONTEXT, 1);
-    su_add_allow_uid(0, 0, ALL_ALLOW_SCONTEXT, 1);
 
     hook_err_t rc = HOOK_NO_ERR;
 
-#ifdef SU_COMPAT_INLINE_HOOK
-
-    struct patch_symbol *symbol = get_preset_patch_sym();
-
-    if (symbol->do_execveat_common) { // [5.9.0, ) or [3.19, 4.19]
-        rc = hook_wrap8((void *)symbol->do_execveat_common, (void *)before_do_execve, 0, 0);
-        log_boot("hook do_execveat_common rc: %d\n", rc);
-    } else if (symbol->__do_execve_file) { // [4.19, 5.9)
-        rc = hook_wrap8((void *)symbol->__do_execve_file, (void *)before_do_execve, 0, 0);
-        log_boot("hook __do_execve_file rc: %d\n", rc);
-    } else if (symbol->do_execve_common) { // (, 3.19)
-        rc = hook_wrap8((void *)symbol->do_execve_common, (void *)before_do_execve, 0, (void *)1);
-        log_boot("hook do_execve_common rc: %d\n", rc);
-    }
-
-    if (symbol->sys_faccessat) {
-        rc = hook_wrap4((void *)symbol->sys_faccessat, (void *)before_faccessat, 0, (void *)1);
-        log_boot("hook sys_faccessat rc: %d\n", rc);
-    }
-    if (symbol->sys_faccessat2) {
-        rc = hook_wrap4((void *)symbol->sys_faccessat2, (void *)before_faccessat, 0, (void *)1);
-        log_boot("hook sys_faccessat2 rc: %d\n", rc);
-    }
-
-    if (symbol->sys_newfstatat) {
-        rc = hook_wrap4((void *)symbol->sys_newfstatat, (void *)before_sysfstatat, 0, (void *)1);
-        log_boot("hook sys_newfstatat rc: %d\n", rc);
-    }
-
-#else
-
-    rc = fp_hook_syscalln(__NR_execve, 3, before_execve, after_execve, (void *)0);
+    rc = hook_syscalln(__NR_execve, 3, before_execve, after_execve, (void *)0);
     log_boot("hook __NR_execve rc: %d\n", rc);
 
-    rc = fp_hook_syscalln(__NR_execveat, 5, before_execveat, after_execveat, (void *)0);
+    rc = hook_syscalln(__NR_execveat, 5, before_execveat, after_execveat, (void *)0);
     log_boot("hook __NR_execveat rc: %d\n", rc);
 
-    rc = fp_hook_syscalln(__NR3264_fstatat, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
-                          (void *)0);
+    rc = hook_syscalln(__NR3264_fstatat, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
+                       (void *)0);
     log_boot("hook __NR3264_fstatat rc: %d\n", rc);
 
-    rc = fp_hook_syscalln(__NR_statx, 5, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after, (void *)0);
+    rc = hook_syscalln(__NR_statx, 5, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after, (void *)0);
     log_boot("hook __NR_statx rc: %d\n", rc);
 
-    rc = fp_hook_syscalln(__NR_faccessat, 3, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
-                          (void *)0);
+    rc = hook_syscalln(__NR_faccessat, 3, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after, (void *)0);
     log_boot("hook __NR_faccessat rc: %d\n", rc);
 
-    rc = fp_hook_syscalln(__NR_faccessat2, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
-                          (void *)0);
+    rc =
+        hook_syscalln(__NR_faccessat2, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after, (void *)0);
     log_boot("hook __NR_faccessat2 rc: %d\n", rc);
 
     // #include <asm/unistd32.h>
 
     // __NR_execve 11
-    rc = fp_hook_compat_syscalln(11, 3, before_execve, after_execve, (void *)1);
+    rc = hook_compat_syscalln(11, 3, before_execve, after_execve, (void *)1);
     log_boot("hook 32 __NR_execve rc: %d\n", rc);
 
     //  __NR_execveat 387
-    rc = fp_hook_compat_syscalln(387, 5, before_execveat, after_execveat, (void *)1);
+    rc = hook_compat_syscalln(387, 5, before_execveat, after_execveat, (void *)1);
     log_boot("hook 32 __NR_execveat rc: %d\n", rc);
 
     // __NR_statx 397
-    rc = fp_hook_compat_syscalln(397, 5, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after, (void *)0);
+    rc = hook_compat_syscalln(397, 5, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after, (void *)0);
     log_boot("hook 32 __NR_statx rc: %d\n", rc);
 
     // #define __NR_stat 106
@@ -568,18 +526,16 @@ int su_compat_init()
     // #define __NR_lstat64 196
 
     // __NR_fstatat64 327
-    rc = fp_hook_compat_syscalln(327, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after, (void *)0);
+    rc = hook_compat_syscalln(327, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after, (void *)0);
     log_boot("hook 32 __NR_fstatat64 rc: %d\n", rc);
 
     //  __NR_faccessat 334
-    rc = fp_hook_compat_syscalln(334, 3, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after, (void *)0);
+    rc = hook_compat_syscalln(334, 3, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after, (void *)0);
     log_boot("hook 32 __NR_faccessat rc: %d\n", rc);
 
     // __NR_faccessat2 439
-    rc = fp_hook_compat_syscalln(439, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after, (void *)0);
+    rc = hook_compat_syscalln(439, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after, (void *)0);
     log_boot("hook 32 __NR_faccessat2 rc: %d\n", rc);
-
-#endif
 
     return rc;
 }

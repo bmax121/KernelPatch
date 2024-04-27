@@ -14,11 +14,6 @@
 #include <predata.h>
 #include <linux/string.h>
 
-int resolve_struct();
-int task_observer();
-int bypass_kcfi();
-int resolve_pt_regs();
-
 void print_bootlog()
 {
     const char *log = get_boot_log();
@@ -44,6 +39,12 @@ void before_panic(hook_fargs12_t *args, void *udata)
     print_bootlog();
     printk("==== End KernelPatch for Kernel panic ====\n");
 }
+
+int resolve_struct();
+int task_observer();
+int bypass_kcfi();
+int resolve_pt_regs();
+int android_user_init();
 
 static void before_rest_init(hook_fargs4_t *args, void *udata)
 {
@@ -73,8 +74,8 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
 
 #ifdef ANDROID
 
-    rc = kpuserd_init();
-    log_boot("kpuserd_init done: %d\n", rc);
+    // rc = android_user_init();
+    // log_boot("android_user_init done: %d\n", rc);
 
 #endif
 

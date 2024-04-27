@@ -347,6 +347,7 @@ uint64_t __attribute__((section(".transit0.text"))) __attribute__((__noinline__)
     uint32_t *vptr = (uint32_t *)this_va;
     while (*--vptr != ARM64_NOP) {
     };
+    vptr--;
     hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, hook_chain_t, transit);
     hook_fargs0_t fargs;
     fargs.skip_origin = 0;
@@ -380,6 +381,7 @@ _transit4(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3)
     uint32_t *vptr = (uint32_t *)this_va;
     while (*--vptr != ARM64_NOP) {
     };
+    vptr--;
     hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, hook_chain_t, transit);
     hook_fargs4_t fargs;
     fargs.skip_origin = 0;
@@ -419,6 +421,7 @@ _transit8(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t a
     uint32_t *vptr = (uint32_t *)this_va;
     while (*--vptr != ARM64_NOP) {
     };
+    vptr--;
     hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, hook_chain_t, transit);
     hook_fargs8_t fargs;
     fargs.skip_origin = 0;
@@ -464,6 +467,7 @@ _transit12(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t 
     uint32_t *vptr = (uint32_t *)this_va;
     while (*--vptr != ARM64_NOP) {
     };
+    vptr--;
     hook_chain_t *hook_chain = local_container_of((uint64_t)vptr, hook_chain_t, transit);
     hook_fargs12_t fargs;
     fargs.skip_origin = 0;
@@ -700,10 +704,10 @@ static hook_err_t hook_chain_prepare(uint32_t *transit, int32_t argno)
     // todo:assert
     if (transit_num >= TRANSIT_INST_NUM) return -HOOK_TRANSIT_NO_MEM;
 
-    // transit[0] = ARM64_BTI_JC;
-    transit[0] = ARM64_NOP;
+    transit[0] = ARM64_BTI_JC;
+    transit[1] = ARM64_NOP;
     for (int i = 0; i < transit_num; i++) {
-        transit[i + 1] = ((uint32_t *)transit_start)[i];
+        transit[i + 2] = ((uint32_t *)transit_start)[i];
     }
     return HOOK_NO_ERR;
 }
@@ -711,7 +715,7 @@ static hook_err_t hook_chain_prepare(uint32_t *transit, int32_t argno)
 hook_err_t hook_chain_add(hook_chain_t *chain, void *before, void *after, void *udata)
 {
     for (int i = 0; i < HOOK_CHAIN_NUM; i++) {
-        if (chain->befores[i] == before || chain->afters[i] == after) return -HOOK_DUPLICATED;
+        if ((before && chain->befores[i] == before) || (after && chain->afters[i] == after)) return -HOOK_DUPLICATED;
 
         // todo: atomic or lock
         if (chain->states[i] == CHAIN_ITEM_STATE_EMPTY) {

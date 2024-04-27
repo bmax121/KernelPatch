@@ -228,9 +228,6 @@ static void after_execveat(hook_fargs5_t *args, void *udata)
 #define AP_BIN_DIR AP_DIR "bin/"
 #define AP_LOG_DIR AP_DIR "log/"
 
-static char pkg_cfg_path[] = AP_DIR "package_config";
-static char su_path_path[] = AP_DIR "su_path";
-
 static const char user_rc_data[] = { //
     "\n"
     "on post-fs-data\n"
@@ -352,7 +349,7 @@ static void before_input_handle_event(hook_fargs4_t *args, void *udata)
     }
 }
 
-int kpuserd_init()
+int android_user_init()
 {
     hook_err_t ret = 0;
     hook_err_t rc = HOOK_NO_ERR;
