@@ -404,7 +404,7 @@ int kpuserd_init()
     ret |= rc;
 
     unsigned long input_handle_event_addr = get_preset_patch_sym()->input_handle_event;
-    if (!input_handle_event_addr) {
+    if (input_handle_event_addr) {
         rc = hook_wrap4((void *)input_handle_event_addr, before_input_handle_event, 0, 0);
         ret |= rc;
         log_boot("hook input_handle_event rc: %d\n", rc);
