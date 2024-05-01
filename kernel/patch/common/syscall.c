@@ -253,10 +253,10 @@ int syscall_init()
 {
     int rc = 0;
     sys_call_table = (typeof(sys_call_table))kallsyms_lookup_name("sys_call_table");
-    if (!sys_call_table) {
+    if (unlikely(!sys_call_table)) {
         sys_call_table = (typeof(sys_call_table))search_sys_call_table_addr();
     }
-    if (!sys_call_table) {
+    if (unlikely(!sys_call_table)) {
         rc = -ENOENT;
         log_boot("no symbol sys_call_table\n");
         goto out;

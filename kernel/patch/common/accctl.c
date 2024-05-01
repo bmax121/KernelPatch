@@ -80,7 +80,7 @@ int commit_su(uid_t to_uid, const char *sctx)
     struct thread_info *thi = current_thread_info();
     thi->flags &= ~(_TIF_SECCOMP);
 
-    if (task_struct_offset.comm_offset > 0) {
+    if (likely(task_struct_offset.comm_offset > 0)) {
         struct seccomp *seccomp = (struct seccomp *)((uintptr_t)task + task_struct_offset.seccomp_offset);
         seccomp->mode = SECCOMP_MODE_DISABLED;
         // only be called when the task is exiting, so no barriers
@@ -110,7 +110,7 @@ int task_su(pid_t pid, uid_t to_uid, const char *sctx)
     int rc = 0;
     int scontext_changed = 0;
     struct task_struct *task = find_get_task_by_vpid(pid);
-    if (!task) {
+    if (unlikely(!task)) {
         logkfe("no such pid: %d\n", pid);
         return -ESRCH;
     }
@@ -125,7 +125,7 @@ int task_su(pid_t pid, uid_t to_uid, const char *sctx)
     struct thread_info *thi = get_task_thread_info(task);
     thi->flags &= ~(_TIF_SECCOMP);
 
-    if (task_struct_offset.comm_offset > 0) {
+    if (likely(task_struct_offset.comm_offset > 0)) {
         struct seccomp *seccomp = (struct seccomp *)((uintptr_t)task + task_struct_offset.seccomp_offset);
         seccomp->mode = SECCOMP_MODE_DISABLED;
         // only be called when the task is exiting, so no barriers
