@@ -124,11 +124,11 @@ struct pt_regs *_task_pt_reg(struct task_struct *task)
 #ifndef ANDROID
         if (kver < VERSION(4, 4, 19)) {
             addr -= sizeof(struct pt_regs_lt4419);
+        } else if (kver < VERSION(4, 14, 0)) {
+            addr -= sizeof(struct pt_regs_lt4140);
         } else
 #endif
-            if (kver < VERSION(4, 14, 0)) {
-            addr -= sizeof(struct pt_regs_lt4140);
-        } else if (kver < VERSION(5, 10, 0)) {
+            if (kver < VERSION(5, 10, 0)) {
             addr -= sizeof(struct pt_regs_lt5100);
         } else {
             addr -= sizeof(struct pt_regs);
