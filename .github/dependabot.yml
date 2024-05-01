@@ -1,0 +1,11 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    target-branch: main
+    directory: /
+    schedule:
+      interval: daily
+    groups:
+      action-dependencies:
+        patterns:
+          - "*"

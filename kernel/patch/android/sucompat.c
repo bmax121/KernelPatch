@@ -408,9 +408,9 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
     char __user *ufilename = *u_filename_p;
     char filename[SU_PATH_MAX_LEN];
     int flen = compat_strncpy_from_user(filename, ufilename, sizeof(filename));
-    if (flen <= 0) return;
+    if (unlikely(flen <= 0)) return;
 
-    if (!strcmp(current_su_path, filename)) {
+    if (unlikely(!strcmp(current_su_path, filename))) {
         uid_t uid = current_uid();
         if (!is_su_allow_uid(uid)) return;
         struct su_profile profile = profile_su_allow_uid(uid);
@@ -484,7 +484,7 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
             logkfi("call apd uid: %d, to_uid: %d, sctx: %s, cplen: %d, %d\n", uid, to_uid, sctx, cplen, argv_cplen);
         }
 
-    } else if (!strcmp(SUPERCMD, filename)) {
+    } else if (unlikely(!strcmp(SUPERCMD, filename))) {
         // key
         const char __user *p1 = get_user_arg_ptr(is_compact, *uargv, 1);
         if (!p1 || IS_ERR(p1)) return;

@@ -33,13 +33,19 @@
 #include <uapi/scdefs.h>
 #include <uapi/linux/stat.h>
 
+#define EV_KEY 0x01
+#define KEY_VOLUMEDOWN 114
+
+int android_is_safe_mode = 0;
+KP_EXPORT_SYMBOL(android_is_safe_mode);
+
 static const void *kernel_read_file(const char *path, loff_t *len)
 {
     set_priv_selinx_allow(current, 1);
     void *data = 0;
 
     struct file *filp = filp_open(path, O_RDONLY, 0);
-    if (!filp || IS_ERR(filp)) {
+    if (unlikely(!filp) || unlikely(IS_ERR(filp))) {
         log_boot("open file: %s error: %d\n", path, PTR_ERR(filp));
         goto out;
     }
@@ -61,12 +67,12 @@ static loff_t kernel_write_file(const char *path, const void *data, loff_t len, 
     set_priv_selinx_allow(current, 1);
 
     struct file *fp = filp_open(path, O_WRONLY | O_CREAT | O_TRUNC, mode);
-    if (!fp || IS_ERR(fp)) {
+    if (unlikely(!fp) || unlikely(IS_ERR(fp))) {
         log_boot("create file %s error: %d\n", path, PTR_ERR(fp));
         goto out;
     }
     kernel_write(fp, data, len, &off);
-    if (off != len) {
+    if (unlikely(off != len)) {
         log_boot("write file %s error: %x\n", path, off);
         goto free;
     }
@@ -82,6 +88,15 @@ out:
 static loff_t kernel_write_exec(const char *path, const void *data, loff_t len)
 {
     return kernel_write_file(path, data, len, 0744);
+}
+
+static void notify_safemode_userspace() {
+    set_priv_selinx_allow(current, 1);
+    const char data = '1';
+    log_boot("Write safe mode flag");
+    kernel_write_file(SAFE_MODE_FLAG_FILE, &data, sizeof(data), 0644);
+    log_boot("Write safe mode flag done");
+    set_priv_selinx_allow(current, 0);
 }
 
 static int extract_kpatch_call_back(const patch_extra_item_t *extra, const char *arg, const void *con, void *udata)
@@ -110,7 +125,9 @@ static void pre_user_exec_init()
 {
     log_boot("event: %s\n", EXTRA_EVENT_PRE_EXEC_INIT);
     try_extract_kpatch(EXTRA_EVENT_PRE_EXEC_INIT);
-
+    if (unlikely(android_is_safe_mode)) {
+        notify_safemode_userspace();
+    }
     // struct file *work_dir = filp_open(KPATCH_DEV_WORK_DIR, O_DIRECTORY | O_CREAT, S_IRUSR);
     // if (!work_dir || IS_ERR(work_dir)) {
     //     log_boot("creat work dir error: %s\n", KPATCH_DEV_WORK_DIR);
@@ -122,6 +139,9 @@ static void pre_user_exec_init()
 static void pre_init_second_stage()
 {
     log_boot("event: %s\n", EXTRA_EVENT_PRE_SECOND_STAGE);
+    if (unlikely(android_is_safe_mode)) {
+        notify_safemode_userspace();
+    }
 }
 
 static void on_first_app_process()
@@ -146,9 +166,9 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
     char __user *ufilename = *u_filename_p;
     char filename[SU_PATH_MAX_LEN];
     int flen = compat_strncpy_from_user(filename, ufilename, sizeof(filename));
-    if (flen <= 0) return;
+    if (unlikely(flen <= 0)) return;
 
-    if (!strcmp(system_bin_init, filename) || !strcmp(root_init, filename)) {
+    if (unlikely(!strcmp(system_bin_init, filename)) || unlikely(!strcmp(root_init, filename))) {
         //
         if (!first_user_init_executed) {
             first_user_init_executed = 1;
@@ -306,16 +326,16 @@ static void before_openat(hook_fargs4_t *args, void *udata)
 
     loff_t ori_len = 0;
     struct file *newfp = filp_open(REPLACE_RC_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0600);
-    if (!newfp || IS_ERR(newfp)) {
+    if (unlikely(!newfp || IS_ERR(newfp))) {
         log_boot("create replace rc error: %d\n", PTR_ERR(newfp));
         goto out;
     }
 
     loff_t off = 0;
     const char *ori_rc_data = kernel_read_file(ORIGIN_RC_FILE, &ori_len);
-    if (!ori_rc_data) goto out;
+    if (unlikely(!ori_rc_data)) goto out;
     kernel_write(newfp, ori_rc_data, ori_len, &off);
-    if (off != ori_len) {
+    if (unlikely(off != ori_len)) {
         log_boot("write replace rc error: %x\n", off);
         goto free;
     }
@@ -325,7 +345,7 @@ static void before_openat(hook_fargs4_t *args, void *udata)
     sprintf(added_rc_data, user_rc_data, sk, sk, sk, sk, sk, sk, sk, sk, sk, sk, sk, sk, sk, sk);
 
     kernel_write(newfp, added_rc_data, strlen(added_rc_data), &off);
-    if (off != strlen(added_rc_data) + ori_len) {
+    if (unlikely(off != strlen(added_rc_data) + ori_len)) {
         log_boot("write replace rc error: %x\n", off);
         goto free;
     }
@@ -362,12 +382,6 @@ static void after_openat(hook_fargs4_t *args, void *udata)
     }
 }
 
-#define EV_KEY 0x01
-#define KEY_VOLUMEDOWN 114
-
-int android_is_safe_mode = 0;
-KP_EXPORT_SYMBOL(android_is_safe_mode);
-
 // void input_handle_event(struct input_dev *dev, unsigned int type, unsigned int code, int value)
 static void before_input_handle_event(hook_fargs4_t *args, void *udata)
 {
@@ -378,10 +392,9 @@ static void before_input_handle_event(hook_fargs4_t *args, void *udata)
     if (value && type == EV_KEY && code == KEY_VOLUMEDOWN) {
         volumedown_pressed_count++;
         if (volumedown_pressed_count == 3) {
-            log_boot("entering safemode ...");
+            log_boot("notify entering safemode ...");
             android_is_safe_mode = 1;
-            struct file *filp = filp_open(SAFE_MODE_FLAG_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-            if (filp && !IS_ERR(filp)) filp_close(filp, 0);
+            notify_safemode_userspace();
         }
     }
 }
@@ -404,11 +417,11 @@ int kpuserd_init()
     ret |= rc;
 
     unsigned long input_handle_event_addr = get_preset_patch_sym()->input_handle_event;
-    if (input_handle_event_addr) {
-        rc = hook_wrap4((void *)input_handle_event_addr, before_input_handle_event, 0, 0);
-        ret |= rc;
-        log_boot("hook input_handle_event rc: %d\n", rc);
-    }
+    log_boot("input handle event is: %llx", input_handle_event_addr);
+    // TODO: Check addr validation
+    rc = hook_wrap4((void *)input_handle_event_addr, before_input_handle_event, 0, 0);
+    ret |= rc;
+    log_boot("hook input_handle_event rc: %d\n", rc);
 
     return ret;
 }

@@ -436,22 +436,16 @@ static void start_init(uint64_t kimage_voff, uint64_t linear_voff)
 
 static int nice_zone()
 {
-    int err = 0;
-
-    err = patch();
-
-    return err;
+    return patch();
 }
 
 int __attribute__((section(".start.text"))) __noinline start(uint64_t kimage_voff, uint64_t linear_voff)
 {
-    int rc = 0;
     start_init(kimage_voff, linear_voff);
     prot_myself();
     restore_map();
     log_regs();
     predata_init();
     symbol_init();
-    rc = nice_zone();
-    return rc;
+    return nice_zone();
 }

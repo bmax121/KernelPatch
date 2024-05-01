@@ -69,8 +69,8 @@ static long call_klog(const char __user *arg1)
 {
     char buf[1024];
     long len = compat_strncpy_from_user(buf, arg1, sizeof(buf));
-    if (len <= 0) return -EINVAL;
-    if (len > 0) logki("user log: %s", buf);
+    if (unlikely(len <= 0)) return -EINVAL;
+    if (likely(len > 0)) logki("user log: %s", buf);
     return 0;
 }
 
@@ -78,7 +78,7 @@ static long call_kpm_load(const char __user *arg1, const char *__user arg2, void
 {
     char path[1024], args[KPM_ARGS_LEN];
     long pathlen = compat_strncpy_from_user(path, arg1, sizeof(path));
-    if (pathlen <= 0) return -EINVAL;
+    if (unlikely(pathlen <= 0)) return -EINVAL;
     long arglen = compat_strncpy_from_user(args, arg2, sizeof(args));
     return load_module_path(path, arglen <= 0 ? 0 : args, reserved);
 }
@@ -87,7 +87,7 @@ static long call_kpm_control(const char __user *arg1, const char *__user arg2, v
 {
     char name[KPM_NAME_LEN], args[KPM_ARGS_LEN];
     long namelen = compat_strncpy_from_user(name, arg1, sizeof(name));
-    if (namelen <= 0) return -EINVAL;
+    if (unlikely(namelen <= 0)) return -EINVAL;
     long arglen = compat_strncpy_from_user(args, arg2, sizeof(args));
     return module_control0(name, arglen <= 0 ? 0 : args, out_msg, outlen);
 }
@@ -96,7 +96,7 @@ static long call_kpm_unload(const char *__user arg1, void *__user reserved)
 {
     char name[KPM_NAME_LEN];
     long len = compat_strncpy_from_user(name, arg1, sizeof(name));
-    if (len <= 0) return -EINVAL;
+    if (unlikely(len <= 0)) return -EINVAL;
     return unload_module(name, reserved);
 }
 
@@ -110,7 +110,7 @@ static long call_kpm_list(char *__user names, int len)
     if (len <= 0) return -EINVAL;
     char buf[4096];
     int sz = list_modules(buf, sizeof(buf));
-    if (sz > len) return -ENOBUFS;
+    if (unlikely(sz > len)) return -ENOBUFS;
     sz = compat_copy_to_user(names, buf, len);
     return sz;
 }
@@ -121,10 +121,10 @@ static long call_kpm_info(const char *__user uname, char *__user out_info, int o
     char name[64];
     char buf[2048];
     int len = compat_strncpy_from_user(name, uname, sizeof(name));
-    if (len <= 0) return -EINVAL;
+    if (unlikely(len <= 0)) return -EINVAL;
     int sz = get_module_info(name, buf, sizeof(buf));
     if (sz < 0) return sz;
-    if (sz > out_len) return -ENOBUFS;
+    if (unlikely(sz > out_len)) return -ENOBUFS;
     sz = compat_copy_to_user(out_info, buf, sz);
     return sz;
 }
@@ -132,7 +132,7 @@ static long call_kpm_info(const char *__user uname, char *__user out_info, int o
 static long call_su(struct su_profile *__user uprofile)
 {
     struct su_profile *profile = memdup_user(uprofile, sizeof(struct su_profile));
-    if (!profile || IS_ERR(profile)) return PTR_ERR(profile);
+    if (unlikely(!profile) || unlikely(IS_ERR(profile))) return PTR_ERR(profile);
     profile->scontext[sizeof(profile->scontext) - 1] = '\0';
     int rc = commit_su(profile->to_uid, profile->scontext);
     kvfree(profile);
@@ -250,8 +250,8 @@ static void before(hook_fargs6_t *args, void *udata)
 
     char key[MAX_KEY_LEN];
     long len = compat_strncpy_from_user(key, ukey, MAX_KEY_LEN);
-    if (len <= 0) return;
-    if (auth_superkey(key)) return;
+    if (unlikely(len <= 0)) return;
+    if (likely(auth_superkey(key))) return;
 
     long a1 = (long)syscall_argn(args, 2);
     long a2 = (long)syscall_argn(args, 3);
