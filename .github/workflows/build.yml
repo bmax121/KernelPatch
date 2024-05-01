@@ -11,7 +11,7 @@ jobs:
       contents: write
     steps:
       - name: Check out
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: "recursive"
           fetch-depth: 0
@@ -65,7 +65,7 @@ jobs:
           mv syscallhook.kpm demo-syscallhook.kpm
 
       - name: Upload elf
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           path: |
             kernel/kpimg.elf-linux
@@ -73,7 +73,7 @@ jobs:
           name: kpimg.elf
 
       - name: Release
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@v1.14.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
@@ -95,7 +95,7 @@ jobs:
       contents: write
     steps:
       - name: Check out
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Generate version
         id: parse_version
         run: |
@@ -115,7 +115,7 @@ jobs:
           zip -r kpuser.zip user
 
       - name: Release
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@v1.14.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
@@ -131,7 +131,7 @@ jobs:
       contents: write
     steps:
       - name: Check out
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: "recursive"
           fetch-depth: 0
@@ -187,7 +187,7 @@ jobs:
           mv kptools kptools-android
 
       - name: Release
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@v1.14.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
@@ -205,7 +205,7 @@ jobs:
       contents: write
     steps:
       - name: Check out
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Generate version
         id: parse_version
         run: |
@@ -232,7 +232,7 @@ jobs:
           mv kptools kptools-linux
 
       - name: Release
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@v1.14.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
@@ -248,7 +248,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Generate version
         shell: pwsh
         run: |
@@ -286,7 +286,7 @@ jobs:
           cp .\tools\kptools.exe .\tools\kptools-msys2.exe
           7z a kptools-msys2-win .\tools\kptools-msys2.exe D:\a\_temp\msys64\usr\bin\msys-2.0.dll
       - name: Release
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@v1.14.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ env.VERSION }}
@@ -301,7 +301,7 @@ jobs:
       contents: write
     steps:
       - name: Check out
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Install mingw32 cross toolchains
         run: |
           MINGW_LLVM_URL="https://github.com/mstorsjo/llvm-mingw/releases/download/20231128/llvm-mingw-20231128-msvcrt-ubuntu-20.04-x86_64.tar.xz"
@@ -332,7 +332,7 @@ jobs:
           done
           7za a kptools-llvm-win.zip -tZIP *.exe
       - name: Release
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@v1.14.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
@@ -348,7 +348,7 @@ jobs:
       contents: write
     steps:
       - name: Check out
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Generate version
         id: parse_version
         run: |
@@ -374,7 +374,7 @@ jobs:
           make
           mv kptools kptools-mac
       - name: Release
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@v1.14.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
