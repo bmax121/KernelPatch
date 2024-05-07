@@ -57,10 +57,12 @@ static const char supercmd_help[] =
     ""
     "KernelPatch supercmd:\n"
     "Usage: truncate <superkey|su> [-uZc] [Command [[SubCommand]...]]\n"
-    "superkey:                      Authentication. If current uid is su allowed, 'su' can be used as superkey.\n"
+    "superkey|su:                   Authentication. For certain commands, if the current uid is allowed to use su,"
+    "                               the 'su' string can be used for authentication.\n"
     "Options:\n"
     "  -u <UID>                     Change user id to UID.\n"
     "  -Z <SCONTEXT>                Change security context to SCONTEXT.\n"
+    "\n"
     "Command:\n"
     "  help:                        Print this help message.\n"
     "  version:                     Print Kernel version and KernelPatch version,\n "
@@ -79,6 +81,8 @@ static const char supercmd_help[] =
     "      profile <UID>                    Get the profile of the uid configuration.\n"
     "      reset <PATH>                     Reset '/system/bin/kp' to PATH. The length of PATH must be between 1-127.\n"
     "      path                             Get current su PATH.\n"
+    "\n"
+    "The command below requires superkey authentication.\n"
     "  module <SubCommand> [...]:   KernelPatch Module manager\n"
     "    SubCommand:\n"
     "      load <KPM_PATH> [KPM_ARGS]       Load module with KPM_PATH and KPM_ARGS.\n"
@@ -96,8 +100,7 @@ static const char supercmd_help[] =
 
 void handle_supercmd(char **__user u_filename_p, char **__user uargv)
 {
-    // allow root-allowed user use supercmd
-    static int allow_root_supercmd = 1;
+    static int is_key_auth = 0;
 
     // key
     const char __user *p1 = get_user_arg_ptr(0, *uargv, 1);
@@ -110,7 +113,8 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
     if (compat_strncpy_from_user(arg1, p1, sizeof(arg1)) <= 0) return;
 
     if (!auth_superkey(arg1)) {
-    } else if (allow_root_supercmd && !strcmp("su", arg1)) {
+        is_key_auth = 1;
+    } else if (!strcmp("su", arg1)) {
         uid_t uid = current_uid();
         if (!is_su_allow_uid(uid)) return;
         profile = profile_su_allow_uid(uid);
@@ -210,7 +214,77 @@ out_opt:
         *uargv += 3 * 8;
     } else if (!strcmp("version", cmd)) {
         supercmd_echo(u_filename_p, uargv, &sp, "%x,%x", kver, kpver);
-    } else if (!strcmp("key", cmd)) {
+    } else if (!strcmp("sumgr", cmd)) {
+        const char *sub_cmd = carr[1];
+        if (!sub_cmd) sub_cmd = "";
+        if (!strcmp(sub_cmd, "grant")) {
+            unsigned long long uid = 0, to_uid = 0;
+            const char *scontext = "";
+            if (!carr[2] || kstrtoull(carr[2], 10, &uid)) {
+                supercmd_echo(u_filename_p, uargv, &sp, "supercmd error: illegal uid");
+                goto free;
+            }
+            if (carr[3]) kstrtoull(carr[3], 10, &to_uid);
+            if (carr[4]) scontext = carr[4];
+            su_add_allow_uid(uid, to_uid, scontext, 1);
+            supercmd_echo(u_filename_p, uargv, &sp, "supercmd: grant %d, %d, %s", uid, to_uid, scontext);
+        } else if (!strcmp(sub_cmd, "revoke")) {
+            const char *suid = carr[2];
+            unsigned long long uid;
+            if (!suid || kstrtoull(suid, 10, &uid)) {
+                supercmd_echo(u_filename_p, uargv, &sp, "supercmd error: illegal uid");
+                goto free;
+            }
+            su_remove_allow_uid(uid, 1);
+            msg = suid;
+        } else if (!strcmp(sub_cmd, "num")) {
+            int num = su_allow_uid_nums();
+            supercmd_echo(u_filename_p, uargv, &sp, "%d", num);
+        } else if (!strcmp(sub_cmd, "list")) {
+            int num = su_allow_uid_nums();
+            uid_t *uids = (uid_t *)buffer;
+            int offset = 0;
+            su_allow_uids(0, uids, num);
+
+            char *msg_buf = buffer + num * sizeof(uid_t);
+            msg_buf[0] = '\0';
+            for (int i = 0; i < num; i++) {
+                offset += sprintf(msg_buf + offset, "%d\n", uids[i]);
+            };
+            if (offset > 0) msg_buf[offset - 1] = '\0';
+            msg = msg_buf;
+        } else if (!strcmp(sub_cmd, "profile")) {
+            unsigned long long uid;
+            if (!carr[2] || kstrtoull(carr[2], 10, &uid)) {
+                err_msg = "invalid uid";
+                goto echo;
+            }
+            struct su_profile *profile = (struct su_profile *)buffer;
+            rc = su_allow_uid_profile(0, uid, profile);
+            char *msg = buffer + sizeof(struct su_profile);
+            msg[0] = '\0';
+            if (!rc)
+                sprintf(msg, "uid: %d, to_uid: %d, scontext: %s", profile->uid, profile->to_uid, profile->scontext);
+        } else if (!strcmp(sub_cmd, "reset")) {
+            rc = su_reset_path(carr[2]);
+        } else if (!strcmp(sub_cmd, "path")) {
+            msg = su_get_path();
+        } else {
+            err_msg = "invalid subcommand";
+        }
+    } else if (!strcmp("bootlog", cmd)) {
+        msg = get_boot_log();
+    } else if (!strcmp("test", cmd)) {
+        msg = "test done...";
+    } else {
+    }
+
+    if (!is_key_auth) {
+        err_msg = "superkey(not su) is required";
+        goto echo;
+    }
+
+    if (!strcmp("key", cmd)) {
         const char *sub_cmd = carr[1];
         if (!sub_cmd) sub_cmd = "";
         if (!strcmp("get", sub_cmd)) {
@@ -292,68 +366,6 @@ out_opt:
         } else {
             err_msg = "invalid subcommand";
         }
-    } else if (!strcmp("sumgr", cmd)) {
-        const char *sub_cmd = carr[1];
-        if (!sub_cmd) sub_cmd = "";
-        if (!strcmp(sub_cmd, "grant")) {
-            unsigned long long uid = 0, to_uid = 0;
-            const char *scontext = "";
-            if (!carr[2] || kstrtoull(carr[2], 10, &uid)) {
-                supercmd_echo(u_filename_p, uargv, &sp, "supercmd error: illegal uid");
-                goto free;
-            }
-            if (carr[3]) kstrtoull(carr[3], 10, &to_uid);
-            if (carr[4]) scontext = carr[4];
-            su_add_allow_uid(uid, to_uid, scontext, 1);
-            supercmd_echo(u_filename_p, uargv, &sp, "supercmd: grant %d, %d, %s", uid, to_uid, scontext);
-        } else if (!strcmp(sub_cmd, "revoke")) {
-            const char *suid = carr[2];
-            unsigned long long uid;
-            if (!suid || kstrtoull(suid, 10, &uid)) {
-                supercmd_echo(u_filename_p, uargv, &sp, "supercmd error: illegal uid");
-                goto free;
-            }
-            su_remove_allow_uid(uid, 1);
-            msg = suid;
-        } else if (!strcmp(sub_cmd, "num")) {
-            int num = su_allow_uid_nums();
-            supercmd_echo(u_filename_p, uargv, &sp, "%d", num);
-        } else if (!strcmp(sub_cmd, "list")) {
-            int num = su_allow_uid_nums();
-            uid_t *uids = (uid_t *)buffer;
-            int offset = 0;
-            su_allow_uids(0, uids, num);
-
-            char *msg_buf = buffer + num * sizeof(uid_t);
-            msg_buf[0] = '\0';
-            for (int i = 0; i < num; i++) {
-                offset += sprintf(msg_buf + offset, "%d\n", uids[i]);
-            };
-            if (offset > 0) msg_buf[offset - 1] = '\0';
-            msg = msg_buf;
-        } else if (!strcmp(sub_cmd, "profile")) {
-            unsigned long long uid;
-            if (!carr[2] || kstrtoull(carr[2], 10, &uid)) {
-                err_msg = "invalid uid";
-                goto echo;
-            }
-            struct su_profile *profile = (struct su_profile *)buffer;
-            rc = su_allow_uid_profile(0, uid, profile);
-            char *msg = buffer + sizeof(struct su_profile);
-            msg[0] = '\0';
-            if (!rc)
-                sprintf(msg, "uid: %d, to_uid: %d, scontext: %s", profile->uid, profile->to_uid, profile->scontext);
-        } else if (!strcmp(sub_cmd, "reset")) {
-            rc = su_reset_path(carr[2]);
-        } else if (!strcmp(sub_cmd, "path")) {
-            msg = su_get_path();
-        } else {
-            err_msg = "invalid subcommand";
-        }
-    } else if (!strcmp("bootlog", cmd)) {
-        msg = get_boot_log();
-    } else if (!strcmp("test", cmd)) {
-        msg = "test done...";
     } else {
         err_msg = "invalid command";
     }

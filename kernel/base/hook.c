@@ -138,7 +138,7 @@ uint64_t branch_func_addr(uint64_t addr)
 
 #endif
 
-static hook_err_t relo_b(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
+static __noinline hook_err_t relo_b(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
 {
     uint32_t *buf = hook->relo_insts + hook->relo_insts_num;
     uint64_t imm64;
@@ -170,7 +170,7 @@ static hook_err_t relo_b(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_t
     return HOOK_NO_ERR;
 }
 
-static hook_err_t relo_adr(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
+static __noinline hook_err_t relo_adr(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
 {
     uint32_t *buf = hook->relo_insts + hook->relo_insts_num;
 
@@ -192,7 +192,7 @@ static hook_err_t relo_adr(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst
     return HOOK_NO_ERR;
 }
 
-static hook_err_t relo_ldr(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
+static __noinline hook_err_t relo_ldr(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
 {
     uint32_t *buf = hook->relo_insts + hook->relo_insts_num;
 
@@ -241,7 +241,7 @@ static hook_err_t relo_ldr(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst
     return HOOK_NO_ERR;
 }
 
-static hook_err_t relo_cb(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
+static __noinline hook_err_t relo_cb(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
 {
     uint32_t *buf = hook->relo_insts + hook->relo_insts_num;
 
@@ -259,7 +259,7 @@ static hook_err_t relo_cb(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_
     return HOOK_NO_ERR;
 }
 
-static hook_err_t relo_tb(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
+static __noinline hook_err_t relo_tb(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
 {
     uint32_t *buf = hook->relo_insts + hook->relo_insts_num;
 
@@ -277,7 +277,7 @@ static hook_err_t relo_tb(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_
     return HOOK_NO_ERR;
 }
 
-hook_err_t relo_ignore(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
+static __noinline hook_err_t relo_ignore(hook_t *hook, uint64_t inst_addr, uint32_t inst, inst_type_t type)
 {
     uint32_t *buf = hook->relo_insts + hook->relo_insts_num;
     buf[0] = inst;
@@ -604,9 +604,9 @@ void hook_install(hook_t *hook)
     uint64_t va = hook->origin_addr;
     uint64_t *entry = pgtable_entry_kernel(va);
     uint64_t ori_prot = *entry;
-    *entry = (ori_prot | PTE_DBM) & ~PTE_RDONLY & 0xFFFBFFFFFFFFFFFF;
+    *entry = (ori_prot | PTE_DBM) & ~PTE_RDONLY;
     flush_tlb_kernel_page(va);
-    // todo:
+    // todo: cpu_stop_machine
     // todo: can use aarch64_insn_patch_text_nosync, aarch64_insn_patch_text directly?
     for (int32_t i = 0; i < hook->tramp_insts_num; i++) {
         *((uint32_t *)hook->origin_addr + i) = hook->tramp_insts[i];

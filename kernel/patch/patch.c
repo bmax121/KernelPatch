@@ -1,5 +1,3 @@
-#include "patch.h"
-
 #include <log.h>
 #include <ksyms.h>
 #include <kallsyms.h>
@@ -118,31 +116,31 @@ int patch()
     module_init();
     syscall_init();
 
-    hook_err_t ret = 0;
+    hook_err_t rc = 0;
 
     unsigned long panic_addr = get_preset_patch_sym()->panic;
+    logkd("panic addr: %llx\n", panic_addr);
     if (panic_addr) {
-        hook_err_t rc = hook_wrap12((void *)panic_addr, before_panic, 0, 0);
+        rc = hook_wrap12((void *)panic_addr, before_panic, 0, 0);
         log_boot("hook panic rc: %d\n", rc);
-        ret |= rc;
     }
+    if (rc) return rc;
 
     // rest_init or cgroup_init
     unsigned long init_addr = get_preset_patch_sym()->rest_init;
     if (!init_addr) init_addr = get_preset_patch_sym()->cgroup_init;
     if (init_addr) {
-        hook_err_t rc = hook_wrap4((void *)init_addr, before_rest_init, 0, (void *)init_addr);
+        rc = hook_wrap4((void *)init_addr, before_rest_init, 0, (void *)init_addr);
         log_boot("hook rest_init rc: %d\n", rc);
-        ret |= rc;
     }
+    if (rc) return rc;
 
     // kernel_init
     unsigned long kernel_init_addr = get_preset_patch_sym()->kernel_init;
     if (kernel_init_addr) {
-        hook_err_t rc = hook_wrap4((void *)kernel_init_addr, before_kernel_init, after_kernel_init, 0);
+        rc = hook_wrap4((void *)kernel_init_addr, before_kernel_init, after_kernel_init, 0);
         log_boot("hook kernel_init rc: %d\n", rc);
-        ret |= rc;
     }
 
-    return ret;
+    return rc;
 }

@@ -288,13 +288,17 @@ static uint64_t search_sys_call_table_addr()
     return 0;
 }
 
-void init_syscall_name_table();
-void init_compat_syscall_name_table();
-
 void syscall_init()
 {
-    init_syscall_name_table();
-    init_compat_syscall_name_table();
+    for (int i = 0; i < sizeof(syscall_name_table) / sizeof(syscall_name_table[0]); i++) {
+        uintptr_t *addr = (uintptr_t *)syscall_name_table + i;
+        *addr = link2runtime(*addr);
+    }
+
+    for (int i = 0; i < sizeof(compat_syscall_name_table) / sizeof(compat_syscall_name_table[0]); i++) {
+        uintptr_t *addr = (uintptr_t *)compat_syscall_name_table + i;
+        *addr = link2runtime(*addr);
+    }
 
     sys_call_table = (typeof(sys_call_table))kallsyms_lookup_name("sys_call_table");
     if (!sys_call_table) sys_call_table = (typeof(sys_call_table))search_sys_call_table_addr();
