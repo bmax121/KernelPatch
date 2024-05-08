@@ -670,6 +670,8 @@ int kfunc_def(cap_task_setscheduler)(struct task_struct *p) = 0;
 int kfunc_def(cap_task_setioprio)(struct task_struct *p, int ioprio) = 0;
 int kfunc_def(cap_task_setnice)(struct task_struct *p, int nice) = 0;
 int kfunc_def(cap_vm_enough_memory)(struct mm_struct *mm, long pages) = 0;
+// int kfunc_def(security_secid_to_secctx)(u32 secid, char **secdata, u32 *seclen) = 0;
+int kfunc_def(security_secctx_to_secid)(const char *secdata, u32 seclen, u32 *secid) = 0;
 
 kernel_cap_t full_cap = { 0 };
 
@@ -694,7 +696,8 @@ static void _linux_security_commoncap_sym_match(const char *name, unsigned long 
     // kfunc_match(cap_task_setscheduler, name, addr);
     // kfunc_match(cap_task_setioprio, name, addr);
     // kfunc_match(cap_task_setnice, name, addr);
-    // kfunc_match(cap_vm_enough_memory, name, addr);
+    // kfunc_match(security_secid_to_secctx, name, addr);
+    kfunc_match(security_secctx_to_secid, name, addr);
 }
 
 #include <linux/seccomp.h>

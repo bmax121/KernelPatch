@@ -79,11 +79,6 @@ out:
     return off;
 }
 
-static loff_t kernel_write_exec(const char *path, const void *data, loff_t len)
-{
-    return kernel_write_file(path, data, len, 0744);
-}
-
 static void pre_user_exec_init()
 {
     log_boot("event: %s\n", EXTRA_EVENT_PRE_EXEC_INIT);
@@ -183,8 +178,8 @@ static void handle_after_execve(hook_local_t *hook_local)
 {
     int unhook = hook_local->data7;
     if (unhook) {
-        fp_unhook_syscalln(__NR_execve, before_execve, after_execve);
-        fp_unhook_syscalln(__NR_execveat, before_execveat, after_execveat);
+        unhook_syscalln(__NR_execve, before_execve, after_execve);
+        unhook_syscalln(__NR_execveat, before_execveat, after_execveat);
     }
 }
 
@@ -321,7 +316,7 @@ static void after_openat(hook_fargs4_t *args, void *udata)
         log_boot("restore rc file: %x\n", args->local.data0);
     }
     if (args->local.data2) {
-        fp_unhook_syscalln(__NR_openat, before_openat, after_openat);
+        unhook_syscalln(__NR_openat, before_openat, after_openat);
     }
 }
 

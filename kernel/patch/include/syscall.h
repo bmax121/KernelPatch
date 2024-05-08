@@ -138,7 +138,7 @@ static inline void inline_unhook_compat_syscalln(int nr, void *before, void *aft
     __inline_unhook_syscalln(nr, 0, before, after);
 }
 
-#define DEFAULT_INLINE_HOOK_SYSCALL
+// #define DEFAULT_INLINE_HOOK_SYSCALL
 
 #ifdef DEFAULT_INLINE_HOOK_SYSCALL
 #define hook_syscalln inline_hook_syscalln

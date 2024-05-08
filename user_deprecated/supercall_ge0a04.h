@@ -53,30 +53,30 @@ static inline uint32_t sc_k_ver(const char *key)
 {
     if (!key || !key[0]) return -EINVAL;
     long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_KERNEL_VER));
-    return (uint32_t)ret;
+    return (int32_t)ret;
 }
 
-static inline uint32_t sc_skey_get(const char *key, char *out_key, int outlen)
+static inline long sc_skey_get(const char *key, char *out_key, int outlen)
 {
     if (!key || !key[0]) return -EINVAL;
     if (outlen < SUPERCALL_KEY_MAX_LEN) return -EINVAL;
     long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_SKEY_GET), out_key, outlen);
-    return (uint32_t)ret;
+    return ret;
 }
 
-static inline uint32_t sc_skey_set(const char *key, const char *new_key)
+static inline long sc_skey_set(const char *key, const char *new_key)
 {
     if (!key || !key[0]) return -EINVAL;
     if (!new_key || !new_key[0]) return -EINVAL;
     long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_SKEY_SET), new_key);
-    return (uint32_t)ret;
+    return ret;
 }
 
-static inline uint32_t sc_skey_root_enable(const char *key, bool enable)
+static inline long sc_skey_root_enable(const char *key, bool enable)
 {
     if (!key || !key[0]) return -EINVAL;
     long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_SKEY_ROOT_ENABLE), (long)enable);
-    return (uint32_t)ret;
+    return ret;
 }
 
 static inline long sc_su(const char *key, struct su_profile *profile)
@@ -87,12 +87,14 @@ static inline long sc_su(const char *key, struct su_profile *profile)
     return ret;
 }
 
+
 static inline long sc_su_task(const char *key, pid_t tid, struct su_profile *profile)
 {
     if (!key || !key[0]) return -EINVAL;
     long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_SU_TASK), tid, profile);
     return ret;
 }
+
 
 static inline long sc_kpm_load(const char *key, const char *path, const char *args, void *reserved)
 {
@@ -101,6 +103,7 @@ static inline long sc_kpm_load(const char *key, const char *path, const char *ar
     long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_KPM_LOAD), path, args, reserved);
     return ret;
 }
+
 
 static inline long sc_kpm_control(const char *key, const char *name, const char *ctl_args, char *out_msg, long outlen)
 {
@@ -167,7 +170,6 @@ static inline long __sc_test(const char *key, long a1, long a2, long a3)
     return ret;
 }
 
-#ifdef ANDROID
 static inline long sc_su_grant_uid(const char *key, uid_t uid, struct su_profile *profile)
 {
     if (!key || !key[0]) return -EINVAL;
@@ -219,7 +221,5 @@ static inline long sc_su_get_path(const char *key, char *buf, int buf_size)
     long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_SU_GET_PATH), buf, buf_size);
     return ret;
 }
-
-#endif
 
 #endif

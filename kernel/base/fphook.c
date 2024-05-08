@@ -209,7 +209,7 @@ static hook_err_t hook_chain_prepare(uint32_t *transit, int32_t argno)
     // todo: assert
     if (transit_num >= TRANSIT_INST_NUM) return -HOOK_TRANSIT_NO_MEM;
 
-    transit[0] = ARM64_BTI_C;
+    transit[0] = ARM64_BTI_JC;
     transit[1] = ARM64_NOP;
     for (int i = 0; i < transit_num; i++) {
         transit[i + 2] = ((uint32_t *)transit_start)[i];

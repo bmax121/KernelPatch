@@ -39,14 +39,12 @@
 #include <symbol.h>
 #include <uapi/linux/limits.h>
 
+const char sh_path[] = SH_PATH;
+const char default_su_path[] = SU_PATH;
+
 #ifdef ANDROID
-const char sh_path[] = ANDROID_SH_PATH;
-const char default_su_path[] = ANDROID_SU_PATH;
-const char legacy_su_path[] = ANDROID_LEGACY_SU_PATH;
+const char legacy_su_path[] = LEGACY_SU_PATH;
 const char apd_path[] = APD_PATH;
-#else
-const char sh_path[] = LINUX_SH_PATH;
-const char default_su_path[] = LINUX_SU_PATH;
 #endif
 
 static const char *current_su_path = 0;
@@ -278,8 +276,10 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
         const char *sctx = profile.scontext;
         commit_su(to_uid, sctx);
 
+#ifdef ANDROID
         struct file *filp = filp_open(apd_path, O_RDONLY, 0);
         if (!filp || IS_ERR(filp)) {
+#endif
             int cplen = 0;
 #ifdef TRY_DIRECT_MODIFY_USER
             cplen = compat_copy_to_user(*u_filename_p, sh_path, sizeof(sh_path));
@@ -296,6 +296,8 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
                 }
                 logkfi("call su uid: %d, to_uid: %d, sctx: %s, uptr: %llx\n", uid, to_uid, sctx, uptr);
             }
+
+#ifdef ANDROID
         } else {
             filp_close(filp, 0);
 
@@ -319,7 +321,6 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
                 }
             }
 
-#ifdef ANDROID
             // argv
             int argv_cplen = 0;
             if (strcmp(legacy_su_path, filename)) {
@@ -342,8 +343,8 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
                 }
             }
             logkfi("call apd uid: %d, to_uid: %d, sctx: %s, cplen: %d, %d\n", uid, to_uid, sctx, cplen, argv_cplen);
-#endif
         }
+#endif
 
     } else if (!strcmp(SUPERCMD, filename)) {
         handle_supercmd(u_filename_p, uargv);
@@ -506,6 +507,8 @@ int su_compat_init()
         hook_syscalln(__NR_faccessat2, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after, (void *)0);
     log_boot("hook __NR_faccessat2 rc: %d\n", rc);
 
+    if (rc) return rc;
+
     // #include <asm/unistd32.h>
 
     // __NR_execve 11
@@ -537,5 +540,5 @@ int su_compat_init()
     rc = hook_compat_syscalln(439, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after, (void *)0);
     log_boot("hook 32 __NR_faccessat2 rc: %d\n", rc);
 
-    return rc;
+    return 0;
 }

@@ -29,6 +29,7 @@
 #include <pidmem.h>
 #include <predata.h>
 #include <linux/random.h>
+#include <sucompat.h>
 
 #define MAX_KEY_LEN 128
 
@@ -178,7 +179,49 @@ static unsigned long call_pid_virt_to_phys(pid_t pid, uintptr_t vaddr)
     return pid_virt_to_phys(pid, vaddr);
 }
 
-static long supercall(long cmd, long arg1, long arg2, long arg3, long arg4)
+static long call_grant_uid(struct su_profile *__user uprofile)
+{
+    struct su_profile *profile = memdup_user(uprofile, sizeof(struct su_profile));
+    if (!profile || IS_ERR(profile)) return PTR_ERR(profile);
+    int rc = su_add_allow_uid(profile->uid, profile->to_uid, profile->scontext, 1);
+    kvfree(profile);
+    return rc;
+}
+
+static long call_revoke_uid(uid_t uid)
+{
+    return su_remove_allow_uid(uid, 1);
+}
+
+static long call_su_allow_uid_nums()
+{
+    return su_allow_uid_nums();
+}
+
+static long call_su_list_allow_uid(uid_t *__user uids, int num)
+{
+    return su_allow_uids(1, uids, num);
+}
+
+static long call_su_allow_uid_profile(uid_t uid, struct su_profile *__user uprofile)
+{
+    return su_allow_uid_profile(1, uid, uprofile);
+}
+
+static long call_reset_su_path(const char *__user upath)
+{
+    return su_reset_path(strndup_user(upath, SU_PATH_MAX_LEN));
+}
+
+static long call_su_get_path(char *__user ubuf, int buf_len)
+{
+    const char *path = su_get_path();
+    int len = strlen(path);
+    if (buf_len <= len) return -ENOBUFS;
+    return compat_copy_to_user(ubuf, path, len + 1);
+}
+
+static long supercall(int is_key_auth, long cmd, long arg1, long arg2, long arg3, long arg4)
 {
     switch (cmd) {
     case SUPERCALL_HELLO:
@@ -193,6 +236,43 @@ static long supercall(long cmd, long arg1, long arg2, long arg3, long arg4)
     }
 
     switch (cmd) {
+    case SUPERCALL_SU:
+        return call_su((struct su_profile * __user) arg1);
+    case SUPERCALL_SU_TASK:
+        return call_su_task((pid_t)arg1, (struct su_profile * __user) arg2);
+
+    case SUPERCALL_SU_GRANT_UID:
+        return call_grant_uid((struct su_profile * __user) arg1);
+    case SUPERCALL_SU_REVOKE_UID:
+        return call_revoke_uid((uid_t)arg1);
+    case SUPERCALL_SU_NUMS:
+        return call_su_allow_uid_nums();
+    case SUPERCALL_SU_LIST:
+        return call_su_list_allow_uid((uid_t *)arg1, (int)arg2);
+    case SUPERCALL_SU_PROFILE:
+        return call_su_allow_uid_profile((uid_t)arg1, (struct su_profile * __user) arg2);
+    case SUPERCALL_SU_RESET_PATH:
+        return call_reset_su_path((const char *)arg1);
+    case SUPERCALL_SU_GET_PATH:
+        return call_su_get_path((char *__user)arg1, (int)arg2);
+    default:
+        break;
+    }
+
+    switch (cmd) {
+    case SUPERCALL_BOOTLOG:
+        return call_bootlog();
+    case SUPERCALL_PANIC:
+        return call_panic();
+    case SUPERCALL_TEST:
+        return call_test(arg1, arg2, arg3);
+    default:
+        break;
+    }
+
+    if (!is_key_auth) return -EPERM;
+
+    switch (cmd) {
     case SUPERCALL_SKEY_GET:
         return call_skey_get((char *__user)arg1, (int)arg2);
     case SUPERCALL_SKEY_SET:
@@ -203,10 +283,6 @@ static long supercall(long cmd, long arg1, long arg2, long arg3, long arg4)
     }
 
     switch (cmd) {
-    case SUPERCALL_SU:
-        return call_su((struct su_profile * __user) arg1);
-    case SUPERCALL_SU_TASK:
-        return call_su_task((pid_t)arg1, (struct su_profile * __user) arg2);
     case SUPERCALL_KPM_LOAD:
         return call_kpm_load((const char *__user)arg1, (const char *__user)arg2, (void *__user)arg3);
     case SUPERCALL_KPM_UNLOAD:
@@ -219,21 +295,16 @@ static long supercall(long cmd, long arg1, long arg2, long arg3, long arg4)
         return call_kpm_list((char *__user)arg1, (int)arg2);
     case SUPERCALL_KPM_INFO:
         return call_kpm_info((const char *__user)arg1, (char *__user)arg2, (int)arg3);
-    case SUPERCALL_MEM_PHYS:
-        return call_pid_virt_to_phys((pid_t)arg1, (uintptr_t)arg2);
-
-    case SUPERCALL_BOOTLOG:
-        return call_bootlog();
-    case SUPERCALL_PANIC:
-        return call_panic();
-    case SUPERCALL_TEST:
-        return call_test(arg1, arg2, arg3);
     }
 
-#ifdef ANDROID
-    return supercall_android(cmd, arg1, arg2, arg3);
-#endif
-    return NO_SYSCALL;
+    switch (cmd) {
+    case SUPERCALL_MEM_PHYS:
+        return call_pid_virt_to_phys((pid_t)arg1, (uintptr_t)arg2);
+    default:
+        break;
+    }
+
+    return -ENOSYS;
 }
 
 static void before(hook_fargs6_t *args, void *udata)
@@ -251,7 +322,17 @@ static void before(hook_fargs6_t *args, void *udata)
     char key[MAX_KEY_LEN];
     long len = compat_strncpy_from_user(key, ukey, MAX_KEY_LEN);
     if (len <= 0) return;
-    if (auth_superkey(key)) return;
+
+    int is_key_auth = 0;
+
+    if (auth_superkey(key)) {
+        is_key_auth = 1;
+    } else if (!strcmp("su", key)) {
+        uid_t uid = current_uid();
+        if (!is_su_allow_uid(uid)) return;
+    } else {
+        return;
+    }
 
     long a1 = (long)syscall_argn(args, 2);
     long a2 = (long)syscall_argn(args, 3);
@@ -259,7 +340,7 @@ static void before(hook_fargs6_t *args, void *udata)
     long a4 = (long)syscall_argn(args, 5);
 
     args->skip_origin = 1;
-    args->ret = supercall(cmd, a1, a2, a3, a4);
+    args->ret = supercall(is_key_auth, cmd, a1, a2, a3, a4);
 }
 
 int supercall_install()

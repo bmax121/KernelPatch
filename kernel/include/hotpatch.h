@@ -3,8 +3,8 @@
  * Copyright (C) 2024 bmax121. All Rights Reserved.
  */
 
-#ifndef _KP_PATCHING_H_
-#define _KP_PATCHING_H_
+#ifndef _KP_HOTPATCH_H_
+#define _KP_HOTPATCH_H_
 
 #include <stdint.h>
 

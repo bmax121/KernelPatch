@@ -6,15 +6,6 @@
 #ifndef _KP_UAPI_SCDEF_H_
 #define _KP_UAPI_SCDEF_H_
 
-static inline long hash_key(const char *key)
-{
-    long hash = 1000000007;
-    for (int i = 0; key[i]; i++) {
-        hash = hash * 31 + key[i];
-    }
-    return hash;
-}
-
 #define SUPERCALL_HELLO_ECHO "hello1158"
 
 // #define __NR_supercall __NR3264_truncate // 45
@@ -64,24 +55,26 @@ struct su_profile
 
 #ifdef ANDROID
 
-#define ANDROID_SH_PATH "/system/bin/sh"
-#define LINUX_SH_PATH "/usr/bin/sh"
-#define SU_PATH_MAX_LEN 128
-
-#define ANDROID_SU_PATH "/system/bin/kp"
-#define LINUX_SU_PATH "/usr/bin/kp"
-#define ANDROID_LEGACY_SU_PATH "/system/bin/su"
-#define ANDROID_ECHO_PATH "/system/bin/echo"
-#define LINUX_ECHO_PATH "/usr/bin/echo"
-
+#define SH_PATH "/system/bin/sh"
+#define SU_PATH "/system/bin/kp"
+#define LEGACY_SU_PATH "/system/bin/su"
+#define ECHO_PATH "/system/bin/echo"
 #define KERNELPATCH_DATA_DIR "/data/adb/kp"
 #define KERNELPATCH_MODULE_DATA_DIR KERNELPATCH_DATA_DIR "/modules"
 #define APD_PATH "/data/adb/apd"
+#define ALL_ALLOW_SCONTEXT "u:r:magisk:s0"
+#else
+#define SH_PATH "/usr/bin/sh"
+#define ECHO_PATH "/usr/bin/echo"
+#define SU_PATH "/usr/bin/kp"
+#define ALL_ALLOW_SCONTEXT "u:r:kernel:s0"
+#endif
+
+#define SU_PATH_MAX_LEN 128
+
 #define SUPERCMD "/system/bin/truncate"
 
 #define SAFE_MODE_FLAG_FILE "/dev/.safemode"
-
-#define ALL_ALLOW_SCONTEXT "u:r:magisk:s0"
 
 #define SUPERCALL_SU_GRANT_UID 0x1100
 #define SUPERCALL_SU_REVOKE_UID 0x1101
@@ -90,8 +83,6 @@ struct su_profile
 #define SUPERCALL_SU_PROFILE 0x1104
 #define SUPERCALL_SU_GET_PATH 0x1110
 #define SUPERCALL_SU_RESET_PATH 0x1111
-
-#endif
 
 #define SUPERCALL_MAX 0x1200
 

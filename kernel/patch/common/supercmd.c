@@ -37,7 +37,7 @@ static void supercmd_exec(char **__user u_filename_p, const char *cmd, uintptr_t
 
 static void supercmd_echo(char **__user u_filename_p, char **__user uargv, uintptr_t *sp, const char *fmt, ...)
 {
-    supercmd_exec(u_filename_p, ANDROID_ECHO_PATH, sp);
+    supercmd_exec(u_filename_p, ECHO_PATH, sp);
 
     char buffer[4096];
     va_list va;
@@ -45,7 +45,7 @@ static void supercmd_echo(char **__user u_filename_p, char **__user uargv, uintp
     vsnprintf(buffer, sizeof(buffer), fmt, va);
     va_end(va);
 
-    const char *__user cmd = supercmd_str_to_user_sp(ANDROID_ECHO_PATH, sp);
+    const char *__user cmd = supercmd_str_to_user_sp(ECHO_PATH, sp);
     const char *__user argv1 = supercmd_str_to_user_sp(buffer, sp);
 
     set_user_arg_ptr(0, *uargv, 0, (uintptr_t)cmd);
@@ -100,7 +100,7 @@ static const char supercmd_help[] =
 
 void handle_supercmd(char **__user u_filename_p, char **__user uargv)
 {
-    static int is_key_auth = 0;
+    int is_key_auth = 0;
 
     // key
     const char __user *p1 = get_user_arg_ptr(0, *uargv, 1);
@@ -131,6 +131,7 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
         if (!ua || IS_ERR(ua)) break;
         const char *a = strndup_user(ua, 512);
         if (IS_ERR(a)) break;
+        // ignore after -c or exec
         if (a[0] == '-' && a[1] == 'c') break;
         if (!strcmp("exec", a)) break;
         parr[i] = a;
@@ -141,7 +142,9 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
     // if no any more
     if (!parr[2]) {
         supercmd_exec(u_filename_p, sh_path, &sp);
-        *uargv += 2 * 8;
+        const char *__user argv1 = supercmd_str_to_user_sp(sh_path, &sp);
+        set_user_arg_ptr(0, *uargv, 1, (uintptr_t)argv1);
+        *uargv += 1 * 8;
         commit_su(profile.to_uid, profile.scontext);
         return;
     }
@@ -275,16 +278,17 @@ out_opt:
     } else if (!strcmp("bootlog", cmd)) {
         msg = get_boot_log();
     } else if (!strcmp("test", cmd)) {
+        void test();
         msg = "test done...";
     } else {
     }
 
-    if (!is_key_auth) {
-        err_msg = "superkey(not su) is required";
-        goto echo;
-    }
-
+    const char *not_key_auth_err_msg = "superkey(not su) is required";
     if (!strcmp("key", cmd)) {
+        if (!is_key_auth) {
+            err_msg = not_key_auth_err_msg;
+            goto echo;
+        }
         const char *sub_cmd = carr[1];
         if (!sub_cmd) sub_cmd = "";
         if (!strcmp("get", sub_cmd)) {
@@ -312,6 +316,10 @@ out_opt:
             err_msg = "invalid subcommand";
         }
     } else if (!strcmp("module", cmd)) {
+        if (!is_key_auth) {
+            err_msg = not_key_auth_err_msg;
+            goto echo;
+        }
         const char *sub_cmd = carr[1];
         if (!sub_cmd) sub_cmd = "";
         if (!strcmp("num", sub_cmd)) {
