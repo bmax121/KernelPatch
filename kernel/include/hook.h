@@ -244,7 +244,28 @@ int32_t ret_absolute(uint32_t *buf, uint64_t addr);
 hook_err_t hook_prepare(hook_t *hook);
 void hook_install(hook_t *hook);
 void hook_uninstall(hook_t *hook);
+
+/**
+ * @brief Inline-hook function which address is @param func with function @param replace, 
+ * after hook, original @param func is backuped in @param backup.
+ * 
+ * @note If multiple modules hook this function simultaneously, 
+ * it will cause abnormality when unload the modules. Please use hook_wrap instead
+ * 
+ * @see hook_wrap
+ * 
+ * @param func 
+ * @param replace 
+ * @param backup 
+ * @return hook_err_t 
+ */
 hook_err_t hook(void *func, void *replace, void **backup);
+
+/**
+ * @brief 
+ * 
+ * @param func 
+ */
 void unhook(void *func);
 
 /**

@@ -281,101 +281,101 @@ out_opt:
         void test();
         msg = "test done...";
     } else {
-    }
-
-    const char *not_key_auth_err_msg = "superkey(not su) is required";
-    if (!strcmp("key", cmd)) {
-        if (!is_key_auth) {
-            err_msg = not_key_auth_err_msg;
-            goto echo;
-        }
-        const char *sub_cmd = carr[1];
-        if (!sub_cmd) sub_cmd = "";
-        if (!strcmp("get", sub_cmd)) {
-            msg = get_superkey();
-        } else if (!strcmp("set", sub_cmd)) {
-            const char *key = carr[2];
-            if (!key) {
-                err_msg = "invalid new key";
+        // superkey authrication command
+        const char *not_key_auth_err_msg = "superkey(not su) is required";
+        if (!strcmp("key", cmd)) {
+            if (!is_key_auth) {
+                err_msg = not_key_auth_err_msg;
                 goto echo;
             }
-            msg = key;
-            reset_superkey(key);
-        } else if (!strcmp("hash", sub_cmd)) {
-            const char *able = carr[2];
-            if (!strcmp("enable", able) || !strcmp("disable", able)) {
-                msg = able;
-                enable_auth_root_key(1);
-            } else if (!strcmp("disable", able)) {
-                msg = able;
-                enable_auth_root_key(0);
+            const char *sub_cmd = carr[1];
+            if (!sub_cmd) sub_cmd = "";
+            if (!strcmp("get", sub_cmd)) {
+                msg = get_superkey();
+            } else if (!strcmp("set", sub_cmd)) {
+                const char *key = carr[2];
+                if (!key) {
+                    err_msg = "invalid new key";
+                    goto echo;
+                }
+                msg = key;
+                reset_superkey(key);
+            } else if (!strcmp("hash", sub_cmd)) {
+                const char *able = carr[2];
+                if (!strcmp("enable", able) || !strcmp("disable", able)) {
+                    msg = able;
+                    enable_auth_root_key(1);
+                } else if (!strcmp("disable", able)) {
+                    msg = able;
+                    enable_auth_root_key(0);
+                } else {
+                    err_msg = "enable or disable";
+                }
             } else {
-                err_msg = "enable or disable";
+                err_msg = "invalid subcommand";
+            }
+        } else if (!strcmp("module", cmd)) {
+            if (!is_key_auth) {
+                err_msg = not_key_auth_err_msg;
+                goto echo;
+            }
+            const char *sub_cmd = carr[1];
+            if (!sub_cmd) sub_cmd = "";
+            if (!strcmp("num", sub_cmd)) {
+                int num = get_module_nums();
+                supercmd_echo(u_filename_p, uargv, &sp, "%d", num);
+            } else if (!strcmp("list", sub_cmd)) {
+                buffer[0] = '\0';
+                list_modules(buffer, sizeof(buffer));
+                msg = buffer;
+            } else if (!strcmp("load", sub_cmd)) {
+                const char *path = carr[2];
+                if (!path) {
+                    err_msg = "invalid module path";
+                    goto echo;
+                }
+                rc = load_module_path(path, carr[3], 0);
+                if (!rc) msg = path;
+            } else if (!strcmp("ctl0", sub_cmd)) {
+                const char *name = carr[2];
+                if (!name) {
+                    err_msg = "invalid module name";
+                    goto echo;
+                }
+                const char *mod_args = carr[3];
+                if (!mod_args) {
+                    err_msg = "invalid control arguments";
+                    goto echo;
+                }
+                buffer[0] = '\0';
+                rc = module_control0(name, mod_args, buffer, sizeof(buffer));
+                msg = buffer;
+            } else if (!strcmp("ctl1", sub_cmd)) {
+                err_msg = "not implement";
+            } else if (!strcmp("unload", sub_cmd)) {
+                const char *name = carr[2];
+                if (!name) {
+                    err_msg = "invalid module name";
+                    goto echo;
+                }
+                rc = unload_module(name, 0);
+                if (!rc) msg = name;
+            } else if (!strcmp("info", sub_cmd)) {
+                const char *name = carr[2];
+                if (!name) {
+                    err_msg = "invalid module name";
+                    goto echo;
+                }
+                buffer[0] = '\0';
+                int sz = get_module_info(name, buffer, sizeof(buffer));
+                if (sz <= 0) rc = sz;
+                msg = buffer;
+            } else {
+                err_msg = "invalid subcommand";
             }
         } else {
-            err_msg = "invalid subcommand";
+            err_msg = "invalid command";
         }
-    } else if (!strcmp("module", cmd)) {
-        if (!is_key_auth) {
-            err_msg = not_key_auth_err_msg;
-            goto echo;
-        }
-        const char *sub_cmd = carr[1];
-        if (!sub_cmd) sub_cmd = "";
-        if (!strcmp("num", sub_cmd)) {
-            int num = get_module_nums();
-            supercmd_echo(u_filename_p, uargv, &sp, "%d", num);
-        } else if (!strcmp("list", sub_cmd)) {
-            buffer[0] = '\0';
-            list_modules(buffer, sizeof(buffer));
-            msg = buffer;
-        } else if (!strcmp("load", sub_cmd)) {
-            const char *path = carr[2];
-            if (!path) {
-                err_msg = "invalid module path";
-                goto echo;
-            }
-            rc = load_module_path(path, carr[3], 0);
-            if (!rc) msg = path;
-        } else if (!strcmp("ctl0", sub_cmd)) {
-            const char *name = carr[2];
-            if (!name) {
-                err_msg = "invalid module name";
-                goto echo;
-            }
-            const char *mod_args = carr[3];
-            if (!mod_args) {
-                err_msg = "invalid control arguments";
-                goto echo;
-            }
-            buffer[0] = '\0';
-            rc = module_control0(name, mod_args, buffer, sizeof(buffer));
-            msg = buffer;
-        } else if (!strcmp("ctl1", sub_cmd)) {
-            err_msg = "not implement";
-        } else if (!strcmp("unload", sub_cmd)) {
-            const char *name = carr[2];
-            if (!name) {
-                err_msg = "invalid module name";
-                goto echo;
-            }
-            rc = unload_module(name, 0);
-            if (!rc) msg = name;
-        } else if (!strcmp("info", sub_cmd)) {
-            const char *name = carr[2];
-            if (!name) {
-                err_msg = "invalid module name";
-                goto echo;
-            }
-            buffer[0] = '\0';
-            int sz = get_module_info(name, buffer, sizeof(buffer));
-            if (sz <= 0) rc = sz;
-            msg = buffer;
-        } else {
-            err_msg = "invalid subcommand";
-        }
-    } else {
-        err_msg = "invalid command";
     }
 
 echo:
