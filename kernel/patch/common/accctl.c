@@ -66,6 +66,12 @@ static void su_cred(struct cred *cred, uid_t uid)
 //     return rc;
 // }
 
+int commit_kernel_su()
+{
+    struct cred *new = prepare_kernel_cred(0);
+    return commit_creds(new);
+}
+
 int commit_su(uid_t to_uid, const char *sctx)
 {
     int rc = 0;

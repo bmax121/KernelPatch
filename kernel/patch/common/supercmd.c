@@ -81,6 +81,7 @@ static const char supercmd_help[] =
     "      profile <UID>                    Get the profile of the uid configuration.\n"
     "      reset <PATH>                     Reset '/system/bin/kp' to PATH. The length of PATH must be between 1-127.\n"
     "      path                             Get current su PATH.\n"
+    "      kallow <1|0>                     Allow(1) or Never-Allow(0) u:r:kernel:s0 all.\n"
     "\n"
     "The command below requires superkey authentication.\n"
     "  module <SubCommand> [...]:   KernelPatch Module manager\n"
@@ -279,6 +280,7 @@ out_opt:
         msg = get_boot_log();
     } else if (!strcmp("test", cmd)) {
         void test();
+        test();
         msg = "test done...";
     } else {
         // superkey authrication command

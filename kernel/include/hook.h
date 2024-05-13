@@ -262,7 +262,7 @@ void hook_uninstall(hook_t *hook);
 hook_err_t hook(void *func, void *replace, void **backup);
 
 /**
- * @brief 
+ * @brief unhook of hooked function
  * 
  * @param func 
  */
@@ -286,17 +286,24 @@ hook_err_t hook_chain_add(hook_chain_t *chain, void *before, void *after, void *
  * @param after 
  */
 void hook_chain_remove(hook_chain_t *chain, void *before, void *after);
+
 /**
- * @brief 
+ * @brief Wrap a function with before and after function. 
+ * The same function can do hook and unhook multiple times 
  * 
- * @param func 
- * @param argno 
- * @param before 
- * @param after 
+ * @see hook_chain0_callback
+ * @see hook_fargs0_t
+ * 
+ * @param func The address of function 
+ * @param argno The number of method arguments
+ * @param before This function will be called before hooked function, 
+ * the type of before is hook_chain{n}_callback which n is equal to argno.
+ * @param after The same as before but will be call after hooked function
  * @param udata 
  * @return hook_err_t 
  */
 hook_err_t hook_wrap(void *func, int32_t argno, void *before, void *after, void *udata);
+
 /**
  * @brief 
  * 
@@ -327,6 +334,7 @@ static inline void *hook_chain_origin_func(void *hook_args)
  * @param backup 
  */
 void fp_hook(uintptr_t fp_addr, void *replace, void **backup);
+
 /**
  * @brief 
  * 
@@ -334,6 +342,7 @@ void fp_hook(uintptr_t fp_addr, void *replace, void **backup);
  * @param backup 
  */
 void fp_unhook(uintptr_t fp_addr, void *backup);
+
 /**
  * @brief 
  * 
@@ -345,6 +354,7 @@ void fp_unhook(uintptr_t fp_addr, void *backup);
  * @return hook_err_t 
  */
 hook_err_t fp_hook_wrap(uintptr_t fp_addr, int32_t argno, void *before, void *after, void *udata);
+
 /**
  * @brief 
  * 

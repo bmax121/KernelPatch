@@ -87,14 +87,12 @@ static inline long sc_su(const char *key, struct su_profile *profile)
     return ret;
 }
 
-
 static inline long sc_su_task(const char *key, pid_t tid, struct su_profile *profile)
 {
     if (!key || !key[0]) return -EINVAL;
     long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_SU_TASK), tid, profile);
     return ret;
 }
-
 
 static inline long sc_kpm_load(const char *key, const char *path, const char *args, void *reserved)
 {
@@ -103,7 +101,6 @@ static inline long sc_kpm_load(const char *key, const char *path, const char *ar
     long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_KPM_LOAD), path, args, reserved);
     return ret;
 }
-
 
 static inline long sc_kpm_control(const char *key, const char *name, const char *ctl_args, char *out_msg, long outlen)
 {
