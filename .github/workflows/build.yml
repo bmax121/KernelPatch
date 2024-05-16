@@ -44,6 +44,7 @@ jobs:
           make
           mv kpimg kpimg-android
           mv kpimg.elf kpimg.elf-android
+          make clean
 
           unset ANDROID
           make
@@ -179,8 +180,6 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
           artifacts: |
-            user/build/android/kpatch-android
-            user/build/android/libapjni.so
             tools/build/android/kptools-android
           allowUpdates: true
           replacesArtifacts: true

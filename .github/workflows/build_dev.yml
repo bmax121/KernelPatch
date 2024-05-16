@@ -53,12 +53,13 @@ jobs:
           make
           mv kpimg kpimg-android
           mv kpimg.elf kpimg.elf-android
+          make clean
 
           unset ANDROID
-          make clean
           make
           mv kpimg kpimg-linux
           mv kpimg.elf kpimg.elf-linux
+          make clean
 
           cd ..
           cd kpms
@@ -187,8 +188,6 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}-dev
           artifacts: |
-            user/build/android/kpatch-android
-            user/build/android/libapjni.so
             tools/build/android/kptools-android
           allowUpdates: true
           replacesArtifacts: true
