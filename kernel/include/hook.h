@@ -14,13 +14,12 @@
 typedef enum
 {
     HOOK_NO_ERR = 0,
-    HOOK_BAD_ADDRESS = 4089,
-    HOOK_NO_MEM = 4090,
-    HOOK_BAD_RELO = 4091,
-    HOOK_TRANSIT_NO_MEM = 4092,
-    HOOK_CHAIN_FULL = 4093,
-    HOOK_NOT_HOOK = 4094,
-    HOOK_INST_BUSY = 4095,
+    HOOK_BAD_ADDRESS = 4095,
+    HOOK_DUPLICATED = 4094,
+    HOOK_NO_MEM = 4093,
+    HOOK_BAD_RELO = 4092,
+    HOOK_TRANSIT_NO_MEM = 4091,
+    HOOK_CHAIN_FULL = 4090,
 } hook_err_t;
 
 enum hook_type
@@ -50,6 +49,9 @@ typedef int8_t chain_item_state;
 #define FP_HOOK_CHAIN_NUM 0x20
 
 #define ARM64_NOP 0xd503201f
+#define ARM64_BTI_C 0xd503245f
+#define ARM64_BTI_J 0xd503249f
+#define ARM64_BTI_JC 0xd50324df
 
 typedef struct
 {
@@ -59,8 +61,8 @@ typedef struct
     uint64_t replace_addr;
     uint64_t relo_addr;
     // out
-    int32_t tramp_insts_len;
-    int32_t relo_insts_len;
+    int32_t tramp_insts_num;
+    int32_t relo_insts_num;
     uint32_t origin_insts[TRAMPOLINE_NUM] __attribute__((aligned(8)));
     uint32_t tramp_insts[TRAMPOLINE_NUM] __attribute__((aligned(8)));
     uint32_t relo_insts[RELOCATE_INST_NUM] __attribute__((aligned(8)));
@@ -242,13 +244,74 @@ int32_t ret_absolute(uint32_t *buf, uint64_t addr);
 hook_err_t hook_prepare(hook_t *hook);
 void hook_install(hook_t *hook);
 void hook_uninstall(hook_t *hook);
+
+/**
+ * @brief Inline-hook function which address is @param func with function @param replace, 
+ * after hook, original @param func is backuped in @param backup.
+ * 
+ * @note If multiple modules hook this function simultaneously, 
+ * it will cause abnormality when unload the modules. Please use hook_wrap instead
+ * 
+ * @see hook_wrap
+ * 
+ * @param func 
+ * @param replace 
+ * @param backup 
+ * @return hook_err_t 
+ */
 hook_err_t hook(void *func, void *replace, void **backup);
+
+/**
+ * @brief unhook of hooked function
+ * 
+ * @param func 
+ */
 void unhook(void *func);
 
-// todo: hook priority
+/**
+ * @brief 
+ * 
+ * @param chain 
+ * @param before 
+ * @param after 
+ * @param udata 
+ * @return hook_err_t 
+ */
 hook_err_t hook_chain_add(hook_chain_t *chain, void *before, void *after, void *udata);
+/**
+ * @brief 
+ * 
+ * @param chain 
+ * @param before 
+ * @param after 
+ */
 void hook_chain_remove(hook_chain_t *chain, void *before, void *after);
+
+/**
+ * @brief Wrap a function with before and after function. 
+ * The same function can do hook and unhook multiple times 
+ * 
+ * @see hook_chain0_callback
+ * @see hook_fargs0_t
+ * 
+ * @param func The address of function 
+ * @param argno The number of method arguments
+ * @param before This function will be called before hooked function, 
+ * the type of before is hook_chain{n}_callback which n is equal to argno.
+ * @param after The same as before but will be call after hooked function
+ * @param udata 
+ * @return hook_err_t 
+ */
 hook_err_t hook_wrap(void *func, int32_t argno, void *before, void *after, void *udata);
+
+/**
+ * @brief 
+ * 
+ * @param func 
+ * @param before 
+ * @param after 
+ * @param remove 
+ */
 void hook_unwrap_remove(void *func, void *before, void *after, int remove);
 
 static inline void hook_unwrap(void *func, void *before, void *after)
@@ -263,9 +326,42 @@ static inline void *hook_chain_origin_func(void *hook_args)
     return (void *)chain->hook.relo_addr;
 }
 
+/**
+ * @brief 
+ * 
+ * @param fp_addr 
+ * @param replace 
+ * @param backup 
+ */
 void fp_hook(uintptr_t fp_addr, void *replace, void **backup);
+
+/**
+ * @brief 
+ * 
+ * @param fp_addr 
+ * @param backup 
+ */
 void fp_unhook(uintptr_t fp_addr, void *backup);
+
+/**
+ * @brief 
+ * 
+ * @param fp_addr 
+ * @param argno 
+ * @param before 
+ * @param after 
+ * @param udata 
+ * @return hook_err_t 
+ */
 hook_err_t fp_hook_wrap(uintptr_t fp_addr, int32_t argno, void *before, void *after, void *udata);
+
+/**
+ * @brief 
+ * 
+ * @param fp_addr 
+ * @param before 
+ * @param after 
+ */
 void fp_hook_unwrap(uintptr_t fp_addr, void *before, void *after);
 
 static inline void hook_chain_install(hook_chain_t *chain)

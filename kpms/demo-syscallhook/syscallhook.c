@@ -10,6 +10,7 @@
 #include <linux/uaccess.h>
 #include <syscall.h>
 #include <linux/string.h>
+#include <kputils.h>
 #include <asm/current.h>
 
 KPM_NAME("kpm-syscall-hook-demo");
@@ -119,10 +120,10 @@ static long syscall_hook_demo_exit(void *__user reserved)
     pr_info("kpm-syscall-hook-demo exit ...\n");
 
     if (hook_type == INLINE_CHAIN) {
-        inline_unhook_syscall(__NR_openat, before_openat_0, 0);
+        inline_unhook_syscalln(__NR_openat, before_openat_0, 0);
     } else if (hook_type == FUNCTION_POINTER_CHAIN) {
-        fp_unhook_syscall(__NR_openat, before_openat_0, 0);
-        fp_unhook_syscall(__NR_openat, before_openat_1, after_openat_1);
+        fp_unhook_syscalln(__NR_openat, before_openat_0, 0);
+        fp_unhook_syscalln(__NR_openat, before_openat_1, after_openat_1);
     } else {
     }
     return 0;

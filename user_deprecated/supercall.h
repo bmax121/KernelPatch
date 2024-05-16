@@ -110,8 +110,7 @@ static inline uint32_t sc_k_ver(const char *key)
  * @brief Substitute user of current thread
  * 
  * @param key : superkey or 'su' string if caller uid is su allowed 
- * @param profile : if scontext is invalid or illegal, all selinux permission checks will bypass via hook
- * @see struct su_profile
+ * @param profile 
  * @return long : 0 if succeed
  */
 static inline long sc_su(const char *key, struct su_profile *profile)
@@ -127,8 +126,7 @@ static inline long sc_su(const char *key, struct su_profile *profile)
  * 
  * @param key : superkey or 'su' string if caller uid is su allowed 
  * @param tid : target thread id
- * @param profile : if scontext is invalid or illegal, all selinux permission checks will bypass via hook
- * @see struct su_profile
+ * @param profile 
  * @return long : 0 if succeed 
  */
 static inline long sc_su_task(const char *key, pid_t tid, struct su_profile *profile)
@@ -142,7 +140,7 @@ static inline long sc_su_task(const char *key, pid_t tid, struct su_profile *pro
  * @brief Grant su permission
  * 
  * @param key 
- * @param profile : if scontext is invalid or illegal, all selinux permission checks will bypass via hook
+ * @param profile 
  * @return long : 0 if succeed
  */
 static inline long sc_su_grant_uid(const char *key, struct su_profile *profile)
@@ -211,22 +209,6 @@ static inline long sc_su_uid_profile(const char *key, uid_t uid, struct su_profi
 }
 
 /**
- * @brief Get full path of current 'su' command 
- * 
- * @param key : superkey or 'su' string if caller uid is su allowed 
- * @param out_path 
- * @param path_len 
- * @return long : The length of result string if succeed, negative if failed
- */
-static inline long sc_su_get_path(const char *key, char *out_path, int path_len)
-{
-    if (!key || !key[0]) return -EINVAL;
-    if (!out_path || out_path <= 0) return -EINVAL;
-    long ret = syscall(__NR_supercall, key, compact_cmd(key, SUPERCALL_SU_GET_PATH), out_path, path_len);
-    return ret;
-}
-
-/**
  * @brief Reset full path of 'su' command 
  * 
  * @param key 
@@ -242,34 +224,18 @@ static inline long sc_su_reset_path(const char *key, const char *path)
 }
 
 /**
- * @brief Get current all-allowed selinux context
+ * @brief Get full path of current 'su' command 
  * 
- * @param key : superkey or 'su' string if caller uid is su allowed  
- * @param out_sctx 
- * @param sctx_len
- * @return long 0 if there is a all-allowed selinux context now
+ * @param key : superkey or 'su' string if caller uid is su allowed 
+ * @param buf 
+ * @param buf_size 
+ * @return long : The length of result string if succeed, negative if failed
  */
-static inline long sc_su_get_all_allow_sctx(const char *key, char *out_sctx, int sctx_len)
+static inline long sc_su_get_path(const char *key, char *buf, int buf_size)
 {
     if (!key || !key[0]) return -EINVAL;
-    if (!out_sctx) return -EINVAL;
-    long ret = syscall(__NR_supercall, key, compact_cmd(key, SUPERCALL_SU_GET_ALLOW_SCTX), out_sctx);
-    return ret;
-}
-
-/**
- * @brief Reset current all-allowed selinux context
- * 
- * @param key : superkey or 'su' string if caller uid is su allowed  
- * @param sctx If sctx is empty string, clear all-allowed selinux, 
- * otherwise, try to reset a new all-allowed selinux context
- * @return long 0 if succeed
- */
-static inline long sc_su_reset_all_allow_sctx(const char *key, const char *sctx)
-{
-    if (!key || !key[0]) return -EINVAL;
-    if (!sctx) return -EINVAL;
-    long ret = syscall(__NR_supercall, key, compact_cmd(key, SUPERCALL_SU_SET_ALLOW_SCTX), sctx);
+    if (!buf || buf_size <= 0) return -EINVAL;
+    long ret = syscall(__NR_supercall, key, compact_cmd(key, SUPERCALL_SU_GET_PATH), buf, buf_size);
     return ret;
 }
 

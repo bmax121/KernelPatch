@@ -6,11 +6,15 @@
 #include <linux/gfp.h>
 #include <linux/panic.h>
 
+extern char *kfunc_def(strndup_user)(const char __user *, long);
+extern void *kfunc_def(memdup_user)(const void __user *, size_t);
+extern void *kfunc_def(vmemdup_user)(const void __user *, size_t);
+extern void *kfunc_def(memdup_user_nul)(const void __user *, size_t);
+
 extern void kfunc_def(kfree_const)(const void *x);
 extern char *kfunc_def(kstrdup)(const char *s, gfp_t gfp);
 extern const char *kfunc_def(kstrdup_const)(const char *s, gfp_t gfp);
 extern char *kfunc_def(kstrndup)(const char *s, size_t len, gfp_t gfp);
-extern void *kfunc_def(memdup_user)(const void __user *src, size_t len);
 extern void *kfunc_def(kmemdup)(const void *src, size_t len, gfp_t gfp);
 extern char *kfunc_def(kmemdup_nul)(const char *s, size_t len, gfp_t gfp);
 extern char **kfunc_def(argv_split)(gfp_t gfp, const char *str, int *argcp);
@@ -62,6 +66,9 @@ extern void *kfunc_def(memchr_inv)(const void *start, int c, size_t bytes);
 extern char *kfunc_def(strreplace)(char *s, char old, char new);
 extern void kfunc_def(fortify_panic)(const char *name);
 
+extern int __must_check kfunc_def(kstrtoull)(const char *s, unsigned int base, unsigned long long *res);
+extern int __must_check kfunc_def(kstrtoll)(const char *s, unsigned int base, long long *res);
+
 static inline void kfree_const(const void *x)
 {
     kfunc_direct_call(kfree_const, x);
@@ -90,6 +97,11 @@ static inline void *kmemdup(const void *src, size_t len, gfp_t gfp)
 static inline char *kmemdup_nul(const char *s, size_t len, gfp_t gfp)
 {
     kfunc_direct_call(kmemdup_nul, s, len, gfp);
+}
+
+static inline char *strndup_user(const void __user *s, long len)
+{
+    kfunc_direct_call(strndup_user, s, len);
 }
 
 static inline void *memdup_user(const void __user *src, size_t len)
@@ -330,6 +342,16 @@ static inline char *strreplace(char *s, char old, char new)
 static inline void fortify_panic(const char *name)
 {
     kfunc_direct_call(fortify_panic, name);
+}
+
+static inline int __must_check kstrtoull(const char *s, unsigned int base, unsigned long long *res)
+{
+    kfunc_direct_call(kstrtoull, s, base, res);
+}
+
+static inline int __must_check kstrtoll(const char *s, unsigned int base, long long *res)
+{
+    kfunc_direct_call(kstrtoll, s, base, res);
 }
 
 #endif

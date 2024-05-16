@@ -126,7 +126,7 @@ static uint64_t __noinline get_or_create_pte(map_data_t *data, uint64_t va, uint
     uint64_t baddr = ttbr1_el1 & 0xFFFFFFFFFFFE;
     uint64_t page_size = 1 << page_shift;
     uint64_t page_size_mask = ~(page_size - 1);
-    uint64_t attr_prot = 0xC0000000000703 | attr_indx;
+    uint64_t attr_prot = 0x40000000000703 | attr_indx;
 
     uint64_t pxd_pa = baddr & page_size_mask;
     uint64_t pxd_va = phys_to_lm(data, pxd_pa);

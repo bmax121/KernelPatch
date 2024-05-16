@@ -90,7 +90,6 @@ int main(int argc, char *argv[])
                                  { "skey-hash", required_argument, NULL, 'S' },
                                  { "out", required_argument, NULL, 'o' },
                                  { "addition", required_argument, NULL, 'a' },
-                                 { "kpatch", required_argument, NULL, 'K' },
 
                                  { "embed-extra-path", required_argument, NULL, 'M' },
                                  { "embeded-extra-name", required_argument, NULL, 'E' },
@@ -99,13 +98,12 @@ int main(int argc, char *argv[])
                                  { "extra-event", required_argument, NULL, 'V' },
                                  { "extra-args", required_argument, NULL, 'A' },
                                  { 0, 0, 0, 0 } };
-    char *optstr = "hvpurdli:s:S:k:o:a:K:M:E:T:N:V:A:";
+    char *optstr = "hvpurdli:s:S:k:o:a:M:E:T:N:V:A:";
 
     char *kimg_path = NULL;
     char *kpimg_path = NULL;
     char *out_path = NULL;
     char *superkey = NULL;
-    char *kpatch_path = NULL;
     bool root_skey = false;
 
     int additional_num = 0;
@@ -148,9 +146,6 @@ int main(int argc, char *argv[])
         case 'a':
             additional[additional_num++] = optarg;
             break;
-        case 'K':
-            kpatch_path = optarg;
-            break;
         case 'M':
             config = &extra_configs[extra_config_num++];
             config->is_path = true;
@@ -190,8 +185,8 @@ int main(int argc, char *argv[])
         else
             fprintf(stdout, "%x\n", version);
     } else if (cmd == 'p') {
-        ret = patch_update_img(kimg_path, kpimg_path, out_path, superkey, root_skey, additional, kpatch_path,
-                               extra_configs, extra_config_num);
+        ret = patch_update_img(kimg_path, kpimg_path, out_path, superkey, root_skey, additional, extra_configs,
+                               extra_config_num);
     } else if (cmd == 'd') {
         ret = dump_kallsym(kimg_path);
     } else if (cmd == 'u') {

@@ -60,6 +60,4 @@ extern long kfunc_def(strnlen_user_nofault)(const void __user *unsafe_addr, long
 extern long kfunc_def(strnlen_unsafe_user)(const void __user *unsafe_addr, long count);
 extern long kfunc_def(strnlen_user)(const char __user *str, long n);
 
-long compat_strncpy_from_user(char *dest, const char __user *src, long count);
-
 #endif

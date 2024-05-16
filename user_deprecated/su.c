@@ -36,8 +36,8 @@ enum
 #define DEFAULT_SHELL "/system/bin/sh"
 #define DEFAULT_PATH "/product/bin:/apex/com.android.runtime/bin:/system/bin:/odm/bin:/vendor/bin:/usr/bin"
 #define DEFAULT_ROOT_PATH \
-    APATCH_BIN_FLODER     \
-    ":" ADB_FLODER        \
+    AP_BIN_DIR            \
+    ":" ADB_DIR           \
     ":/sbin:/system/sbin:/product/bin:/apex/com.android.runtime/bin:/system/bin:/system/xbin:/odm/bin:/vendor/bin:/vendor/xbin:/usr/bin:/user/sbin"
 
 #else

@@ -17,8 +17,6 @@
 // #define THREAD_START_SP (THREAD_SIZE - 16)
 // #define task_pt_regs(p) ((struct pt_regs *)(THREAD_START_SP + task_stack_page(p)) - 1)
 
-// implemented in utils
-
 extern int16_t pt_regs_offset;
 
 struct pt_regs *_task_pt_reg(struct task_struct *task);

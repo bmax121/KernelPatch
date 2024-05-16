@@ -8,6 +8,12 @@
 
 #include <ktypes.h>
 #include <uapi/scdefs.h>
+#include <hook.h>
+
+extern const char sh_path[];
+extern const char default_su_path[];
+extern const char legacy_su_path[];
+extern const char apd_path[];
 
 struct allow_uid
 {
@@ -19,5 +25,7 @@ struct allow_uid
 
 struct su_profile profile_su_allow_uid(uid_t uid);
 int is_su_allow_uid(uid_t uid);
+
+void handle_supercmd(char **__user u_filename_p, char **__user uargv);
 
 #endif

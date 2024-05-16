@@ -11,7 +11,6 @@
 #include <cache.h>
 #include <symbol.h>
 #include <predata.h>
-#include <patch/patch.h>
 #include <barrier.h>
 #include <stdarg.h>
 
@@ -20,6 +19,7 @@
 #include "hook.h"
 #include "tlsf.h"
 #include "hmem.h"
+#include "setup.h"
 
 #define bits(n, high, low) (((n) << (63u - (high))) >> (63u - (high) + (low)))
 #define align_floor(x, align) ((uint64_t)(x) & ~((uint64_t)(align)-1))
@@ -41,7 +41,7 @@ KP_EXPORT_SYMBOL(lookup_symbol_attrs);
 void (*printk)(const char *fmt, ...) = 0;
 KP_EXPORT_SYMBOL(printk);
 
-int (*vsprintf)(char *buf, const char *fmt, va_list args) = 0;
+int (*vsnprintf)(char *buf, size_t size, const char *fmt, va_list args);
 
 static struct vm_struct
 {
@@ -77,6 +77,9 @@ uint64_t _kp_rw_start = 0;
 uint64_t _kp_rw_end = 0;
 uint64_t _kp_region_start = 0;
 uint64_t _kp_region_end = 0;
+
+uint64_t link_base_addr = (uint64_t)_link_base;
+uint64_t runtime_base_addr = 0;
 
 uint64_t kimage_voffset = 0;
 uint64_t linear_voffset = 0;
@@ -116,7 +119,7 @@ void log_boot(const char *fmt, ...)
 {
     va_list va;
     va_start(va, fmt);
-    int ret = vsprintf(boot_log + boot_log_offset, fmt, va);
+    int ret = vsnprintf(boot_log + boot_log_offset, sizeof(boot_log) - boot_log_offset, fmt, va);
     va_end(va);
     printk("KP %s", boot_log + boot_log_offset);
     boot_log_offset += ret;
@@ -178,7 +181,8 @@ static void prot_myself()
     log_boot("Kernel stext prot: %llx\n", *kpte);
 
     _kp_region_start = (uint64_t)_kp_text_start;
-    _kp_region_end = (uint64_t)_kp_end + HOOK_ALLOC_SIZE + MEMORY_ROX_SIZE + MEMORY_RW_SIZE;
+    _kp_region_end = (uint64_t)_kp_end + align_ceil(start_preset.extra_size, page_size) + HOOK_ALLOC_SIZE +
+                     MEMORY_ROX_SIZE + MEMORY_RW_SIZE;
     log_boot("Region: %llx, %llx\n", _kp_region_start, _kp_region_end);
 
     uint64_t *kppte = pgtable_entry_kernel(_kp_region_start);
@@ -192,11 +196,9 @@ static void prot_myself()
 
     for (uint64_t i = text_start; i < align_text_end; i += page_size) {
         uint64_t *pte = pgtable_entry_kernel(i);
-        *pte |= PTE_SHARED;
-        *pte = *pte & ~PTE_PXN;
+        *pte = (*pte | PTE_SHARED) & ~PTE_PXN & ~PTE_GP;
         if (has_vmalloc_area()) {
-            *pte |= PTE_RDONLY;
-            *pte &= ~PTE_DBM;
+            *pte = (*pte | PTE_RDONLY) & ~PTE_DBM;
         }
     }
     flush_tlb_kernel_range(text_start, align_text_end);
@@ -238,7 +240,7 @@ static void prot_myself()
 
     for (uint64_t i = _kp_hook_start; i < _kp_hook_end; i += page_size) {
         uint64_t *pte = pgtable_entry_kernel(i);
-        *pte = (*pte & ~PTE_PXN & ~PTE_RDONLY) | PTE_DBM | PTE_SHARED;
+        *pte = (*pte | PTE_DBM | PTE_SHARED) & ~PTE_PXN & ~PTE_RDONLY & ~PTE_GP;
     }
     flush_tlb_kernel_range(_kp_hook_start, _kp_hook_end);
     hook_mem_add(_kp_hook_start, HOOK_ALLOC_SIZE);
@@ -270,8 +272,7 @@ static void prot_myself()
 
     for (uint64_t i = _kp_rox_start; i < _kp_rox_end; i += page_size) {
         uint64_t *pte = pgtable_entry_kernel(i);
-        *pte |= PTE_SHARED;
-        *pte = *pte & ~PTE_PXN;
+        *pte = (*pte | PTE_SHARED) & ~PTE_PXN & ~PTE_GP;
         // todo: tlsf malloc block_split will write to alloced memory
         // if (has_vmalloc_area()) {
         // *pte |= PTE_RDONLY;
@@ -382,6 +383,7 @@ static void start_init(uint64_t kimage_voff, uint64_t linear_voff)
     kernel_pa = start_preset.kernel_pa;
     kernel_va = kimage_voff + kernel_pa;
     kernel_size = start_preset.kernel_size;
+    runtime_base_addr = (uint64_t)_link_base;
 
     uint64_t kallsym_addr = kernel_va + start_preset.kallsyms_lookup_name_offset;
     kallsyms_lookup_name = (typeof(kallsyms_lookup_name))(kallsym_addr);
@@ -389,7 +391,7 @@ static void start_init(uint64_t kimage_voff, uint64_t linear_voff)
     printk = (typeof(printk))kallsyms_lookup_name("printk");
     if (!printk) printk = (typeof(printk))kallsyms_lookup_name("_printk");
 
-    vsprintf = (typeof(vsprintf))kallsyms_lookup_name("vsprintf");
+    vsnprintf = (typeof(vsnprintf))kallsyms_lookup_name("vsnprintf");
 
     log_boot(KERNEL_PATCH_BANNER);
 
@@ -403,9 +405,11 @@ static void start_init(uint64_t kimage_voff, uint64_t linear_voff)
     log_boot("Kernel va: %llx\n", kernel_va);
 
     log_boot("Kernel Version: %x\n", kver);
-    log_boot("Kernel Patch Version: %x\n", kpver);
-    log_boot("Kernel Patch Config: %llx\n", header->config_flags);
-    log_boot("Kernel Patch Compile Time: %s\n", (uint64_t)header->compile_time);
+    log_boot("KernelPatch Version: %x\n", kpver);
+    log_boot("KernelPatch Config: %llx\n", header->config_flags);
+    log_boot("KernelPatch Compile Time: %s\n", (uint64_t)header->compile_time);
+
+    log_boot("KernelPatch link base: %llx, runtime base: %llx\n", link_base_addr, runtime_base_addr);
 
     kallsyms_on_each_symbol = (typeof(kallsyms_on_each_symbol))kallsyms_lookup_name("kallsyms_on_each_symbol");
     lookup_symbol_attrs = (typeof(lookup_symbol_attrs))kallsyms_lookup_name("lookup_symbol_attrs");
@@ -434,14 +438,8 @@ static void start_init(uint64_t kimage_voff, uint64_t linear_voff)
     pgd_va = phys_to_virt(pgd_pa);
 }
 
-static int nice_zone()
-{
-    int err = 0;
-
-    err = patch();
-
-    return err;
-}
+void symbol_init();
+int patch();
 
 int __attribute__((section(".start.text"))) __noinline start(uint64_t kimage_voff, uint64_t linear_voff)
 {
@@ -452,6 +450,6 @@ int __attribute__((section(".start.text"))) __noinline start(uint64_t kimage_vof
     log_regs();
     predata_init();
     symbol_init();
-    rc = nice_zone();
+    rc = patch();
     return rc;
 }

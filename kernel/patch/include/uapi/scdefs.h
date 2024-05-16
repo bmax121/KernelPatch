@@ -6,15 +6,6 @@
 #ifndef _KP_UAPI_SCDEF_H_
 #define _KP_UAPI_SCDEF_H_
 
-static inline long hash_key(const char *key)
-{
-    long hash = 1000000007;
-    for (int i = 0; key[i]; i++) {
-        hash = hash * 31 + key[i];
-    }
-    return hash;
-}
-
 #define SUPERCALL_HELLO_ECHO "hello1158"
 
 // #define __NR_supercall __NR3264_truncate // 45
@@ -63,39 +54,38 @@ struct su_profile
 };
 
 #ifdef ANDROID
-
-#define ANDROID_SH_PATH "/system/bin/sh"
-#define SU_PATH_MAX_LEN 128
-
-#define ANDROID_SU_PATH "/system/bin/kp"
-#define ANDROID_LEGACY_SU_PATH "/system/bin/su"
-#define KPATCH_DATA_PATH "/data/adb/kpatch"
-#define KPATCH_DEV_PATH "/dev/kpatch"
-#define KPATCH_DEV_WORK_DIR "/dev/kp/"
+#define SH_PATH "/system/bin/sh"
+#define SU_PATH "/system/bin/kp"
+#define LEGACY_SU_PATH "/system/bin/su"
+#define ECHO_PATH "/system/bin/echo"
 #define KERNELPATCH_DATA_DIR "/data/adb/kp"
 #define KERNELPATCH_MODULE_DATA_DIR KERNELPATCH_DATA_DIR "/modules"
 #define APD_PATH "/data/adb/apd"
+#define ALL_ALLOW_SCONTEXT "u:r:kp:s0"
+#define ALL_ALLOW_SCONTEXT_MAGISK "u:r:magisk:s0"
+#define ALL_ALLOW_SCONTEXT_KERNEL "u:r:kernel:s0"
+#else
+#define SH_PATH "/usr/bin/sh"
+#define ECHO_PATH "/usr/bin/echo"
+#define SU_PATH "/usr/bin/kp"
+#define ALL_ALLOW_SCONTEXT "u:r:kernel:s0"
+#endif
+
+#define SU_PATH_MAX_LEN 128
+
 #define SUPERCMD "/system/bin/truncate"
 
-#define ADB_FLODER "/data/adb/"
-#define APATCH_FLODER "/data/adb/ap/"
-#define APATCH_BIN_FLODER APATCH_FLODER "bin/"
-#define APATCH_LOG_FLODER APATCH_FLODER "log/"
 #define SAFE_MODE_FLAG_FILE "/dev/.safemode"
-#define EARLY_INIT_LOG_0 "/dev/early_init_0.log"
-#define EARLY_INIT_LOG_1 "/dev/early_init_1.log"
-
-#define ALL_ALLOW_SCONTEXT "u:r:magisk:s0"
 
 #define SUPERCALL_SU_GRANT_UID 0x1100
 #define SUPERCALL_SU_REVOKE_UID 0x1101
 #define SUPERCALL_SU_NUMS 0x1102
 #define SUPERCALL_SU_LIST 0x1103
 #define SUPERCALL_SU_PROFILE 0x1104
+#define SUPERCALL_SU_GET_ALLOW_SCTX 0x1105
+#define SUPERCALL_SU_SET_ALLOW_SCTX 0x1106
 #define SUPERCALL_SU_GET_PATH 0x1110
 #define SUPERCALL_SU_RESET_PATH 0x1111
-
-#endif
 
 #define SUPERCALL_MAX 0x1200
 

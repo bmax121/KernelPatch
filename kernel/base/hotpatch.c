@@ -84,3 +84,7 @@ int hot_patch_text()
     // logkd("stop_machine rc: %d\n", rc);
     return 0;
 }
+
+int kp_insn_patch_text(void *addrs[], uint32_t insn[], int cnt)
+{
+}
