@@ -55,10 +55,10 @@ jobs:
           mv kpimg.elf kpimg.elf-android
 
           unset ANDROID
+          make clean
           make
           mv kpimg kpimg-linux
           mv kpimg.elf kpimg.elf-linux
-          make clean
 
           cd ..
           cd kpms
