@@ -54,7 +54,6 @@ struct su_profile
 };
 
 #ifdef ANDROID
-
 #define SH_PATH "/system/bin/sh"
 #define SU_PATH "/system/bin/kp"
 #define LEGACY_SU_PATH "/system/bin/su"

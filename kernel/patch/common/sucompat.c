@@ -348,8 +348,7 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
             }
             logkfi("call apd uid: %d, to_uid: %d, sctx: %s, cplen: %d, %d\n", uid, to_uid, sctx, cplen, argv_cplen);
         }
-#endif
-
+#endif // ANDROID
     } else if (!strcmp(SUPERCMD, filename)) {
         handle_supercmd(u_filename_p, uargv);
         return;

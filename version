@@ -1,3 +1,8 @@
 #define MAJOR 0
+<<<<<<< HEAD
 #define MINOR 11
 #define PATCH 0
+=======
+#define MINOR 10
+#define PATCH 7
+>>>>>>> dev
