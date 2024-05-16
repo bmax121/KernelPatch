@@ -1,9 +1,15 @@
 PROJECT_NAME = "KernelPatch Document"
 OUTPUT_DIRECTORY = ./doc/api
+
 INPUT = \
 	./user/supercall.h \
-	./kernel/include/hook.h
+	./kernel/include/hook.h \
+	./kernel/patch/include/accctl.h \
+	./kernel/patch/include/taskext.h \
+	./kernel/patch/include/uapi/scdefs.h \
+
 FILE_PATTERNS = *.h *.md
+
 RECURSIVE = YES
 GENERATE_LATEX = NO
 SOURCE_BROWSER = YES

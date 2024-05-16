@@ -163,36 +163,41 @@ static inline struct cred *prepare_kernel_cred(struct task_struct *daemon)
     kfunc_not_found();
     return 0;
 }
+
 static inline int change_create_files_as(struct cred *cred, struct inode *inode)
 {
     kfunc_call(change_create_files_as, cred, inode);
     kfunc_not_found();
     return 0;
 }
+
 static inline int set_security_override(struct cred *new, u32 secid)
 {
     kfunc_call(set_security_override, new, secid);
-    kfunc_not_found();
     return 0;
 }
+
 static inline int set_security_override_from_ctx(struct cred *new, const char *secctx)
 {
     kfunc_call(set_security_override_from_ctx, new, secctx);
     kfunc_not_found();
     return 0;
 }
+
 static inline int set_create_files_as(struct cred *new, struct inode *inode)
 {
     kfunc_call(set_create_files_as, new, inode);
     kfunc_not_found();
     return 0;
 }
+
 static inline int cred_fscmp(const struct cred *a, const struct cred *b)
 {
     kfunc_call(cred_fscmp, a, b);
     kfunc_not_found();
     return 0;
 }
+
 static inline void cred_init(void)
 {
     kfunc_call(cred_init);

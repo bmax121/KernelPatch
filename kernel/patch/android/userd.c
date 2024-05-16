@@ -35,7 +35,7 @@
 
 static const void *kernel_read_file(const char *path, loff_t *len)
 {
-    set_priv_selinx_allow(current, 1);
+    set_priv_sel_allow(current, true);
     void *data = 0;
 
     struct file *filp = filp_open(path, O_RDONLY, 0);
@@ -51,14 +51,14 @@ static const void *kernel_read_file(const char *path, loff_t *len)
     filp_close(filp, 0);
 
 out:
-    set_priv_selinx_allow(current, 0);
+    set_priv_sel_allow(current, false);
     return data;
 }
 
 static loff_t kernel_write_file(const char *path, const void *data, loff_t len, umode_t mode)
 {
     loff_t off = 0;
-    set_priv_selinx_allow(current, 1);
+    set_priv_sel_allow(current, true);
 
     struct file *fp = filp_open(path, O_WRONLY | O_CREAT | O_TRUNC, mode);
     if (!fp || IS_ERR(fp)) {
@@ -75,7 +75,7 @@ free:
     filp_close(fp, 0);
 
 out:
-    set_priv_selinx_allow(current, 0);
+    set_priv_sel_allow(current, false);
     return off;
 }
 

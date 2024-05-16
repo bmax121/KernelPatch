@@ -62,7 +62,9 @@ struct su_profile
 #define KERNELPATCH_DATA_DIR "/data/adb/kp"
 #define KERNELPATCH_MODULE_DATA_DIR KERNELPATCH_DATA_DIR "/modules"
 #define APD_PATH "/data/adb/apd"
-#define ALL_ALLOW_SCONTEXT "u:r:magisk:s0"
+#define ALL_ALLOW_SCONTEXT "u:r:kp:s0"
+#define ALL_ALLOW_SCONTEXT_MAGISK "u:r:magisk:s0"
+#define ALL_ALLOW_SCONTEXT_KERNEL "u:r:kernel:s0"
 #else
 #define SH_PATH "/usr/bin/sh"
 #define ECHO_PATH "/usr/bin/echo"
@@ -81,6 +83,8 @@ struct su_profile
 #define SUPERCALL_SU_NUMS 0x1102
 #define SUPERCALL_SU_LIST 0x1103
 #define SUPERCALL_SU_PROFILE 0x1104
+#define SUPERCALL_SU_GET_ALLOW_SCTX 0x1105
+#define SUPERCALL_SU_SET_ALLOW_SCTX 0x1106
 #define SUPERCALL_SU_GET_PATH 0x1110
 #define SUPERCALL_SU_RESET_PATH 0x1111
 

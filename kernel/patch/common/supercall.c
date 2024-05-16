@@ -30,6 +30,7 @@
 #include <predata.h>
 #include <linux/random.h>
 #include <sucompat.h>
+#include <accctl.h>
 
 #define MAX_KEY_LEN 128
 
@@ -221,6 +222,22 @@ static long call_su_get_path(char *__user ubuf, int buf_len)
     return compat_copy_to_user(ubuf, path, len + 1);
 }
 
+static long call_su_get_allow_sctx(char *__user usctx, int ulen)
+{
+    int len = strlen(all_allow_sctx);
+    if (ulen <= len) return -ENOBUFS;
+    return compat_copy_to_user(usctx, all_allow_sctx, len + 1);
+}
+
+static long call_su_set_allow_sctx(char *__user usctx)
+{
+    char buf[SUPERCALL_SCONTEXT_LEN];
+    buf[0] = '\0';
+    int len = compat_strncpy_from_user(buf, usctx, sizeof(buf));
+    if (len >= SUPERCALL_SCONTEXT_LEN && buf[SUPERCALL_SCONTEXT_LEN - 1]) return -E2BIG;
+    return set_all_allow_sctx(buf);
+}
+
 static long supercall(int is_key_auth, long cmd, long arg1, long arg2, long arg3, long arg4)
 {
     switch (cmd) {
@@ -255,6 +272,10 @@ static long supercall(int is_key_auth, long cmd, long arg1, long arg2, long arg3
         return call_reset_su_path((const char *)arg1);
     case SUPERCALL_SU_GET_PATH:
         return call_su_get_path((char *__user)arg1, (int)arg2);
+    case SUPERCALL_SU_GET_ALLOW_SCTX:
+        return call_su_get_allow_sctx((char *__user)arg1, (int)arg2);
+    case SUPERCALL_SU_SET_ALLOW_SCTX:
+        return call_su_set_allow_sctx((char *__user)arg1);
     default:
         break;
     }

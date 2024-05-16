@@ -63,10 +63,10 @@ static void _selinux_debug(u32 ssid, u32 tsid, u16 tclass, u32 requested)
         log_boot("no symbol %s\n", #func);                                                                     \
     }
 
-#define HOOK_AVC_RET_ZERO_BEFORE()                                                          \
-    struct task_ext *ext = get_current_task_ext();                                          \
-    if (unlikely(task_ext_valid(ext) && (ext->selinux_allow || ext->priv_selinux_allow))) { \
-        return 0;                                                                           \
+#define HOOK_AVC_RET_ZERO_BEFORE()                                                  \
+    struct task_ext *ext = get_current_task_ext();                                  \
+    if (unlikely(task_ext_valid(ext) && (ext->sel_allow || ext->priv_sel_allow))) { \
+        return 0;                                                                   \
     }
 
 static int (*avc_denied_backup)(struct selinux_state *state, void *ssid, void *tsid, void *tclass, void *requested,
@@ -76,7 +76,7 @@ static int avc_denied_replace(struct selinux_state *_state, void *_ssid, void *_
                               void *_driver, void *_xperm, void *_flags, struct av_decision *_avd)
 {
     struct task_ext *ext = get_current_task_ext();
-    if (unlikely(task_ext_valid(ext) && (ext->selinux_allow || ext->priv_selinux_allow))) {
+    if (unlikely(task_ext_valid(ext) && (ext->sel_allow || ext->priv_sel_allow))) {
         struct av_decision *avd = (struct av_decision *)_avd;
         if ((uint64_t)_state <= 0xffffffffL) {
             avd = (struct av_decision *)_flags;
@@ -99,7 +99,7 @@ static int slow_avc_audit_replace(struct selinux_state *_state, void *_ssid, voi
                                   struct common_audit_data *_a)
 {
     struct task_ext *ext = get_current_task_ext();
-    if (unlikely(task_ext_valid(ext) && (ext->selinux_allow || ext->priv_selinux_allow))) {
+    if (unlikely(task_ext_valid(ext) && (ext->sel_allow || ext->priv_sel_allow))) {
         return 0;
     }
     int rc = slow_avc_audit_backup(_state, _ssid, _tsid, _tclass, _requested, _audited, _denied, _result, _a);
@@ -123,7 +123,7 @@ static int slow_avc_audit_replace(struct selinux_state *_state, void *_ssid, voi
 //     // HOOK_AVC_RET_ZERO_BEFORE();
 
 //     struct task_ext *ext = get_current_task_ext();
-//     if (unlikely(task_ext_valid(ext) && (ext->selinux_allow || ext->priv_selinux_allow))) {
+//     if (unlikely(task_ext_valid(ext) && (ext->sel_allow || ext->priv_sel_allow))) {
 //         struct av_decision *avd = (struct av_decision *)avd;
 //         if (((uint64_t)state & 0xF000000000000000) != 0xF000000000000000) {
 //             avd = (struct av_decision *)flags;
@@ -197,7 +197,7 @@ static int slow_avc_audit_replace(struct selinux_state *_state, void *_ssid, voi
 //     if (!node) return node;
 
 //     struct task_ext *ext = get_current_task_ext();
-//     if (unlikely(task_ext_valid(ext) && (ext->selinux_allow || ext->priv_selinux_allow))) {
+//     if (unlikely(task_ext_valid(ext) && (ext->sel_allow || ext->priv_sel_allow))) {
 //         make_avc_node_all_perm(node);
 //     }
 //     return node;
@@ -212,7 +212,7 @@ static int slow_avc_audit_replace(struct selinux_state *_state, void *_ssid, voi
 // {
 //     struct avc_node *node = hook_call_backup(avc_compute_av, _state, _ssid, _tsid, _tclass, _avd, _xp_node);
 //     struct task_ext *ext = get_current_task_ext();
-//     if (unlikely(task_ext_valid(ext) && (ext->selinux_allow || ext->priv_selinux_allow))) {
+//     if (unlikely(task_ext_valid(ext) && (ext->sel_allow || ext->priv_sel_allow))) {
 //         struct av_decision *avd = (struct av_decision *)_avd;
 //         struct avc_xperms_node *xp_node = (struct avc_xperms_node *)_xp_node;
 //         if ((uint64_t)_state <= 0xffffffffL) {
@@ -241,7 +241,7 @@ static int slow_avc_audit_replace(struct selinux_state *_state, void *_ssid, voi
 //     hook_call_backup(security_compute_av, _state, _ssid, _tsid, _orig_tclass, _avd, _xperms);
 
 //     struct task_ext *ext = get_current_task_ext();
-//     if (unlikely(task_ext_valid(ext) && (ext->selinux_allow || ext->priv_selinux_allow))) {
+//     if (unlikely(task_ext_valid(ext) && (ext->sel_allow || ext->priv_sel_allow))) {
 //         struct av_decision *avd = (struct av_decision *)_avd;
 //         struct extended_perms *xperms = (struct extended_perms *)_xperms;
 //         if ((uint64_t)_state <= 0xffffffffL) {
@@ -266,7 +266,7 @@ static int slow_avc_audit_replace(struct selinux_state *_state, void *_ssid, voi
 // {
 //     hook_call_backup(security_compute_xperms_decision, _state, _ssid, _tsid, _orig_tclass, _driver, _xpermd);
 //     struct task_ext *ext = get_current_task_ext();
-//     if (unlikely(task_ext_valid(ext) && (ext->selinux_allow || ext->priv_selinux_allow))) {
+//     if (unlikely(task_ext_valid(ext) && (ext->sel_allow || ext->priv_sel_allow))) {
 //         struct extended_perms_decision *xpermd = (struct extended_perms_decision *)_xpermd;
 //         if ((uint64_t)_state <= 0xffffffffL) {
 //             xpermd = (struct extended_perms_decision *)_driver;
@@ -286,7 +286,7 @@ static int slow_avc_audit_replace(struct selinux_state *_state, void *_ssid, voi
 //     hook_call_backup(security_compute_av_user, _state, _ssid, _tsid, _tclass, _avd);
 
 //     struct task_ext *ext = get_current_task_ext();
-//     if (unlikely(task_ext_valid(ext) && (ext->selinux_allow || ext->priv_selinux_allow))) {
+//     if (unlikely(task_ext_valid(ext) && (ext->sel_allow || ext->priv_sel_allow))) {
 //         struct av_decision *avd = (struct av_decision *)_avd;
 //         if ((uint64_t)_state <= 0xffffffffL) {
 //             avd = (struct av_decision *)_tclass;

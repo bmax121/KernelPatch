@@ -57,7 +57,7 @@ static const char supercmd_help[] =
     ""
     "KernelPatch supercmd:\n"
     "Usage: truncate <superkey|su> [-uZc] [Command [[SubCommand]...]]\n"
-    "superkey|su:                   Authentication. For certain commands, if the current uid is allowed to use su,"
+    "superkey|su:                   Authentication. For certain commands, if the current uid is allowed to use su,\n"
     "                               the 'su' string can be used for authentication.\n"
     "Options:\n"
     "  -u <UID>                     Change user id to UID.\n"
@@ -77,11 +77,10 @@ static const char supercmd_help[] =
     "      grant <UID> [TO_UID] [SCONTEXT]  Grant su permission to UID.\n"
     "      revoke                           Revoke su permission to UID.\n"
     "      num                              Get the number of uids with the aforementioned permissions.\n"
-    "      list                             List aforementioned uids.\n"
+    "      list                             List all su allowed uids.\n"
     "      profile <UID>                    Get the profile of the uid configuration.\n"
-    "      reset <PATH>                     Reset '/system/bin/kp' to PATH. The length of PATH must be between 1-127.\n"
-    "      path                             Get current su PATH.\n"
-    "      kallow <1|0>                     Allow(1) or Never-Allow(0) u:r:kernel:s0 all.\n"
+    "      path [PATH]                      Get or Reset current su path. The length of PATH must 2-127.\n"
+    "      sctx [SCONTEXT]                  Get or Reset current all allowed security context, \n"
     "\n"
     "The command below requires superkey authentication.\n"
     "  module <SubCommand> [...]:   KernelPatch Module manager\n"
@@ -94,8 +93,7 @@ static const char supercmd_help[] =
     "      info <KPM_NAME>                  Get detailed information about module named KPM_NAME.\n"
     "  key <SubCommand> [...]:      Superkey manager\n"
     "    SubCommand:\n"
-    "      get:                             Print current superkey\n"
-    "      set <SUPERKEY>:                  Set current superkey\n"
+    "      key [SUPERKEY]:                  Get or Reset current superkey\n"
     "      hash [enable|disable]:           Whether to use hash to verify the root superkey.\n"
     "";
 
@@ -127,6 +125,7 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
 
     // args
     const char *parr[SUPERCMD_ARGS_NO + 4] = { 0 };
+
     for (int i = 2; i < SUPERCMD_ARGS_NO; i++) {
         const char __user *ua = get_user_arg_ptr(0, *uargv, i);
         if (!ua || IS_ERR(ua)) break;
@@ -269,10 +268,21 @@ out_opt:
             msg[0] = '\0';
             if (!rc)
                 sprintf(msg, "uid: %d, to_uid: %d, scontext: %s", profile->uid, profile->to_uid, profile->scontext);
-        } else if (!strcmp(sub_cmd, "reset")) {
-            rc = su_reset_path(carr[2]);
         } else if (!strcmp(sub_cmd, "path")) {
-            msg = su_get_path();
+            if (carr[2]) {
+                rc = su_reset_path(carr[2]);
+                msg = carr[2];
+                carr[2] = 0; // no free
+            } else {
+                msg = su_get_path();
+            }
+        } else if (!strcmp(sub_cmd, "sctx")) {
+            if (carr[2]) {
+                rc = set_all_allow_sctx(carr[2]);
+                if (!rc) msg = carr[2];
+            } else {
+                msg = all_allow_sctx;
+            }
         } else {
             err_msg = "invalid subcommand";
         }

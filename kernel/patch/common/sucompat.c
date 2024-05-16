@@ -5,6 +5,7 @@
 
 #include <linux/list.h>
 #include <ktypes.h>
+#include <compiler.h>
 #include <stdbool.h>
 #include <linux/syscall.h>
 #include <ksyms.h>
@@ -94,6 +95,8 @@ KP_EXPORT_SYMBOL(is_su_allow_uid);
 
 int su_add_allow_uid(uid_t uid, uid_t to_uid, const char *scontext, int async)
 {
+    if (!scontext) scontext = "";
+
     rcu_read_lock();
     struct allow_uid *pos, *old = 0;
     list_for_each_entry(pos, &allow_uid_list, list)
@@ -239,6 +242,7 @@ int su_reset_path(const char *path)
     if (!path) return -EINVAL;
     if (IS_ERR(path)) return PTR_ERR(path);
     current_su_path = path;
+    logkfd("%s\n", current_su_path);
     dsb(ish);
     return 0;
 }
@@ -398,7 +402,7 @@ static void after_execve(hook_fargs3_t *args, void *udata)
 // https://elixir.bootlin.com/linux/v6.1/source/fs/exec.c#L2095
 // SYSCALL_DEFINE5(execveat, int, fd, const char __user *, filename, const char __user *const __user *, argv,
 //                 const char __user *const __user *, envp, int, flags)
-static void before_execveat(hook_fargs5_t *args, void *udata)
+__maybe_unused static void before_execveat(hook_fargs5_t *args, void *udata)
 {
     void *arg1p = syscall_argn_p(args, 1);
     void *arg2p = syscall_argn_p(args, 2);
@@ -483,31 +487,30 @@ int su_compat_init()
     spin_lock_init(&list_lock);
 
     // default shell
-    su_add_allow_uid(2000, 0, ALL_ALLOW_SCONTEXT, 1);
+    su_add_allow_uid(2000, 0, all_allow_sctx, 1);
+    su_add_allow_uid(0, 0, all_allow_sctx, 1);
 
     hook_err_t rc = HOOK_NO_ERR;
 
     rc = hook_syscalln(__NR_execve, 3, before_execve, after_execve, (void *)0);
     log_boot("hook __NR_execve rc: %d\n", rc);
 
-    rc = hook_syscalln(__NR_execveat, 5, before_execveat, after_execveat, (void *)0);
-    log_boot("hook __NR_execveat rc: %d\n", rc);
+    // rc = hook_syscalln(__NR_execveat, 5, before_execveat, after_execveat, (void *)0);
+    // log_boot("hook __NR_execveat rc: %d\n", rc);
 
     rc = hook_syscalln(__NR3264_fstatat, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after,
                        (void *)0);
     log_boot("hook __NR3264_fstatat rc: %d\n", rc);
 
-    rc = hook_syscalln(__NR_statx, 5, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after, (void *)0);
-    log_boot("hook __NR_statx rc: %d\n", rc);
+    // rc = hook_syscalln(__NR_statx, 5, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after, (void *)0);
+    // log_boot("hook __NR_statx rc: %d\n", rc);
 
     rc = hook_syscalln(__NR_faccessat, 3, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after, (void *)0);
     log_boot("hook __NR_faccessat rc: %d\n", rc);
 
-    rc =
-        hook_syscalln(__NR_faccessat2, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after, (void *)0);
-    log_boot("hook __NR_faccessat2 rc: %d\n", rc);
-
-    if (rc) return rc;
+    // rc =
+    //     hook_syscalln(__NR_faccessat2, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after, (void *)0);
+    // log_boot("hook __NR_faccessat2 rc: %d\n", rc);
 
     // #include <asm/unistd32.h>
 
@@ -516,12 +519,12 @@ int su_compat_init()
     log_boot("hook 32 __NR_execve rc: %d\n", rc);
 
     //  __NR_execveat 387
-    rc = hook_compat_syscalln(387, 5, before_execveat, after_execveat, (void *)1);
-    log_boot("hook 32 __NR_execveat rc: %d\n", rc);
+    // rc = hook_compat_syscalln(387, 5, before_execveat, after_execveat, (void *)1);
+    // log_boot("hook 32 __NR_execveat rc: %d\n", rc);
 
     // __NR_statx 397
-    rc = hook_compat_syscalln(397, 5, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after, (void *)0);
-    log_boot("hook 32 __NR_statx rc: %d\n", rc);
+    // rc = hook_compat_syscalln(397, 5, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after, (void *)0);
+    // log_boot("hook 32 __NR_statx rc: %d\n", rc);
 
     // #define __NR_stat 106
     // #define __NR_lstat 107
@@ -537,8 +540,8 @@ int su_compat_init()
     log_boot("hook 32 __NR_faccessat rc: %d\n", rc);
 
     // __NR_faccessat2 439
-    rc = hook_compat_syscalln(439, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after, (void *)0);
-    log_boot("hook 32 __NR_faccessat2 rc: %d\n", rc);
+    // rc = hook_compat_syscalln(439, 4, su_handler_arg1_ufilename_before, su_handler_arg1_ufilename_after, (void *)0);
+    // log_boot("hook 32 __NR_faccessat2 rc: %d\n", rc);
 
     return 0;
 }

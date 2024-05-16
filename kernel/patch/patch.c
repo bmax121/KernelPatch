@@ -41,7 +41,11 @@ void before_panic(hook_fargs12_t *args, void *udata)
 int resolve_struct();
 int task_observer();
 int bypass_kcfi();
+int bypass_selinux();
 int resolve_pt_regs();
+int supercall_install();
+int su_compat_init();
+
 int android_user_init();
 
 static void before_rest_init(hook_fargs4_t *args, void *udata)
@@ -55,8 +59,8 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
     if ((rc = resolve_struct())) goto out;
     log_boot("resolve_struct done: %d\n", rc);
 
-    if ((rc = selinux_hook_install())) goto out;
-    log_boot("selinux_hook_install done: %d\n", rc);
+    if ((rc = bypass_selinux())) goto out;
+    log_boot("bypass_selinux done: %d\n", rc);
 
     if ((rc = task_observer())) goto out;
     log_boot("task_observer done: %d\n", rc);
