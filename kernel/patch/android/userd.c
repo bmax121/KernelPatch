@@ -226,13 +226,13 @@ static void after_execveat(hook_fargs5_t *args, void *udata)
 static const char user_rc_data[] = { //
     "\n"
     "on post-fs-data\n"
-    "    exec -- " SUPERCMD " %s exec " APD_PATH " -s %s post-fs-data\n"
+    "    exec -- " SUPERCMD " su exec " APD_PATH " -s %s post-fs-data\n"
     "on nonencrypted\n"
-    "    exec -- " SUPERCMD " %s exec " APD_PATH " -s %s services\n"
+    "    exec -- " SUPERCMD " su exec " APD_PATH " -s %s services\n"
     "on property:vold.decrypt=trigger_restart_framework\n"
-    "    exec -- " SUPERCMD " %s exec " APD_PATH " -s %s services\n"
+    "    exec -- " SUPERCMD " su exec " APD_PATH " -s %s services\n"
     "on property:sys.boot_completed=1\n"
-    "    exec -- " SUPERCMD " %s exec " APD_PATH " -s %s boot-completed\n"
+    "    exec -- " SUPERCMD " su exec " APD_PATH " -s %s boot-completed\n"
     "\n"
     ""
 };
@@ -275,9 +275,9 @@ static void before_openat(hook_fargs4_t *args, void *udata)
         goto free;
     }
 
-    char added_rc_data[4096];
+    char added_rc_data[2048];
     const char *sk = get_superkey();
-    sprintf(added_rc_data, user_rc_data, sk, sk, sk, sk, sk, sk, sk, sk);
+    sprintf(added_rc_data, user_rc_data, sk, sk, sk, sk);
 
     kernel_write(newfp, added_rc_data, strlen(added_rc_data), &off);
     if (off != strlen(added_rc_data) + ori_len) {
