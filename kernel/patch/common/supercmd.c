@@ -123,18 +123,17 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
 
 #define SUPERCMD_ARGS_NO 16
 
-    // args
+    // copy args
     const char *parr[SUPERCMD_ARGS_NO + 4] = { 0 };
 
     for (int i = 2; i < SUPERCMD_ARGS_NO; i++) {
         const char __user *ua = get_user_arg_ptr(0, *uargv, i);
-        if (!ua || IS_ERR(ua)) break;
+        if (IS_ERR(ua)) break;
         const char *a = strndup_user(ua, 512);
         if (IS_ERR(a)) break;
-        // ignore after -c or exec
-        if (a[0] == '-' && a[1] == 'c') break;
-        if (!strcmp("exec", a)) break;
         parr[i] = a;
+        // ignore after -c
+        if (a[0] == '-' && a[1] == 'c') break;
     }
 
     uint64_t sp = current_user_stack_pointer();
@@ -180,11 +179,9 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
             }
             break;
         default:
-            goto out_opt;
+            break;
         }
     }
-
-out_opt:
 
     commit_su(profile.to_uid, profile.scontext);
 
@@ -196,7 +193,14 @@ out_opt:
     // command
     const char **carr = parr + pi;
     const char *cmd = 0;
-    if (pi < SUPERCMD_ARGS_NO - 1) cmd = carr[0];
+
+    if (pi < SUPERCMD_ARGS_NO - 1) {
+        cmd = carr[0];
+    } else {
+        err_msg = "too many args\n";
+        goto echo;
+    }
+
     if (!cmd) {
         supercmd_exec(u_filename_p, sh_path, &sp);
         *uargv += pi * 8;
@@ -208,15 +212,18 @@ out_opt:
     } else if (!strcmp("-c", cmd)) {
         supercmd_exec(u_filename_p, sh_path, &sp);
         *uargv += (carr - parr - 1) * 8;
+        goto free;
     } else if (!strcmp("exec", cmd)) {
         if (!carr[1]) {
             err_msg = "invalid commmand path";
             goto echo;
         }
         supercmd_exec(u_filename_p, carr[1], &sp);
-        *uargv += 3 * 8;
+        *uargv += (carr - parr + 1) * 8;
+        goto free;
     } else if (!strcmp("version", cmd)) {
         supercmd_echo(u_filename_p, uargv, &sp, "%x,%x", kver, kpver);
+        goto free;
     } else if (!strcmp("sumgr", cmd)) {
         const char *sub_cmd = carr[1];
         if (!sub_cmd) sub_cmd = "";
@@ -231,6 +238,7 @@ out_opt:
             if (carr[4]) scontext = carr[4];
             su_add_allow_uid(uid, to_uid, scontext, 1);
             supercmd_echo(u_filename_p, uargv, &sp, "supercmd: grant %d, %d, %s", uid, to_uid, scontext);
+            goto free;
         } else if (!strcmp(sub_cmd, "revoke")) {
             const char *suid = carr[2];
             unsigned long long uid;
@@ -316,10 +324,10 @@ out_opt:
                 const char *able = carr[2];
                 if (!strcmp("enable", able) || !strcmp("disable", able)) {
                     msg = able;
-                    enable_auth_root_key(1);
+                    enable_auth_root_key(true);
                 } else if (!strcmp("disable", able)) {
                     msg = able;
-                    enable_auth_root_key(0);
+                    enable_auth_root_key(false);
                 } else {
                     err_msg = "enable or disable";
                 }

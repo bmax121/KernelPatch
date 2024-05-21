@@ -21,7 +21,7 @@ static struct patch_symbol *patch_symbol = 0;
 static const char bstr[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
 static uint64_t _rand_next = 1000000007;
-static int enable_root_key = 1;
+static bool enable_root_key = true;
 
 int auth_superkey(const char *key)
 {
@@ -55,7 +55,7 @@ void reset_superkey(const char *key)
     dsb(ish);
 }
 
-void enable_auth_root_key(int enable)
+void enable_auth_root_key(bool enable)
 {
     enable_root_key = enable;
 }

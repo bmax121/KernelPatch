@@ -61,7 +61,7 @@ const char __user *get_user_arg_ptr(void *a0, void *a1, int nr)
     }
     native = (char __user *const __user *)((unsigned long)native + nr * size);
     char __user **upptr = memdup_user(native, size);
-    if (!upptr || IS_ERR(upptr)) return ERR_PTR((long)upptr);
+    if (IS_ERR(upptr)) return ERR_PTR((long)upptr);
 
     char __user *uptr;
     if (size == 8) {

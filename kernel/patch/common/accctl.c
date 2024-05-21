@@ -27,8 +27,7 @@
 #include <linux/slab.h>
 
 char all_allow_sctx[SUPERCALL_SCONTEXT_LEN] = { '\0' };
-int allow_sid_enable = 0;
-uint32_t all_allow_sid = 0;
+uint32_t all_allow_sid = SECSID_NULL;
 
 static void su_cred(struct cred *cred, uid_t uid)
 {
@@ -53,20 +52,16 @@ int set_all_allow_sctx(const char *sctx)
 {
     if (!sctx || !sctx[0]) {
         all_allow_sctx[0] = 0;
-        all_allow_sid = 0;
-        dsb(ish);
-        allow_sid_enable = 0;
+        all_allow_sid = SECSID_NULL;
         dsb(ish);
         logkfd("clear all allow sconetxt\n");
         return 0;
     }
 
     int rc = security_secctx_to_secid(sctx, strlen(sctx), &all_allow_sid);
-    if (!rc) {
+    if (!rc && all_allow_sid != SECSID_NULL) {
         strncpy(all_allow_sctx, sctx, sizeof(all_allow_sctx) - 1);
         all_allow_sctx[sizeof(all_allow_sctx) - 1] = '\0';
-        dsb(ish);
-        allow_sid_enable = 1;
         dsb(ish);
         logkfd("set all allow sconetxt: %s, sid: %d\n", all_allow_sctx, all_allow_sid);
     }
@@ -122,7 +117,7 @@ out:
 
 int commit_su(uid_t to_uid, const char *sctx)
 {
-    if (unlikely(allow_sid_enable) && !to_uid) {
+    if (all_allow_sid != SECSID_NULL && !to_uid) {
         return commit_kernel_su();
     } else {
         return commit_common_su(to_uid, sctx);
@@ -181,7 +176,7 @@ static int (*avc_denied_backup)(struct selinux_state *state, void *ssid, void *t
 static int avc_denied_replace(struct selinux_state *_state, void *_ssid, void *_tsid, void *_tclass, void *_requested,
                               void *_driver, void *_xperm, void *_flags, struct av_decision *_avd)
 {
-    if (unlikely(allow_sid_enable)) {
+    if (all_allow_sid != SECSID_NULL) {
         u32 ssid = (u32)(u64)_ssid;
         if ((uint64_t)_state <= 0xffffffffL) {
             ssid = (u32)(u64)_state;
@@ -218,7 +213,7 @@ static int slow_avc_audit_replace(struct selinux_state *_state, void *_ssid, voi
                                   void *_requested, void *_audited, void *_denied, void *_result,
                                   struct common_audit_data *_a)
 {
-    if (allow_sid_enable) {
+    if (all_allow_sid != SECSID_NULL) {
         u32 ssid = (u64)_ssid;
         if ((uint64_t)_state <= 0xffffffffL) {
             ssid = (u64)_state;

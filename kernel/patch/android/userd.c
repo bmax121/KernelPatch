@@ -55,29 +55,29 @@ out:
     return data;
 }
 
-static loff_t kernel_write_file(const char *path, const void *data, loff_t len, umode_t mode)
-{
-    loff_t off = 0;
-    set_priv_sel_allow(current, true);
+// static loff_t kernel_write_file(const char *path, const void *data, loff_t len, umode_t mode)
+// {
+//     loff_t off = 0;
+//     set_priv_sel_allow(current, true);
 
-    struct file *fp = filp_open(path, O_WRONLY | O_CREAT | O_TRUNC, mode);
-    if (!fp || IS_ERR(fp)) {
-        log_boot("create file %s error: %d\n", path, PTR_ERR(fp));
-        goto out;
-    }
-    kernel_write(fp, data, len, &off);
-    if (off != len) {
-        log_boot("write file %s error: %x\n", path, off);
-        goto free;
-    }
+//     struct file *fp = filp_open(path, O_WRONLY | O_CREAT | O_TRUNC, mode);
+//     if (!fp || IS_ERR(fp)) {
+//         log_boot("create file %s error: %d\n", path, PTR_ERR(fp));
+//         goto out;
+//     }
+//     kernel_write(fp, data, len, &off);
+//     if (off != len) {
+//         log_boot("write file %s error: %x\n", path, off);
+//         goto free;
+//     }
 
-free:
-    filp_close(fp, 0);
+// free:
+//     filp_close(fp, 0);
 
-out:
-    set_priv_sel_allow(current, false);
-    return off;
-}
+// out:
+//     set_priv_sel_allow(current, false);
+//     return off;
+// }
 
 static void pre_user_exec_init()
 {
@@ -226,20 +226,16 @@ static void after_execveat(hook_fargs5_t *args, void *udata)
 static const char user_rc_data[] = { //
     "\n"
     "on post-fs-data\n"
-    "    exec -- " SUPERCMD " %s exec " AP_BIN_DIR "magiskpolicy --live --magisk\n"
-    "    exec -- " SUPERCMD " %s exec " APD_PATH " post-fs-data\n"
+    "    exec -- " SUPERCMD " %s exec " APD_PATH " -s %s post-fs-data\n"
     "on nonencrypted\n"
-    "    exec -- " SUPERCMD " %s exec " APD_PATH " services\n"
+    "    exec -- " SUPERCMD " %s exec " APD_PATH " -s %s services\n"
     "on property:vold.decrypt=trigger_restart_framework\n"
-    "    exec -- " SUPERCMD " %s exec " APD_PATH " services\n"
+    "    exec -- " SUPERCMD " %s exec " APD_PATH " -s %s services\n"
     "on property:sys.boot_completed=1\n"
-    "    exec -- " SUPERCMD " %s exec " APD_PATH " boot-completed\n"
+    "    exec -- " SUPERCMD " %s exec " APD_PATH " -s %s boot-completed\n"
     "\n"
     ""
 };
-
-// todo: struct file *do_filp_open(int dfd, struct filename *pathname, const struct open_flags *op)
-// todo: import rc
 
 // https://elixir.bootlin.com/linux/v6.1/source/fs/open.c#L1337
 // SYSCALL_DEFINE4(openat, int, dfd, const char __user *, filename, int, flags, umode_t, mode)
@@ -257,7 +253,8 @@ static void before_openat(hook_fargs4_t *args, void *udata)
 
     const char __user *filename = (typeof(filename))syscall_argn(args, 1);
     char buf[32];
-    compat_strncpy_from_user(buf, filename, sizeof(buf));
+    int rc = compat_strncpy_from_user(buf, filename, sizeof(buf));
+    if (IS_ERR(rc)) return;
     if (strcmp(ORIGIN_RC_FILE, buf)) return;
 
     replaced = 1;
@@ -278,9 +275,9 @@ static void before_openat(hook_fargs4_t *args, void *udata)
         goto free;
     }
 
-    char added_rc_data[2048];
+    char added_rc_data[4096];
     const char *sk = get_superkey();
-    sprintf(added_rc_data, user_rc_data, sk, sk, sk, sk, sk, sk);
+    sprintf(added_rc_data, user_rc_data, sk, sk, sk, sk, sk, sk, sk, sk);
 
     kernel_write(newfp, added_rc_data, strlen(added_rc_data), &off);
     if (off != strlen(added_rc_data) + ori_len) {

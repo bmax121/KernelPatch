@@ -16,7 +16,6 @@
 #include <asm/current.h>
 
 extern char all_allow_sctx[SUPERCALL_SCONTEXT_LEN];
-extern int allow_sid_enable;
 extern uint32_t all_allow_sid;
 
 int set_all_allow_sctx(const char *sctx);
