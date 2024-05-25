@@ -253,8 +253,8 @@ static void before_openat(hook_fargs4_t *args, void *udata)
 
     const char __user *filename = (typeof(filename))syscall_argn(args, 1);
     char buf[32];
-    int rc = compat_strncpy_from_user(buf, filename, sizeof(buf));
-    if (IS_ERR(rc)) return;
+    long rc = compat_strncpy_from_user(buf, filename, sizeof(buf));
+    if (rc <= 0) return;
     if (strcmp(ORIGIN_RC_FILE, buf)) return;
 
     replaced = 1;

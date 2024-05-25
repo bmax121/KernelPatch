@@ -68,8 +68,9 @@ ${TARGET}.elf: ${OBJS}
 
 .PHONY: hdr
 hdr:
-	cp -Rf patch/include/uapi ../user
-	cp -f include/preset.h ../tools
+	cp -Rf patch/include/uapi ../user/
+	cp -f ../version ../user/
+	cp -f include/preset.h ../tools/
 
 .PHONY: clean
 clean:
