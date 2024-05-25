@@ -14,7 +14,7 @@
 #include <errno.h>
 
 #include "uapi/scdefs.h"
-#include "../version"
+#include "version"
 
 /// @deprecated
 /// KernelPatch version less than 0xa05
