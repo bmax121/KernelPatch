@@ -6,6 +6,15 @@
 #ifndef _KP_UAPI_SCDEF_H_
 #define _KP_UAPI_SCDEF_H_
 
+static inline long hash_key(const char *key)
+{
+    long hash = 1000000007;
+    for (int i = 0; key[i]; i++) {
+        hash = hash * 31 + key[i];
+    }
+    return hash;
+}
+
 #define SUPERCALL_HELLO_ECHO "hello1158"
 
 // #define __NR_supercall __NR3264_truncate // 45
