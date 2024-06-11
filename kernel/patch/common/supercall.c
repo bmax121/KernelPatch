@@ -346,7 +346,7 @@ static void before(hook_fargs6_t *args, void *udata)
 
     int is_key_auth = 0;
 
-    if (auth_superkey(key)) {
+    if (!auth_superkey(key)) {
         is_key_auth = 1;
     } else if (!strcmp("su", key)) {
         uid_t uid = current_uid();
