@@ -33,6 +33,54 @@
 #include <uapi/scdefs.h>
 #include <uapi/linux/stat.h>
 
+#define ORIGIN_RC_FILE "/system/etc/init/atrace.rc"
+#define REPLACE_RC_FILE "/dev/anduser.rc"
+
+#define ADB_FLODER "/data/adb/"
+#define AP_DIR "/data/adb/ap/"
+#define AP_BIN_DIR AP_DIR "bin/"
+#define AP_LOG_DIR AP_DIR "log/"
+
+#define KPM_LOAD_SH "/dev/load_module.sh"
+
+static const char user_rc_data[] = { //
+    "\n"
+    "on post-fs-data\n"
+    "    exec -- " SUPERCMD " su exec " KPM_LOAD_SH " %s post-fs-data\n"
+    "    exec -- " SUPERCMD " su exec " APD_PATH " -s %s post-fs-data\n"
+    "on nonencrypted\n"
+    "    exec -- " SUPERCMD " su exec " APD_PATH " -s %s services\n"
+    "on property:vold.decrypt=trigger_restart_framework\n"
+    "    exec -- " SUPERCMD " su exec " APD_PATH " -s %s services\n"
+    "on property:sys.boot_completed=1\n"
+    "    exec -- " SUPERCMD " su exec " APD_PATH " -s %s boot-completed\n"
+    "    exec -- " SUPERCMD " su exec /system/bin/rm " REPLACE_RC_FILE "\n"
+    "    exec -- " SUPERCMD " su exec /system/bin/rm " KPM_LOAD_SH "\n"
+    ""
+};
+
+static const char load_module_sh[] = //
+    "#!/bin/sh\n"
+    "mods_dir=\"/data/adb/ap/kpmods/\"\n"
+    "if [ ! -d \"$mods_dir\" ]; then \n"
+    "    echo \"Error: no modules\"\n"
+    "    exit 0\n"
+    "fi\n"
+    "for dir in \"$mods_dir/*\"; do\n"
+    "    if [ ! -d \"$dir\" ]; then continue; fi\n"
+    "    if [ -e \"$dir/disable\" ]; then continue; fi\n"
+    "    main_sh=\"$dir/main.sh\"\n"
+    "    if [ -e \"$main_sh\" ]; then\n"
+    "        touch \"$dir/disable\"\n"
+    "        echo \"loading $dir/main.sh ...\"\n"
+    "        . \"$main_sh\"\n"
+    "        rm -f \"$dir/disable\"\n"
+    "    else\n"
+    "        echo \"Error: $main_sh not found in $dir\"\n"
+    "    fi\n"
+    "done\n";
+;
+
 static const void *kernel_read_file(const char *path, loff_t *len)
 {
     set_priv_sel_allow(current, true);
@@ -55,33 +103,34 @@ out:
     return data;
 }
 
-// static loff_t kernel_write_file(const char *path, const void *data, loff_t len, umode_t mode)
-// {
-//     loff_t off = 0;
-//     set_priv_sel_allow(current, true);
+static loff_t kernel_write_file(const char *path, const void *data, loff_t len, umode_t mode)
+{
+    loff_t off = 0;
+    set_priv_sel_allow(current, true);
 
-//     struct file *fp = filp_open(path, O_WRONLY | O_CREAT | O_TRUNC, mode);
-//     if (!fp || IS_ERR(fp)) {
-//         log_boot("create file %s error: %d\n", path, PTR_ERR(fp));
-//         goto out;
-//     }
-//     kernel_write(fp, data, len, &off);
-//     if (off != len) {
-//         log_boot("write file %s error: %x\n", path, off);
-//         goto free;
-//     }
+    struct file *fp = filp_open(path, O_WRONLY | O_CREAT | O_TRUNC, mode);
+    if (!fp || IS_ERR(fp)) {
+        log_boot("create file %s error: %d\n", path, PTR_ERR(fp));
+        goto out;
+    }
+    kernel_write(fp, data, len, &off);
+    if (off != len) {
+        log_boot("write file %s error: %x\n", path, off);
+        goto free;
+    }
 
-// free:
-//     filp_close(fp, 0);
+free:
+    filp_close(fp, 0);
 
-// out:
-//     set_priv_sel_allow(current, false);
-//     return off;
-// }
+out:
+    set_priv_sel_allow(current, false);
+    return off;
+}
 
 static void pre_user_exec_init()
 {
     log_boot("event: %s\n", EXTRA_EVENT_PRE_EXEC_INIT);
+    kernel_write_file(KPM_LOAD_SH, load_module_sh, sizeof(load_module_sh), 0700);
 }
 
 static void pre_init_second_stage()
@@ -215,28 +264,6 @@ static void after_execveat(hook_fargs5_t *args, void *udata)
     handle_after_execve(&args->local);
 }
 
-#define ORIGIN_RC_FILE "/system/etc/init/atrace.rc"
-#define REPLACE_RC_FILE "/dev/anduser.rc"
-
-#define ADB_FLODER "/data/adb/"
-#define AP_DIR "/data/adb/ap/"
-#define AP_BIN_DIR AP_DIR "bin/"
-#define AP_LOG_DIR AP_DIR "log/"
-
-static const char user_rc_data[] = { //
-    "\n"
-    "on post-fs-data\n"
-    "    exec -- " SUPERCMD " su exec " APD_PATH " -s %s post-fs-data\n"
-    "on nonencrypted\n"
-    "    exec -- " SUPERCMD " su exec " APD_PATH " -s %s services\n"
-    "on property:vold.decrypt=trigger_restart_framework\n"
-    "    exec -- " SUPERCMD " su exec " APD_PATH " -s %s services\n"
-    "on property:sys.boot_completed=1\n"
-    "    exec -- " SUPERCMD " su exec " APD_PATH " -s %s boot-completed\n"
-    "\n"
-    ""
-};
-
 // https://elixir.bootlin.com/linux/v6.1/source/fs/open.c#L1337
 // SYSCALL_DEFINE4(openat, int, dfd, const char __user *, filename, int, flags, umode_t, mode)
 static void before_openat(hook_fargs4_t *args, void *udata)
@@ -277,7 +304,7 @@ static void before_openat(hook_fargs4_t *args, void *udata)
 
     char added_rc_data[2048];
     const char *sk = get_superkey();
-    sprintf(added_rc_data, user_rc_data, sk, sk, sk, sk);
+    sprintf(added_rc_data, user_rc_data, sk, sk, sk, sk, sk);
 
     kernel_write(newfp, added_rc_data, strlen(added_rc_data), &off);
     if (off != strlen(added_rc_data) + ori_len) {

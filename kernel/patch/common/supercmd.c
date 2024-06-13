@@ -94,7 +94,7 @@ static const char supercmd_help[] =
     "  key <SubCommand> [...]:      Superkey manager\n"
     "    SubCommand:\n"
     "      key [SUPERKEY]:                  Get or Reset current superkey\n"
-    "      hash [enable|disable]:           Whether to use hash to verify the root superkey.\n"
+    "      hash <enable|disable>:           Whether to use hash to verify the root superkey.\n"
     "";
 
 void handle_supercmd(char **__user u_filename_p, char **__user uargv)
@@ -322,17 +322,19 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
                 reset_superkey(key);
             } else if (!strcmp("hash", sub_cmd)) {
                 const char *able = carr[2];
-                if (!strcmp("enable", able) || !strcmp("disable", able)) {
+                if (able && !strcmp("enable", able)) {
                     msg = able;
                     enable_auth_root_key(true);
-                } else if (!strcmp("disable", able)) {
+                } else if (able && !strcmp("disable", able)) {
                     msg = able;
                     enable_auth_root_key(false);
                 } else {
-                    err_msg = "enable or disable";
+                    err_msg = "invalid enable or disable";
+                    goto echo;
                 }
             } else {
                 err_msg = "invalid subcommand";
+                goto echo;
             }
         } else if (!strcmp("module", cmd)) {
             if (!is_key_auth) {
@@ -392,9 +394,11 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
                 msg = buffer;
             } else {
                 err_msg = "invalid subcommand";
+                goto echo;
             }
         } else {
             err_msg = "invalid command";
+            goto echo;
         }
     }
 

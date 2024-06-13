@@ -37,7 +37,7 @@ static void prepare_task_ext(struct task_struct *new, struct task_struct *old)
 {
     struct task_ext *old_ext = get_task_ext(old);
     if (unlikely(!task_ext_valid(old_ext))) {
-        logkfe("dirty task_ext, pid(maybe dirty): %d\n", old_ext->pid);
+                logkfe("dirty task_ext, pid(maybe dirty): %d\n", old_ext->pid);
         return;
     }
     struct task_ext *new_ext = get_task_ext(new);
@@ -54,7 +54,7 @@ static void prepare_task_ext(struct task_struct *new, struct task_struct *old)
     dsb(ish);
 }
 
-int task_ext_size = (sizeof(struct task_ext) - sizeof(int));
+int task_ext_size = offsetof(struct task_ext, _magic);
 KP_EXPORT_SYMBOL(task_ext_size);
 
 static void after_copy_process(hook_fargs8_t *args, void *udata)
