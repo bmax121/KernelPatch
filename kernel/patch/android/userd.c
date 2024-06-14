@@ -40,28 +40,49 @@
 #define AP_DIR "/data/adb/ap/"
 #define AP_BIN_DIR AP_DIR "bin/"
 #define AP_LOG_DIR AP_DIR "log/"
+#define AP_MAGISKPOLICY_PATH AP_BIN_DIR "magiskpolicy"
+#define MAGISK_SCTX "u:r:magisk:s0"
 
 #define KPM_LOAD_SH "/dev/load_module.sh"
 
 static const char user_rc_data[] = { //
     "\n"
+    // "on early-init\n"
+    // "    exec -- " SUPERCMD " su exec " KPM_LOAD_SH " %s early-init\n"
+    // "on init\n"
+    // "    exec -- " SUPERCMD " su exec " KPM_LOAD_SH " %s init\n"
+    // "on late-init\n"
+    // "    exec -- " SUPERCMD " su exec " KPM_LOAD_SH " %s late-init\n"
     "on post-fs-data\n"
     "    exec -- " SUPERCMD " su exec " KPM_LOAD_SH " %s post-fs-data\n"
-    "    exec -- " SUPERCMD " su exec " APD_PATH " -s %s post-fs-data\n"
+    "    exec -- " SUPERCMD " su -Z " MAGISK_SCTX " exec " APD_PATH " -s %s post-fs-data\n"
     "on nonencrypted\n"
-    "    exec -- " SUPERCMD " su exec " APD_PATH " -s %s services\n"
+    "    exec -- " SUPERCMD " su -Z " MAGISK_SCTX " exec " APD_PATH " -s %s services\n"
     "on property:vold.decrypt=trigger_restart_framework\n"
-    "    exec -- " SUPERCMD " su exec " APD_PATH " -s %s services\n"
+    "    exec -- " SUPERCMD " su -Z " MAGISK_SCTX " exec " APD_PATH " -s %s services\n"
     "on property:sys.boot_completed=1\n"
-    "    exec -- " SUPERCMD " su exec " APD_PATH " -s %s boot-completed\n"
-    "    exec -- " SUPERCMD " su exec /system/bin/rm " REPLACE_RC_FILE "\n"
-    "    exec -- " SUPERCMD " su exec /system/bin/rm " KPM_LOAD_SH "\n"
+    "    rm " REPLACE_RC_FILE "\n"
+    "    rm " KPM_LOAD_SH "\n"
+    "    exec -- " SUPERCMD " su -Z " MAGISK_SCTX " exec " APD_PATH " -s %s boot-completed\n"
     ""
 };
 
 static const char load_module_sh[] = //
     "#!/bin/sh\n"
+    "SUPERKEY=\"$1\"\n"
+    "event=\"$2\"\n"
     "mods_dir=\"/data/adb/ap/kpmods/\"\n"
+    "handle_event() {\n"
+    "    case \"$event\" in\n"
+    "        post-fs-data)\n"
+    "            /data/adb/ap/bin/magiskpolicy --magisk --live\n"
+    "            ;;\n"
+    "        *)\n"
+    "            echo \"Unknown event: $event\"\n"
+    "            ;;\n"
+    "    esac\n"
+    "}\n"
+    "handle_event\n"
     "if [ ! -d \"$mods_dir\" ]; then \n"
     "    echo \"Error: no modules\"\n"
     "    exit 0\n"
@@ -302,9 +323,9 @@ static void before_openat(hook_fargs4_t *args, void *udata)
         goto free;
     }
 
-    char added_rc_data[2048];
+    char added_rc_data[4096];
     const char *sk = get_superkey();
-    sprintf(added_rc_data, user_rc_data, sk, sk, sk, sk, sk);
+    sprintf(added_rc_data, user_rc_data, sk, sk, sk, sk, sk, sk);
 
     kernel_write(newfp, added_rc_data, strlen(added_rc_data), &off);
     if (off != strlen(added_rc_data) + ori_len) {
