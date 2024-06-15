@@ -199,6 +199,16 @@ static long call_su_allow_uid_nums()
     return su_allow_uid_nums();
 }
 
+#ifdef ANDROID
+extern int android_is_safe_mode;
+static long call_su_get_safemode()
+{
+    int result = android_is_safe_mode;
+    logkfd("[call_su_get_safemode] %d\n", result);
+    return result;
+}
+#endif
+
 static long call_su_list_allow_uid(uid_t *__user uids, int num)
 {
     return su_allow_uids(1, uids, num);
@@ -276,6 +286,10 @@ static long supercall(int is_key_auth, long cmd, long arg1, long arg2, long arg3
         return call_su_get_allow_sctx((char *__user)arg1, (int)arg2);
     case SUPERCALL_SU_SET_ALLOW_SCTX:
         return call_su_set_allow_sctx((char *__user)arg1);
+#ifdef ANDROID
+    case SUPERCALL_SU_GET_SAFEMODE:
+        return call_su_get_safemode();
+#endif
     default:
         break;
     }

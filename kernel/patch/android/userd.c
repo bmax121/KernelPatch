@@ -383,8 +383,6 @@ static void before_input_handle_event(hook_fargs4_t *args, void *udata)
         if (volumedown_pressed_count == 3) {
             log_boot("entering safemode ...");
             android_is_safe_mode = 1;
-            struct file *filp = filp_open(SAFE_MODE_FLAG_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-            if (filp && !IS_ERR(filp)) filp_close(filp, 0);
         }
     }
 }
