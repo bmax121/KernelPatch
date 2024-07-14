@@ -34,7 +34,7 @@
 #include <uapi/linux/stat.h>
 
 #define ORIGIN_RC_FILE "/system/etc/init/atrace.rc"
-#define REPLACE_RC_FILE "/dev/anduser.rc"
+#define REPLACE_RC_FILE "/dev/user_init.rc"
 
 #define ADB_FLODER "/data/adb/"
 #define AP_DIR "/data/adb/ap/"
@@ -42,65 +42,31 @@
 #define AP_LOG_DIR AP_DIR "log/"
 #define AP_MAGISKPOLICY_PATH AP_BIN_DIR "magiskpolicy"
 #define MAGISK_SCTX "u:r:magisk:s0"
+#define USER_INIT_SH_PATH "/dev/user_init.sh"
 
-#define KPM_LOAD_SH "/dev/load_module.sh"
+#include "gen/user_init.c"
 
 static const char user_rc_data[] = { //
     "\n"
-    // "on early-init\n"
-    // "    exec -- " SUPERCMD " su exec " KPM_LOAD_SH " %s early-init\n"
-    // "on init\n"
-    // "    exec -- " SUPERCMD " su exec " KPM_LOAD_SH " %s init\n"
-    // "on late-init\n"
-    // "    exec -- " SUPERCMD " su exec " KPM_LOAD_SH " %s late-init\n"
+    "on early-init\n"
+    "    exec -- " SUPERCMD " su exec " USER_INIT_SH_PATH " %s early-init\n"
+    "on init\n"
+    "    exec -- " SUPERCMD " su exec " USER_INIT_SH_PATH " %s init\n"
+    "on late-init\n"
+    "    exec -- " SUPERCMD " su exec " USER_INIT_SH_PATH " %s late-init\n"
     "on post-fs-data\n"
-    "    exec -- " SUPERCMD " su exec " KPM_LOAD_SH " %s post-fs-data\n"
-    "    exec -- " SUPERCMD " su -Z " MAGISK_SCTX " exec " APD_PATH " -s %s post-fs-data\n"
+    "    exec -- " SUPERCMD " su exec " USER_INIT_SH_PATH " %s post-fs-data\n"
     "on nonencrypted\n"
-    "    exec -- " SUPERCMD " su -Z " MAGISK_SCTX " exec " APD_PATH " -s %s services\n"
+    "    exec -- " SUPERCMD " su exec " USER_INIT_SH_PATH " %s services\n"
     "on property:vold.decrypt=trigger_restart_framework\n"
-    "    exec -- " SUPERCMD " su -Z " MAGISK_SCTX " exec " APD_PATH " -s %s services\n"
+    "    exec -- " SUPERCMD " su exec " USER_INIT_SH_PATH " %s services\n"
     "on property:sys.boot_completed=1\n"
-    "    rm " REPLACE_RC_FILE "\n"
-    "    rm " KPM_LOAD_SH "\n"
-    "    exec -- " SUPERCMD " su -Z " MAGISK_SCTX " exec " APD_PATH " -s %s boot-completed\n"
+    // "    rm " REPLACE_RC_FILE "\n"
+    // "    rm " USER_INIT_SH_PATH "\n"
+    "    exec -- " SUPERCMD " su exec " USER_INIT_SH_PATH " %s boot-completed\n"
     ""
 };
 
-static const char load_module_sh[] = //
-    "#!/bin/sh\n"
-    "SUPERKEY=\"$1\"\n"
-    "event=\"$2\"\n"
-    "mods_dir=\"/data/adb/ap/kpmods/\"\n"
-    "handle_event() {\n"
-    "    case \"$event\" in\n"
-    "        post-fs-data)\n"
-    "            /data/adb/ap/bin/magiskpolicy --magisk --live\n"
-    "            ;;\n"
-    "        *)\n"
-    "            echo \"Unknown event: $event\"\n"
-    "            ;;\n"
-    "    esac\n"
-    "}\n"
-    "handle_event\n"
-    "if [ ! -d \"$mods_dir\" ]; then \n"
-    "    echo \"Error: no modules\"\n"
-    "    exit 0\n"
-    "fi\n"
-    "for dir in \"$mods_dir/*\"; do\n"
-    "    if [ ! -d \"$dir\" ]; then continue; fi\n"
-    "    if [ -e \"$dir/disable\" ]; then continue; fi\n"
-    "    main_sh=\"$dir/main.sh\"\n"
-    "    if [ -e \"$main_sh\" ]; then\n"
-    "        touch \"$dir/disable\"\n"
-    "        echo \"loading $dir/main.sh ...\"\n"
-    "        . \"$main_sh\"\n"
-    "        rm -f \"$dir/disable\"\n"
-    "    else\n"
-    "        echo \"Error: $main_sh not found in $dir\"\n"
-    "    fi\n"
-    "done\n";
-;
 
 static const void *kernel_read_file(const char *path, loff_t *len)
 {
@@ -151,7 +117,7 @@ out:
 static void pre_user_exec_init()
 {
     log_boot("event: %s\n", EXTRA_EVENT_PRE_EXEC_INIT);
-    kernel_write_file(KPM_LOAD_SH, load_module_sh, sizeof(load_module_sh), 0700);
+    kernel_write_file(USER_INIT_SH_PATH, user_init, sizeof(user_init), 0700);
 }
 
 static void pre_init_second_stage()
@@ -325,7 +291,7 @@ static void before_openat(hook_fargs4_t *args, void *udata)
 
     char added_rc_data[4096];
     const char *sk = get_superkey();
-    sprintf(added_rc_data, user_rc_data, sk, sk, sk, sk, sk, sk);
+    sprintf(added_rc_data, user_rc_data, sk, sk, sk, sk, sk, sk, sk);
 
     kernel_write(newfp, added_rc_data, strlen(added_rc_data), &off);
     if (off != strlen(added_rc_data) + ori_len) {
