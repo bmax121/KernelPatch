@@ -42,7 +42,7 @@ handle() {
         load_modules $skey $event
         $SUPERCMD $skey -Z $MAGISK_SCTX exec $APD_PATH -s $skey $event
         ;;
-    "service" | "boot-completed")
+    "services" | "boot-completed")
         $SUPERCMD $skey -Z $MAGISK_SCTX exec $APD_PATH -s $skey $event
         ;;
     *)
