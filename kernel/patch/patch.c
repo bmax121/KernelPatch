@@ -46,7 +46,10 @@ int resolve_pt_regs();
 int supercall_install();
 int su_compat_init();
 
+#ifdef ANDROID
 int android_user_init();
+int android_sepolicy_flags_init();
+#endif
 
 static void before_rest_init(hook_fargs4_t *args, void *udata)
 {
@@ -62,6 +65,11 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
     if ((rc = bypass_selinux())) goto out;
     log_boot("bypass_selinux done: %d\n", rc);
 
+#ifdef ANDROID
+    rc = android_sepolicy_flags_init();
+    log_boot("android_sepolicy_flags_init done: %d\n", rc);
+#endif
+
     if ((rc = task_observer())) goto out;
     log_boot("task_observer done: %d\n", rc);
 
@@ -75,10 +83,8 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
     log_boot("resolve_pt_regs done: %d\n", rc);
 
 #ifdef ANDROID
-
     rc = android_user_init();
     log_boot("android_user_init done: %d\n", rc);
-
 #endif
 
 out:
