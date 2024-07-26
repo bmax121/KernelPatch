@@ -188,7 +188,7 @@ static inline long __sc_test(const char *key, long a1, long a2, long a3)
 static inline long sc_su_grant_uid(const char *key, uid_t uid, struct su_profile *profile)
 {
     if (!key || !key[0]) return -EINVAL;
-    long ret = syscall(__NR_supercall, key, compact_cmd(key, SUPERCALL_SU_GRANT_UID), uid, profile);
+    long ret = syscall(__NR_supercall, key, compact_cmd(key, SUPERCALL_SU_GRANT_UID), profile);
     return ret;
 }
 
