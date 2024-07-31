@@ -17,7 +17,6 @@
 #include <pgtable.h>
 #include <linux/fs.h>
 #include <linux/seccomp.h>
-#include <baselib.h>
 #include <uapi/asm-generic/errno.h>
 #include <predata.h>
 #include <symbol.h>
@@ -37,7 +36,7 @@ static void prepare_task_ext(struct task_struct *new, struct task_struct *old)
 {
     struct task_ext *old_ext = get_task_ext(old);
     if (unlikely(!task_ext_valid(old_ext))) {
-                logkfe("dirty task_ext, pid(maybe dirty): %d\n", old_ext->pid);
+        logkfe("dirty task_ext, pid(maybe dirty): %d\n", old_ext->pid);
         return;
     }
     struct task_ext *new_ext = get_task_ext(new);
