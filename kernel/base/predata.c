@@ -43,6 +43,7 @@ int auth_superkey(const char *key)
     if (!rc && first_time) {
         first_time = 0;
         reset_superkey(key);
+        enable_root_key = false;
     }
 
     return rc;
@@ -52,7 +53,6 @@ void reset_superkey(const char *key)
 {
     lib_strncpy(superkey, key, SUPER_KEY_LEN - 1);
     superkey[SUPER_KEY_LEN - 1] = '\0';
-    enable_root_key = false;
     dsb(ish);
 }
 
