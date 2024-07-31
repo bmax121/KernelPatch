@@ -21,7 +21,7 @@ static struct patch_symbol *patch_symbol = 0;
 static const char bstr[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
 static uint64_t _rand_next = 1000000007;
-static bool enable_root_key = true;
+static bool enable_root_key = false;
 
 int auth_superkey(const char *key)
 {
@@ -114,8 +114,11 @@ void predata_init()
     if (*(uint64_t *)(superkey)) _rand_next *= *(uint64_t *)(superkey);
     if (*(uint64_t *)(root_superkey)) _rand_next *= *(uint64_t *)(root_superkey);
 
+    enable_root_key = false;
+
     // random key
     if (lib_strnlen(superkey, SUPER_KEY_LEN) <= 0) {
+        enable_root_key = true;
         int len = SUPER_KEY_LEN > 16 ? 16 : SUPER_KEY_LEN;
         len--;
         for (int i = 0; i < len; ++i) {
