@@ -39,7 +39,7 @@ int auth_superkey(const char *key)
     int len = SHA256_BLOCK_SIZE > ROOT_SUPER_KEY_HASH_LEN ? ROOT_SUPER_KEY_HASH_LEN : SHA256_BLOCK_SIZE;
     rc = lib_memcmp(root_superkey, hash, len);
 
-    static int first_time = 1;
+    static bool first_time = true;
     if (!rc && first_time) {
         first_time = 0;
         reset_superkey(key);
@@ -52,6 +52,7 @@ void reset_superkey(const char *key)
 {
     lib_strncpy(superkey, key, SUPER_KEY_LEN - 1);
     superkey[SUPER_KEY_LEN - 1] = '\0';
+    enable_root_key = false;
     dsb(ish);
 }
 
