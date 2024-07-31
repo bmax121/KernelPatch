@@ -126,6 +126,7 @@ int fillin_patch_symbol(kallsym_t *kallsym, char *img_buf, int imglen, patch_sym
 
     symbol->slow_avc_audit = try_get_symbol_offset_zero(kallsym, img_buf, "slow_avc_audit");
 
+    symbol->policydb_write = try_get_symbol_offset_zero(kallsym, img_buf, "policydb_write");
     symbol->input_handle_event = get_symbol_offset_zero(kallsym, img_buf, "input_handle_event");
 
     if ((is_be() ^ target_is_be)) {

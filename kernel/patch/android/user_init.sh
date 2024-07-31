@@ -42,8 +42,12 @@ handle() {
         load_modules $skey $event
         $SUPERCMD $skey -Z $MAGISK_SCTX exec $APD_PATH -s $skey $event
         ;;
-    "service" | "boot-completed")
+    "services")
         $SUPERCMD $skey -Z $MAGISK_SCTX exec $APD_PATH -s $skey $event
+        ;;
+    "boot-completed")
+        $SUPERCMD $skey -Z $MAGISK_SCTX exec $APD_PATH -s $skey $event
+        $SUPERCMD su -Z $MAGISK_SCTX exec $APD_PATH uid-listener &
         ;;
     *)
         echo "unknown user_init event: $event"
