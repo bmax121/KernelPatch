@@ -26,7 +26,13 @@ int b(uint32_t *buf, uint64_t from, uint64_t to)
 
 int32_t relo_branch_func(const char *img, int32_t func_offset)
 {
-    uint32_t inst = *(uint32_t *)(img + func_offset);
+    uint32_t inst;
+    if (((uintptr_t)(img + func_offset) % sizeof(uint32_t)) != 0) {
+	uint32_t inst = func_offset &= ~(sizeof(uint32_t) - 1);
+    } else {
+	uint32_t inst = *(uint32_t *)(img + func_offset);
+    }
+
     int32_t relo_offset = func_offset;
     if (INSN_IS_B(inst)) {
         uint64_t imm26 = bits32(inst, 25, 0);
