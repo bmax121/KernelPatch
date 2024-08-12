@@ -232,7 +232,7 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
                    info->elf64_kernel_base);
         kernel_va = info->elf64_kernel_base;
     } else {
-        info->elf64_kernel_base = kernel_va;
+        info->elf64_kernel_base = kernel_va = 0xffffff8008080000;
         tools_logi("find arm64 relocation kernel_va: 0x%" PRIx64 "\n", kernel_va);
     }
 
@@ -689,7 +689,7 @@ static int correct_addresses_or_offsets_by_vectors(kallsym_t *info, char *img, i
         info->kallsyms_offsets_offset = pos;
         tools_logi("kallsyms_offsets offset: 0x%08x\n", pos);
     } else {
-        info->kallsyms_addresses_offset = pos;
+        info->kallsyms_addresses_offset = info->_approx_addresses_or_offsets_offset;
         tools_logi("kallsyms_addresses offset: 0x%08x\n", pos);
     }
 
@@ -870,7 +870,7 @@ int32_t get_symbol_index_offset(kallsym_t *info, char *img, int32_t index)
     }
     uint64_t first = uint_unpack(img + pos, elem_size, info->is_be);
     uint64_t target = uint_unpack(img + pos + index * elem_size, elem_size, info->is_be);
-    return (int32_t)(target - first);
+    return (int32_t)(target - (info->has_relative_base ? first : info->elf64_kernel_base));
 }
 
 int get_symbol_offset_and_size(kallsym_t *info, char *img, char *symbol, int32_t *size)
