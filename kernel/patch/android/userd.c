@@ -43,6 +43,7 @@
 #define AP_MAGISKPOLICY_PATH AP_BIN_DIR "magiskpolicy"
 #define MAGISK_SCTX "u:r:magisk:s0"
 #define USER_INIT_SH_PATH "/dev/user_init.sh"
+#define USER_INIT_LOG "/dev/user_init*.log"
 
 #include "gen/user_init.c"
 
@@ -63,10 +64,10 @@ static const char user_rc_data[] = { //
     "on property:sys.boot_completed=1\n"
     // "    rm " REPLACE_RC_FILE "\n"
     // "    rm " USER_INIT_SH_PATH "\n"
+    // "    rm " USER_INIT_LOG "\n"
     "    exec -- " SUPERCMD " su exec " USER_INIT_SH_PATH " %s boot-completed\n"
     ""
 };
-
 
 static const void *kernel_read_file(const char *path, loff_t *len)
 {

@@ -32,11 +32,9 @@ load_modules() {
 }
 
 handle() {
-    $SUPERCMD $skey event $event
+    $SUPERCMD $skey event $event "before"
     case "$event" in
-    "early-init" | "init" | "late-init")
-        echo "user_init event: $event"
-        ;;
+    "early-init" | "init" | "late-init") ;;
     "post-fs-data")
         $MAGISK_POLICY_PATH --magisk --live
         load_modules $skey $event
@@ -53,7 +51,7 @@ handle() {
         echo "unknown user_init event: $event"
         ;;
     esac
-    $SUPERCMD $skey event $event
+    $SUPERCMD $skey event $event "after"
 }
 
 handle

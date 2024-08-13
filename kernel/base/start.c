@@ -22,8 +22,8 @@
 #include "setup.h"
 
 #define bits(n, high, low) (((n) << (63u - (high))) >> (63u - (high) + (low)))
-#define align_floor(x, align) ((uint64_t)(x) & ~((uint64_t)(align)-1))
-#define align_ceil(x, align) (((uint64_t)(x) + (uint64_t)(align)-1) & ~((uint64_t)(align)-1))
+#define align_floor(x, align) ((uint64_t)(x) & ~((uint64_t)(align) - 1))
+#define align_ceil(x, align) (((uint64_t)(x) + (uint64_t)(align) - 1) & ~((uint64_t)(align) - 1))
 
 start_preset_t start_preset __attribute__((section(".start.data")));
 

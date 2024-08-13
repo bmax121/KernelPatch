@@ -15,6 +15,7 @@
 #include <accctl.h>
 #include <linux/slab.h>
 #include <module.h>
+#include <user_event.h>
 
 static char *__user supercmd_str_to_user_sp(const char *data, uintptr_t *sp)
 {
@@ -81,6 +82,7 @@ static const char supercmd_help[] =
     "      profile <UID>                    Get the profile of the uid configuration.\n"
     "      path [PATH]                      Get or Reset current su path. The length of PATH must 2-127.\n"
     "      sctx [SCONTEXT]                  Get or Reset current all allowed security context, \n"
+    "  event <EVENT>                        Report EVENT.\n"
     "\n"
     "The command below requires superkey authentication.\n"
     "  module <SubCommand> [...]:   KernelPatch Module manager\n"
@@ -293,6 +295,12 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
             }
         } else {
             err_msg = "invalid subcommand";
+        }
+    } else if (!strcmp("event", cmd)) {
+        if (carr[1]) {
+            rc = report_user_event(carr[1], carr[2]);
+        } else {
+            err_msg = "empty event";
         }
     } else if (!strcmp("bootlog", cmd)) {
         msg = get_boot_log();
