@@ -15,8 +15,17 @@
 extern uintptr_t *sys_call_table;
 extern uintptr_t *compat_sys_call_table;
 extern int has_syscall_wrapper;
-extern const char *syscall_name_table[460];
-extern const char *compat_syscall_name_table[460];
+extern struct
+{
+    const char *name;
+    uintptr_t addr;
+} syscall_name_table[460];
+
+extern struct
+{
+    const char *name;
+    uintptr_t addr;
+} compat_syscall_name_table[460];
 
 const char __user *get_user_arg_ptr(void *a0, void *a1, int nr);
 int set_user_arg_ptr(void *a0, void *a1, int nr, uintptr_t val);

@@ -622,7 +622,7 @@ static int find_names(kallsym_t *info, char *img, int32_t imglen)
     return 0;
 }
 
-int arm64_verify_pid_vnr(kallsym_t *info, char *img, int32_t offset)
+static int arm64_verify_pid_vnr(kallsym_t *info, char *img, int32_t offset)
 {
     for (int i = 0; i < 6; i++) {
         int32_t insn_offset = offset + i * 4;
@@ -631,12 +631,14 @@ int arm64_verify_pid_vnr(kallsym_t *info, char *img, int32_t offset)
         if (enc == AARCH64_INSN_CLS_BR_SYS) {
             if (aarch64_insn_extract_system_reg(insn) == AARCH64_INSN_SPCLREG_SP_EL0) {
                 tools_logi("pid_vnr verfied sp_el0, insn: 0x%x\n", insn);
+                info->current_type = SP_EL0;
                 return 0;
             }
         } else if (enc == AARCH64_INSN_CLS_DP_IMM) {
             u32 rn = aarch64_insn_decode_register(AARCH64_INSN_REGTYPE_RN, insn);
             if (rn == AARCH64_INSN_REG_SP) {
                 tools_logi("pid_vnr verfied sp, insn: 0x%x\n", insn);
+                info->current_type = SP;
                 return 0;
             }
         }
@@ -738,8 +740,7 @@ static int correct_addresses_or_offsets_by_banner(kallsym_t *info, char *img, in
     int32_t pos = info->kallsyms_names_offset;
     int32_t index = 0;
     char symbol[KSYM_SYMBOL_LEN] = { '\0' };
-    // Pick a symbol (linux_banner) whose offset we know, use its index to fix the
-    // beginning of the addresses or offsets table
+
     while (pos < info->kallsyms_markers_offset) {
         memset(symbol, 0, sizeof(symbol));
         int32_t ret = decompress_symbol_name(info, img, &pos, NULL, symbol);
@@ -748,6 +749,8 @@ static int correct_addresses_or_offsets_by_banner(kallsym_t *info, char *img, in
         if (!strcmp(symbol, "linux_banner")) {
             tools_logi("names table linux_banner index: 0x%08x\n", index);
             break;
+        }
+        if (!strcmp(symbol, "pid_vnr")) {
         }
         index++;
     }
@@ -793,6 +796,12 @@ static int correct_addresses_or_offsets_by_banner(kallsym_t *info, char *img, in
         info->kernel_base = uint_unpack(img + info->kallsyms_addresses_offset, elem_size, info->is_be);
         tools_logi("kernel base address: 0x%llx\n", info->kernel_base);
     }
+
+    int32_t pid_vnr_offset = get_symbol_offset(info, img, "pid_vnr");
+    if (arm64_verify_pid_vnr(info, img, pid_vnr_offset)) {
+        tools_logw("pid_vnr verification failed\n");
+    }
+
     return 0;
 }
 
@@ -801,8 +810,10 @@ static int correct_addresses_or_offsets(kallsym_t *info, char *img, int32_t imgl
     int rc = 0;
 #if 1
     rc = correct_addresses_or_offsets_by_banner(info, img, imglen);
+    info->is_kallsysms_all_yes = 1;
 #endif
     if (rc) {
+        info->is_kallsysms_all_yes = 0;
         tools_logw("no linux_banner? maybe CONFIG_KALLSYMS_ALL=n?\n");
     }
     if (rc) rc = correct_addresses_or_offsets_by_vectors(info, img, imglen);

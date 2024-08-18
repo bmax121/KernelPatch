@@ -46,6 +46,11 @@ int resolve_pt_regs();
 int supercall_install();
 int su_compat_init();
 
+void linux_misc_symbol_init();
+void linux_libs_symbol_init();
+void module_init();
+void syscall_init();
+
 #ifdef ANDROID
 int android_user_init();
 int android_sepolicy_flags_init();
@@ -56,14 +61,8 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
     int rc = 0;
     log_boot("entering init ...\n");
 
-    if ((rc = bypass_kcfi())) goto out;
-    log_boot("bypass_kcfi done: %d\n", rc);
-
     if ((rc = resolve_struct())) goto out;
     log_boot("resolve_struct done: %d\n", rc);
-
-    if ((rc = bypass_selinux())) goto out;
-    log_boot("bypass_selinux done: %d\n", rc);
 
 #ifdef ANDROID
     rc = android_sepolicy_flags_init();
@@ -72,12 +71,6 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
 
     if ((rc = task_observer())) goto out;
     log_boot("task_observer done: %d\n", rc);
-
-    rc = supercall_install();
-    log_boot("supercall_install done: %d\n", rc);
-
-    rc = su_compat_init();
-    log_boot("su_compat_init done: %d\n", rc);
 
     rc = resolve_pt_regs();
     log_boot("resolve_pt_regs done: %d\n", rc);
@@ -113,21 +106,24 @@ static void after_kernel_init(hook_fargs4_t *args, void *udata)
     log_boot("event: %s\n", EXTRA_EVENT_POST_KERNEL_INIT);
 }
 
-// internal header
-void linux_misc_symbol_init();
-void linux_libs_symbol_init();
-void module_init();
-void syscall_init();
-
 int patch()
 {
     linux_libs_symbol_init();
     linux_misc_symbol_init();
+
     module_init();
+
     syscall_init();
 
     hook_err_t rc = 0;
 
+    if ((rc = bypass_kcfi())) goto out;
+    log_boot("bypass_kcfi done: %d\n", rc);
+
+    if ((rc = bypass_selinux())) goto out;
+    log_boot("bypass_selinux done: %d\n", rc);
+
+    // panic
     unsigned long panic_addr = get_preset_patch_sym()->panic;
     logkd("panic addr: %llx\n", panic_addr);
     if (panic_addr) {
@@ -145,6 +141,12 @@ int patch()
     }
     if (rc) return rc;
 
+    rc = supercall_install();
+    log_boot("supercall_install done: %d\n", rc);
+
+    rc = su_compat_init();
+    log_boot("su_compat_init done: %d\n", rc);
+
     // kernel_init
     unsigned long kernel_init_addr = get_preset_patch_sym()->kernel_init;
     if (kernel_init_addr) {
@@ -152,5 +154,6 @@ int patch()
         log_boot("hook kernel_init rc: %d\n", rc);
     }
 
+out:
     return rc;
 }

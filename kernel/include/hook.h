@@ -37,7 +37,7 @@ typedef int8_t chain_item_state;
 #define CHAIN_ITEM_STATE_BUSY 2
 
 #define local_offsetof(TYPE, MEMBER) ((size_t) & ((TYPE *)0)->MEMBER)
-#define local_container_of(ptr, type, member) ({ (type *)((char *)(ptr)-local_offsetof(type, member)); })
+#define local_container_of(ptr, type, member) ({ (type *)((char *)(ptr) - local_offsetof(type, member)); })
 
 #define HOOK_MEM_REGION_NUM 4
 #define TRAMPOLINE_NUM 4
@@ -319,7 +319,10 @@ static inline void hook_unwrap(void *func, void *before, void *after)
     return hook_unwrap_remove(func, before, after, 1);
 }
 
-static inline void *hook_chain_origin_func(void *hook_args)
+/**
+ * @param hook_args
+ */
+static inline void *wrap_get_origin_func(void *hook_args)
 {
     hook_fargs0_t *args = (hook_fargs0_t *)hook_args;
     hook_chain_t *chain = (hook_chain_t *)args->chain;
@@ -363,6 +366,16 @@ hook_err_t fp_hook_wrap(uintptr_t fp_addr, int32_t argno, void *before, void *af
  * @param after 
  */
 void fp_hook_unwrap(uintptr_t fp_addr, void *before, void *after);
+
+/**
+ * 
+ */
+static inline void *fp_get_origin_func(void *hook_args)
+{
+    hook_fargs0_t *args = (hook_fargs0_t *)hook_args;
+    fp_hook_chain_t *chain = (fp_hook_chain_t *)args->chain;
+    return (void *)chain->hook.origin_fp;
+}
 
 static inline void hook_chain_install(hook_chain_t *chain)
 {

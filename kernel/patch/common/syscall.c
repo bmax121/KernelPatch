@@ -18,6 +18,7 @@
 #include <uapi/asm-generic/errno.h>
 #include <predata.h>
 #include <kputils.h>
+#include <linux/kernel.h>
 #include <linux/string.h>
 
 uintptr_t *sys_call_table = 0;
@@ -98,6 +99,49 @@ typedef long (*raw_syscall3_f)(long arg0, long arg1, long arg2);
 typedef long (*raw_syscall4_f)(long arg0, long arg1, long arg2, long arg3);
 typedef long (*raw_syscall5_f)(long arg0, long arg1, long arg2, long arg3, long arg4);
 typedef long (*raw_syscall6_f)(long arg0, long arg1, long arg2, long arg3, long arg4, long arg5);
+
+uintptr_t syscalln_name_addr(int nr, int is_compat)
+{
+    const char *name = 0;
+    if (!is_compat) {
+        if (syscall_name_table[nr].addr) {
+            return syscall_name_table[nr].addr;
+        }
+        name = syscall_name_table[nr].name;
+    } else {
+        if (compat_syscall_name_table[nr].addr) {
+            return compat_syscall_name_table[nr].addr;
+        }
+        name = compat_syscall_name_table[nr].name;
+    }
+    if (!name) return 0;
+
+    static const char *prefix[2] = { "__arm64_", "" };
+    static const char *suffix[3] = { ".cfi_jt", ".cfi", "" };
+
+    uintptr_t addr = 0;
+
+    char buffer[256];
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 3; j++) {
+            snprintf(buffer, sizeof(buffer), "%s%s%s", prefix[i], name, suffix[j]);
+            addr = kallsyms_lookup_name(buffer);
+            if (addr) break;
+        }
+    }
+    if (!is_compat) {
+        syscall_name_table[nr].addr = addr;
+    } else {
+        compat_syscall_name_table[nr].addr = addr;
+    }
+    return addr;
+}
+
+uintptr_t syscalln_addr(int nr, int is_compat)
+{
+    if (sys_call_table) return sys_call_table[nr];
+    return syscalln_name_addr(nr, );
+}
 
 long raw_syscall0(long nr)
 {
@@ -205,22 +249,6 @@ long raw_syscall6(long nr, long arg0, long arg1, long arg2, long arg3, long arg4
     return ((raw_syscall6_f)addr)(arg0, arg1, arg2, arg3, arg4, arg5);
 }
 
-uintptr_t syscalln_name_addr(int nr, int is_compat)
-{
-    const char *name = 0;
-    if (!is_compat) {
-        name = syscall_name_table[nr];
-    } else {
-        name = compat_syscall_name_table[nr];
-    }
-    if (!name) return 0;
-    char buffer[128] = "__arm64_";
-    strlcat(buffer, name, 64);
-    uintptr_t addr = kallsyms_lookup_name(buffer);
-    if (!addr) addr = kallsyms_lookup_name(name);
-    return addr;
-}
-
 hook_err_t __inline_hook_syscalln(int nr, int narg, int is_compat, void *before, void *after, void *udata)
 {
     uintptr_t addr = syscalln_name_addr(nr, is_compat);
@@ -235,63 +263,10 @@ void __inline_unhook_syscalln(int nr, int is_compat, void *before, void *after)
     hook_unwrap((void *)addr, before, after);
 }
 
-static uint64_t search_sys_call_table_addr()
-{
-    uint64_t addr = kernel_va;
-    uint64_t _etext = kallsyms_lookup_name("_etext");
-    addr = addr > _etext ? addr : _etext;
-
-    char *prefix[2];
-    prefix[0] = "__arm64_";
-    prefix[1] = "";
-
-    char *io_setup = "sys_io_setup";
-    char *io_destory = "sys_io_destroy";
-
-    char *suffix[3];
-    suffix[0] = ".cfi_jt";
-    suffix[1] = ".cfi";
-    suffix[2] = "";
-
-    char buf[128];
-
-    uint64_t sc0_addr = 0;
-    uint64_t sc1_addr = 0;
-
-    int i = 0, k = 0;
-
-    for (; k < 3; k++) {
-        i = 0;
-        for (; i < 2; i++) {
-            buf[0] = '\0';
-            strcat(buf, prefix[i]);
-            strcat(buf, io_setup);
-            strcat(buf, suffix[k]);
-            sc0_addr = kallsyms_lookup_name(buf);
-            if (!sc0_addr) continue;
-
-            buf[0] = '\0';
-            strcat(buf, prefix[i]);
-            strcat(buf, io_destory);
-            strcat(buf, suffix[k]);
-            sc1_addr = kallsyms_lookup_name(buf);
-            if (!sc1_addr) return 0;
-        }
-    }
-
-    for (; addr < kernel_va + kernel_size; addr += 8) {
-        uint64_t val0 = *(uint64_t *)addr;
-        if (val0 != sc0_addr) continue;
-        uint64_t val1 = *(uint64_t *)(addr + 8);
-        if (val1 == sc1_addr) return addr;
-    }
-    return 0;
-}
-
 void syscall_init()
 {
     for (int i = 0; i < sizeof(syscall_name_table) / sizeof(syscall_name_table[0]); i++) {
-        uintptr_t *addr = (uintptr_t *)syscall_name_table + i;
+        uintptr_t *addr = syscall_name_table[i].name;
         *addr = link2runtime(*addr);
     }
 
@@ -301,7 +276,6 @@ void syscall_init()
     }
 
     sys_call_table = (typeof(sys_call_table))kallsyms_lookup_name("sys_call_table");
-    if (!sys_call_table) sys_call_table = (typeof(sys_call_table))search_sys_call_table_addr();
     log_boot("sys_call_table addr: %llx\n", sys_call_table);
 
     compat_sys_call_table = (typeof(compat_sys_call_table))kallsyms_lookup_name("compat_sys_call_table");

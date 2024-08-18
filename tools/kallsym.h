@@ -54,6 +54,12 @@ enum arch_type
     X86
 };
 
+enum current_type
+{
+    SP_EL0,
+    SP
+};
+
 #define ELF64_KERNEL_MIN_VA 0xffffff8008080000
 #define ELF64_KERNEL_MAX_VA 0xffffffffffffffff
 
@@ -102,6 +108,9 @@ typedef struct
 
     int32_t elf64_rela_num;
     int32_t elf64_rela_offset;
+
+    int32_t is_kallsysms_all_yes;
+    enum current_type current_type;
 
 } kallsym_t;
 
