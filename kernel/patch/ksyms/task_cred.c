@@ -476,13 +476,14 @@ int resolve_current()
 
     init_task = (struct task_struct *)kallsyms_lookup_name("init_task");
     uint64_t init_thread_union_addr = kallsyms_lookup_name("init_thread_union");
+
 #if 0
     init_task = 0;
     init_thread_union_addr = 0;
 #endif
 
-    log_boot("    init_task lookup: %llx\n", init_task);
-    log_boot("    init_thread_union lookup: %llx\n", init_thread_union_addr);
+    log_boot("    init_task addr lookup: %llx\n", init_task);
+    log_boot("    init_thread_union addr lookup: %llx\n", init_thread_union_addr);
 
     if (is_kimg_range(sp_el0)) {
         if (sp_el0 == init_thread_union_addr) {
@@ -585,11 +586,19 @@ int resolve_current()
     return 0;
 }
 
+// todo
 int resolve_mm_struct_offset()
 {
+    if (!init_mm) return 0;
+
     log_boot("struct mm_struct: \n");
+
     // struct mm_struct *mm = get_task_mm(init_task);
+    // uintptr_t init_mm_addr = (uintptr_t)mm;
+
     uintptr_t init_mm_addr = (uintptr_t)init_mm;
+    if (!init_mm_addr) return 0;
+
     for (uintptr_t i = init_mm_addr; i < init_mm_addr + MM_STRUCT_MAX_SIZE; i += sizeof(uintptr_t)) {
         uint64_t pgd = *(uintptr_t *)i;
         if (pgd == phys_to_kimg(pgd_pa)) {
@@ -605,8 +614,11 @@ int resolve_struct()
     full_cap = CAP_FULL_SET;
 
     int err = 0;
+
     if ((err = resolve_current())) goto out;
+
     if ((err = resolve_task_offset())) goto out;
+
     if ((err = resolve_cred_offset())) goto out;
 
     resolve_mm_struct_offset();

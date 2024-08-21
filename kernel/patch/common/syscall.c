@@ -114,10 +114,16 @@ uintptr_t syscalln_name_addr(int nr, int is_compat)
         }
         name = compat_syscall_name_table[nr].name;
     }
+
     if (!name) return 0;
 
-    static const char *prefix[2] = { "__arm64_", "" };
-    static const char *suffix[3] = { ".cfi_jt", ".cfi", "" };
+    const char *prefix[2];
+    prefix[0] = "__arm64_";
+    prefix[1] = "";
+    const char *suffix[3];
+    suffix[0] = ".cfi_jt";
+    suffix[1] = ".cfi";
+    suffix[2] = "";
 
     uintptr_t addr = 0;
 
@@ -128,6 +134,7 @@ uintptr_t syscalln_name_addr(int nr, int is_compat)
             addr = kallsyms_lookup_name(buffer);
             if (addr) break;
         }
+        if (addr) break;
     }
     if (!is_compat) {
         syscall_name_table[nr].addr = addr;
@@ -136,16 +143,19 @@ uintptr_t syscalln_name_addr(int nr, int is_compat)
     }
     return addr;
 }
+KP_EXPORT_SYMBOL(syscalln_name_addr);
 
 uintptr_t syscalln_addr(int nr, int is_compat)
 {
-    if (sys_call_table) return sys_call_table[nr];
-    return syscalln_name_addr(nr, );
+    if (!is_compat && sys_call_table) return sys_call_table[nr];
+    if (is_compat && compat_sys_call_table) return compat_sys_call_table[nr];
+    return syscalln_name_addr(nr, is_compat);
 }
+KP_EXPORT_SYMBOL(syscalln_addr);
 
 long raw_syscall0(long nr)
 {
-    uintptr_t addr = sys_call_table[nr];
+    uintptr_t addr = syscalln_addr(nr, 0);
     if (has_syscall_wrapper) {
         struct pt_regs regs;
         regs.syscallno = nr;
@@ -153,12 +163,11 @@ long raw_syscall0(long nr)
         return ((warp_raw_syscall_f)addr)(&regs);
     }
     return ((raw_syscall0_f)addr)();
-    return 0;
 }
 
 long raw_syscall1(long nr, long arg0)
 {
-    uintptr_t addr = sys_call_table[nr];
+    uintptr_t addr = syscalln_addr(nr, 0);
     if (has_syscall_wrapper) {
         struct pt_regs regs;
         regs.syscallno = nr;
@@ -171,7 +180,7 @@ long raw_syscall1(long nr, long arg0)
 
 long raw_syscall2(long nr, long arg0, long arg1)
 {
-    uintptr_t addr = sys_call_table[nr];
+    uintptr_t addr = syscalln_addr(nr, 0);
     if (has_syscall_wrapper) {
         struct pt_regs regs;
         regs.syscallno = nr;
@@ -185,7 +194,7 @@ long raw_syscall2(long nr, long arg0, long arg1)
 
 long raw_syscall3(long nr, long arg0, long arg1, long arg2)
 {
-    uintptr_t addr = sys_call_table[nr];
+    uintptr_t addr = syscalln_addr(nr, 0);
     if (has_syscall_wrapper) {
         struct pt_regs regs;
         regs.syscallno = nr;
@@ -200,7 +209,7 @@ long raw_syscall3(long nr, long arg0, long arg1, long arg2)
 
 long raw_syscall4(long nr, long arg0, long arg1, long arg2, long arg3)
 {
-    uintptr_t addr = sys_call_table[nr];
+    uintptr_t addr = syscalln_addr(nr, 0);
     if (has_syscall_wrapper) {
         struct pt_regs regs;
         regs.syscallno = nr;
@@ -216,7 +225,7 @@ long raw_syscall4(long nr, long arg0, long arg1, long arg2, long arg3)
 
 long raw_syscall5(long nr, long arg0, long arg1, long arg2, long arg3, long arg4)
 {
-    uintptr_t addr = sys_call_table[nr];
+    uintptr_t addr = syscalln_addr(nr, 0);
     if (has_syscall_wrapper) {
         struct pt_regs regs;
         regs.syscallno = nr;
@@ -233,7 +242,7 @@ long raw_syscall5(long nr, long arg0, long arg1, long arg2, long arg3, long arg4
 
 long raw_syscall6(long nr, long arg0, long arg1, long arg2, long arg3, long arg4, long arg5)
 {
-    uintptr_t addr = sys_call_table[nr];
+    uintptr_t addr = syscalln_addr(nr, 0);
     if (has_syscall_wrapper) {
         struct pt_regs regs;
         regs.syscallno = nr;
@@ -249,6 +258,40 @@ long raw_syscall6(long nr, long arg0, long arg1, long arg2, long arg3, long arg4
     return ((raw_syscall6_f)addr)(arg0, arg1, arg2, arg3, arg4, arg5);
 }
 
+hook_err_t __fp_hook_syscalln(int nr, int narg, int is_compat, void *before, void *after, void *udata)
+{
+    if (!is_compat) {
+        if (!sys_call_table) return HOOK_BAD_ADDRESS;
+        uintptr_t fp_addr = (uintptr_t)(sys_call_table + nr);
+        if (has_syscall_wrapper) narg = 1;
+        return fp_hook_wrap(fp_addr, narg, before, after, udata);
+    } else {
+        if (!compat_sys_call_table) return HOOK_BAD_ADDRESS;
+        uintptr_t fp_addr = (uintptr_t)(compat_sys_call_table + nr);
+        if (has_syscall_wrapper) narg = 1;
+        return fp_hook_wrap(fp_addr, narg, before, after, udata);
+    }
+}
+
+void __fp_unhook_syscalln(int nr, int is_compat, void *before, void *after)
+{
+    if (!is_compat) {
+        if (!sys_call_table) return;
+        uintptr_t fp_addr = (uintptr_t)(sys_call_table + nr);
+        fp_hook_unwrap(fp_addr, before, after);
+    } else {
+        if (!compat_sys_call_table) return;
+        uintptr_t fp_addr = (uintptr_t)(compat_sys_call_table + nr);
+        fp_hook_unwrap(fp_addr, before, after);
+    }
+}
+
+/*
+sys_xxx.cfi_jt
+
+hint #0x22  # bti c
+b #0xfffffffffeb452f4
+*/
 hook_err_t __inline_hook_syscalln(int nr, int narg, int is_compat, void *before, void *after, void *udata)
 {
     uintptr_t addr = syscalln_name_addr(nr, is_compat);
@@ -263,23 +306,47 @@ void __inline_unhook_syscalln(int nr, int is_compat, void *before, void *after)
     hook_unwrap((void *)addr, before, after);
 }
 
+hook_err_t hook_syscalln(int nr, int narg, void *before, void *after, void *udata)
+{
+    if (sys_call_table) return __fp_hook_syscalln(nr, narg, 0, before, after, udata);
+    return __inline_hook_syscalln(nr, narg, 0, before, after, udata);
+}
+
+void unhook_syscalln(int nr, void *before, void *after)
+{
+    if (sys_call_table) return __fp_unhook_syscalln(nr, 0, before, after);
+    return __inline_unhook_syscalln(nr, 0, before, after);
+}
+
+hook_err_t hook_compat_syscalln(int nr, int narg, void *before, void *after, void *udata)
+{
+    if (compat_sys_call_table) return __fp_hook_syscalln(nr, narg, 1, before, after, udata);
+    return __inline_hook_syscalln(nr, narg, 1, before, after, udata);
+}
+
+void unhook_compat_syscalln(int nr, void *before, void *after)
+{
+    if (compat_sys_call_table) return __fp_unhook_syscalln(nr, 1, before, after);
+    return __inline_unhook_syscalln(nr, 1, before, after);
+}
+
 void syscall_init()
 {
     for (int i = 0; i < sizeof(syscall_name_table) / sizeof(syscall_name_table[0]); i++) {
-        uintptr_t *addr = syscall_name_table[i].name;
+        uintptr_t *addr = (uintptr_t *)&syscall_name_table[i].name;
         *addr = link2runtime(*addr);
     }
 
     for (int i = 0; i < sizeof(compat_syscall_name_table) / sizeof(compat_syscall_name_table[0]); i++) {
-        uintptr_t *addr = (uintptr_t *)compat_syscall_name_table + i;
+        uintptr_t *addr = (uintptr_t *)&compat_syscall_name_table[i].name;
         *addr = link2runtime(*addr);
     }
 
-    sys_call_table = (typeof(sys_call_table))kallsyms_lookup_name("sys_call_table");
-    log_boot("sys_call_table addr: %llx\n", sys_call_table);
+    // sys_call_table = (typeof(sys_call_table))kallsyms_lookup_name("sys_call_table");
+    // log_boot("sys_call_table addr: %llx\n", sys_call_table);
 
-    compat_sys_call_table = (typeof(compat_sys_call_table))kallsyms_lookup_name("compat_sys_call_table");
-    log_boot("compat_sys_call_table addr: %llx\n", compat_sys_call_table);
+    // compat_sys_call_table = (typeof(compat_sys_call_table))kallsyms_lookup_name("compat_sys_call_table");
+    // log_boot("compat_sys_call_table addr: %llx\n", compat_sys_call_table);
 
     has_config_compat = 0;
     has_syscall_wrapper = 0;

@@ -814,7 +814,7 @@ static int correct_addresses_or_offsets(kallsym_t *info, char *img, int32_t imgl
 #endif
     if (rc) {
         info->is_kallsysms_all_yes = 0;
-        tools_logw("no linux_banner? maybe CONFIG_KALLSYMS_ALL=n?\n");
+        tools_logw("no linux_banner, CONFIG_KALLSYMS_ALL=n\n");
     }
     if (rc) rc = correct_addresses_or_offsets_by_vectors(info, img, imglen);
     return rc;

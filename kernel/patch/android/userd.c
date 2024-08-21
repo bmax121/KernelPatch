@@ -359,15 +359,15 @@ int android_user_init()
     hook_err_t ret = 0;
     hook_err_t rc = HOOK_NO_ERR;
 
-    rc = fp_hook_syscalln(__NR_execve, 3, before_execve, after_execve, (void *)__NR_execve);
+    rc = hook_syscalln(__NR_execve, 3, before_execve, after_execve, (void *)__NR_execve);
     log_boot("hook __NR_execve rc: %d\n", rc);
     ret |= rc;
 
-    rc = fp_hook_syscalln(__NR_execveat, 5, before_execveat, after_execveat, (void *)__NR_execveat);
+    rc = hook_syscalln(__NR_execveat, 5, before_execveat, after_execveat, (void *)__NR_execveat);
     log_boot("hook __NR_execveat rc: %d\n", rc);
     ret |= rc;
 
-    rc = fp_hook_syscalln(__NR_openat, 4, before_openat, after_openat, 0);
+    rc = hook_syscalln(__NR_openat, 4, before_openat, after_openat, 0);
     log_boot("hook __NR_openat rc: %d\n", rc);
     ret |= rc;
 
