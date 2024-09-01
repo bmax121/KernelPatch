@@ -184,6 +184,100 @@ static void handle_cmd_sumgr(char **__user u_filename_p, const char **carr, char
     }
 }
 
+// superkey commands
+static void handle_cmd_key_auth(char **__user u_filename_p, const char *cmd, const char **carr, char *buffer,
+                                struct cmd_res *cmd_res)
+{
+    if (!strcmp("key", cmd)) {
+        const char *sub_cmd = carr[1];
+        if (!sub_cmd) sub_cmd = "";
+        if (!strcmp("get", sub_cmd)) {
+            cmd_res->msg = get_superkey();
+        } else if (!strcmp("set", sub_cmd)) {
+            const char *key = carr[2];
+            if (!key) {
+                cmd_res->err_msg = "invalid new key";
+                return;
+            }
+            cmd_res->msg = key;
+            reset_superkey(key);
+        } else if (!strcmp("hash", sub_cmd)) {
+            const char *able = carr[2];
+            if (able && !strcmp("enable", able)) {
+                cmd_res->msg = able;
+                enable_auth_root_key(true);
+            } else if (able && !strcmp("disable", able)) {
+                cmd_res->msg = able;
+                enable_auth_root_key(false);
+            } else {
+                cmd_res->err_msg = "invalid enable or disable";
+                return;
+            }
+        } else {
+            cmd_res->err_msg = "invalid subcommand";
+            return;
+        }
+    } else if (!strcmp("module", cmd)) {
+        const char *sub_cmd = carr[1];
+        if (!sub_cmd) sub_cmd = "";
+        if (!strcmp("num", sub_cmd)) {
+            int num = get_module_nums();
+            sprintf(buffer, "%d\n", num);
+            cmd_res->msg = buffer;
+        } else if (!strcmp("list", sub_cmd)) {
+            list_modules(buffer, sizeof(buffer));
+            cmd_res->msg = buffer;
+        } else if (!strcmp("load", sub_cmd)) {
+            const char *path = carr[2];
+            if (!path) {
+                cmd_res->err_msg = "invalid module path";
+                return;
+            }
+            cmd_res->rc = load_module_path(path, carr[3], 0);
+            if (!cmd_res->rc) cmd_res->msg = path;
+        } else if (!strcmp("ctl0", sub_cmd)) {
+            const char *name = carr[2];
+            if (!name) {
+                cmd_res->err_msg = "invalid module name";
+                return;
+            }
+            const char *mod_args = carr[3];
+            if (!mod_args) {
+                cmd_res->err_msg = "invalid control arguments";
+                return;
+            }
+            buffer[0] = '\0';
+            cmd_res->rc = module_control0(name, mod_args, buffer, sizeof(buffer));
+            cmd_res->msg = buffer;
+        } else if (!strcmp("ctl1", sub_cmd)) {
+            cmd_res->err_msg = "not implement";
+        } else if (!strcmp("unload", sub_cmd)) {
+            const char *name = carr[2];
+            if (!name) {
+                cmd_res->err_msg = "invalid module name";
+                return;
+            }
+            cmd_res->rc = unload_module(name, 0);
+            if (!cmd_res->rc) cmd_res->msg = name;
+        } else if (!strcmp("info", sub_cmd)) {
+            const char *name = carr[2];
+            if (!name) {
+                cmd_res->err_msg = "invalid module name";
+                return;
+            }
+            int sz = get_module_info(name, buffer, sizeof(buffer));
+            if (sz <= 0) cmd_res->rc = sz;
+            cmd_res->msg = buffer;
+        } else {
+            cmd_res->err_msg = "invalid subcommand";
+            return;
+        }
+    } else {
+        cmd_res->err_msg = "invalid command";
+        return;
+    }
+}
+
 void handle_supercmd(char **__user u_filename_p, char **__user uargv)
 {
     int is_key_auth = 0;
@@ -326,104 +420,10 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
         test();
         cmd_res.msg = "test done...";
     } else {
-        // superkey authrication command
-        const char *not_key_auth_err_msg = "superkey(not su) is required";
-        if (!strcmp("key", cmd)) {
-            if (!is_key_auth) {
-                cmd_res.err_msg = not_key_auth_err_msg;
-                goto echo;
-            }
-            const char *sub_cmd = carr[1];
-            if (!sub_cmd) sub_cmd = "";
-            if (!strcmp("get", sub_cmd)) {
-                cmd_res.msg = get_superkey();
-            } else if (!strcmp("set", sub_cmd)) {
-                const char *key = carr[2];
-                if (!key) {
-                    cmd_res.err_msg = "invalid new key";
-                    goto echo;
-                }
-                cmd_res.msg = key;
-                reset_superkey(key);
-            } else if (!strcmp("hash", sub_cmd)) {
-                const char *able = carr[2];
-                if (able && !strcmp("enable", able)) {
-                    cmd_res.msg = able;
-                    enable_auth_root_key(true);
-                } else if (able && !strcmp("disable", able)) {
-                    cmd_res.msg = able;
-                    enable_auth_root_key(false);
-                } else {
-                    cmd_res.err_msg = "invalid enable or disable";
-                    goto echo;
-                }
-            } else {
-                cmd_res.err_msg = "invalid subcommand";
-                goto echo;
-            }
-        } else if (!strcmp("module", cmd)) {
-            if (!is_key_auth) {
-                cmd_res.err_msg = not_key_auth_err_msg;
-                goto echo;
-            }
-            const char *sub_cmd = carr[1];
-            if (!sub_cmd) sub_cmd = "";
-            if (!strcmp("num", sub_cmd)) {
-                int num = get_module_nums();
-                supercmd_echo(u_filename_p, uargv, &sp, "%d", num);
-            } else if (!strcmp("list", sub_cmd)) {
-                buffer[0] = '\0';
-                list_modules(buffer, sizeof(buffer));
-                cmd_res.msg = buffer;
-            } else if (!strcmp("load", sub_cmd)) {
-                const char *path = carr[2];
-                if (!path) {
-                    cmd_res.err_msg = "invalid module path";
-                    goto echo;
-                }
-                cmd_res.rc = load_module_path(path, carr[3], 0);
-                if (!cmd_res.rc) cmd_res.msg = path;
-            } else if (!strcmp("ctl0", sub_cmd)) {
-                const char *name = carr[2];
-                if (!name) {
-                    cmd_res.err_msg = "invalid module name";
-                    goto echo;
-                }
-                const char *mod_args = carr[3];
-                if (!mod_args) {
-                    cmd_res.err_msg = "invalid control arguments";
-                    goto echo;
-                }
-                buffer[0] = '\0';
-                cmd_res.rc = module_control0(name, mod_args, buffer, sizeof(buffer));
-                cmd_res.msg = buffer;
-            } else if (!strcmp("ctl1", sub_cmd)) {
-                cmd_res.err_msg = "not implement";
-            } else if (!strcmp("unload", sub_cmd)) {
-                const char *name = carr[2];
-                if (!name) {
-                    cmd_res.err_msg = "invalid module name";
-                    goto echo;
-                }
-                cmd_res.rc = unload_module(name, 0);
-                if (!cmd_res.rc) cmd_res.msg = name;
-            } else if (!strcmp("info", sub_cmd)) {
-                const char *name = carr[2];
-                if (!name) {
-                    cmd_res.err_msg = "invalid module name";
-                    goto echo;
-                }
-                buffer[0] = '\0';
-                int sz = get_module_info(name, buffer, sizeof(buffer));
-                if (sz <= 0) cmd_res.rc = sz;
-                cmd_res.msg = buffer;
-            } else {
-                cmd_res.err_msg = "invalid subcommand";
-                goto echo;
-            }
+        if (is_key_auth) {
+            handle_cmd_key_auth(u_filename_p, cmd, carr, buffer, &cmd_res);
         } else {
-            cmd_res.err_msg = "invalid command";
-            goto echo;
+            cmd_res.err_msg = "invalid command or a superkey is required";
         }
     }
 
