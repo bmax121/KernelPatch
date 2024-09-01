@@ -58,12 +58,7 @@ static char *next_string(char *string, unsigned long *secsize)
 /* Update size with this section: return offset. */
 static long get_offset(struct module *mod, unsigned int *size, Elf_Shdr *sechdr, unsigned int section)
 {
-    long ret;
-    /* Additional bytes needed by arch in front of individual sections */
-    int arm64_mod_section_prepend = 0;
-    *size += arm64_mod_section_prepend;
-    ret = ALIGN(*size, sechdr->sh_addralign ?: 1);
-    ret = *size;
+    long ret = ALIGN(*size, sechdr->sh_addralign ?: 1);
     *size = ret + sechdr->sh_size;
     return ret;
 }
