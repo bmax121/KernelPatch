@@ -99,6 +99,91 @@ static const char supercmd_help[] =
     "      hash <enable|disable>:           Whether to use hash to verify the root superkey.\n"
     "";
 
+struct cmd_res
+{
+    const char *msg;
+    const char *err_msg;
+    int rc;
+};
+
+static void handle_cmd_sumgr(char **__user u_filename_p, const char **carr, char *buffer, struct cmd_res *cmd_res)
+{
+    const char *sub_cmd = carr[1];
+    if (!sub_cmd) sub_cmd = "";
+
+    if (!strcmp(sub_cmd, "grant")) {
+        unsigned long long uid = 0, to_uid = 0;
+        const char *scontext = "";
+        if (!carr[2] || kstrtoull(carr[2], 10, &uid)) {
+            sprintf(buffer, "illegal uid: %s", carr[2]);
+            cmd_res->err_msg = buffer;
+            return;
+        }
+        if (carr[3]) kstrtoull(carr[3], 10, &to_uid);
+        if (carr[4]) scontext = carr[4];
+        su_add_allow_uid(uid, to_uid, scontext, 1);
+        sprintf(buffer, "grant %d, %d, %s", uid, to_uid, scontext);
+        cmd_res->msg = buffer;
+    } else if (!strcmp(sub_cmd, "revoke")) {
+        const char *suid = carr[2];
+        unsigned long long uid;
+        if (!suid || kstrtoull(suid, 10, &uid)) {
+            sprintf(buffer, "illegal uid: %s\n", suid);
+            cmd_res->err_msg = buffer;
+            return;
+        }
+        su_remove_allow_uid(uid, 1);
+        cmd_res->msg = suid;
+    } else if (!strcmp(sub_cmd, "num")) {
+        int num = su_allow_uid_nums();
+        sprintf(buffer, "%d", num);
+        cmd_res->msg = buffer;
+    } else if (!strcmp(sub_cmd, "list")) {
+        int num = su_allow_uid_nums();
+        uid_t uids[num]; // stack overflow
+        int offset = 0;
+        su_allow_uids(0, uids, num);
+
+        for (int i = 0; i < num; i++) {
+            offset += sprintf(buffer + offset, "%d\n", uids[i]);
+        };
+        if (offset > 0) buffer[offset - 1] = '\0';
+        cmd_res->msg = buffer;
+
+    } else if (!strcmp(sub_cmd, "profile")) {
+        unsigned long long uid;
+        if (!carr[2] || kstrtoull(carr[2], 10, &uid)) {
+            cmd_res->err_msg = "invalid uid";
+            return;
+        }
+        struct su_profile profile;
+        cmd_res->rc = su_allow_uid_profile(0, uid, &profile);
+        if (cmd_res->rc) return;
+
+        sprintf(buffer, "uid: %d, to_uid: %d, scontext: %s", profile.uid, profile.to_uid, profile.scontext);
+        cmd_res->msg = buffer;
+
+    } else if (!strcmp(sub_cmd, "path")) {
+        if (carr[2]) {
+            cmd_res->rc = su_reset_path(carr[2]);
+            if (cmd_res->rc) return;
+            cmd_res->msg = carr[2];
+            carr[2] = 0; // no free
+        } else {
+            cmd_res->msg = su_get_path();
+        }
+    } else if (!strcmp(sub_cmd, "sctx")) {
+        if (carr[2]) {
+            cmd_res->rc = set_all_allow_sctx(carr[2]);
+            if (!cmd_res->rc) cmd_res->msg = carr[2];
+        } else {
+            cmd_res->msg = all_allow_sctx;
+        }
+    } else {
+        cmd_res->err_msg = "invalid subcommand";
+    }
+}
+
 void handle_supercmd(char **__user u_filename_p, char **__user uargv)
 {
     int is_key_auth = 0;
@@ -187,10 +272,10 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
 
     commit_su(profile.to_uid, profile.scontext);
 
-    int rc = 0;
-    const char *msg = 0;
-    const char *err_msg = 0;
+    struct cmd_res cmd_res = { 0 };
+
     char buffer[4096];
+    buffer[0] = '\0';
 
     // command
     const char **carr = parr + pi;
@@ -199,7 +284,7 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
     if (pi < SUPERCMD_ARGS_NO - 1) {
         cmd = carr[0];
     } else {
-        err_msg = "too many args\n";
+        cmd_res.err_msg = "too many args\n";
         goto echo;
     }
 
@@ -210,14 +295,14 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
     }
 
     if (!strcmp("help", cmd)) {
-        msg = supercmd_help;
+        cmd_res.msg = supercmd_help;
     } else if (!strcmp("-c", cmd)) {
         supercmd_exec(u_filename_p, sh_path, &sp);
         *uargv += (carr - parr - 1) * 8;
         goto free;
     } else if (!strcmp("exec", cmd)) {
         if (!carr[1]) {
-            err_msg = "invalid commmand path";
+            cmd_res.err_msg = "invalid commmand path";
             goto echo;
         }
         supercmd_exec(u_filename_p, carr[1], &sp);
@@ -227,126 +312,58 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
         supercmd_echo(u_filename_p, uargv, &sp, "%x,%x", kver, kpver);
         goto free;
     } else if (!strcmp("sumgr", cmd)) {
-        const char *sub_cmd = carr[1];
-        if (!sub_cmd) sub_cmd = "";
-        if (!strcmp(sub_cmd, "grant")) {
-            unsigned long long uid = 0, to_uid = 0;
-            const char *scontext = "";
-            if (!carr[2] || kstrtoull(carr[2], 10, &uid)) {
-                supercmd_echo(u_filename_p, uargv, &sp, "supercmd error: illegal uid");
-                goto free;
-            }
-            if (carr[3]) kstrtoull(carr[3], 10, &to_uid);
-            if (carr[4]) scontext = carr[4];
-            su_add_allow_uid(uid, to_uid, scontext, 1);
-            supercmd_echo(u_filename_p, uargv, &sp, "supercmd: grant %d, %d, %s", uid, to_uid, scontext);
-            goto free;
-        } else if (!strcmp(sub_cmd, "revoke")) {
-            const char *suid = carr[2];
-            unsigned long long uid;
-            if (!suid || kstrtoull(suid, 10, &uid)) {
-                supercmd_echo(u_filename_p, uargv, &sp, "supercmd error: illegal uid");
-                goto free;
-            }
-            su_remove_allow_uid(uid, 1);
-            msg = suid;
-        } else if (!strcmp(sub_cmd, "num")) {
-            int num = su_allow_uid_nums();
-            supercmd_echo(u_filename_p, uargv, &sp, "%d", num);
-        } else if (!strcmp(sub_cmd, "list")) {
-            int num = su_allow_uid_nums();
-            uid_t *uids = (uid_t *)buffer;
-            int offset = 0;
-            su_allow_uids(0, uids, num);
-
-            char *msg_buf = buffer + num * sizeof(uid_t);
-            msg_buf[0] = '\0';
-            for (int i = 0; i < num; i++) {
-                offset += sprintf(msg_buf + offset, "%d\n", uids[i]);
-            };
-            if (offset > 0) msg_buf[offset - 1] = '\0';
-            msg = msg_buf;
-        } else if (!strcmp(sub_cmd, "profile")) {
-            unsigned long long uid;
-            if (!carr[2] || kstrtoull(carr[2], 10, &uid)) {
-                err_msg = "invalid uid";
-                goto echo;
-            }
-            struct su_profile *profile = (struct su_profile *)buffer;
-            rc = su_allow_uid_profile(0, uid, profile);
-            char *msg = buffer + sizeof(struct su_profile);
-            msg[0] = '\0';
-            if (!rc)
-                sprintf(msg, "uid: %d, to_uid: %d, scontext: %s", profile->uid, profile->to_uid, profile->scontext);
-        } else if (!strcmp(sub_cmd, "path")) {
-            if (carr[2]) {
-                rc = su_reset_path(carr[2]);
-                msg = carr[2];
-                carr[2] = 0; // no free
-            } else {
-                msg = su_get_path();
-            }
-        } else if (!strcmp(sub_cmd, "sctx")) {
-            if (carr[2]) {
-                rc = set_all_allow_sctx(carr[2]);
-                if (!rc) msg = carr[2];
-            } else {
-                msg = all_allow_sctx;
-            }
-        } else {
-            err_msg = "invalid subcommand";
-        }
+        handle_cmd_sumgr(u_filename_p, carr, buffer, &cmd_res);
     } else if (!strcmp("event", cmd)) {
         if (carr[1]) {
-            rc = report_user_event(carr[1], carr[2]);
+            cmd_res.rc = report_user_event(carr[1], carr[2]);
         } else {
-            err_msg = "empty event";
+            cmd_res.err_msg = "empty event";
         }
     } else if (!strcmp("bootlog", cmd)) {
-        msg = get_boot_log();
+        cmd_res.msg = get_boot_log();
     } else if (!strcmp("test", cmd)) {
         void test();
         test();
-        msg = "test done...";
+        cmd_res.msg = "test done...";
     } else {
         // superkey authrication command
         const char *not_key_auth_err_msg = "superkey(not su) is required";
         if (!strcmp("key", cmd)) {
             if (!is_key_auth) {
-                err_msg = not_key_auth_err_msg;
+                cmd_res.err_msg = not_key_auth_err_msg;
                 goto echo;
             }
             const char *sub_cmd = carr[1];
             if (!sub_cmd) sub_cmd = "";
             if (!strcmp("get", sub_cmd)) {
-                msg = get_superkey();
+                cmd_res.msg = get_superkey();
             } else if (!strcmp("set", sub_cmd)) {
                 const char *key = carr[2];
                 if (!key) {
-                    err_msg = "invalid new key";
+                    cmd_res.err_msg = "invalid new key";
                     goto echo;
                 }
-                msg = key;
+                cmd_res.msg = key;
                 reset_superkey(key);
             } else if (!strcmp("hash", sub_cmd)) {
                 const char *able = carr[2];
                 if (able && !strcmp("enable", able)) {
-                    msg = able;
+                    cmd_res.msg = able;
                     enable_auth_root_key(true);
                 } else if (able && !strcmp("disable", able)) {
-                    msg = able;
+                    cmd_res.msg = able;
                     enable_auth_root_key(false);
                 } else {
-                    err_msg = "invalid enable or disable";
+                    cmd_res.err_msg = "invalid enable or disable";
                     goto echo;
                 }
             } else {
-                err_msg = "invalid subcommand";
+                cmd_res.err_msg = "invalid subcommand";
                 goto echo;
             }
         } else if (!strcmp("module", cmd)) {
             if (!is_key_auth) {
-                err_msg = not_key_auth_err_msg;
+                cmd_res.err_msg = not_key_auth_err_msg;
                 goto echo;
             }
             const char *sub_cmd = carr[1];
@@ -357,63 +374,63 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
             } else if (!strcmp("list", sub_cmd)) {
                 buffer[0] = '\0';
                 list_modules(buffer, sizeof(buffer));
-                msg = buffer;
+                cmd_res.msg = buffer;
             } else if (!strcmp("load", sub_cmd)) {
                 const char *path = carr[2];
                 if (!path) {
-                    err_msg = "invalid module path";
+                    cmd_res.err_msg = "invalid module path";
                     goto echo;
                 }
-                rc = load_module_path(path, carr[3], 0);
-                if (!rc) msg = path;
+                cmd_res.rc = load_module_path(path, carr[3], 0);
+                if (!cmd_res.rc) cmd_res.msg = path;
             } else if (!strcmp("ctl0", sub_cmd)) {
                 const char *name = carr[2];
                 if (!name) {
-                    err_msg = "invalid module name";
+                    cmd_res.err_msg = "invalid module name";
                     goto echo;
                 }
                 const char *mod_args = carr[3];
                 if (!mod_args) {
-                    err_msg = "invalid control arguments";
+                    cmd_res.err_msg = "invalid control arguments";
                     goto echo;
                 }
                 buffer[0] = '\0';
-                rc = module_control0(name, mod_args, buffer, sizeof(buffer));
-                msg = buffer;
+                cmd_res.rc = module_control0(name, mod_args, buffer, sizeof(buffer));
+                cmd_res.msg = buffer;
             } else if (!strcmp("ctl1", sub_cmd)) {
-                err_msg = "not implement";
+                cmd_res.err_msg = "not implement";
             } else if (!strcmp("unload", sub_cmd)) {
                 const char *name = carr[2];
                 if (!name) {
-                    err_msg = "invalid module name";
+                    cmd_res.err_msg = "invalid module name";
                     goto echo;
                 }
-                rc = unload_module(name, 0);
-                if (!rc) msg = name;
+                cmd_res.rc = unload_module(name, 0);
+                if (!cmd_res.rc) cmd_res.msg = name;
             } else if (!strcmp("info", sub_cmd)) {
                 const char *name = carr[2];
                 if (!name) {
-                    err_msg = "invalid module name";
+                    cmd_res.err_msg = "invalid module name";
                     goto echo;
                 }
                 buffer[0] = '\0';
                 int sz = get_module_info(name, buffer, sizeof(buffer));
-                if (sz <= 0) rc = sz;
-                msg = buffer;
+                if (sz <= 0) cmd_res.rc = sz;
+                cmd_res.msg = buffer;
             } else {
-                err_msg = "invalid subcommand";
+                cmd_res.err_msg = "invalid subcommand";
                 goto echo;
             }
         } else {
-            err_msg = "invalid command";
+            cmd_res.err_msg = "invalid command";
             goto echo;
         }
     }
 
 echo:
-    if (msg) supercmd_echo(u_filename_p, uargv, &sp, msg);
-    if (rc) supercmd_echo(u_filename_p, uargv, &sp, "supercmd error code: %d", rc);
-    if (err_msg) supercmd_echo(u_filename_p, uargv, &sp, "supercmd error message: %s", err_msg);
+    if (cmd_res.msg) supercmd_echo(u_filename_p, uargv, &sp, cmd_res.msg);
+    if (cmd_res.rc) supercmd_echo(u_filename_p, uargv, &sp, "supercmd error code: %d", cmd_res.rc);
+    if (cmd_res.err_msg) supercmd_echo(u_filename_p, uargv, &sp, "supercmd error message: %s", cmd_res.err_msg);
 
 free:
     // free args

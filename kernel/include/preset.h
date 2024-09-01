@@ -118,7 +118,6 @@ struct patch_symbol
             uint64_t cgroup_post_fork;
             uint64_t avc_denied;
             uint64_t slow_avc_audit;
-            uint64_t policydb_write;
             uint64_t input_handle_event;
         };
         char _cap[PATCH_SYMBOL_LEN];

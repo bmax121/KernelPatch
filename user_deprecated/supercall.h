@@ -382,14 +382,6 @@ static inline long sc_skey_root_enable(const char *key, bool enable)
     return ret;
 }
 
-// todo
-static inline long sc_pid_virt_to_phys(const char *key, pid_t pid, unsigned long vaddr)
-{
-    if (!key || !key[0]) return -EINVAL;
-    long ret = syscall(__NR_supercall, key, compact_cmd(key, SUPERCALL_MEM_PHYS), pid, vaddr);
-    return ret;
-}
-
 static inline long sc_bootlog(const char *key)
 {
     long ret = syscall(__NR_supercall, key, compact_cmd(key, SUPERCALL_BOOTLOG));

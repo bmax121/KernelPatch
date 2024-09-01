@@ -19,16 +19,15 @@
 #include <predata.h>
 
 /*
- * see: https://android-review.googlesource.com/c/kernel/common/+/3009995
- *
+ * @see: https://android-review.googlesource.com/c/kernel/common/+/3009995
  */
-
-static int (*policydb_write_backup)(struct _policydb *p, struct _policy_file *fp) = 0;
-static int policydb_write_replace(struct _policydb *p, struct _policy_file *fp)
+static void after_policydb_write(hook_fargs2_t *args, void *udata)
 {
+    struct _policydb *p = (struct _policydb *)args->arg0;
+    struct _policy_file *fp = (struct _policy_file *)args->arg1;
     char *data = fp->data;
-    int ret = policydb_write_backup(p, fp);
-    if (!ret) {
+
+    if (!args->ret) {
         __le32 *config = (__le32 *)(data + POLICYDB_CONFIG_OFFSET);
         __le32 before_config = *config;
         bool android_netlink_route_exists = before_config & POLICYDB_CONFIG_ANDROID_NETLINK_ROUTE;
@@ -40,14 +39,15 @@ static int policydb_write_replace(struct _policydb *p, struct _policy_file *fp)
             *config |= POLICYDB_CONFIG_ANDROID_NETLINK_GETNEIGH;
         }
     }
-    return ret;
 }
 
-int android_sepolicy_flags_init()
+int android_sepolicy_flags_fix()
 {
-    unsigned long policydb_write_addr = get_preset_patch_sym()->policydb_write;
+    unsigned long policydb_write_addr = kallsyms_lookup_name("policydb_write");
+
     if (likely(policydb_write_addr)) {
-        hook_err_t err = hook((void *)policydb_write_addr, (void *)policydb_write_replace, (void **)&policydb_write_backup);
+        hook_err_t err = hook_wrap2((void *)policydb_write_addr, 0, after_policydb_write, 0);
+
         if (unlikely(err != HOOK_NO_ERR)) {
             log_boot("hook policydb_write_addr: %llx, error: %d\n", policydb_write_addr, err);
             return -1;

@@ -175,11 +175,6 @@ static long call_skey_root_enable(int enable)
     return 0;
 }
 
-static unsigned long call_pid_virt_to_phys(pid_t pid, uintptr_t vaddr)
-{
-    return pid_virt_to_phys(pid, vaddr);
-}
-
 static long call_grant_uid(struct su_profile *__user uprofile)
 {
     struct su_profile *profile = memdup_user(uprofile, sizeof(struct su_profile));
@@ -334,7 +329,6 @@ static long supercall(int is_key_auth, long cmd, long arg1, long arg2, long arg3
 
     switch (cmd) {
     case SUPERCALL_MEM_PHYS:
-        return call_pid_virt_to_phys((pid_t)arg1, (uintptr_t)arg2);
     default:
         break;
     }
