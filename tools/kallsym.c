@@ -440,29 +440,31 @@ static int32_t find_approx_addresses_or_offset(kallsym_t *info, char *img, int32
 
 static int find_num_syms(kallsym_t *info, char *img, int32_t imglen)
 {
-    int32_t approx_end = info->_approx_addresses_or_offsets_end;
+#define NSYMS_MAX_GAP 10
+
+    int32_t approx_end = info->kallsyms_names_offset;
     // int32_t num_syms_elem_size = get_num_syms_elem_size(info);
     int32_t num_syms_elem_size = 4;
 
     int32_t approx_num_syms = info->_approx_addresses_or_offsets_num;
-    int32_t nsyms = 0;
-    int32_t nsyms_max_offset = approx_end + 4096;
-    int32_t NSYMS_MAX_GAP = 20;
-    int32_t LAST_SYM_EQUAL_NUM = 10;
-    int32_t cand = approx_end / num_syms_elem_size * num_syms_elem_size - LAST_SYM_EQUAL_NUM * num_syms_elem_size;
 
-    for (; cand < nsyms_max_offset; cand += num_syms_elem_size) {
-        nsyms = (int)int_unpack(img + cand, num_syms_elem_size, info->is_be);
-        if (approx_num_syms >= nsyms && approx_num_syms - nsyms < NSYMS_MAX_GAP) break;
-    }
-
-    if (cand >= nsyms_max_offset) {
-        tools_loge("kallsyms_num_syms error\n");
-        return -1;
-    } else {
+    for (int32_t cand = approx_end; cand > approx_end - 4096; cand -= num_syms_elem_size) {
+        int nsyms = (int)int_unpack(img + cand, num_syms_elem_size, info->is_be);
+        if (!nsyms) continue;
+        if (approx_num_syms > nsyms && approx_num_syms - nsyms > NSYMS_MAX_GAP) continue;
+        if (nsyms > approx_num_syms && nsyms - approx_num_syms > NSYMS_MAX_GAP) continue;
+        // find
         info->kallsyms_num_syms = nsyms;
         info->kallsyms_num_syms_offset = cand;
-        tools_logi("kallsyms_num_syms offset: 0x%08x, value: 0x%08x\n", cand, nsyms);
+        break;
+    }
+
+    if (info->kallsyms_num_syms_offset) {
+        info->kallsyms_num_syms = approx_num_syms - NSYMS_MAX_GAP;
+        tools_logw("can't find kallsyms_num_syms, try: 0x%08x\n", info->kallsyms_num_syms);
+    } else {
+        tools_logi("kallsyms_num_syms offset: 0x%08x, value: 0x%08x\n", info->kallsyms_num_syms_offset,
+                   info->kallsyms_num_syms);
     }
     return 0;
 }
@@ -576,7 +578,8 @@ static int is_symbol_name_pos(kallsym_t *info, char *img, int32_t pos, char *sym
 static int find_names(kallsym_t *info, char *img, int32_t imglen)
 {
     int32_t marker_elem_size = get_markers_elem_size(info);
-    int32_t cand = info->_approx_addresses_or_offsets_offset;
+    // int32_t cand = info->_approx_addresses_or_offsets_offset;
+    int32_t cand = 0x4000;
     int32_t test_marker_num = -1;
     for (; cand < info->kallsyms_markers_offset; cand++) {
         int32_t pos = cand;
