@@ -410,6 +410,7 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
     } else if (!strcmp("event", cmd)) {
         if (carr[1]) {
             cmd_res.rc = report_user_event(carr[1], carr[2]);
+            if (!cmd_res.rc) cmd_res.msg = "report success";
         } else {
             cmd_res.err_msg = "empty event";
         }
@@ -436,7 +437,7 @@ free:
     // free args
     for (int i = 2; i < sizeof(parr) / sizeof(parr[0]); i++) {
         const char *a = parr[i];
-        if (!a) break;
+        if (!a) continue;
         kfree(a);
     }
 }
