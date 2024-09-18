@@ -179,7 +179,7 @@ static long call_grant_uid(struct su_profile *__user uprofile)
 {
     struct su_profile *profile = memdup_user(uprofile, sizeof(struct su_profile));
     if (!profile || IS_ERR(profile)) return PTR_ERR(profile);
-    int rc = su_add_allow_uid(profile->uid, profile->to_uid, profile->scontext, 1);
+    int rc = su_add_allow_uid(profile->uid, profile->to_uid, profile->scontext, &profile->ext, 1);
     kvfree(profile);
     return rc;
 }

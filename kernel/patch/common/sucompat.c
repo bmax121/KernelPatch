@@ -93,7 +93,7 @@ int is_su_allow_uid(uid_t uid)
 }
 KP_EXPORT_SYMBOL(is_su_allow_uid);
 
-int su_add_allow_uid(uid_t uid, uid_t to_uid, const char *scontext, int async)
+int su_add_allow_uid(uid_t uid, uid_t to_uid, const char *scontext, struct su_profile_ext *ext, int async)
 {
     if (!scontext) scontext = "";
 
@@ -113,6 +113,7 @@ int su_add_allow_uid(uid_t uid, uid_t to_uid, const char *scontext, int async)
     new->profile.to_uid = to_uid;
     strncpy(new->profile.scontext, scontext, sizeof(new->profile.scontext));
     new->profile.scontext[sizeof(new->profile.scontext) - 1] = '\0';
+    new->profile.ext = *ext;
 
     spin_lock(&list_lock);
     if (old) { // update
@@ -485,9 +486,13 @@ int su_compat_init()
     INIT_LIST_HEAD(&allow_uid_list);
     spin_lock_init(&list_lock);
 
+#ifdef ANDROID
     // default shell
-    su_add_allow_uid(2000, 0, all_allow_sctx, 1);
-    su_add_allow_uid(0, 0, all_allow_sctx, 1);
+    if (!all_allow_sctx[0]) strcpy(all_allow_sctx, ALL_ALLOW_SCONTEXT_MAGISK);
+    struct su_profile_ext ext = { .exclude = 0 };
+    su_add_allow_uid(2000, 0, all_allow_sctx, &ext, 1);
+    su_add_allow_uid(0, 0, all_allow_sctx, &ext, 1);
+#endif
 
     hook_err_t rc = HOOK_NO_ERR;
 
