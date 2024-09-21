@@ -69,7 +69,7 @@ static inst_type_t types[] = {
     INST_CBZ,    INST_CBNZ,      INST_TBZ,      INST_TBNZ,        INST_IGNORE,
 };
 
-static int32_t relo_len[] = { 6, 8, 6, 4, 4, 6, 6, 6, 8, 8, 8, 8, 6, 6, 6, 6, 2 };
+static int32_t relo_len[] = { 6, 8, 8, 4, 4, 6, 6, 6, 8, 8, 8, 8, 6, 6, 6, 6, 2 };
 
 // static uint64_t sign_extend(uint64_t x, uint32_t len)
 // {
@@ -162,9 +162,11 @@ static __noinline hook_err_t relo_b(hook_t *hook, uint64_t inst_addr, uint32_t i
     buf[idx++] = addr & 0xFFFFFFFF;
     buf[idx++] = addr >> 32u;
     if (type == INST_BL) {
-        buf[idx++] = 0xD63F0220; // BLR X17
+        buf[idx++] = 0x1000001E; // ARD X30, .
+        buf[idx++] = 0x910033DE; // ADD X30, X30, #12
+        buf[idx++] = 0xD65F0220; // RET X17
     } else {
-        buf[idx++] = 0xd65f0220; // BR X17 -> RET X17
+        buf[idx++] = 0xD65F0220; // RET X17
     }
     buf[idx++] = ARM64_NOP;
     return HOOK_NO_ERR;
@@ -253,7 +255,7 @@ static __noinline hook_err_t relo_cb(hook_t *hook, uint64_t inst_addr, uint32_t 
     buf[0] = (inst & 0xFF00001F) | 0x40u; // CB(N)Z Rt, #8
     buf[1] = 0x14000005; // B #20
     buf[2] = 0x58000051; // LDR X17, #8
-    buf[3] = 0xd61f0220; // BR X17
+    buf[3] = 0xD65F0220; // RET X17
     buf[4] = addr & 0xFFFFFFFF;
     buf[5] = addr >> 32u;
     return HOOK_NO_ERR;
@@ -271,7 +273,7 @@ static __noinline hook_err_t relo_tb(hook_t *hook, uint64_t inst_addr, uint32_t 
     buf[0] = (inst & 0xFFF8001F) | 0x40u; // TB(N)Z Rt, #<imm>, #8
     buf[1] = 0x14000005; // B #20
     buf[2] = 0x58000051; // LDR X17, #8
-    buf[3] = 0xd61f0220; // BR X17
+    buf[3] = 0xd61f0220; // RET X17
     buf[4] = addr & 0xFFFFFFFF;
     buf[5] = addr >> 32u;
     return HOOK_NO_ERR;
@@ -316,7 +318,7 @@ KP_EXPORT_SYMBOL(branch_absolute);
 int32_t ret_absolute(uint32_t *buf, uint64_t addr)
 {
     buf[0] = 0x58000051; // LDR X17, #8
-    buf[1] = 0xd65f0220; // RET X17
+    buf[1] = 0xD65F0220; // RET X17
     buf[2] = addr & 0xFFFFFFFF;
     buf[3] = addr >> 32u;
     return 4;
