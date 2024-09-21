@@ -162,7 +162,7 @@ static __noinline hook_err_t relo_b(hook_t *hook, uint64_t inst_addr, uint32_t i
     buf[idx++] = addr & 0xFFFFFFFF;
     buf[idx++] = addr >> 32u;
     if (type == INST_BL) {
-        buf[idx++] = 0x1000001E; // ARD X30, .
+        buf[idx++] = 0x1000001E; // ADR X30, .
         buf[idx++] = 0x910033DE; // ADD X30, X30, #12
         buf[idx++] = 0xD65F0220; // RET X17
     } else {
