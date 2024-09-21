@@ -20,7 +20,7 @@
 #define COMPILE_TIME_LEN 0x18
 #define MAP_MAX_SIZE 0xa00
 #define HOOK_ALLOC_SIZE (1 << 20)
-#define MEMORY_ROX_SIZE (2 << 20)
+#define MEMORY_ROX_SIZE (4 << 20)
 #define MEMORY_RW_SIZE (2 << 20)
 #define MAP_ALIGN 0x10
 

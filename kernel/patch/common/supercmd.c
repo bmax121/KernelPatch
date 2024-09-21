@@ -58,7 +58,7 @@ static const char supercmd_help[] =
     ""
     "KernelPatch supercmd:\n"
     "Usage: truncate <superkey|su> [-uZc] [Command [[SubCommand]...]]\n"
-    "superkey|su:                   Authentication for certain commands, if the current uid is allowed to use su,\n"
+    "superkey|su:                   Authentication. For certain commands, if the current uid is allowed to use su,\n"
     "                               the 'su' string can be used for authentication.\n"
     "Options:\n"
     "  -u <UID>                     Change user id to UID.\n"
@@ -106,7 +106,8 @@ struct cmd_res
     int rc;
 };
 
-static void handle_cmd_sumgr(char **__user u_filename_p, const char **carr, char *buffer, struct cmd_res *cmd_res)
+static void handle_cmd_sumgr(char **__user u_filename_p, const char **carr, char *buffer, int buflen,
+                             struct cmd_res *cmd_res)
 {
     const char *sub_cmd = carr[1];
     if (!sub_cmd) sub_cmd = "";
@@ -189,7 +190,7 @@ static void handle_cmd_sumgr(char **__user u_filename_p, const char **carr, char
 
 // superkey commands
 static void handle_cmd_key_auth(char **__user u_filename_p, const char *cmd, const char **carr, char *buffer,
-                                struct cmd_res *cmd_res)
+                                int buflen, struct cmd_res *cmd_res)
 {
     if (!strcmp("key", cmd)) {
         const char *sub_cmd = carr[1];
@@ -228,7 +229,7 @@ static void handle_cmd_key_auth(char **__user u_filename_p, const char *cmd, con
             sprintf(buffer, "%d\n", num);
             cmd_res->msg = buffer;
         } else if (!strcmp("list", sub_cmd)) {
-            list_modules(buffer, sizeof(buffer));
+            list_modules(buffer, buflen);
             cmd_res->msg = buffer;
         } else if (!strcmp("load", sub_cmd)) {
             const char *path = carr[2];
@@ -250,7 +251,7 @@ static void handle_cmd_key_auth(char **__user u_filename_p, const char *cmd, con
                 return;
             }
             buffer[0] = '\0';
-            cmd_res->rc = module_control0(name, mod_args, buffer, sizeof(buffer));
+            cmd_res->rc = module_control0(name, mod_args, buffer, buflen);
             cmd_res->msg = buffer;
         } else if (!strcmp("ctl1", sub_cmd)) {
             cmd_res->err_msg = "not implement";
@@ -268,7 +269,7 @@ static void handle_cmd_key_auth(char **__user u_filename_p, const char *cmd, con
                 cmd_res->err_msg = "invalid module name";
                 return;
             }
-            int sz = get_module_info(name, buffer, sizeof(buffer));
+            int sz = get_module_info(name, buffer, buflen);
             if (sz <= 0) cmd_res->rc = sz;
             cmd_res->msg = buffer;
         } else {
@@ -409,7 +410,7 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
         supercmd_echo(u_filename_p, uargv, &sp, "%x,%x", kver, kpver);
         goto free;
     } else if (!strcmp("sumgr", cmd)) {
-        handle_cmd_sumgr(u_filename_p, carr, buffer, &cmd_res);
+        handle_cmd_sumgr(u_filename_p, carr, buffer, sizeof(buffer), &cmd_res);
     } else if (!strcmp("event", cmd)) {
         if (carr[1]) {
             cmd_res.rc = report_user_event(carr[1], carr[2]);
@@ -425,7 +426,7 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
         cmd_res.msg = "test done...";
     } else {
         if (is_key_auth) {
-            handle_cmd_key_auth(u_filename_p, cmd, carr, buffer, &cmd_res);
+            handle_cmd_key_auth(u_filename_p, cmd, carr, buffer, sizeof(buffer), &cmd_res);
         } else {
             cmd_res.err_msg = "invalid command or a superkey is required";
         }
