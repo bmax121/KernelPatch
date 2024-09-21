@@ -15,7 +15,7 @@
 #define bit(n, st) (((n) >> (st)) & 1)
 #define sign64_extend(n, len) \
     (((uint64_t)((n) << (63u - (len - 1))) >> 63u) ? ((n) | (0xFFFFFFFFFFFFFFFF << (len))) : n)
-#define align_ceil(x, align) (((u64)(x) + (u64)(align)-1) & ~((u64)(align)-1))
+#define align_ceil(x, align) (((u64)(x) + (u64)(align) - 1) & ~((u64)(align) - 1))
 
 typedef uint32_t inst_type_t;
 typedef uint32_t inst_mask_t;
@@ -164,7 +164,7 @@ static __noinline hook_err_t relo_b(hook_t *hook, uint64_t inst_addr, uint32_t i
     if (type == INST_BL) {
         buf[idx++] = 0xD63F0220; // BLR X17
     } else {
-        buf[idx++] = 0xD61F0220; // BR X17
+        buf[idx++] = 0xd65f0220; // BR X17 -> RET X17
     }
     buf[idx++] = ARM64_NOP;
     return HOOK_NO_ERR;
