@@ -75,12 +75,12 @@ int task_observer()
 
     prepare_init_ext(init_task);
 
-    unsigned long copy_process_addr = get_preset_patch_sym()->copy_process;
+    unsigned long copy_process_addr = patch_config->copy_process;
     if (copy_process_addr) {
         rc |= hook_wrap8((void *)copy_process_addr, 0, after_copy_process, 0);
         log_boot("hook copy_process: %llx, rc: %d\n", copy_process_addr, rc);
     } else {
-        unsigned long cgroup_post_fork_addr = get_preset_patch_sym()->cgroup_post_fork;
+        unsigned long cgroup_post_fork_addr = patch_config->cgroup_post_fork;
         if (cgroup_post_fork_addr) {
             rc |= hook_wrap4((void *)cgroup_post_fork_addr, 0, after_cgroup_post_fork, 0);
             log_boot("hook cgroup_post_fork: %llx, rc: %d\n", cgroup_post_fork_addr, rc);

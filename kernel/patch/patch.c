@@ -125,7 +125,7 @@ int patch()
 
     hook_err_t rc = 0;
 
-    unsigned long panic_addr = get_preset_patch_sym()->panic;
+    unsigned long panic_addr = patch_config->panic;
     logkd("panic addr: %llx\n", panic_addr);
     if (panic_addr) {
         rc = hook_wrap12((void *)panic_addr, before_panic, 0, 0);
@@ -134,8 +134,8 @@ int patch()
     if (rc) return rc;
 
     // rest_init or cgroup_init
-    unsigned long init_addr = get_preset_patch_sym()->rest_init;
-    if (!init_addr) init_addr = get_preset_patch_sym()->cgroup_init;
+    unsigned long init_addr = patch_config->rest_init;
+    if (!init_addr) init_addr = patch_config->cgroup_init;
     if (init_addr) {
         rc = hook_wrap4((void *)init_addr, before_rest_init, 0, (void *)init_addr);
         log_boot("hook rest_init rc: %d\n", rc);
@@ -143,7 +143,7 @@ int patch()
     if (rc) return rc;
 
     // kernel_init
-    unsigned long kernel_init_addr = get_preset_patch_sym()->kernel_init;
+    unsigned long kernel_init_addr = patch_config->kernel_init;
     if (kernel_init_addr) {
         rc = hook_wrap4((void *)kernel_init_addr, before_kernel_init, after_kernel_init, 0);
         log_boot("hook kernel_init rc: %d\n", rc);

@@ -234,7 +234,7 @@ static int slow_avc_audit_replace(struct selinux_state *_state, void *_ssid, voi
 
 int bypass_selinux()
 {
-    unsigned long avc_denied_addr = get_preset_patch_sym()->avc_denied;
+    unsigned long avc_denied_addr = patch_config->avc_denied;
     if (avc_denied_addr) {
         hook_err_t err = hook((void *)avc_denied_addr, (void *)avc_denied_replace, (void **)&avc_denied_backup);
         if (err != HOOK_NO_ERR) {
@@ -242,7 +242,7 @@ int bypass_selinux()
         }
     }
 
-    unsigned long slow_avc_audit_addr = get_preset_patch_sym()->slow_avc_audit;
+    unsigned long slow_avc_audit_addr = patch_config->slow_avc_audit;
     if (slow_avc_audit_addr) {
         hook_err_t err =
             hook((void *)slow_avc_audit_addr, (void *)slow_avc_audit_replace, (void **)&slow_avc_audit_backup);

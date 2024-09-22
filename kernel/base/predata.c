@@ -7,6 +7,7 @@
 #include <common.h>
 #include <log.h>
 #include <sha256.h>
+#include <symbol.h>
 
 #include "start.h"
 #include "pgtable.h"
@@ -16,7 +17,9 @@ extern start_preset_t start_preset;
 
 static char *superkey = 0;
 static char *root_superkey = 0;
-static struct patch_symbol *patch_symbol = 0;
+
+struct patch_config *patch_config = 0;
+KP_EXPORT_SYMBOL(patch_config);
 
 static const char bstr[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
@@ -71,11 +74,6 @@ const char *get_superkey()
     return superkey;
 }
 
-struct patch_symbol *get_preset_patch_sym()
-{
-    return patch_symbol;
-}
-
 int on_each_extra_item(int (*callback)(const patch_extra_item_t *extra, const char *arg, const void *con, void *udata),
                        void *udata)
 {
@@ -128,9 +126,9 @@ void predata_init()
     }
     log_boot("gen rand key: %s\n", superkey);
 
-    patch_symbol = &start_preset.patch_symbol;
+    patch_config = &start_preset.patch_config;
 
-    for (uintptr_t addr = (uint64_t)patch_symbol; addr < (uintptr_t)patch_symbol + PATCH_SYMBOL_LEN;
+    for (uintptr_t addr = (uint64_t)patch_config; addr < (uintptr_t)patch_config + PATCH_CONFIG_LEN;
          addr += sizeof(uintptr_t)) {
         uintptr_t *p = (uintptr_t *)addr;
         if (*p) *p += kernel_va;

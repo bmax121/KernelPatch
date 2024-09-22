@@ -101,7 +101,7 @@ static int get_cand_arr_symbol_offset_zero(kallsym_t *kallsym, char *img_buf, ch
     return offset;
 }
 
-int fillin_patch_symbol(kallsym_t *kallsym, char *img_buf, int imglen, patch_symbol_t *symbol, int32_t target_is_be,
+int fillin_patch_config(kallsym_t *kallsym, char *img_buf, int imglen, patch_config_t *symbol, int32_t target_is_be,
                         bool is_android)
 {
     symbol->panic = get_symbol_offset_zero(kallsym, img_buf, "panic");

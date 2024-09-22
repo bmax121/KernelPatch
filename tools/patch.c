@@ -531,7 +531,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     memcpy(setup->header_backup, kallsym_kimg, sizeof(setup->header_backup));
 
     // start symbol
-    fillin_patch_symbol(&kallsym, kallsym_kimg, ori_kimg_len, &setup->patch_symbol, kinfo->is_be, 0);
+    fillin_patch_config(&kallsym, kallsym_kimg, ori_kimg_len, &setup->patch_config, kinfo->is_be, 0);
 
     // superkey
     if (!root_key) {
