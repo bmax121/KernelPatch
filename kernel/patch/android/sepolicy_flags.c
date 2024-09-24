@@ -21,11 +21,17 @@
 /*
  * @see: https://android-review.googlesource.com/c/kernel/common/+/3009995
  */
+
+static void before_policydb_write(hook_fargs2_t *args, void *udata)
+{
+    struct _policy_file *fp = (struct _policy_file *)args->arg1;
+    args->local.data0 = (uint64_t)fp->data;
+}
+
 static void after_policydb_write(hook_fargs2_t *args, void *udata)
 {
     struct _policydb *p = (struct _policydb *)args->arg0;
-    struct _policy_file *fp = (struct _policy_file *)args->arg1;
-    char *data = fp->data;
+    char *data = (char *)args->local.data0;
 
     if (!args->ret) {
         __le32 *config = (__le32 *)(data + POLICYDB_CONFIG_OFFSET);
@@ -46,7 +52,7 @@ int android_sepolicy_flags_fix()
     unsigned long policydb_write_addr = kallsyms_lookup_name("policydb_write");
 
     if (likely(policydb_write_addr)) {
-        hook_err_t err = hook_wrap2((void *)policydb_write_addr, 0, after_policydb_write, 0);
+        hook_err_t err = hook_wrap2((void *)policydb_write_addr, before_policydb_write, after_policydb_write, 0);
 
         if (unlikely(err != HOOK_NO_ERR)) {
             log_boot("hook policydb_write_addr: %llx, error: %d\n", policydb_write_addr, err);

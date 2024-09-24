@@ -98,6 +98,10 @@ _Static_assert(sizeof(map_symbol_t) == MAP_SYMBOL_SIZE, "sizeof map_symbol_t mis
 #endif
 
 #ifndef __ASSEMBLY__
+
+#define PATCH_CONFIG_SU_ENABLE 0x1
+#define PATCH_CONFIG_SU_HOOK_NO_WRAP 0x2
+
 struct patch_config
 {
     union
@@ -119,6 +123,8 @@ struct patch_config
             uint64_t avc_denied;
             uint64_t slow_avc_audit;
             uint64_t input_handle_event;
+
+            uint8_t patch_su_config;
         };
         char _cap[PATCH_CONFIG_LEN];
     };

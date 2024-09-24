@@ -39,6 +39,7 @@
 #include <sucompat.h>
 #include <symbol.h>
 #include <uapi/linux/limits.h>
+#include <predata.h>
 
 const char sh_path[] = SH_PATH;
 const char default_su_path[] = SU_PATH;
@@ -451,19 +452,21 @@ static void su_handler_arg1_ufilename_before(hook_fargs6_t *args, void *udata)
         int cplen = 0;
 #ifdef TRY_DIRECT_MODIFY_USER
         cplen = compat_copy_to_user(*u_filename_p, sh_path, sizeof(sh_path));
-#endif
         if (cplen > 0) {
             args->local.data0 = cplen;
             args->local.data1 = (uint64_t)*u_filename_p;
             logkfi("su uid: %d, cp: %d\n", uid, cplen);
         } else {
+#endif
             void *uptr = copy_to_user_stack(sh_path, sizeof(sh_path));
             if (uptr && !IS_ERR(uptr)) {
                 *u_filename_p = uptr;
             } else {
                 logkfi("su uid: %d, cp stack error: %d\n", uid, uptr);
             }
+#ifdef TRY_DIRECT_MODIFY_USER
         }
+#endif
     }
 }
 
@@ -495,6 +498,11 @@ int su_compat_init()
 #endif
 
     hook_err_t rc = HOOK_NO_ERR;
+
+    uint8_t su_config = patch_config->patch_su_config;
+    bool enable = su_config & PATCH_CONFIG_SU_ENABLE;
+    bool wrap = su_config & PATCH_CONFIG_SU_HOOK_NO_WRAP;
+    log_boot("su config, enable: %d, wrap: %d\n");
 
     rc = hook_syscalln(__NR_execve, 3, before_execve, after_execve, (void *)0);
     log_boot("hook __NR_execve rc: %d\n", rc);
