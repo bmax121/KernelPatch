@@ -272,7 +272,7 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
     hook_local->data0 = 0;
 #endif
     const char* timestamp = get_compile_timestamp();
-    printf("Compile Timestamp: %s\n", timestamp);
+    logkfi("Compile Timestamp: %s\n", timestamp);
     char __user *ufilename = *u_filename_p;
     char filename[SU_PATH_MAX_LEN];
     int flen = compat_strncpy_from_user(filename, ufilename, sizeof(filename));
