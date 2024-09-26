@@ -31,7 +31,7 @@ int su_allow_uids(int is_user, uid_t *out_uids, int out_num);
 int su_allow_uid_profile(int is_user, uid_t uid, struct su_profile *profile);
 int su_reset_path(const char *path);
 const char *su_get_path();
-
+const char *su_get_ts();
 /**
  * @brief Whether to make the current task bypass all selinux permission checks.
  * 
