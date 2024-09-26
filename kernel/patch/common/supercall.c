@@ -227,6 +227,14 @@ static long call_su_get_path(char *__user ubuf, int buf_len)
     return compat_copy_to_user(ubuf, path, len + 1);
 }
 
+static long call_su_get_ts(char *__user ubuf, int buf_len)
+{
+    const char *path = su_get_ts();
+    int len = strlen(path);
+    if (buf_len <= len) return -ENOBUFS;
+    return compat_copy_to_user(ubuf, path, len + 1);
+}
+
 static long call_su_get_allow_sctx(char *__user usctx, int ulen)
 {
     int len = strlen(all_allow_sctx);
