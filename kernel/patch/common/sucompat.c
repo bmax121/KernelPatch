@@ -55,7 +55,7 @@ static struct list_head allow_uid_list;
 static spinlock_t list_lock;
 
 const char* get_compile_timestamp() {
-    return __DATE__ "APatch" __TIME__;
+    return __DATE__ " " __TIME__;
 }
 
 static void allow_reclaim_callback(struct rcu_head *rcu)
@@ -261,6 +261,13 @@ const char *su_get_path()
 }
 KP_EXPORT_SYMBOL(su_get_path);
 
+const char *su_get_ts()
+{
+    const char* timestamp = get_compile_timestamp();
+    return timestamp;
+}
+KP_EXPORT_SYMBOL(su_get_ts);
+
 // #define TRY_DIRECT_MODIFY_USER
 
 #define INLINE_HOOK_SYSCALL
@@ -271,8 +278,6 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
     // copy to user len
     hook_local->data0 = 0;
 #endif
-    const char* timestamp = get_compile_timestamp();
-    logkfi("Compile Timestamp: %s\n", timestamp);
     char __user *ufilename = *u_filename_p;
     char filename[SU_PATH_MAX_LEN];
     int flen = compat_strncpy_from_user(filename, ufilename, sizeof(filename));
