@@ -265,7 +265,7 @@ long raw_syscall6(long nr, long arg0, long arg1, long arg2, long arg3, long arg4
 }
 KP_EXPORT_SYMBOL(raw_syscall6);
 
-hook_err_t __fp_hook_syscalln(int nr, int narg, int is_compat, void *before, void *after, void *udata)
+hook_err_t fp_wrap_syscalln(int nr, int narg, int is_compat, void *before, void *after, void *udata)
 {
     if (!is_compat) {
         if (!sys_call_table) return HOOK_BAD_ADDRESS;
@@ -279,9 +279,9 @@ hook_err_t __fp_hook_syscalln(int nr, int narg, int is_compat, void *before, voi
         return fp_hook_wrap(fp_addr, narg, before, after, udata);
     }
 }
-KP_EXPORT_SYMBOL(__fp_hook_syscalln);
+KP_EXPORT_SYMBOL(fp_wrap_syscalln);
 
-void __fp_unhook_syscalln(int nr, int is_compat, void *before, void *after)
+void fp_unwrap_syscalln(int nr, int is_compat, void *before, void *after)
 {
     if (!is_compat) {
         if (!sys_call_table) return;
@@ -293,7 +293,7 @@ void __fp_unhook_syscalln(int nr, int is_compat, void *before, void *after)
         fp_hook_unwrap(fp_addr, before, after);
     }
 }
-KP_EXPORT_SYMBOL(__fp_unhook_syscalln);
+KP_EXPORT_SYMBOL(fp_unwrap_syscalln);
 
 /*
 sys_xxx.cfi_jt
@@ -301,47 +301,47 @@ sys_xxx.cfi_jt
 hint #0x22  # bti c
 b #0xfffffffffeb452f4
 */
-hook_err_t __inline_hook_syscalln(int nr, int narg, int is_compat, void *before, void *after, void *udata)
+hook_err_t inline_wrap_syscalln(int nr, int narg, int is_compat, void *before, void *after, void *udata)
 {
     uintptr_t addr = syscalln_name_addr(nr, is_compat);
     if (!addr) return -HOOK_BAD_ADDRESS;
     if (has_syscall_wrapper) narg = 1;
     return hook_wrap((void *)addr, narg, before, after, udata);
 }
-KP_EXPORT_SYMBOL(__inline_hook_syscalln);
+KP_EXPORT_SYMBOL(inline_wrap_syscalln);
 
-void __inline_unhook_syscalln(int nr, int is_compat, void *before, void *after)
+void inline_unwrap_syscalln(int nr, int is_compat, void *before, void *after)
 {
     uintptr_t addr = syscalln_name_addr(nr, is_compat);
     hook_unwrap((void *)addr, before, after);
 }
-KP_EXPORT_SYMBOL(__inline_unhook_syscalln);
+KP_EXPORT_SYMBOL(inline_unwrap_syscalln);
 
 hook_err_t hook_syscalln(int nr, int narg, void *before, void *after, void *udata)
 {
-    if (sys_call_table) return __fp_hook_syscalln(nr, narg, 0, before, after, udata);
-    return __inline_hook_syscalln(nr, narg, 0, before, after, udata);
+    if (sys_call_table) return fp_wrap_syscalln(nr, narg, 0, before, after, udata);
+    return inline_wrap_syscalln(nr, narg, 0, before, after, udata);
 }
 KP_EXPORT_SYMBOL(hook_syscalln);
 
 void unhook_syscalln(int nr, void *before, void *after)
 {
-    if (sys_call_table) return __fp_unhook_syscalln(nr, 0, before, after);
-    return __inline_unhook_syscalln(nr, 0, before, after);
+    if (sys_call_table) return fp_unwrap_syscalln(nr, 0, before, after);
+    return inline_unwrap_syscalln(nr, 0, before, after);
 }
 KP_EXPORT_SYMBOL(unhook_syscalln);
 
 hook_err_t hook_compat_syscalln(int nr, int narg, void *before, void *after, void *udata)
 {
-    if (compat_sys_call_table) return __fp_hook_syscalln(nr, narg, 1, before, after, udata);
-    return __inline_hook_syscalln(nr, narg, 1, before, after, udata);
+    if (compat_sys_call_table) return fp_wrap_syscalln(nr, narg, 1, before, after, udata);
+    return inline_wrap_syscalln(nr, narg, 1, before, after, udata);
 }
 KP_EXPORT_SYMBOL(hook_compat_syscalln);
 
 void unhook_compat_syscalln(int nr, void *before, void *after)
 {
-    if (compat_sys_call_table) return __fp_unhook_syscalln(nr, 1, before, after);
-    return __inline_unhook_syscalln(nr, 1, before, after);
+    if (compat_sys_call_table) return fp_unwrap_syscalln(nr, 1, before, after);
+    return inline_unwrap_syscalln(nr, 1, before, after);
 }
 KP_EXPORT_SYMBOL(unhook_compat_syscalln);
 

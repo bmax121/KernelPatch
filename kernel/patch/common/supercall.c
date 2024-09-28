@@ -38,19 +38,6 @@
 
 static long call_test(long arg1, long arg2, long arg3)
 {
-    // char *cmd = "/system/bin/touch";
-    // // const char *superkey = get_superkey();
-    // char *argv[] = {
-    //     cmd,
-    //     "/data/local/tmp/test.txt",
-    //     NULL,
-    // };
-    // char *envp[] = {
-    //     "PATH=/system/bin:/data/adb",
-    //     NULL,
-    // };
-    // int rc = call_usermodehelper(cmd, argv, envp, UMH_WAIT_PROC);
-    // log_boot("user_init: %d\n", rc);
     return 0;
 }
 
@@ -179,7 +166,7 @@ static long call_grant_uid(struct su_profile *__user uprofile)
 {
     struct su_profile *profile = memdup_user(uprofile, sizeof(struct su_profile));
     if (!profile || IS_ERR(profile)) return PTR_ERR(profile);
-    int rc = su_add_allow_uid(profile->uid, profile->to_uid, profile->scontext, &profile->ext, 1);
+    int rc = su_add_allow_uid(profile->uid, profile->to_uid, profile->scontext, 1);
     kvfree(profile);
     return rc;
 }
@@ -328,7 +315,6 @@ static long supercall(int is_key_auth, long cmd, long arg1, long arg2, long arg3
     }
 
     switch (cmd) {
-    case SUPERCALL_MEM_PHYS:
     default:
         break;
     }

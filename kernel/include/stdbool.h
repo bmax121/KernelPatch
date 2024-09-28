@@ -1,9 +1,12 @@
 #ifndef _KP_STDBOOL_H_
 #define _KP_STDBOOL_H_
 
-#define bool _Bool
+#ifndef __bool_true_false_are_defined
 
-#define true ((bool)1)
-#define false ((bool)0)
+#define bool _Bool
+#define true 1
+#define false 0
+
+#endif
 
 #endif

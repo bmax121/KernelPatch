@@ -81,7 +81,7 @@ static inline void *syscall_argn_p(void *fdata_args, int n)
  * @param udata 
  * @return hook_err_t 
  */
-hook_err_t __fp_hook_syscalln(int nr, int narg, int is_compat, void *before, void *after, void *udata);
+hook_err_t fp_wrap_syscalln(int nr, int narg, int is_compat, void *before, void *after, void *udata);
 
 /**
  * @brief 
@@ -91,26 +91,26 @@ hook_err_t __fp_hook_syscalln(int nr, int narg, int is_compat, void *before, voi
  * @param before 
  * @param after 
  */
-void __fp_unhook_syscalln(int nr, int is_compat, void *before, void *after);
+void fp_unwrap_syscalln(int nr, int is_compat, void *before, void *after);
 
 static inline hook_err_t fp_hook_syscalln(int nr, int narg, void *before, void *after, void *udata)
 {
-    return __fp_hook_syscalln(nr, narg, 0, before, after, udata);
+    return fp_wrap_syscalln(nr, narg, 0, before, after, udata);
 }
 
 static inline void fp_unhook_syscalln(int nr, void *before, void *after)
 {
-    return __fp_unhook_syscalln(nr, 0, before, after);
+    return fp_unwrap_syscalln(nr, 0, before, after);
 }
 
 static inline hook_err_t fp_hook_compat_syscalln(int nr, int narg, void *before, void *after, void *udata)
 {
-    return __fp_hook_syscalln(nr, narg, 1, before, after, udata);
+    return fp_wrap_syscalln(nr, narg, 1, before, after, udata);
 }
 
 static inline void fp_unhook_compat_syscalln(int nr, void *before, void *after)
 {
-    return __fp_unhook_syscalln(nr, 1, before, after);
+    return fp_unwrap_syscalln(nr, 1, before, after);
 }
 
 /**
@@ -124,7 +124,7 @@ static inline void fp_unhook_compat_syscalln(int nr, void *before, void *after)
  * @param udata 
  * @return hook_err_t 
  */
-hook_err_t __inline_hook_syscalln(int nr, int narg, int is_compat, void *before, void *after, void *udata);
+hook_err_t inline_wrap_syscalln(int nr, int narg, int is_compat, void *before, void *after, void *udata);
 
 /**
  * @brief 
@@ -134,26 +134,26 @@ hook_err_t __inline_hook_syscalln(int nr, int narg, int is_compat, void *before,
  * @param before 
  * @param after 
  */
-void __inline_unhook_syscalln(int nr, int is_compat, void *before, void *after);
+void inline_unwrap_syscalln(int nr, int is_compat, void *before, void *after);
 
 static inline hook_err_t inline_hook_syscalln(int nr, int narg, void *before, void *after, void *udata)
 {
-    return __inline_hook_syscalln(nr, narg, 0, before, after, udata);
+    return inline_wrap_syscalln(nr, narg, 0, before, after, udata);
 }
 
 static inline void inline_unhook_syscalln(int nr, void *before, void *after)
 {
-    __inline_unhook_syscalln(nr, 0, before, after);
+    inline_unwrap_syscalln(nr, 0, before, after);
 }
 
 static inline hook_err_t inline_hook_compat_syscalln(int nr, int narg, void *before, void *after, void *udata)
 {
-    return __inline_hook_syscalln(nr, narg, 1, before, after, udata);
+    return inline_wrap_syscalln(nr, narg, 1, before, after, udata);
 }
 
 static inline void inline_unhook_compat_syscalln(int nr, void *before, void *after)
 {
-    __inline_unhook_syscalln(nr, 0, before, after);
+    inline_unwrap_syscalln(nr, 0, before, after);
 }
 
 //

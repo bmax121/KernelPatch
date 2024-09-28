@@ -50,6 +50,7 @@ void linux_misc_symbol_init();
 void linux_libs_symbol_init();
 void module_init();
 void syscall_init();
+int kstorage_init();
 
 #ifdef ANDROID
 int android_user_init();
@@ -75,6 +76,9 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
 
     rc = supercall_install();
     log_boot("supercall_install done: %d\n", rc);
+
+    rc = kstorage_init();
+    log_boot("kstorage_init done: %d\n", rc);
 
     rc = su_compat_init();
     log_boot("su_compat_init done: %d\n", rc);

@@ -101,6 +101,7 @@ _Static_assert(sizeof(map_symbol_t) == MAP_SYMBOL_SIZE, "sizeof map_symbol_t mis
 
 #define PATCH_CONFIG_SU_ENABLE 0x1
 #define PATCH_CONFIG_SU_HOOK_NO_WRAP 0x2
+#define PATCH_CONFIG_SU_ENABLE32 0x2
 
 struct patch_config
 {

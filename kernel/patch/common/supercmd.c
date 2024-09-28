@@ -75,14 +75,14 @@ static const char supercmd_help[] =
     "    whose full PATH is '/system/bin/kp'. This can avoid conflicts with the existing 'su' command.\n"
     "    If you wish to modify this PATH, you can use the 'reset' command.\n"
     "    SubCommand:\n"
-    "      grant <UID> [TO_UID [SCONTEXT [EXCLUDE]]]    Grant su permission to UID. EXCLUDE is 'true' or 'false'.\n"
-    "      revoke                                       Revoke su permission to UID.\n"
-    "      num                                          Get the number of uids with the aforementioned permissions.\n"
-    "      list                                         List all su allowed uids.\n"
-    "      profile <UID>                                Get the profile of the uid configuration.\n"
-    "      path [PATH]                                  Get or Reset current su path. The length of PATH must 2-127.\n"
-    "      sctx [SCONTEXT]                              Get or Reset current all allowed security context, \n"
-    "  event <EVENT>                                    Report EVENT.\n"
+    "      grant <UID> [TO_UID [SCONTEXT]]  Grant su permission to UID.\n"
+    "      revoke                           Revoke su permission to UID.\n"
+    "      num                              Get the number of uids with the aforementioned permissions.\n"
+    "      list                             List all su allowed uids.\n"
+    "      profile <UID>                    Get the profile of the uid configuration.\n"
+    "      path [PATH]                      Get or Reset current su path. The length of PATH must 2-127.\n"
+    "      sctx [SCONTEXT]                  Get or Reset current all allowed security context, \n"
+    "  event <EVENT>                        Report EVENT.\n"
     "\n"
     "The command below requires superkey authentication.\n"
     "  module <SubCommand> [...]:   KernelPatch Module manager\n"
@@ -122,9 +122,7 @@ static void handle_cmd_sumgr(char **__user u_filename_p, const char **carr, char
         }
         if (carr[3]) kstrtoull(carr[3], 10, &to_uid);
         if (carr[4]) scontext = carr[4];
-        struct su_profile_ext ext = { .exclude = false };
-        if (carr[5] && !strcmp(carr[5], "true")) ext.exclude = true;
-        su_add_allow_uid(uid, to_uid, scontext, &ext, 1);
+        su_add_allow_uid(uid, to_uid, scontext, 1);
         sprintf(buffer, "grant %d, %d, %s", uid, to_uid, scontext);
         cmd_res->msg = buffer;
     } else if (!strcmp(sub_cmd, "revoke")) {
@@ -163,8 +161,7 @@ static void handle_cmd_sumgr(char **__user u_filename_p, const char **carr, char
         cmd_res->rc = su_allow_uid_profile(0, uid, &profile);
         if (cmd_res->rc) return;
 
-        sprintf(buffer, "uid: %d, to_uid: %d, scontext: %s, exclude: %d", profile.uid, profile.to_uid, profile.scontext,
-                profile.ext.exclude);
+        sprintf(buffer, "uid: %d, to_uid: %d, scontext: %s", profile.uid, profile.to_uid, profile.scontext);
         cmd_res->msg = buffer;
 
     } else if (!strcmp(sub_cmd, "path")) {
