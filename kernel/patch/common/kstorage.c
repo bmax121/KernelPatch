@@ -1,10 +1,10 @@
 #include <kstorage.h>
+
 #include <linux/kernel.h>
 #include <linux/rculist.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/list.h>
-#include <ktypes.h>
 #include <compiler.h>
 #include <stdbool.h>
 #include <symbol.h>
@@ -127,7 +127,7 @@ KP_EXPORT_SYMBOL(get_kstorage);
 
 int on_each_kstorage_elem(int gid, on_kstorage_cb cb, void *udata)
 {
-    if (gid < 0 || gid >= KSTRORAGE_MAX_GROUP_NUM) return;
+    if (gid < 0 || gid >= KSTRORAGE_MAX_GROUP_NUM) return 0;
 
     int rc = 0;
 
@@ -153,7 +153,8 @@ int read_kstorage(int gid, long did, void *data, int offset, int len, bool data_
     int rc = 0;
     rcu_read_lock();
 
-    struct kstorage *pos = get_kstorage(gid, did);
+    const struct kstorage *pos = get_kstorage(gid, did);
+
     if (IS_ERR(pos)) return PTR_ERR(pos);
 
     int min_len = pos->dlen - offset > len ? len : pos->dlen - offset;

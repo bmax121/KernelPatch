@@ -49,13 +49,6 @@ const char apd_path[] = APD_PATH;
 
 static const char *current_su_path = 0;
 
-struct su_profile
-{
-    uid_t uid;
-    uid_t to_uid;
-    char scontext[SUPERCALL_SCONTEXT_LEN];
-};
-
 int is_su_allow_uid(uid_t uid)
 {
     rcu_read_lock();
@@ -70,7 +63,11 @@ KP_EXPORT_SYMBOL(is_su_allow_uid);
 int su_add_allow_uid(uid_t uid, uid_t to_uid, const char *scontext)
 {
     if (!scontext) scontext = "";
-    struct su_profile profile = { uid, to_uid, scontext };
+    struct su_profile profile = {
+        uid,
+        to_uid,
+    };
+    memcpy(profile.scontext, scontext, SUPERCALL_SCONTEXT_LEN);
     int rc = write_kstorage(KSTORAGE_SU_LIST_GROUP, uid, &profile, 0, sizeof(struct su_profile), false);
     logkfd("uid: %d, to_uid: %d, sctx: %s, rc: %d\n", uid, to_uid, scontext, rc);
     return rc;
@@ -98,16 +95,19 @@ static int allow_uids_cb(struct kstorage *kstorage, void *udata)
         int out_num;
     } *up = (typeof(up))udata;
 
+    struct su_profile *profile = (struct su_profile *)kstorage->data;
+
+    int num = 0;
+
     if (up->is_user) {
-        int cplen = compat_copy_to_user(up->out_uids + num, &uid, sizeof(uid));
-        logkfd("uid: %d\n", uid);
-        if (cplen <= 0) {
-            logkfd("compat_copy_to_user error: %d", cplen);
-            rc = cplen;
-            goto out;
+        int cprc = compat_copy_to_user(up->out_uids + num, &profile->uid, sizeof(uid_t));
+        logkfd("uid: %d\n", profile->uid);
+        if (cprc <= 0) {
+            logkfd("compat_copy_to_user error: %d", cprc);
+            return cprc;
         }
     } else {
-        out_uids[num] = uid;
+        up->out_uids[num] = profile->uid;
     }
 
     num++;
@@ -129,28 +129,29 @@ int su_allow_uids(int is_user, uid_t *out_uids, int out_num)
 }
 KP_EXPORT_SYMBOL(su_allow_uids);
 
-int su_allow_uid_profile(int is_user, uid_t uid, struct su_profile *profile)
+int su_allow_uid_profile(int is_user, uid_t uid, struct su_profile *out_profile)
 {
-    int rc = -ENOENT;
+    int rc = 0;
+
     rcu_read_lock();
-    struct allow_uid *pos;
-    list_for_each_entry(pos, &allow_uid_list, list)
-    {
-        if (pos->profile.uid != uid) continue;
-        if (is_user) {
-            int cplen = compat_copy_to_user(profile, &pos->profile, sizeof(struct su_profile));
-            logkfd("profile: %d %d %s\n", uid, pos->profile.to_uid, pos->profile.scontext);
-            if (cplen <= 0) {
-                logkfd("compat_copy_to_user error: %d", cplen);
-                rc = cplen;
-                goto out;
-            }
-        } else {
-            memcpy(profile, &pos->profile, sizeof(struct su_profile));
-        }
-        rc = 0;
+    const struct kstorage *ks = get_kstorage(KSTORAGE_SU_LIST_GROUP, uid);
+    if (IS_ERR(ks)) {
+        rc = -ENOENT;
         goto out;
     }
+    struct su_profile *profile = (struct su_profile *)ks->data;
+
+    if (is_user) {
+        rc = compat_copy_to_user(out_profile, profile, sizeof(struct su_profile));
+        if (rc <= 0) {
+            logkfd("compat_copy_to_user error: %d", rc);
+            goto out;
+        }
+        logkfd("%d %d %s\n", profile->uid, profile->to_uid, profile->scontext);
+    } else {
+        memcpy(out_profile, profile, sizeof(struct su_profile));
+    }
+
 out:
     rcu_read_unlock();
     return rc;
@@ -185,8 +186,8 @@ static void handle_before_execve(char **__user u_filename_p, char **__user uargv
 
     if (!strcmp(current_su_path, filename)) {
         uid_t uid = current_uid();
-        if (!is_su_allow_uid(uid)) return;
-        struct su_profile profile = profile_su_allow_uid(uid);
+        struct su_profile profile;
+        if (su_allow_uid_profile(0, uid, &profile)) return;
 
         uid_t to_uid = profile.to_uid;
         const char *sctx = profile.scontext;
@@ -317,18 +318,18 @@ int su_compat_init()
 #ifdef ANDROID
     // default shell
     if (!all_allow_sctx[0]) strcpy(all_allow_sctx, ALL_ALLOW_SCONTEXT_MAGISK);
-    su_add_allow_uid(2000, 0, all_allow_sctx, 1);
-    su_add_allow_uid(0, 0, all_allow_sctx, 1);
+    su_add_allow_uid(2000, 0, all_allow_sctx);
+    su_add_allow_uid(0, 0, all_allow_sctx);
 #endif
 
     hook_err_t rc = HOOK_NO_ERR;
 
     uint8_t su_config = patch_config->patch_su_config;
-    bool enable = su_config & PATCH_CONFIG_SU_ENABLE;
-    bool wrap = su_config & PATCH_CONFIG_SU_HOOK_NO_WRAP;
-    log_boot("su config, enable: %d, wrap: %d\n");
+    bool enable = !!(su_config & PATCH_CONFIG_SU_ENABLE);
+    bool wrap = !!(su_config & PATCH_CONFIG_SU_HOOK_NO_WRAP);
+    log_boot("su config: %x, enable: %d, wrap: %d\n", su_config, enable, wrap);
 
-    if (!enable) return;
+    // if (!enable) return;
 
     rc = hook_syscalln(__NR_execve, 3, before_execve, 0, (void *)0);
     log_boot("hook __NR_execve rc: %d\n", rc);

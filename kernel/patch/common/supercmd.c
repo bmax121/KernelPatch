@@ -58,8 +58,7 @@ static const char supercmd_help[] =
     ""
     "KernelPatch supercmd:\n"
     "Usage: truncate <superkey|su> [-uZc] [Command [[SubCommand]...]]\n"
-    "superkey|su:                   Authentication. For certain commands, if the current uid is allowed to use su,\n"
-    "                               the 'su' string can be used for authentication.\n"
+    "superkey|su:                   Authentication.\n"
     "Options:\n"
     "  -u <UID>                     Change user id to UID.\n"
     "  -Z <SCONTEXT>                Change security context to SCONTEXT.\n"
@@ -122,7 +121,7 @@ static void handle_cmd_sumgr(char **__user u_filename_p, const char **carr, char
         }
         if (carr[3]) kstrtoull(carr[3], 10, &to_uid);
         if (carr[4]) scontext = carr[4];
-        su_add_allow_uid(uid, to_uid, scontext, 1);
+        su_add_allow_uid(uid, to_uid, scontext);
         sprintf(buffer, "grant %d, %d, %s", uid, to_uid, scontext);
         cmd_res->msg = buffer;
     } else if (!strcmp(sub_cmd, "revoke")) {
@@ -133,7 +132,7 @@ static void handle_cmd_sumgr(char **__user u_filename_p, const char **carr, char
             cmd_res->err_msg = buffer;
             return;
         }
-        su_remove_allow_uid(uid, 1);
+        su_remove_allow_uid(uid);
         cmd_res->msg = suid;
     } else if (!strcmp(sub_cmd, "num")) {
         int num = su_allow_uid_nums();
@@ -298,7 +297,7 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
     } else if (!strcmp("su", arg1)) {
         uid_t uid = current_uid();
         if (!is_su_allow_uid(uid)) return;
-        profile = profile_su_allow_uid(uid);
+        su_allow_uid_profile(0, uid, &profile);
     } else {
         return;
     }

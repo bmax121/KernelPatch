@@ -65,6 +65,13 @@ struct kernel_storage
 #define SUPERCALL_KEY_MAX_LEN 0x40
 #define SUPERCALL_SCONTEXT_LEN 0x60
 
+struct su_profile
+{
+    uid_t uid;
+    uid_t to_uid;
+    char scontext[SUPERCALL_SCONTEXT_LEN];
+};
+
 #ifdef ANDROID
 #define SH_PATH "/system/bin/sh"
 #define SU_PATH "/system/bin/kp"

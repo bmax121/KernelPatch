@@ -166,14 +166,14 @@ static long call_grant_uid(struct su_profile *__user uprofile)
 {
     struct su_profile *profile = memdup_user(uprofile, sizeof(struct su_profile));
     if (!profile || IS_ERR(profile)) return PTR_ERR(profile);
-    int rc = su_add_allow_uid(profile->uid, profile->to_uid, profile->scontext, 1);
+    int rc = su_add_allow_uid(profile->uid, profile->to_uid, profile->scontext);
     kvfree(profile);
     return rc;
 }
 
 static long call_revoke_uid(uid_t uid)
 {
-    return su_remove_allow_uid(uid, 1);
+    return su_remove_allow_uid(uid);
 }
 
 static long call_su_allow_uid_nums()

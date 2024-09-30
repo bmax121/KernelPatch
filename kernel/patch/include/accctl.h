@@ -24,14 +24,6 @@ int commit_common_su(uid_t to_uid, const char *sctx);
 int commit_su(uid_t uid, const char *sctx);
 int task_su(pid_t pid, uid_t to_uid, const char *sctx);
 
-int su_add_allow_uid(uid_t uid, uid_t to_uid, const char *scontext);
-int su_remove_allow_uid(uid_t uid);
-int su_allow_uid_nums();
-int su_allow_uids(int is_user, uid_t *out_uids, int out_num);
-int su_allow_uid_profile(int is_user, uid_t uid, struct su_profile *profile);
-int su_reset_path(const char *path);
-const char *su_get_path();
-
 /**
  * @brief Whether to make the current task bypass all selinux permission checks.
  * 

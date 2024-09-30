@@ -6,8 +6,8 @@
 #ifndef _KP_KSTORAGE_H_
 #define _KP_KSTORAGE_H_
 
-#include <uapi/scdefs.h>
 #include <ktypes.h>
+#include <uapi/scdefs.h>
 #include <stdbool.h>
 
 struct kstorage
@@ -30,7 +30,7 @@ int write_kstorage(int gid, long did, void *data, int offset, int len, bool data
 // must surround with rcu read lock
 const struct kstorage *get_kstorage(int gid, long did);
 
-typedef int (*on_kstorage_cb)(struct kstroage *kstorage, void *udata);
+typedef int (*on_kstorage_cb)(struct kstorage *kstorage, void *udata);
 int on_each_kstorage_elem(int gid, on_kstorage_cb cb, void *udata);
 
 const struct kstorage *get_kstorage(int gid, long did);
