@@ -121,39 +121,39 @@ static inline long sc_su_task(const char *key, pid_t tid, struct su_profile *pro
     return ret;
 }
 
-/**
- * @brief 
- * 
- * @param key 
- * @param gid group id
- * @param did data id
- * @param data 
- * @param dlen 
- * @return long 
- */
-static inline long sc_kstorage_write(const char *key, int gid, long did, void *data, int dlen)
-{
-    if (!key || !key[0]) return -EINVAL;
-    long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_KSTORAGE_WRITE), gid, did, data, dlen);
-    return ret;
-}
+// /**
+//  * @brief 
+//  * 
+//  * @param key 
+//  * @param gid group id
+//  * @param did data id
+//  * @param data 
+//  * @param dlen 
+//  * @return long 
+//  */
+// static inline long sc_kstorage_write(const char *key, int gid, long did, void *data, int offset, int dlen)
+// {
+//     if (!key || !key[0]) return -EINVAL;
+//     long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_KSTORAGE_WRITE), gid, did, data, dlen);
+//     return ret;
+// }
 
-/**
- * @brief 
- * 
- * @param key 
- * @param gid 
- * @param did 
- * @param out_data 
- * @param dlen 
- * @return long 
- */
-static inline long sc_kstorage_read(const char *key, int gid, long did, void *out_data, int dlen)
-{
-    if (!key || !key[0]) return -EINVAL;
-    long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_KSTORAGE_READ), gid, did, out_data, dlen);
-    return ret;
-}
+// /**
+//  * @brief 
+//  * 
+//  * @param key 
+//  * @param gid 
+//  * @param did 
+//  * @param out_data 
+//  * @param dlen 
+//  * @return long 
+//  */
+// static inline long sc_kstorage_read(const char *key, int gid, long did, void *out_data, int offset, int dlen)
+// {
+//     if (!key || !key[0]) return -EINVAL;
+//     long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_KSTORAGE_READ), gid, did, out_data, dlen);
+//     return ret;
+// }
 
 /**
  * @brief Grant su permission
