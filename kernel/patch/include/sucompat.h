@@ -32,6 +32,7 @@ int su_allow_uid_profile(int is_user, uid_t uid, struct su_profile *profile);
 int su_reset_path(const char *path);
 const char *su_get_path();
 
-void handle_supercmd(char **__user u_filename_p, char **__user uargv);
+int get_su_mod_exclude(uid_t uid);
+int set_su_mod_exclude(uid_t uid, int exclude);
 
 #endif

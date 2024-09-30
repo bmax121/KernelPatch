@@ -80,7 +80,8 @@ static const char supercmd_help[] =
     "      list                             List all su allowed uids.\n"
     "      profile <UID>                    Get the profile of the uid configuration.\n"
     "      path [PATH]                      Get or Reset current su path. The length of PATH must 2-127.\n"
-    "      sctx [SCONTEXT]                  Get or Reset current all allowed security context, \n"
+    "      sctx [SCONTEXT]                  Get or Reset current all allowed security context.\n"
+    "      exclude <UID> [1|0]              Get or Reset exclude policy for UID.\n"
     "  event <EVENT>                        Report EVENT.\n"
     "\n"
     "The command below requires superkey authentication.\n"
@@ -178,6 +179,26 @@ static void handle_cmd_sumgr(char **__user u_filename_p, const char **carr, char
             if (!cmd_res->rc) cmd_res->msg = carr[2];
         } else {
             cmd_res->msg = all_allow_sctx;
+        }
+    } else if (!strcmp(sub_cmd, "exclude")) {
+        unsigned long long uid;
+        if (!carr[2] || kstrtoull(carr[2], 10, &uid)) {
+            cmd_res->err_msg = "invalid uid";
+            return;
+        } else {
+            if (!carr[3]) {
+                int exclude = get_su_mod_exclude(uid);
+                sprintf(buffer, "%d", exclude);
+                cmd_res->msg = buffer;
+            } else {
+                if (carr[3][0] == '0') {
+                    set_su_mod_exclude(uid, 0);
+                    cmd_res->msg = "0";
+                } else {
+                    set_su_mod_exclude(uid, 1);
+                    cmd_res->msg = "1";
+                }
+            }
         }
     } else {
         cmd_res->err_msg = "invalid subcommand";

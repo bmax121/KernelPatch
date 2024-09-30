@@ -49,10 +49,13 @@ const char apd_path[] = APD_PATH;
 
 static const char *current_su_path = 0;
 
+static int su_kstorage_gid = -1;
+static int exclude_kstorage_gid = -1;
+
 int is_su_allow_uid(uid_t uid)
 {
     rcu_read_lock();
-    const struct kstorage *ks = get_kstorage(KSTORAGE_SU_LIST_GROUP, uid);
+    const struct kstorage *ks = get_kstorage(su_kstorage_gid, uid);
     struct su_profile *profile = (struct su_profile *)ks->data;
     int rc = profile != 0;
     rcu_read_unlock();
@@ -68,7 +71,7 @@ int su_add_allow_uid(uid_t uid, uid_t to_uid, const char *scontext)
         to_uid,
     };
     memcpy(profile.scontext, scontext, SUPERCALL_SCONTEXT_LEN);
-    int rc = write_kstorage(KSTORAGE_SU_LIST_GROUP, uid, &profile, 0, sizeof(struct su_profile), false);
+    int rc = write_kstorage(su_kstorage_gid, uid, &profile, 0, sizeof(struct su_profile), false);
     logkfd("uid: %d, to_uid: %d, sctx: %s, rc: %d\n", uid, to_uid, scontext, rc);
     return rc;
 }
@@ -76,13 +79,13 @@ KP_EXPORT_SYMBOL(su_add_allow_uid);
 
 int su_remove_allow_uid(uid_t uid)
 {
-    return remove_kstorage(KSTORAGE_SU_LIST_GROUP, uid);
+    return remove_kstorage(su_kstorage_gid, uid);
 }
 KP_EXPORT_SYMBOL(su_remove_allow_uid);
 
 int su_allow_uid_nums()
 {
-    return kstorage_group_size(KSTORAGE_SU_LIST_GROUP);
+    return kstorage_group_size(su_kstorage_gid);
 }
 KP_EXPORT_SYMBOL(su_allow_uid_nums);
 
@@ -124,7 +127,7 @@ int su_allow_uids(int is_user, uid_t *out_uids, int out_num)
         uid_t *up;
         int un;
     } udata = { is_user, out_uids, out_num };
-    on_each_kstorage_elem(KSTORAGE_SU_LIST_GROUP, allow_uids_cb, &udata);
+    on_each_kstorage_elem(su_kstorage_gid, allow_uids_cb, &udata);
     return rc;
 }
 KP_EXPORT_SYMBOL(su_allow_uids);
@@ -134,7 +137,7 @@ int su_allow_uid_profile(int is_user, uid_t uid, struct su_profile *out_profile)
     int rc = 0;
 
     rcu_read_lock();
-    const struct kstorage *ks = get_kstorage(KSTORAGE_SU_LIST_GROUP, uid);
+    const struct kstorage *ks = get_kstorage(su_kstorage_gid, uid);
     if (IS_ERR(ks)) {
         rc = -ENOENT;
         goto out;
@@ -237,6 +240,7 @@ static void handle_before_execve(char **__user u_filename_p, char **__user uargv
         }
 #endif // ANDROID
     } else if (!strcmp(SUPERCMD, filename)) {
+        void handle_supercmd(char **__user u_filename_p, char **__user uargv);
         handle_supercmd(u_filename_p, uargv);
         return;
     }
@@ -311,6 +315,27 @@ static void su_handler_arg1_ufilename_before(hook_fargs6_t *args, void *udata)
     }
 }
 
+int set_su_mod_exclude(uid_t uid, int exclude)
+{
+    int rc = 0;
+    if (exclude) {
+        rc = write_kstorage(exclude_kstorage_gid, uid, &exclude, 0, sizeof(exclude), false);
+    } else {
+        rc = remove_kstorage(exclude_kstorage_gid, uid);
+    }
+    return rc;
+}
+KP_EXPORT_SYMBOL(set_su_mod_exclude);
+
+int get_su_mod_exclude(uid_t uid)
+{
+    int exclude = 0;
+    int rc = read_kstorage(exclude_kstorage_gid, uid, &exclude, 0, sizeof(exclude), false);
+    if (rc < 0) return false;
+    return exclude;
+}
+KP_EXPORT_SYMBOL(get_su_mod_exclude);
+
 int su_compat_init()
 {
     current_su_path = default_su_path;
@@ -330,6 +355,12 @@ int su_compat_init()
     log_boot("su config: %x, enable: %d, wrap: %d\n", su_config, enable, wrap);
 
     // if (!enable) return;
+
+    su_kstorage_gid = try_alloc_kstroage_group();
+    if (su_kstorage_gid < 0) return -ENOMEM;
+
+    exclude_kstorage_gid = try_alloc_kstroage_group();
+    if (exclude_kstorage_gid < 0) return -ENOMEM;
 
     rc = hook_syscalln(__NR_execve, 3, before_execve, 0, (void *)0);
     log_boot("hook __NR_execve rc: %d\n", rc);

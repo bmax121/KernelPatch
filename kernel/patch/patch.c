@@ -38,19 +38,19 @@ void before_panic(hook_fargs12_t *args, void *udata)
     printk("==== End KernelPatch for Kernel panic ====\n");
 }
 
+void linux_misc_symbol_init();
+void linux_libs_symbol_init();
+
 int resolve_struct();
 int task_observer();
 int bypass_kcfi();
 int bypass_selinux();
 int resolve_pt_regs();
 int supercall_install();
-int su_compat_init();
-
-void linux_misc_symbol_init();
-void linux_libs_symbol_init();
 void module_init();
 void syscall_init();
 int kstorage_init();
+int su_compat_init();
 
 #ifdef ANDROID
 int android_user_init();
