@@ -29,10 +29,8 @@ static bool enable_root_key = false;
 int auth_superkey(const char *key)
 {
     int rc = 0;
-    for (int i = 0; i < SUPER_KEY_LEN; i++) {
-        if (superkey[i] && key[i] != superkey[i]) {
-            rc++;
-        }
+    for (int i = 0; superkey[i]; i++) {
+        rc |= (superkey[i] ^ key[i]);
     }
     if (!rc) goto out;
 
