@@ -30,7 +30,7 @@ int auth_superkey(const char *key)
 {
     int rc = 0;
     for (int i = 0; i < SUPER_KEY_LEN; i++) {
-        if (key[i] && key[i] != superkey[i]) {
+        if (superkey[i] && key[i] != superkey[i]) {
             rc++;
         }
     }
