@@ -29,10 +29,14 @@ static bool enable_root_key = false;
 int auth_superkey(const char *key)
 {
     int rc = 0;
-    rc = lib_strncmp(superkey, key, SUPER_KEY_LEN);
-    if (!rc) return rc;
+    for (int i = 0; i < SUPER_KEY_LEN; i++) {
+        if (key[i] && key[i] != superkey[i]) {
+            rc++;
+        }
+    }
+    if (!rc) goto out;
 
-    if (!enable_root_key) return rc;
+    if (!enable_root_key) goto out;
 
     BYTE hash[SHA256_BLOCK_SIZE];
     SHA256_CTX ctx;
@@ -49,7 +53,8 @@ int auth_superkey(const char *key)
         enable_root_key = false;
     }
 
-    return rc;
+out:
+    return !!rc;
 }
 
 void reset_superkey(const char *key)
