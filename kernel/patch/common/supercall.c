@@ -31,6 +31,7 @@
 #include <linux/random.h>
 #include <sucompat.h>
 #include <accctl.h>
+#include <kstorage.h>
 
 #define MAX_KEY_LEN 128
 
@@ -230,6 +231,21 @@ static long call_su_set_allow_sctx(char *__user usctx)
     return set_all_allow_sctx(buf);
 }
 
+static long call_kstorage_read(int gid, long did, void *out_data, int offset, int dlen)
+{
+    return read_kstorage(gid, did, out_data, offset, dlen, true);
+}
+
+static long call_kstorage_write(int gid, long did, void *data, int offset, int dlen)
+{
+    return write_kstorage(gid, did, data, offset, dlen, true);
+}
+
+static long call_kstorage_remove(int gid, long did)
+{
+    return remove_kstorage(gid, did);
+}
+
 static long supercall(int is_key_auth, long cmd, long arg1, long arg2, long arg3, long arg4)
 {
     switch (cmd) {
@@ -268,6 +284,15 @@ static long supercall(int is_key_auth, long cmd, long arg1, long arg2, long arg3
         return call_su_get_allow_sctx((char *__user)arg1, (int)arg2);
     case SUPERCALL_SU_SET_ALLOW_SCTX:
         return call_su_set_allow_sctx((char *__user)arg1);
+
+    case SUPERCALL_KSTORAGE_READ:
+        return call_kstorage_read((int)arg1, (long)arg2, (void *)arg3, (int)((long)arg4 >> 32), (long)arg4 << 32 >> 32);
+    case SUPERCALL_KSTORAGE_WRITE:
+        return call_kstorage_write((int)arg1, (long)arg2, (void *)arg3, (int)((long)arg4 >> 32),
+                                   (long)arg4 << 32 >> 32);
+    case SUPERCALL_KSTORAGE_REMOVE:
+        return call_kstorage_remove((int)arg1, (long)arg2);
+
 #ifdef ANDROID
     case SUPERCALL_SU_GET_SAFEMODE:
         return call_su_get_safemode();

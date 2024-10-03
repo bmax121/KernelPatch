@@ -187,15 +187,15 @@ static void handle_cmd_sumgr(char **__user u_filename_p, const char **carr, char
             return;
         } else {
             if (!carr[3]) {
-                int exclude = get_su_mod_exclude(uid);
+                int exclude = get_ap_mod_exclude(uid);
                 sprintf(buffer, "%d", exclude);
                 cmd_res->msg = buffer;
             } else {
                 if (carr[3][0] == '0') {
-                    set_su_mod_exclude(uid, 0);
+                    set_ap_mod_exclude(uid, 0);
                     cmd_res->msg = "0";
                 } else {
-                    set_su_mod_exclude(uid, 1);
+                    set_ap_mod_exclude(uid, 1);
                     cmd_res->msg = "1";
                 }
             }

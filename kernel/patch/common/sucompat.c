@@ -315,7 +315,7 @@ static void su_handler_arg1_ufilename_before(hook_fargs6_t *args, void *udata)
     }
 }
 
-int set_su_mod_exclude(uid_t uid, int exclude)
+int set_ap_mod_exclude(uid_t uid, int exclude)
 {
     int rc = 0;
     if (exclude) {
@@ -325,16 +325,16 @@ int set_su_mod_exclude(uid_t uid, int exclude)
     }
     return rc;
 }
-KP_EXPORT_SYMBOL(set_su_mod_exclude);
+KP_EXPORT_SYMBOL(set_ap_mod_exclude);
 
-int get_su_mod_exclude(uid_t uid)
+int get_ap_mod_exclude(uid_t uid)
 {
     int exclude = 0;
     int rc = read_kstorage(exclude_kstorage_gid, uid, &exclude, 0, sizeof(exclude), false);
-    if (rc < 0) return false;
+    if (rc < 0) return 0;
     return exclude;
 }
-KP_EXPORT_SYMBOL(get_su_mod_exclude);
+KP_EXPORT_SYMBOL(get_ap_mod_exclude);
 
 int su_compat_init()
 {

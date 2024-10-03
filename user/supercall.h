@@ -121,39 +121,89 @@ static inline long sc_su_task(const char *key, pid_t tid, struct su_profile *pro
     return ret;
 }
 
-// /**
-//  * @brief 
-//  * 
-//  * @param key 
-//  * @param gid group id
-//  * @param did data id
-//  * @param data 
-//  * @param dlen 
-//  * @return long 
-//  */
-// static inline long sc_kstorage_write(const char *key, int gid, long did, void *data, int offset, int dlen)
-// {
-//     if (!key || !key[0]) return -EINVAL;
-//     long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_KSTORAGE_WRITE), gid, did, data, dlen);
-//     return ret;
-// }
+/**
+ * @brief 
+ * 
+ * @param key 
+ * @param gid group id
+ * @param did data id
+ * @param data 
+ * @param dlen 
+ * @return long 
+ */
+static inline long sc_kstorage_write(const char *key, int gid, long did, void *data, int offset, int dlen)
+{
+    if (!key || !key[0]) return -EINVAL;
+    long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_KSTORAGE_WRITE), gid, did, data, ((offset << 32) | dlen));
+    return ret;
+}
 
-// /**
-//  * @brief 
-//  * 
-//  * @param key 
-//  * @param gid 
-//  * @param did 
-//  * @param out_data 
-//  * @param dlen 
-//  * @return long 
-//  */
-// static inline long sc_kstorage_read(const char *key, int gid, long did, void *out_data, int offset, int dlen)
-// {
-//     if (!key || !key[0]) return -EINVAL;
-//     long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_KSTORAGE_READ), gid, did, out_data, dlen);
-//     return ret;
-// }
+/**
+ * @brief 
+ * 
+ * @param key 
+ * @param gid 
+ * @param did 
+ * @param out_data 
+ * @param dlen 
+ * @return long 
+ */
+static inline long sc_kstorage_read(const char *key, int gid, long did, void *out_data, int offset, int dlen)
+{
+    if (!key || !key[0]) return -EINVAL;
+    long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_KSTORAGE_READ), gid, did, out_data, ((offset << 32) | dlen));
+    return ret;
+}
+
+/**
+ * @brief 
+ * 
+ * @param key 
+ * @param gid 
+ * @param did 
+ * @return long 
+ */
+static inline long sc_kstorage_remove(const char *key, int gid, long did)
+{
+    if (!key || !key[0]) return -EINVAL;
+    long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_KSTORAGE_REMOVE), gid, did);
+    return ret;
+}
+
+
+/**
+ * @brief 
+ * 
+ * @param key 
+ * @param uid 
+ * @param exclude 
+ * @return long 
+ */
+static inline long sc_set_ap_mod_exclude(const char *key, uid_t uid, int exclude)
+{
+    if(exclude) {
+        return sc_kstorage_write(key, KSTORAGE_EXCLUDE_LIST_GROUP, uid, &exclude, 0, sizeof(exclude));
+    } else {
+        return sc_kstorage_remove(key, SUPERCALL_KSTORAGE_REMOVE, uid, gid);
+    }
+}
+
+
+/**
+ * @brief 
+ * 
+ * @param key 
+ * @param uid 
+ * @param exclude 
+ * @return long 
+ */
+static inline int sc_get_ap_mod_exclude(const char *key, uid_t uid)
+{
+    int exclude = 0;
+    int rc = sc_kstorage_read(key, KSTORAGE_EXCLUDE_LIST_GROUP, uid, &exclude, 0, sizeof(exclude));
+    if (rc < 0) return 0;
+    return exclude;
+}
 
 /**
  * @brief Grant su permission
@@ -238,7 +288,7 @@ static inline long sc_su_uid_profile(const char *key, uid_t uid, struct su_profi
 static inline long sc_su_get_path(const char *key, char *out_path, int path_len)
 {
     if (!key || !key[0]) return -EINVAL;
-    if (!out_path || out_path <= 0) return -EINVAL;
+    if (!out_path || path_len <= 0) return -EINVAL;
     long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_SU_GET_PATH), out_path, path_len);
     return ret;
 }
