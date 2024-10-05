@@ -336,13 +336,32 @@ int get_ap_mod_exclude(uid_t uid)
 }
 KP_EXPORT_SYMBOL(get_ap_mod_exclude);
 
+int list_ap_mod_exclude(uid_t *uids, int len)
+{
+    long ids[len];
+    int cnt = list_kstorage_ids(exclude_kstorage_gid, ids, len, false);
+    for (int i = 0; i < len; i++) {
+        uids[i] = (uid_t)ids[i];
+    }
+    return cnt;
+}
+KP_EXPORT_SYMBOL(list_ap_mod_exclude);
+
 int su_compat_init()
 {
     current_su_path = default_su_path;
 
+    su_kstorage_gid = try_alloc_kstroage_group();
+    if (su_kstorage_gid != KSTORAGE_SU_LIST_GROUP) return -ENOMEM;
+
+    exclude_kstorage_gid = try_alloc_kstroage_group();
+    if (exclude_kstorage_gid != KSTORAGE_EXCLUDE_LIST_GROUP) return -ENOMEM;
+
 #ifdef ANDROID
     // default shell
-    if (!all_allow_sctx[0]) strcpy(all_allow_sctx, ALL_ALLOW_SCONTEXT_MAGISK);
+    if (!all_allow_sctx[0]) {
+        strcpy(all_allow_sctx, ALL_ALLOW_SCONTEXT_MAGISK);
+    }
     su_add_allow_uid(2000, 0, all_allow_sctx);
     su_add_allow_uid(0, 0, all_allow_sctx);
 #endif
@@ -355,12 +374,6 @@ int su_compat_init()
     log_boot("su config: %x, enable: %d, wrap: %d\n", su_config, enable, wrap);
 
     // if (!enable) return;
-
-    su_kstorage_gid = try_alloc_kstroage_group();
-    if (su_kstorage_gid < 0) return -ENOMEM;
-
-    exclude_kstorage_gid = try_alloc_kstroage_group();
-    if (exclude_kstorage_gid < 0) return -ENOMEM;
 
     rc = hook_syscalln(__NR_execve, 3, before_execve, 0, (void *)0);
     log_boot("hook __NR_execve rc: %d\n", rc);

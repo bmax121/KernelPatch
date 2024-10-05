@@ -241,6 +241,11 @@ static long call_kstorage_write(int gid, long did, void *data, int offset, int d
     return write_kstorage(gid, did, data, offset, dlen, true);
 }
 
+static long call_list_kstorage_ids(int gid, long *ids, int ids_len)
+{
+    return list_kstorage_ids(gid, ids, ids_len, false);
+}
+
 static long call_kstorage_remove(int gid, long did)
 {
     return remove_kstorage(gid, did);
@@ -290,6 +295,8 @@ static long supercall(int is_key_auth, long cmd, long arg1, long arg2, long arg3
     case SUPERCALL_KSTORAGE_WRITE:
         return call_kstorage_write((int)arg1, (long)arg2, (void *)arg3, (int)((long)arg4 >> 32),
                                    (long)arg4 << 32 >> 32);
+    case SUPERCALL_KSTORAGE_LIST_IDS:
+        return call_list_kstorage_ids((int)arg1, (long *)arg2, (int)arg3);
     case SUPERCALL_KSTORAGE_REMOVE:
         return call_kstorage_remove((int)arg1, (long)arg2);
 

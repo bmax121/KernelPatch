@@ -27,13 +27,15 @@ int kstorage_group_size(int gid);
 
 int write_kstorage(int gid, long did, void *data, int offset, int len, bool data_is_user);
 
-// must within rcu read lock
+/// must within rcu read lock
 const struct kstorage *get_kstorage(int gid, long did);
 
 typedef int (*on_kstorage_cb)(struct kstorage *kstorage, void *udata);
 int on_each_kstorage_elem(int gid, on_kstorage_cb cb, void *udata);
 
 int read_kstorage(int gid, long did, void *data, int offset, int len, bool data_is_user);
+
+int list_kstorage_ids(int gid, long *ids, int idslen, bool data_is_user);
 
 int remove_kstorage(int gid, long did);
 

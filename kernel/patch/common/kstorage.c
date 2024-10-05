@@ -19,23 +19,23 @@
 #define KSTRORAGE_MAX_GROUP_NUM 4
 
 // static atomic64_t used_max_group = ATOMIC_INIT(0);
-static int used_max_group = 0;
+static int used_max_group = -1;
 static struct list_head kstorage_groups[KSTRORAGE_MAX_GROUP_NUM];
 static spinlock_t kstorage_glocks[KSTRORAGE_MAX_GROUP_NUM];
 static int group_sizes[KSTRORAGE_MAX_GROUP_NUM] = { 0 };
 static spinlock_t used_max_group_lock;
 
-// static void reclaim_callback(struct rcu_head *rcu)
-// {
-//     struct kstorage *ks = container_of(rcu, struct kstorage, rcu);
-//     kvfree(ks);
-// }
+static void reclaim_callback(struct rcu_head *rcu)
+{
+    struct kstorage *ks = container_of(rcu, struct kstorage, rcu);
+    kvfree(ks);
+}
 
 int try_alloc_kstroage_group()
 {
     spin_lock(&used_max_group_lock);
     used_max_group++;
-    if (used_max_group >= KSTRORAGE_MAX_GROUP_NUM) return -1;
+    if (used_max_group < 0 || used_max_group >= KSTRORAGE_MAX_GROUP_NUM) return -1;
     spin_unlock(&used_max_group_lock);
     return used_max_group;
 }
@@ -96,12 +96,13 @@ int write_kstorage(int gid, long did, void *data, int offset, int len, bool data
     rcu_read_unlock();
 
     if (old) {
-        // if (async) {
-        // call_rcu(&old->rcu, reclaim_callback);
-        // } else {
-        synchronize_rcu();
-        kvfree(old);
-        // }
+        bool async = true;
+        if (async) {
+            call_rcu(&old->rcu, reclaim_callback);
+        } else {
+            synchronize_rcu();
+            kvfree(old);
+        }
     }
     return 0;
 }
@@ -127,7 +128,7 @@ KP_EXPORT_SYMBOL(get_kstorage);
 
 int on_each_kstorage_elem(int gid, on_kstorage_cb cb, void *udata)
 {
-    if (gid < 0 || gid >= KSTRORAGE_MAX_GROUP_NUM) return 0;
+    if (gid < 0 || gid >= KSTRORAGE_MAX_GROUP_NUM) return -ENOENT;
 
     int rc = 0;
 
@@ -155,7 +156,10 @@ int read_kstorage(int gid, long did, void *data, int offset, int len, bool data_
 
     const struct kstorage *pos = get_kstorage(gid, did);
 
-    if (IS_ERR(pos)) return PTR_ERR(pos);
+    if (IS_ERR(pos)) {
+        rcu_read_unlock();
+        return PTR_ERR(pos);
+    }
 
     int min_len = pos->dlen - offset > len ? len : pos->dlen - offset;
 
@@ -175,6 +179,39 @@ int read_kstorage(int gid, long did, void *data, int offset, int len, bool data_
     return rc;
 }
 KP_EXPORT_SYMBOL(read_kstorage);
+
+int list_kstorage_ids(int gid, long *ids, int idslen, bool data_is_user)
+{
+    if (gid < 0 || gid >= KSTRORAGE_MAX_GROUP_NUM) return -ENOENT;
+
+    int cnt = 0;
+
+    struct list_head *head = &kstorage_groups[gid];
+    struct kstorage *pos = 0;
+
+    rcu_read_lock();
+
+    list_for_each_entry(pos, head, list)
+    {
+        if (cnt >= idslen) break;
+
+        if (data_is_user) {
+            int cplen = compat_copy_to_user(ids + cnt, &pos->did, sizeof(pos->did));
+            if (cplen <= 0) {
+                logkfd("compat_copy_to_user error: %d", cplen);
+                cnt = cplen;
+            }
+        } else {
+            memcpy(ids + cnt, &pos->did, sizeof(pos->did));
+        }
+        cnt++;
+    }
+
+    rcu_read_unlock();
+
+    return cnt;
+}
+KP_EXPORT_SYMBOL(list_kstorage_ids);
 
 int remove_kstorage(int gid, long did)
 {
@@ -197,12 +234,13 @@ int remove_kstorage(int gid, long did)
 
             logkfi("%d %ld\n", gid, did);
 
-            // if (async) {
-            //     call_rcu(&pos->rcu, reclaim_callback);
-            // } else {
-            synchronize_rcu();
-            kvfree(pos);
-            // }
+            bool async = true;
+            if (async) {
+                call_rcu(&pos->rcu, reclaim_callback);
+            } else {
+                synchronize_rcu();
+                kvfree(pos);
+            }
             return 0;
         }
     }

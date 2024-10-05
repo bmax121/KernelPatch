@@ -134,7 +134,7 @@ static inline long sc_su_task(const char *key, pid_t tid, struct su_profile *pro
 static inline long sc_kstorage_write(const char *key, int gid, long did, void *data, int offset, int dlen)
 {
     if (!key || !key[0]) return -EINVAL;
-    long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_KSTORAGE_WRITE), gid, did, data, ((offset << 32) | dlen));
+    long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_KSTORAGE_WRITE), gid, did, data, (((long)offset << 32) | dlen));
     return ret;
 }
 
@@ -151,9 +151,27 @@ static inline long sc_kstorage_write(const char *key, int gid, long did, void *d
 static inline long sc_kstorage_read(const char *key, int gid, long did, void *out_data, int offset, int dlen)
 {
     if (!key || !key[0]) return -EINVAL;
-    long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_KSTORAGE_READ), gid, did, out_data, ((offset << 32) | dlen));
+    long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_KSTORAGE_READ), gid, did, out_data, (((long)offset << 32) | dlen));
     return ret;
 }
+
+
+/**
+ * @brief 
+ * 
+ * @param key 
+ * @param gid 
+ * @param ids 
+ * @param ids_len 
+ * @return long numbers of listed ids
+ */
+static inline long sc_kstorage_list_ids(const char *key, int gid, long *ids, int ids_len)
+{
+    if (!key || !key[0]) return -EINVAL;
+    long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_KSTORAGE_LIST_IDS), gid, ids, ids_len);
+    return ret;
+}
+
 
 /**
  * @brief 
@@ -166,7 +184,7 @@ static inline long sc_kstorage_read(const char *key, int gid, long did, void *ou
 static inline long sc_kstorage_remove(const char *key, int gid, long did)
 {
     if (!key || !key[0]) return -EINVAL;
-    long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_KSTORAGE_REMOVE), gid, did);
+    long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_KSTORAGE_REMOVE), gid);
     return ret;
 }
 

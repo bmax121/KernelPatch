@@ -34,5 +34,6 @@ const char *su_get_path();
 
 int get_ap_mod_exclude(uid_t uid);
 int set_ap_mod_exclude(uid_t uid, int exclude);
+int list_ap_mod_exclude(uid_t *uids, int len);
 
 #endif

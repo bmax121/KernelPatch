@@ -81,7 +81,10 @@ static const char supercmd_help[] =
     "      profile <UID>                    Get the profile of the uid configuration.\n"
     "      path [PATH]                      Get or Reset current su path. The length of PATH must 2-127.\n"
     "      sctx [SCONTEXT]                  Get or Reset current all allowed security context.\n"
+#ifdef ANDROID
+    "      exclude_list                     List all exclude UIDs.\n"
     "      exclude <UID> [1|0]              Get or Reset exclude policy for UID.\n"
+#endif
     "  event <EVENT>                        Report EVENT.\n"
     "\n"
     "The command below requires superkey authentication.\n"
@@ -180,7 +183,9 @@ static void handle_cmd_sumgr(char **__user u_filename_p, const char **carr, char
         } else {
             cmd_res->msg = all_allow_sctx;
         }
-    } else if (!strcmp(sub_cmd, "exclude")) {
+    }
+#ifdef ANDROID
+    else if (!strcmp(sub_cmd, "exclude")) {
         unsigned long long uid;
         if (!carr[2] || kstrtoull(carr[2], 10, &uid)) {
             cmd_res->err_msg = "invalid uid";
@@ -200,7 +205,22 @@ static void handle_cmd_sumgr(char **__user u_filename_p, const char **carr, char
                 }
             }
         }
-    } else {
+    } else if (!strcmp(sub_cmd, "exclude_list")) {
+        uid_t uids[128];
+        int offset = 0;
+        int cnt = list_ap_mod_exclude(uids, sizeof(uids) / sizeof(uids[0]));
+        if (cnt < 0) {
+            cmd_res->rc = cnt;
+        } else {
+            for (int i = 0; i < cnt; i++) {
+                offset += sprintf(buffer + offset, "%d\n", uids[i]);
+            };
+            if (offset > 0) buffer[offset - 1] = '\0';
+            cmd_res->msg = buffer;
+        }
+    }
+#endif
+    else {
         cmd_res->err_msg = "invalid subcommand";
     }
 }
