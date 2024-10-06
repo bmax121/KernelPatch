@@ -122,7 +122,6 @@ static int allow_uids_cb(struct kstorage *kstorage, void *udata)
 
 int su_allow_uids(int is_user, uid_t *out_uids, int out_num)
 {
-    int rc = 0;
     struct
     {
         int iu;
@@ -130,8 +129,10 @@ int su_allow_uids(int is_user, uid_t *out_uids, int out_num)
         int idx;
         int out_num;
     } udata = { is_user, out_uids, 0, out_num };
+
     on_each_kstorage_elem(su_kstorage_gid, allow_uids_cb, &udata);
-    return rc;
+
+    return udata.idx;
 }
 KP_EXPORT_SYMBOL(su_allow_uids);
 
