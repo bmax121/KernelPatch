@@ -95,25 +95,27 @@ static int allow_uids_cb(struct kstorage *kstorage, void *udata)
     {
         int is_user;
         uid_t *out_uids;
+        int idx;
         int out_num;
     } *up = (typeof(up))udata;
 
+    if (up->idx >= up->out_num) {
+        return -ENOBUFS;
+    }
+
     struct su_profile *profile = (struct su_profile *)kstorage->data;
 
-    int num = 0;
-
     if (up->is_user) {
-        int cprc = compat_copy_to_user(up->out_uids + num, &profile->uid, sizeof(uid_t));
-        logkfd("uid: %d\n", profile->uid);
+        int cprc = compat_copy_to_user(up->out_uids + up->idx, &profile->uid, sizeof(uid_t));
         if (cprc <= 0) {
             logkfd("compat_copy_to_user error: %d", cprc);
             return cprc;
         }
     } else {
-        up->out_uids[num] = profile->uid;
+        up->out_uids[up->idx] = profile->uid;
     }
 
-    num++;
+    up->idx++;
 
     return 0;
 }
@@ -125,8 +127,9 @@ int su_allow_uids(int is_user, uid_t *out_uids, int out_num)
     {
         int iu;
         uid_t *up;
-        int un;
-    } udata = { is_user, out_uids, out_num };
+        int idx;
+        int out_num;
+    } udata = { is_user, out_uids, 0, out_num };
     on_each_kstorage_elem(su_kstorage_gid, allow_uids_cb, &udata);
     return rc;
 }
@@ -150,7 +153,6 @@ int su_allow_uid_profile(int is_user, uid_t uid, struct su_profile *out_profile)
             logkfd("compat_copy_to_user error: %d", rc);
             goto out;
         }
-        logkfd("%d %d %s\n", profile->uid, profile->to_uid, profile->scontext);
     } else {
         memcpy(out_profile, profile, sizeof(struct su_profile));
     }

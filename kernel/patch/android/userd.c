@@ -38,12 +38,12 @@
 
 #define ADB_FLODER "/data/adb/"
 #define AP_DIR "/data/adb/ap/"
+#define DEV_LOG_DIR "/dev/user_init_log/"
 #define AP_BIN_DIR AP_DIR "bin/"
 #define AP_LOG_DIR AP_DIR "log/"
 #define AP_MAGISKPOLICY_PATH AP_BIN_DIR "magiskpolicy"
 #define MAGISK_SCTX "u:r:magisk:s0"
 #define USER_INIT_SH_PATH "/dev/user_init.sh"
-#define USER_INIT_LOG "/dev/user_init*.log"
 
 #include "gen/user_init.c"
 
@@ -62,9 +62,9 @@ static const char user_rc_data[] = { //
     "on property:vold.decrypt=trigger_restart_framework\n"
     "    exec -- " SUPERCMD " su exec " USER_INIT_SH_PATH " %s services\n"
     "on property:sys.boot_completed=1\n"
-    // "    rm " REPLACE_RC_FILE "\n"
-    // "    rm " USER_INIT_SH_PATH "\n"
-    // "    rm " USER_INIT_LOG "\n"
+    "    rm " REPLACE_RC_FILE "\n"
+    "    rm " USER_INIT_SH_PATH "\n"
+    "    mv -f " DEV_LOG_DIR AP_LOG_DIR "\n"
     "    exec -- " SUPERCMD " su exec " USER_INIT_SH_PATH " %s boot-completed\n"
     ""
 };

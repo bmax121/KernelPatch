@@ -5,11 +5,14 @@ MAGISK_POLICY_PATH="/data/adb/ap/bin/magiskpolicy"
 SUPERCMD="truncate"
 MAGISK_SCTX="u:r:magisk:s0"
 APD_PATH="/data/adb/apd"
+DEV_LOG_DIR="/dev/user_init_log/"
 
 skey="$1"
 event="$2"
 
-LOG_FILE="/dev/user_init_""$event"".log"
+mkdir -p "$DEV_LOG_DIR"
+
+LOG_FILE="$DEV_LOG_DIR""$event"
 
 exec >>$LOG_FILE 2>&1
 
