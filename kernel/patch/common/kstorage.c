@@ -85,11 +85,9 @@ int write_kstorage(int gid, long did, void *data, int offset, int len, bool data
     spin_lock(lock);
     if (old) { // update
         list_replace_rcu(&old->list, &new->list);
-        logkfi("update %d %d\n", gid, did);
     } else { // add new one
         list_add_rcu(&new->list, head);
         group_sizes[gid]++;
-        logkfi("new %d %d\n", gid, did);
     }
     spin_unlock(lock);
 
@@ -165,10 +163,8 @@ int read_kstorage(int gid, long did, void *data, int offset, int len, bool data_
 
     if (data_is_user) {
         int cplen = compat_copy_to_user(data, pos->data + offset, min_len);
-        logkfd("%d %ld %d\n", gid, did, pos->dlen);
-
         if (cplen <= 0) {
-            logkfd("compat_copy_to_user error: %d", cplen);
+            logkfe("compat_copy_to_user error: %d", cplen);
             rc = cplen;
         }
     } else {
@@ -198,7 +194,7 @@ int list_kstorage_ids(int gid, long *ids, int idslen, bool data_is_user)
         if (data_is_user) {
             int cplen = compat_copy_to_user(ids + cnt, &pos->did, sizeof(pos->did));
             if (cplen <= 0) {
-                logkfd("compat_copy_to_user error: %d", cplen);
+                logkfe("compat_copy_to_user error: %d", cplen);
                 cnt = cplen;
             }
         } else {
@@ -222,7 +218,7 @@ int remove_kstorage(int gid, long did)
     spinlock_t *lock = &kstorage_glocks[gid];
     struct kstorage *pos = 0;
 
-    spin_lock(&kstorage_glocks[gid]);
+    spin_lock(lock);
 
     list_for_each_entry(pos, head, list)
     {
@@ -231,8 +227,6 @@ int remove_kstorage(int gid, long did)
             spin_unlock(lock);
 
             group_sizes[did]--;
-
-            logkfi("%d %ld\n", gid, did);
 
             bool async = true;
             if (async) {

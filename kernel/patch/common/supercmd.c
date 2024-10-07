@@ -143,11 +143,10 @@ static void handle_cmd_sumgr(char **__user u_filename_p, const char **carr, char
         sprintf(buffer, "%d", num);
         cmd_res->msg = buffer;
     } else if (!strcmp(sub_cmd, "list")) {
-        int num = su_allow_uid_nums();
-        uid_t uids[num]; // stack overflow
+        uid_t uids[128]; // default max size 128
         int offset = 0;
-        su_allow_uids(0, uids, num);
-
+        buffer[0] = '\0';
+        int num = su_allow_uids(0, uids, sizeof(uids) / sizeof(uids[0]));
         for (int i = 0; i < num; i++) {
             offset += sprintf(buffer + offset, "%d\n", uids[i]);
         };
@@ -208,6 +207,7 @@ static void handle_cmd_sumgr(char **__user u_filename_p, const char **carr, char
     } else if (!strcmp(sub_cmd, "exclude_list")) {
         uid_t uids[128];
         int offset = 0;
+        buffer[0] = '\0';
         int cnt = list_ap_mod_exclude(uids, sizeof(uids) / sizeof(uids[0]));
         if (cnt < 0) {
             cmd_res->rc = cnt;
@@ -396,7 +396,7 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
                 strncpy(profile.scontext, parr[pi++], sizeof(profile.scontext) - 1);
                 profile.scontext[sizeof(profile.scontext) - 1] = '\0';
             } else {
-                supercmd_echo(u_filename_p, uargv, &sp, "supercmd error: invalid scontext");
+                supercmd_echo(u_filename_p, uargv, &sp, "supercmd error: invalid scontext\n");
                 goto free;
             }
             break;

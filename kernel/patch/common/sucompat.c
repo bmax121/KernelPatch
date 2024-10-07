@@ -54,10 +54,15 @@ static int exclude_kstorage_gid = -1;
 
 int is_su_allow_uid(uid_t uid)
 {
+    int rc = 0;
     rcu_read_lock();
     const struct kstorage *ks = get_kstorage(su_kstorage_gid, uid);
+    if (IS_ERR_OR_NULL(ks) || ks->dlen <= 0) goto out;
+
     struct su_profile *profile = (struct su_profile *)ks->data;
-    int rc = profile != 0;
+    rc = profile->uid == uid;
+
+out:
     rcu_read_unlock();
     return rc;
 }
