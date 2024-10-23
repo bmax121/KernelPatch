@@ -187,15 +187,12 @@ static int find_token_index(kallsym_t *info, char *img, int32_t imglen)
 
 static int get_markers_elem_size(kallsym_t *info)
 {
-    /*
-  Before 4.20, type of kallsyms_markers is PTR which
-  depends on macro BITS_PER_LONG. When BITS_PER_LONG is 64, PTR is .quad (8
-  bytes), otherwise .long (4bytes). Since 4.20, type of kallsyms_markers is
-  .long (4 bytes)
-  */
+    if (info->kallsyms_markers_elem_size) return info->kallsyms_markers_elem_size;
+
     int32_t elem_size = info->asm_long_size;
     if (info->version.major < 4 || (info->version.major == 4 && info->version.minor < 20))
         elem_size = info->asm_PTR_size;
+
     return elem_size;
 }
 
@@ -469,48 +466,20 @@ static int find_num_syms(kallsym_t *info, char *img, int32_t imglen)
     return 0;
 }
 
-static int find_markers_1(kallsym_t *info, char *img, int32_t imglen)
+static int find_markers_internal(kallsym_t *info, char *img, int32_t imglen, int32_t elem_size)
 {
-    int32_t elem_size = get_markers_elem_size(info);
-    int32_t cand = info->kallsyms_token_table_offset - elem_size;
-    int64_t marker;
-    for (;; cand -= elem_size) {
-        marker = int_unpack(img + cand, elem_size, info->is_be);
-        if (marker) break;
-    }
-    int32_t marker_end = cand + elem_size;
-    int64_t last_marker = 0x7fffffff;
-    for (;; cand -= elem_size) {
-        marker = int_unpack(img + cand, elem_size, info->is_be);
-        if (!marker || last_marker <= marker) break;
-        last_marker = marker;
-    }
-    int32_t marker_num = (marker_end - cand) / elem_size;
-    if (marker || marker_num < KSYM_MIN_MARKER) {
-        tools_loge("find kallsyms_markers error\n");
-        return -1;
-    }
-    info->kallsyms_markers_offset = cand;
-    info->_marker_num = marker_num;
-    tools_logi("kallsyms_markers range: [0x%08x, 0x%08x), count: 0x%08x\n", cand, marker_end, marker_num);
-    return 0;
-}
+    int32_t cand = info->kallsyms_token_table_offset;
 
-static int find_markers_2(kallsym_t *info, char *img, int32_t imglen)
-{
-    int32_t elem_size = get_markers_elem_size(info);
-    int32_t cand = info->kallsyms_token_table_offset - KSYM_MIN_MARKER * elem_size;
-
-    int64_t marker, last_marker = 0x7fffffff;
+    int64_t marker, last_marker = imglen;
     int count = 0;
-    while (cand > 0x1000) {
+    while (cand > 0x10000) {
         marker = int_unpack(img + cand, elem_size, info->is_be);
         if (last_marker > marker) {
             count++;
             if (!marker && count > KSYM_MIN_MARKER) break;
         } else {
             count = 0;
-            last_marker = 0x7fffffff;
+            last_marker = imglen;
         }
 
         last_marker = marker;
@@ -525,17 +494,20 @@ static int find_markers_2(kallsym_t *info, char *img, int32_t imglen)
     int32_t marker_end = cand + count * elem_size + elem_size;
     info->kallsyms_markers_offset = cand;
     info->_marker_num = count;
+    info->kallsyms_markers_elem_size = elem_size;
 
     tools_logi("kallsyms_markers range: [0x%08x, 0x%08x), count: 0x%08x\n", cand, marker_end, count);
     return 0;
 }
 
-static inline int find_markers(kallsym_t *info, char *img, int32_t imglen)
+static int find_markers(kallsym_t *info, char *img, int32_t imglen)
 {
-    // todo: remove one
-    int rc = find_markers_1(info, img, imglen);
-    if (!rc) return rc;
-    return find_markers_2(info, img, imglen);
+    int32_t elem_size = get_markers_elem_size(info);
+    int rc = find_markers_internal(info, img, imglen, elem_size);
+    if (rc && elem_size == 8) {
+        return find_markers_internal(info, img, imglen, 4);
+    }
+    return rc;
 }
 
 static int decompress_symbol_name(kallsym_t *info, char *img, int32_t *pos_to_next, char *out_type, char *out_symbol)

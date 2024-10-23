@@ -14,6 +14,8 @@
 #define KSYM_TOKEN_NUMS 256
 #define KSYM_SYMBOL_LEN 512
 
+#define KSYM_MAX_SYMS 1000000
+
 #define KSYM_MIN_NEQ_SYMS 25600
 #define KSYM_MIN_MARKER (KSYM_MIN_NEQ_SYMS / 256)
 #define KSYM_FIND_NAMES_USED_MARKER 5
@@ -84,6 +86,7 @@ typedef struct
     char *kallsyms_token_table[KSYM_TOKEN_NUMS];
     int32_t asm_long_size;
     int32_t asm_PTR_size;
+    int32_t kallsyms_markers_elem_size;
     int32_t kallsyms_num_syms;
 
     int32_t has_relative_base;
