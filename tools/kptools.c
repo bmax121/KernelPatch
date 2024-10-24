@@ -51,7 +51,7 @@ void print_usage(char **argv)
         "  -i, --image PATH                 Kernel image path.\n"
         "  -k, --kpimg PATH                 KernelPatch image path.\n"
         "  -s, --skey KEY                   Set the superkey and save it directly in the boot.img.\n"
-        "  -S, --root-skey KEY              Set the root-superkey that uses hash verification, and the superkey can be changed dynamically.\n"
+        "  -S, --root-skey KEY              Set the root-superkey useing hash verification, and the superkey can be changed dynamically.\n"
         "  -o, --out PATH                   Patched image path.\n"
         "  -a  --addition KEY=VALUE         Add additional information.\n"
 
@@ -87,7 +87,7 @@ int main(int argc, char *argv[])
                                  { "image", required_argument, NULL, 'i' },
                                  { "kpimg", required_argument, NULL, 'k' },
                                  { "skey", required_argument, NULL, 's' },
-                                 { "skey-hash", required_argument, NULL, 'S' },
+                                 { "root-skey", required_argument, NULL, 'S' },
                                  { "out", required_argument, NULL, 'o' },
                                  { "addition", required_argument, NULL, 'a' },
 
