@@ -65,7 +65,8 @@ static const char supercmd_help[] =
     "\n"
     "Command:\n"
     "  help:                        Print this help message.\n"
-    "  version:                     Print Kernel version and KernelPatch version,\n "
+    "  version:                     Print Kernel version and KernelPatch version.\n "
+    "  buildtime:                   Print KernelPatch build time.\n "
     "    eg: 50a0a,a06 means kernel version 5.10.10, KernelPatch version 0.10.6.\n"
     "  -c <COMMAND> [...]:          Pass a single COMMAND to the default shell.\n"
     "  exec <PATH> [...]:           Execute command with full PATH.\n"
@@ -446,6 +447,9 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
     } else if (!strcmp("version", cmd)) {
         supercmd_echo(u_filename_p, uargv, &sp, "%x,%x", kver, kpver);
         goto free;
+    } else if (!strcmp("buildtime", cmd)) {
+        cmd_res.msg = get_build_time();
+        goto echo;
     } else if (!strcmp("sumgr", cmd)) {
         handle_cmd_sumgr(u_filename_p, carr, buffer, sizeof(buffer), &cmd_res);
     } else if (!strcmp("event", cmd)) {

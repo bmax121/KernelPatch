@@ -77,6 +77,11 @@ const char *get_superkey()
     return superkey;
 }
 
+const char *get_build_time()
+{
+    return setup_header->compile_time;
+}
+
 int on_each_extra_item(int (*callback)(const patch_extra_item_t *extra, const char *arg, const void *con, void *udata),
                        void *udata)
 {

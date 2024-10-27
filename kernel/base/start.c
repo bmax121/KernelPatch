@@ -27,16 +27,15 @@
 
 start_preset_t start_preset __attribute__((section(".start.data")));
 
+setup_header_t *setup_header = 0;
+KP_EXPORT_SYMBOL(setup_header);
+
 int (*kallsyms_on_each_symbol)(int (*fn)(void *data, const char *name, struct module *module, unsigned long addr),
                                void *data) = 0;
 KP_EXPORT_SYMBOL(kallsyms_on_each_symbol);
 
 unsigned long (*kallsyms_lookup_name)(const char *name) = 0;
 KP_EXPORT_SYMBOL(kallsyms_lookup_name);
-
-int (*lookup_symbol_attrs)(unsigned long addr, unsigned long *size, unsigned long *offset, char *modname,
-                           char *name) = 0;
-KP_EXPORT_SYMBOL(lookup_symbol_attrs);
 
 void (*printk)(const char *fmt, ...) = 0;
 KP_EXPORT_SYMBOL(printk);
@@ -396,23 +395,22 @@ static void start_init(uint64_t kimage_voff, uint64_t linear_voff)
     log_boot(KERNEL_PATCH_BANNER);
 
     endian = *(unsigned char *)&(uint16_t){ 1 } ? little : big;
-    setup_header_t *header = &start_preset.header;
+    setup_header = &start_preset.header;
     kver = VERSION(start_preset.kernel_version.major, start_preset.kernel_version.minor,
                    start_preset.kernel_version.patch);
-    kpver = VERSION(header->kp_version.major, header->kp_version.minor, header->kp_version.patch);
+    kpver = VERSION(setup_header->kp_version.major, setup_header->kp_version.minor, setup_header->kp_version.patch);
 
     log_boot("Kernel pa: %llx\n", kernel_pa);
     log_boot("Kernel va: %llx\n", kernel_va);
 
     log_boot("Kernel Version: %x\n", kver);
     log_boot("KernelPatch Version: %x\n", kpver);
-    log_boot("KernelPatch Config: %llx\n", header->config_flags);
-    log_boot("KernelPatch Compile Time: %s\n", (uint64_t)header->compile_time);
+    log_boot("KernelPatch Config: %llx\n", setup_header->config_flags);
+    log_boot("KernelPatch Compile Time: %s\n", (uint64_t)setup_header->compile_time);
 
     log_boot("KernelPatch link base: %llx, runtime base: %llx\n", link_base_addr, runtime_base_addr);
 
     kallsyms_on_each_symbol = (typeof(kallsyms_on_each_symbol))kallsyms_lookup_name("kallsyms_on_each_symbol");
-    lookup_symbol_attrs = (typeof(lookup_symbol_attrs))kallsyms_lookup_name("lookup_symbol_attrs");
 
     uint64_t tcr_el1;
     asm volatile("mrs %0, tcr_el1" : "=r"(tcr_el1));

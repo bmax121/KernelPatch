@@ -90,6 +90,21 @@ static inline uint32_t sc_k_ver(const char *key)
 }
 
 /**
+ * @brief KernelPatch build time
+ * 
+ * @param key : superkey or 'su' string if caller uid is su allowed 
+ * @param out_buildtime 
+ * @param outlen 
+ * @return long 
+ */
+static inline long sc_k_ver(const char *key, char *out_buildtime, int outlen)
+{
+    if (!key || !key[0]) return -EINVAL;
+    long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_BUILD_TIME, out_buildtime, outlen));
+    return (uint32_t)ret;
+}
+
+/**
  * @brief Substitute user of current thread
  * 
  * @param key : superkey or 'su' string if caller uid is su allowed 

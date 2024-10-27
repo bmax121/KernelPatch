@@ -25,6 +25,7 @@ static inline long hash_key(const char *key)
 
 #define SUPERCALL_KERNELPATCH_VER 0x1008
 #define SUPERCALL_KERNEL_VER 0x1009
+#define SUPERCALL_BUILD_TIME 0x1010
 
 #define SUPERCALL_SKEY_GET 0x100a
 #define SUPERCALL_SKEY_SET 0x100b

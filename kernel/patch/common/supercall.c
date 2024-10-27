@@ -64,6 +64,15 @@ static long call_klog(const char __user *arg1)
     return 0;
 }
 
+static long call_buildtime(char __user *out_buildtime, int u_len)
+{
+    const char *buildtime = get_build_time();
+    int len = strlen(buildtime);
+    if (len >= u_len) return -ENOMEM;
+    int rc = compat_copy_to_user(out_buildtime, buildtime, len + 1);
+    return rc;
+}
+
 static long call_kpm_load(const char __user *arg1, const char *__user arg2, void *__user reserved)
 {
     char path[1024], args[KPM_ARGS_LEN];
@@ -144,7 +153,7 @@ static long call_skey_get(char *__user out_key, int out_len)
     const char *key = get_superkey();
     int klen = strlen(key);
     if (klen >= out_len) return -ENOMEM;
-    int rc = compat_copy_to_user(out_key, get_superkey(), klen + 1);
+    int rc = compat_copy_to_user(out_key, key, klen + 1);
     return rc;
 }
 
@@ -263,6 +272,8 @@ static long supercall(int is_key_auth, long cmd, long arg1, long arg2, long arg3
         return kpver;
     case SUPERCALL_KERNEL_VER:
         return kver;
+    case SUPERCALL_BUILD_TIME:
+        return call_buildtime((char *__user)arg1, (int)arg2);
     }
 
     switch (cmd) {
