@@ -97,7 +97,7 @@ static inline uint32_t sc_k_ver(const char *key)
  * @param outlen 
  * @return long 
  */
-static inline long sc_k_ver(const char *key, char *out_buildtime, int outlen)
+static inline long sc_kp_buildtime(const char *key, char *out_buildtime, int outlen)
 {
     if (!key || !key[0]) return -EINVAL;
     long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_BUILD_TIME, out_buildtime, outlen));
@@ -149,7 +149,8 @@ static inline long sc_su_task(const char *key, pid_t tid, struct su_profile *pro
 static inline long sc_kstorage_write(const char *key, int gid, long did, void *data, int offset, int dlen)
 {
     if (!key || !key[0]) return -EINVAL;
-    long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_KSTORAGE_WRITE), gid, did, data, (((long)offset << 32) | dlen));
+    long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_KSTORAGE_WRITE), gid, did, data,
+                       (((long)offset << 32) | dlen));
     return ret;
 }
 
@@ -166,10 +167,10 @@ static inline long sc_kstorage_write(const char *key, int gid, long did, void *d
 static inline long sc_kstorage_read(const char *key, int gid, long did, void *out_data, int offset, int dlen)
 {
     if (!key || !key[0]) return -EINVAL;
-    long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_KSTORAGE_READ), gid, did, out_data, (((long)offset << 32) | dlen));
+    long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_KSTORAGE_READ), gid, did, out_data,
+                       (((long)offset << 32) | dlen));
     return ret;
 }
-
 
 /**
  * @brief 
@@ -187,7 +188,6 @@ static inline long sc_kstorage_list_ids(const char *key, int gid, long *ids, int
     return ret;
 }
 
-
 /**
  * @brief 
  * 
@@ -203,7 +203,6 @@ static inline long sc_kstorage_remove(const char *key, int gid, long did)
     return ret;
 }
 
-
 /**
  * @brief 
  * 
@@ -214,13 +213,12 @@ static inline long sc_kstorage_remove(const char *key, int gid, long did)
  */
 static inline long sc_set_ap_mod_exclude(const char *key, uid_t uid, int exclude)
 {
-    if(exclude) {
+    if (exclude) {
         return sc_kstorage_write(key, KSTORAGE_EXCLUDE_LIST_GROUP, uid, &exclude, 0, sizeof(exclude));
     } else {
         return sc_kstorage_remove(key, SUPERCALL_KSTORAGE_REMOVE, uid, gid);
     }
 }
-
 
 /**
  * @brief 
@@ -527,7 +525,6 @@ static inline long sc_su_get_safemode(const char *key)
     if (!key || !key[0]) return -EINVAL;
     return syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_SU_GET_SAFEMODE));
 }
-
 
 static inline long sc_bootlog(const char *key)
 {
