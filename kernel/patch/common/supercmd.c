@@ -65,7 +65,7 @@ static const char supercmd_help[] =
     "\n"
     "Command:\n"
     "  help:                        Print this help message.\n"
-    "  version:                     Print Kernel version and KernelPatch version.\n "
+    "  version:                     Print Kernel version and KernelPatch version.\n"
     "  buildtime:                   Print KernelPatch build time.\n "
     "    eg: 50a0a,a06 means kernel version 5.10.10, KernelPatch version 0.10.6.\n"
     "  -c <COMMAND> [...]:          Pass a single COMMAND to the default shell.\n"
