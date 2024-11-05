@@ -20,3 +20,9 @@ add_executable(
 	kptools 
 	${SOURCES}
 )
+
+find_package(ZLIB REQUIRED)
+
+target_link_libraries(kptools PRIVATE ${ZLIB_LIBRARIES})
+
+target_include_directories(kptools PRIVATE ${ZLIB_INCLUDE_DIRS})

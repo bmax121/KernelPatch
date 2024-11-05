@@ -13,6 +13,8 @@
 #include <assert.h>
 #include <string.h>
 #include <ctype.h>
+#include <unistd.h>
+#include <zlib.h>
 
 #include "patch.h"
 #include "kallsym.h"
@@ -23,6 +25,10 @@
 #include "symbol.h"
 #include "kpm.h"
 #include "sha256.h"
+
+#define IKCFG_ST "IKCFG_ST"
+#define IKCFG_ED "IKCFG_ED"
+#define BUFFER_SIZE 4096
 
 void read_kernel_file(const char *path, kernel_file_t *kernel_file)
 {
@@ -336,6 +342,85 @@ static void extra_append(char *kimg, const void *data, int len, int *offset)
     *offset += len;
 }
 
+long search_and_return_offset(const char *filename, const char *search_string) {
+    FILE *file = fopen(filename, "rb");
+    if (file == NULL) {
+        tools_loge_exit("Error opening file");
+        return -1;
+    }
+
+    char buffer[BUFFER_SIZE];
+    size_t search_string_len = strlen(search_string);
+    long offset = -1;
+    size_t bytes_read;
+
+    while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
+        for (size_t i = 0; i < bytes_read - search_string_len + 1; ++i) {
+            if (memcmp(buffer + i, search_string, search_string_len) == 0) {
+                offset = ftell(file) - (long)bytes_read + (long)i;
+                fclose(file);
+                return offset;
+            }
+        }
+    }
+
+    fclose(file);
+    return -1;
+}
+
+int decompress_gzip(FILE *input, FILE *output, int *config_kallsyms_found) {
+    z_stream strm;
+    strm.zalloc = Z_NULL;
+    strm.zfree = Z_NULL;
+    strm.opaque = Z_NULL;
+    strm.avail_in = 0;
+    strm.next_in = Z_NULL;
+
+    if (inflateInit2(&strm, 15 + 32) != Z_OK) {
+        return -1;
+    }
+
+    int ret;
+    char in[BUFFER_SIZE];
+    char out[BUFFER_SIZE];
+
+    while (1) {
+        strm.avail_in = fread(in, 1, sizeof(in), input);
+        if (strm.avail_in == 0) {
+            break;
+        }
+        strm.next_in = (unsigned char *)in;
+
+        do {
+            strm.avail_out = sizeof(out);
+            strm.next_out = (unsigned char *)out;
+            ret = inflate(&strm, Z_NO_FLUSH);
+            if (ret == Z_NEED_DICT || ret == Z_DATA_ERROR || ret == Z_MEM_ERROR) {
+                inflateEnd(&strm);
+                return -1;
+            }
+            size_t have = sizeof(out) - strm.avail_out;
+            if (have > 0) {
+                char *ptr = out;
+                char *end = ptr + have;
+                while (ptr < end) {
+                    if (*ptr == 'C' && strncmp(ptr, "CONFIG_KALLSYMS=y", 16) == 0) {
+                        *config_kallsyms_found = 1;
+                    }
+                    ptr++;
+                }
+                fwrite(out, 1, have, output);
+            }
+        } while (strm.avail_out == 0);
+    }
+
+    if (inflateEnd(&strm) != Z_OK) {
+        return -1;
+    }
+
+    return 0;
+}
+
 int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey,
                      bool root_key, const char **additional, extra_config_t *extra_configs, int extra_config_num)
 {
@@ -357,6 +442,49 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     // kimg base info
     kernel_info_t *kinfo = &pimg.kinfo;
     int align_kernel_size = align_ceil(kinfo->kernel_size, SZ_4K);
+    
+    // check kallsyms enable
+    long kcfg_start = search_and_return_offset(kimg_path, IKCFG_ST);
+    if (kcfg_start == -1) {
+        tools_loge_exit("Cannot find kernel config start.\n");
+        return 1;
+    }
+
+    long kcfg_end = search_and_return_offset(kimg_path, IKCFG_ED);
+    if (kcfg_end == -1) {
+        tools_loge_exit("Cannot find kernel config end.\n");
+        return 1;
+    }
+
+    FILE *input = fopen(kimg_path, "rb");
+    if (!input) {
+        tools_loge_exit("Failed to open input file");
+        return 1;
+    }
+    fseek(input, kcfg_start + 8, SEEK_SET);
+
+    FILE *output = tmpfile();
+    if (!output) {
+        tools_loge_exit("Failed to create temporary file");
+        fclose(input);
+        return 1;
+    }
+
+    int config_kallsyms_found = 0;
+    if (decompress_gzip(input, output, &config_kallsyms_found) != 0) {
+        tools_loge_exit("Failed to decompress GZIP data\n");
+        fclose(input);
+        fclose(output);
+        return 1;
+    }
+
+    fclose(input);
+    fclose(output);
+
+    if (!config_kallsyms_found) {
+        tools_loge_exit("CONFIG_KALLSYMS has NOT enabled\n");
+        return 1;
+    }
 
     // kimg kallsym
     char *kallsym_kimg = (char *)malloc(pimg.ori_kimg_len);
