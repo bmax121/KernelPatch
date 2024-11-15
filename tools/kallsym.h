@@ -119,6 +119,7 @@ typedef struct
 
 int analyze_kallsym_info(kallsym_t *info, char *img, int32_t imglen, enum arch_type arch, int32_t is_64);
 int dump_all_symbols(kallsym_t *info, char *img);
+int dump_all_ikconfig(char *img, int32_t imglen);
 int get_symbol_index_offset(kallsym_t *info, char *img, int32_t index);
 int get_symbol_offset_and_size(kallsym_t *info, char *img, char *symbol, int32_t *size);
 int get_symbol_offset(kallsym_t *info, char *img, char *symbol);

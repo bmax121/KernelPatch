@@ -253,6 +253,7 @@ jobs:
           install: >-
             msys/make
             msys/gcc
+            msys/zlib-devel
       - name: Copyfile
         shell: pwsh
         run: |
@@ -280,53 +281,6 @@ jobs:
             kptools-msys2-win.7z
           allowUpdates: true
           replacesArtifacts: true
-
-  Build-kptools-windows-llvm:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Check out
-        uses: actions/checkout@v3
-      - name: Install mingw32 cross toolchains
-        run: |
-          MINGW_LLVM_URL="https://github.com/mstorsjo/llvm-mingw/releases/download/20231128/llvm-mingw-20231128-msvcrt-ubuntu-20.04-x86_64.tar.xz"
-          mkdir -p $HOME/mingw-llvm
-          wget $MINGW_LLVM_URL -O $HOME/mingw-llvm/llvm.tar.xz
-          cd $HOME/mingw-llvm
-          tar -xvf llvm.tar.xz --strip-components 1
-      - name: Generate version
-        id: parse_version
-        run: |
-          MAJOR=$(grep '#define MAJOR' version | awk '{print $3}')
-          MINOR=$(grep '#define MINOR' version | awk '{print $3}')
-          PATCH=$(grep '#define PATCH' version | awk '{print $3}')
-          VERSION="$MAJOR.$MINOR.$PATCH"
-          echo "Generated Version: $VERSION"
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-      - name: Build kptools
-        run: |
-          export PATH="$HOME/mingw-llvm/bin:$PATH"
-          export ANDROID=1
-          ABIS="x86_64 i686 aarch64 armv7"
-          for i in $ABIS; do
-          make -C kernel hdr TARGET_COMPILE=placeholder
-          echo "- Compiling kptools-$i-win.exe"
-          make -C tools CC=$i-w64-mingw32-clang
-          mv tools/kptools.exe kptools-$i-win.exe
-          make -C tools clean
-          done
-          7za a kptools-llvm-win.zip -tZIP *.exe
-      - name: Release
-        uses: ncipollo/release-action@v1.12.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ steps.parse_version.outputs.VERSION }}
-          artifacts: |
-            kptools-llvm-win.zip
-          allowUpdates: true
-          replacesArtifacts: true
-          omitBodyDuringUpdate: true
 
   Build-kptools-mac:
     runs-on: macos-latest

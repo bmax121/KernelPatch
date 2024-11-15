@@ -17,6 +17,10 @@
 #include "insn.h"
 #include "common.h"
 
+#define IKCFG_ST "IKCFG_ST"
+#define IKCFG_ED "IKCFG_ED"
+#include "zlib.h"
+
 #ifdef _WIN32
 #include <string.h>
 static void *memmem(const void *haystack, size_t haystack_len, const void *const needle, const size_t needle_len)
@@ -959,6 +963,74 @@ int dump_all_symbols(kallsym_t *info, char *img)
         int32_t offset = get_symbol_index_offset(info, img, i);
         fprintf(stdout, "0x%08x %c %s\n", offset, type, symbol);
     }
+    return 0;
+}
+int decompress_data(const unsigned char *compressed_data, size_t compressed_size) {
+     FILE *temp = fopen("temp.gz", "wb");
+    if (!temp) {
+        fprintf(stderr, "Failed to create temp file\n");
+        return -1;
+    }
+
+    fwrite(compressed_data, 1, compressed_size, temp);
+    fclose(temp);
+
+    gzFile gz = gzopen("temp.gz", "rb");
+    if (!gz) {
+        fprintf(stderr, "Failed to open temp file for decompression\n");
+        return -1;
+    }
+
+    char buffer[1024];
+    int bytes_read;
+    while ((bytes_read = gzread(gz, buffer, sizeof(buffer))) > 0) {
+        fwrite(buffer, 1, bytes_read, stdout);  
+    }
+
+    gzclose(gz);
+    return 0;
+}
+
+int dump_all_ikconfig(char *img, int32_t imglen)
+{
+
+    char *pos_start = memmem(img, imglen, IKCFG_ST, strlen(IKCFG_ST));
+    if (pos_start == NULL) {
+        fprintf(stderr, "Cannot find kernel config start (IKCFG_ST).\n");
+        return 1;
+    }
+    size_t kcfg_start = pos_start - img + 8;  
+
+    // 查找 "IKCFG_ED"
+    char *pos_end = memmem(img, imglen, IKCFG_ED, strlen(IKCFG_ED));
+    if (pos_end == NULL) {
+        fprintf(stderr, "Cannot find kernel config end (IKCFG_ED).\n");
+        return 1;
+    }
+    size_t kcfg_end = pos_end - img - 1;  
+    size_t kcfg_bytes = kcfg_end - kcfg_start + 1;
+
+    printf("Kernel config start: %zu, end: %zu, bytes: %zu\n", kcfg_start, kcfg_end, kcfg_bytes);
+
+
+    unsigned char *extracted_data = (unsigned char *)malloc(kcfg_bytes);
+    if (!extracted_data) {
+        fprintf(stderr, "Memory allocation for extracted data failed.\n");
+        return 1;
+    }
+
+    memcpy(extracted_data, img + kcfg_start, kcfg_bytes);
+
+
+
+    int ret = decompress_data(extracted_data, kcfg_bytes);
+
+
+
+
+    free(extracted_data);
+
+
     return 0;
 }
 
