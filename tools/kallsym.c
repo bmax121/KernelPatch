@@ -103,6 +103,7 @@ static int find_token_table(kallsym_t *info, char *img, int32_t imglen)
     char nums_syms[20] = { '\0' };
     for (int32_t i = 0; i < 10; i++)
         nums_syms[i * 2] = '0' + i;
+
     // We just check first 10 letters, not all letters are guaranteed to appear,
     // In fact, the previous numbers may not always appear too.
     char letters_syms[20] = { '\0' };
@@ -136,7 +137,11 @@ static int find_token_table(kallsym_t *info, char *img, int32_t imglen)
     }
     int32_t offset = pos + 2 - img;
 
+    // align
+    offset = align_ceil(offset, 4);
+
     info->kallsyms_token_table_offset = offset;
+
     tools_logi("kallsyms_token_table offset: 0x%08x\n", offset);
 
     // rebuild token_table
@@ -965,8 +970,9 @@ int dump_all_symbols(kallsym_t *info, char *img)
     }
     return 0;
 }
-int decompress_data(const unsigned char *compressed_data, size_t compressed_size) {
-     FILE *temp = fopen("temp.gz", "wb");
+int decompress_data(const unsigned char *compressed_data, size_t compressed_size)
+{
+    FILE *temp = fopen("temp.gz", "wb");
     if (!temp) {
         fprintf(stderr, "Failed to create temp file\n");
         return -1;
@@ -984,7 +990,7 @@ int decompress_data(const unsigned char *compressed_data, size_t compressed_size
     char buffer[1024];
     int bytes_read;
     while ((bytes_read = gzread(gz, buffer, sizeof(buffer))) > 0) {
-        fwrite(buffer, 1, bytes_read, stdout);  
+        fwrite(buffer, 1, bytes_read, stdout);
     }
 
     gzclose(gz);
@@ -993,13 +999,12 @@ int decompress_data(const unsigned char *compressed_data, size_t compressed_size
 
 int dump_all_ikconfig(char *img, int32_t imglen)
 {
-
     char *pos_start = memmem(img, imglen, IKCFG_ST, strlen(IKCFG_ST));
     if (pos_start == NULL) {
         fprintf(stderr, "Cannot find kernel config start (IKCFG_ST).\n");
         return 1;
     }
-    size_t kcfg_start = pos_start - img + 8;  
+    size_t kcfg_start = pos_start - img + 8;
 
     // 查找 "IKCFG_ED"
     char *pos_end = memmem(img, imglen, IKCFG_ED, strlen(IKCFG_ED));
@@ -1007,11 +1012,10 @@ int dump_all_ikconfig(char *img, int32_t imglen)
         fprintf(stderr, "Cannot find kernel config end (IKCFG_ED).\n");
         return 1;
     }
-    size_t kcfg_end = pos_end - img - 1;  
+    size_t kcfg_end = pos_end - img - 1;
     size_t kcfg_bytes = kcfg_end - kcfg_start + 1;
 
     printf("Kernel config start: %zu, end: %zu, bytes: %zu\n", kcfg_start, kcfg_end, kcfg_bytes);
-
 
     unsigned char *extracted_data = (unsigned char *)malloc(kcfg_bytes);
     if (!extracted_data) {
@@ -1021,15 +1025,9 @@ int dump_all_ikconfig(char *img, int32_t imglen)
 
     memcpy(extracted_data, img + kcfg_start, kcfg_bytes);
 
-
-
     int ret = decompress_data(extracted_data, kcfg_bytes);
 
-
-
-
     free(extracted_data);
-
 
     return 0;
 }
