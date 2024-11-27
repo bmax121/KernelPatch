@@ -65,7 +65,7 @@ static const char user_rc_data[] = { //
     "    exec -- " SUPERCMD " su exec " USER_INIT_SH_PATH " %s boot-completed\n"
     "    rm " REPLACE_RC_FILE "\n"
     "    rm " USER_INIT_SH_PATH "\n"
-    "    mv -f " DEV_LOG_DIR AP_LOG_DIR "\n"
+    "    exec -- " SUPERCMD " su -c \"mv -f " DEV_LOG_DIR " " AP_LOG_DIR "\"\n"
     ""
 };
 
