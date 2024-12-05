@@ -270,8 +270,11 @@ jobs:
       - name: Copyfile2
         shell: pwsh
         run: |
-          cp .\tools\kptools.exe .\tools\kptools-msys2.exe
-          7z a kptools-msys2-win .\tools\kptools-msys2.exe D:\a\_temp\msys64\usr\bin\msys-2.0.dll
+          mkdir .\win
+          cp .\tools\kptools.exe .\win\kptools-msys2.exe
+          cp D:\a\_temp\msys64\usr\bin\msys-2.0.dll .\win
+          cp D:\a\_temp\msys64\usr\bin\msys-z.dll .\win
+          7z a kptools-msys2-win .\win 
       - name: Release
         uses: ncipollo/release-action@v1.12.0
         with:
