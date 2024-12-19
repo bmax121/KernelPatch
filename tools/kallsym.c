@@ -41,8 +41,11 @@ static int find_linux_banner(kallsym_t *info, char *img, int32_t imglen)
             info->linux_banner_offset[info->banner_num++] = (int32_t)(banner - img);
             tools_logi("linux_banner %d: %s", info->banner_num, banner);
             tools_logi("linux_banner offset: 0x%lx\n", banner - img);
+            break; 
         }
     }
+    //check banner_num
+    if(info->banner_num <=0)tools_loge_exit("not found bannber");
     banner = img + info->linux_banner_offset[info->banner_num - 1];
 
     char *uts_release_start = banner + prefix_len;
