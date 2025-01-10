@@ -39,6 +39,37 @@ static void *memmem(const void *haystack, size_t haystack_len, const void *const
 }
 #endif
 
+//copy from  https://github.com/gcc-mirror/gcc/blob/master/libiberty/memmem.c
+static /* Return the first occurrence of NEEDLE in HAYSTACK.  */
+void *
+gcc_libc_memmem (const void *haystack, size_t haystack_len, const void *needle,
+	size_t needle_len)
+{
+  const char *begin;
+  const char *const last_possible
+    = (const char *) haystack + haystack_len - needle_len;
+
+  if (needle_len == 0)
+    /* The first occurrence of the empty string is deemed to occur at
+       the beginning of the string.  */
+    return (void *) haystack;
+
+  /* Sanity check, otherwise the loop might search through the whole
+     memory.  */
+  if (__builtin_expect (haystack_len < needle_len, 0))
+    return NULL;
+
+  for (begin = (const char *) haystack; begin <= last_possible; ++begin)
+    if (begin[0] == ((const char *) needle)[0] &&
+	!memcmp ((const void *) &begin[1],
+		 (const void *) ((const char *) needle + 1),
+		 needle_len - 1))
+      return (void *) begin;
+
+  return NULL;
+}
+void *(*memmem_ptr)(const void *haystack, size_t haystack_len, const void *needle, size_t needle_len);
+
 static int find_linux_banner(kallsym_t *info, char *img, int32_t imglen)
 {
     /*
@@ -58,12 +89,16 @@ static int find_linux_banner(kallsym_t *info, char *img, int32_t imglen)
     char *imgend = img + imglen;
     char *banner = (char *)img;
     info->banner_num = 0;
-    while ((banner = (char *)memmem(banner + 1, imgend - banner, linux_banner_prefix, prefix_len)) != NULL) {
+    
+    memmem_ptr = memmem;
+    #ifdef  __ANDROID__
+        memmem_ptr = gcc_libc_memmem;
+    #endif
+    while ((banner = (char *)memmem_ptr(banner + 1, imgend - banner, linux_banner_prefix, prefix_len)) != NULL) {
         if (isdigit(*(banner + prefix_len)) && *(banner + prefix_len + 1) == '.') {
             info->linux_banner_offset[info->banner_num++] = (int32_t)(banner - img);
             tools_logi("linux_banner %d: %s", info->banner_num, banner);
             tools_logi("linux_banner offset: 0x%lx\n", banner - img);
-            break;
         }
     }
     if(info->banner_num<=0) {
