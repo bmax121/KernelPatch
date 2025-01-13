@@ -73,7 +73,7 @@ jobs:
           name: kpimg.elf
 
       - name: Release
-        uses: ncipollo/release-action@v1.14.0
+        uses: ncipollo/release-action@v1.15.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
@@ -115,7 +115,7 @@ jobs:
           zip -r kpuser.zip user
 
       - name: Release
-        uses: ncipollo/release-action@v1.14.0
+        uses: ncipollo/release-action@v1.15.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
@@ -187,7 +187,7 @@ jobs:
           mv kptools kptools-android
 
       - name: Release
-        uses: ncipollo/release-action@v1.14.0
+        uses: ncipollo/release-action@v1.15.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
@@ -232,7 +232,7 @@ jobs:
           mv kptools kptools-linux
 
       - name: Release
-        uses: ncipollo/release-action@v1.14.0
+        uses: ncipollo/release-action@v1.15.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
@@ -286,7 +286,7 @@ jobs:
           cp .\tools\kptools.exe .\tools\kptools-msys2.exe
           7z a kptools-msys2-win .\tools\kptools-msys2.exe D:\a\_temp\msys64\usr\bin\msys-2.0.dll
       - name: Release
-        uses: ncipollo/release-action@v1.14.0
+        uses: ncipollo/release-action@v1.15.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ env.VERSION }}
@@ -332,7 +332,7 @@ jobs:
           done
           7za a kptools-llvm-win.zip -tZIP *.exe
       - name: Release
-        uses: ncipollo/release-action@v1.14.0
+        uses: ncipollo/release-action@v1.15.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
@@ -374,7 +374,7 @@ jobs:
           make
           mv kptools kptools-mac
       - name: Release
-        uses: ncipollo/release-action@v1.14.0
+        uses: ncipollo/release-action@v1.15.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}

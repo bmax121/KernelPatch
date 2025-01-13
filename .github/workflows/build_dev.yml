@@ -81,7 +81,7 @@ jobs:
           name: kpimg.elf
 
       - name: Release
-        uses: ncipollo/release-action@v1.14.0
+        uses: ncipollo/release-action@v1.15.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}-dev
@@ -123,7 +123,7 @@ jobs:
           zip -r kpuser.zip user
 
       - name: Release
-        uses: ncipollo/release-action@v1.14.0
+        uses: ncipollo/release-action@v1.15.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}-dev
@@ -196,7 +196,7 @@ jobs:
           mv kptools kptools-android
 
       - name: Release
-        uses: ncipollo/release-action@v1.14.0
+        uses: ncipollo/release-action@v1.15.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}-dev
@@ -242,7 +242,7 @@ jobs:
           mv kptools kptools-linux
 
       - name: Release
-        uses: ncipollo/release-action@v1.14.0
+        uses: ncipollo/release-action@v1.15.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}-dev
@@ -285,7 +285,7 @@ jobs:
           make
           mv kptools kptools-mac
       - name: Release
-        uses: ncipollo/release-action@v1.14.0
+        uses: ncipollo/release-action@v1.15.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}-dev
