@@ -58,7 +58,7 @@ static int find_linux_banner(kallsym_t *info, char *img, int32_t imglen)
     char *imgend = img + imglen;
     char *banner = (char *)img;
     info->banner_num = 0;
-    while ((banner = (char *)memmem(banner + 1, imgend - banner, linux_banner_prefix, prefix_len)) != NULL) {
+    while ((banner = (char *)memmem(banner + 1, imgend - banner - 1, linux_banner_prefix, prefix_len)) != NULL) {
         if (isdigit(*(banner + prefix_len)) && *(banner + prefix_len + 1) == '.') {
             info->linux_banner_offset[info->banner_num++] = (int32_t)(banner - img);
             tools_logi("linux_banner %d: %s", info->banner_num, banner);
