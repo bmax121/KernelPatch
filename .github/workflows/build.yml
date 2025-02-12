@@ -82,7 +82,7 @@ jobs:
           generateReleaseNotes: true
           allowUpdates: true
           replacesArtifacts: true
-          prerelease: true
+ 
 
   Release-user-lib:
     runs-on: ubuntu-latest
@@ -118,7 +118,7 @@ jobs:
             kpuser.zip
           allowUpdates: true
           replacesArtifacts: true
-          prerelease: true
+ 
 
   Build-android-kptools:
     runs-on: ubuntu-latest
@@ -175,7 +175,7 @@ jobs:
             tools/build/android/kptools-android
           allowUpdates: true
           replacesArtifacts: true
-          prerelease: true
+ 
 
   Build-kptools-linux:
     runs-on: ubuntu-latest
@@ -218,7 +218,7 @@ jobs:
             tools/build/kptools-linux
           allowUpdates: true
           replacesArtifacts: true
-          prerelease: true
+ 
 
   Build-kptools-mac:
     runs-on: macos-latest
@@ -260,4 +260,4 @@ jobs:
             tools/build/kptools-mac
           allowUpdates: true
           replacesArtifacts: true
-          prerelease: true
+ 
