@@ -11,7 +11,7 @@ jobs:
       contents: write
     steps:
       - name: Check out
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: "recursive"
           fetch-depth: 0
@@ -24,13 +24,6 @@ jobs:
           VERSION="$MAJOR.$MINOR.$PATCH"
           echo "Generated Version: $VERSION"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Extract branch name
-        shell: bash
-        id: extract_branch
-        run: |
-          echo "BRANCH=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
-
       - name: Install Compiler
         run: |
           curl -o arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-elf.tar.xz https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu/12.2.rel1/binrel/arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-elf.tar.xz
@@ -68,7 +61,7 @@ jobs:
           mv syscallhook.kpm demo-syscallhook.kpm
 
       - name: Upload elf
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           path: |
             kernel/kpimg.elf-linux
@@ -76,7 +69,7 @@ jobs:
           name: kpimg.elf
 
       - name: Release
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@v1.14.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
@@ -87,10 +80,9 @@ jobs:
             kpms/demo-inlinehook/demo-inlinehook.kpm
             kpms/demo-syscallhook/demo-syscallhook.kpm
           generateReleaseNotes: true
-          omitBodyDuringUpdate: true
           allowUpdates: true
-          makeLatest: true
           replacesArtifacts: true
+          prerelease: true
 
   Release-user-lib:
     runs-on: ubuntu-latest
@@ -98,7 +90,7 @@ jobs:
       contents: write
     steps:
       - name: Check out
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Generate version
         id: parse_version
         run: |
@@ -118,7 +110,7 @@ jobs:
           zip -r kpuser.zip user
 
       - name: Release
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@v1.14.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
@@ -126,7 +118,7 @@ jobs:
             kpuser.zip
           allowUpdates: true
           replacesArtifacts: true
-          omitBodyDuringUpdate: true
+          prerelease: true
 
   Build-android-kptools:
     runs-on: ubuntu-latest
@@ -134,7 +126,7 @@ jobs:
       contents: write
     steps:
       - name: Check out
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: "recursive"
           fetch-depth: 0
@@ -175,7 +167,7 @@ jobs:
           mv kptools kptools-android
 
       - name: Release
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@v1.14.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
@@ -183,7 +175,7 @@ jobs:
             tools/build/android/kptools-android
           allowUpdates: true
           replacesArtifacts: true
-          omitBodyDuringUpdate: true
+          prerelease: true
 
   Build-kptools-linux:
     runs-on: ubuntu-latest
@@ -191,7 +183,7 @@ jobs:
       contents: write
     steps:
       - name: Check out
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Generate version
         id: parse_version
         run: |
@@ -218,7 +210,7 @@ jobs:
           mv kptools kptools-linux
 
       - name: Release
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@v1.14.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
@@ -226,64 +218,7 @@ jobs:
             tools/build/kptools-linux
           allowUpdates: true
           replacesArtifacts: true
-          omitBodyDuringUpdate: true
-
-  Build-kptools-windows-msys2:
-    runs-on: windows-2022
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-      - name: Generate version
-        shell: pwsh
-        run: |
-          $MAJOR = (Select-String -Path version -Pattern '#define MAJOR').Line.Split(' ')[2]
-          $MINOR = (Select-String -Path version -Pattern '#define MINOR').Line.Split(' ')[2]
-          $PATCH = (Select-String -Path version -Pattern '#define PATCH').Line.Split(' ')[2]
-          $VERSION = "$MAJOR.$MINOR.$PATCH"
-          Write-Output "Generated Version: $VERSION"
-          "VERSION=$VERSION" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "VERSION=$VERSION"
-      - uses: msys2/setup-msys2@v2
-        with:
-          update: true
-          msystem: ucrt64
-          path-type: inherit
-          install: >-
-            msys/make
-            msys/gcc
-            msys/zlib-devel
-      - name: Copyfile
-        shell: pwsh
-        run: |
-          cp .\kernel\include\preset.h .\tools\
-          cd tools
-          (Get-Content -Path "Makefile") -replace '\$\(CC\)', " x86_64-pc-msys-gcc.exe" | Set-Content -Path "Makefile"
-          (Get-Content -Path "Makefile") -replace '\${CC}', "x86_64-pc-msys-gcc.exe" | Set-Content -Path "Makefile"
-      - name: build
-        shell: cmd
-        run: |
-          cd tools
-          msys2 -c 'make'
-
-      - name: Copyfile2
-        shell: pwsh
-        run: |
-          mkdir .\win
-          cp .\tools\kptools.exe .\win\kptools-msys2.exe
-          cp D:\a\_temp\msys64\usr\bin\msys-2.0.dll .\win
-          cp D:\a\_temp\msys64\usr\bin\msys-z.dll .\win
-          7z a kptools-msys2-win .\win 
-      - name: Release
-        uses: ncipollo/release-action@v1.12.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ env.VERSION }}
-          artifacts: |
-            kptools-msys2-win.7z
-          allowUpdates: true
-          replacesArtifacts: true
+          prerelease: true
 
   Build-kptools-mac:
     runs-on: macos-latest
@@ -291,7 +226,7 @@ jobs:
       contents: write
     steps:
       - name: Check out
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Generate version
         id: parse_version
         run: |
@@ -317,7 +252,7 @@ jobs:
           make
           mv kptools kptools-mac
       - name: Release
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@v1.14.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
@@ -325,4 +260,4 @@ jobs:
             tools/build/kptools-mac
           allowUpdates: true
           replacesArtifacts: true
-          omitBodyDuringUpdate: true
+          prerelease: true
