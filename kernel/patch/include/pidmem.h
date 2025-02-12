@@ -8,7 +8,7 @@
 
 #include <ktypes.h>
 
-phys_addr_t pid_virt_to_phys(pid_t pid, uintptr_t vaddr);
+// phys_addr_t pid_virt_to_phys(pid_t pid, uintptr_t vaddr);
 
 // void *pid_map_mem(pid_t pid, void *mem, size_t size, )
 

@@ -8,6 +8,4 @@
 
 #include <hook.h>
 
-int patch_verify_safety();
-
 #endif

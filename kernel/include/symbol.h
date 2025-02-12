@@ -22,8 +22,14 @@ typedef struct
 
 #define KP_EXPORT_SYMBOL(sym) _KP_EXPORT_SYMBOL(sym)
 
+extern unsigned long link_base_addr;
+extern unsigned long runtime_base_addr;
+
 unsigned long symbol_lookup_name(const char *name);
 
-int symbol_init();
+static inline unsigned long link2runtime(unsigned long addr)
+{
+    return addr - link_base_addr + runtime_base_addr;
+}
 
 #endif

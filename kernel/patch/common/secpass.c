@@ -52,7 +52,7 @@ int bypass_kcfi()
 
     // 6.1.0
     // todo: Is there more elegant way?
-    unsigned long report_cfi_failure_addr = get_preset_patch_sym()->report_cfi_failure;
+    unsigned long report_cfi_failure_addr = patch_config->report_cfi_failure;
     if (report_cfi_failure_addr) {
         hook_err_t err = hook((void *)report_cfi_failure_addr, (void *)replace_report_cfi_failure,
                               (void **)&backup_report_cfi_failure);
@@ -64,9 +64,9 @@ int bypass_kcfi()
     }
 
     // todo: direct modify cfi_shadow, __cfi_check?
-    unsigned long __cfi_slowpath_addr = get_preset_patch_sym()->__cfi_slowpath_diag;
+    unsigned long __cfi_slowpath_addr = patch_config->__cfi_slowpath_diag;
     if (!__cfi_slowpath_addr) {
-        __cfi_slowpath_addr = get_preset_patch_sym()->__cfi_slowpath;
+        __cfi_slowpath_addr = patch_config->__cfi_slowpath;
     }
     if (__cfi_slowpath_addr) {
         hook_err_t err =

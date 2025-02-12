@@ -14,6 +14,8 @@
 #define KSYM_TOKEN_NUMS 256
 #define KSYM_SYMBOL_LEN 512
 
+#define KSYM_MAX_SYMS 1000000
+
 #define KSYM_MIN_NEQ_SYMS 25600
 #define KSYM_MIN_MARKER (KSYM_MIN_NEQ_SYMS / 256)
 #define KSYM_FIND_NAMES_USED_MARKER 5
@@ -54,6 +56,12 @@ enum arch_type
     X86
 };
 
+enum current_type
+{
+    SP_EL0,
+    SP
+};
+
 #define ELF64_KERNEL_MIN_VA 0xffffff8008080000
 #define ELF64_KERNEL_MAX_VA 0xffffffffffffffff
 
@@ -78,6 +86,7 @@ typedef struct
     char *kallsyms_token_table[KSYM_TOKEN_NUMS];
     int32_t asm_long_size;
     int32_t asm_PTR_size;
+    int32_t kallsyms_markers_elem_size;
     int32_t kallsyms_num_syms;
 
     int32_t has_relative_base;
@@ -98,33 +107,19 @@ typedef struct
 
     int32_t try_relo;
     int32_t relo_applied;
+    uint64_t kernel_base;
+
     int32_t elf64_rela_num;
     int32_t elf64_rela_offset;
-    uint64_t elf64_kernel_base;
-    int32_t elf64_current_heuris;
+
+    int32_t is_kallsysms_all_yes;
+    enum current_type current_type;
 
 } kallsym_t;
 
-#ifdef _WIN32
-#include <string.h>
-static void *memmem(const void *haystack, size_t haystack_len, const void *const needle, const size_t needle_len)
-{
-    if (haystack == NULL) return NULL; // or assert(haystack != NULL);
-    if (haystack_len == 0) return NULL;
-    if (needle == NULL) return NULL; // or assert(needle != NULL);
-    if (needle_len == 0) return NULL;
-
-    for (const char *h = haystack; haystack_len >= needle_len; ++h, --haystack_len) {
-        if (!memcmp(h, needle, needle_len)) {
-            return (void *)h;
-        }
-    }
-    return NULL;
-}
-#endif
-
 int analyze_kallsym_info(kallsym_t *info, char *img, int32_t imglen, enum arch_type arch, int32_t is_64);
 int dump_all_symbols(kallsym_t *info, char *img);
+int dump_all_ikconfig(char *img, int32_t imglen);
 int get_symbol_index_offset(kallsym_t *info, char *img, int32_t index);
 int get_symbol_offset_and_size(kallsym_t *info, char *img, char *symbol, int32_t *size);
 int get_symbol_offset(kallsym_t *info, char *img, char *symbol);

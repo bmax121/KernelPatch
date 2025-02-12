@@ -18,6 +18,8 @@
 #include <uapi/asm-generic/errno.h>
 #include <predata.h>
 #include <kputils.h>
+#include <linux/kernel.h>
+#include <linux/string.h>
 
 uintptr_t *sys_call_table = 0;
 KP_EXPORT_SYMBOL(sys_call_table);
@@ -60,7 +62,7 @@ const char __user *get_user_arg_ptr(void *a0, void *a1, int nr)
     }
     native = (char __user *const __user *)((unsigned long)native + nr * size);
     char __user **upptr = memdup_user(native, size);
-    if (!upptr || IS_ERR(upptr)) return ERR_PTR((long)upptr);
+    if (IS_ERR(upptr)) return ERR_PTR((long)upptr);
 
     char __user *uptr;
     if (size == 8) {
@@ -68,7 +70,7 @@ const char __user *get_user_arg_ptr(void *a0, void *a1, int nr)
     } else {
         uptr = (char __user *)(unsigned long)*(int32_t *)upptr;
     }
-    kvfree(upptr);
+    kfree(upptr);
     return uptr;
 }
 
@@ -98,48 +100,108 @@ typedef long (*raw_syscall4_f)(long arg0, long arg1, long arg2, long arg3);
 typedef long (*raw_syscall5_f)(long arg0, long arg1, long arg2, long arg3, long arg4);
 typedef long (*raw_syscall6_f)(long arg0, long arg1, long arg2, long arg3, long arg4, long arg5);
 
+uintptr_t syscalln_name_addr(int nr, int is_compat)
+{
+    const char *name = 0;
+    if (!is_compat) {
+        if (syscall_name_table[nr].addr) {
+            return syscall_name_table[nr].addr;
+        }
+        name = syscall_name_table[nr].name;
+    } else {
+        if (compat_syscall_name_table[nr].addr) {
+            return compat_syscall_name_table[nr].addr;
+        }
+        name = compat_syscall_name_table[nr].name;
+    }
+
+    if (!name) return 0;
+
+    const char *prefix[2];
+    prefix[0] = "__arm64_";
+    prefix[1] = "";
+    const char *suffix[3];
+    suffix[0] = ".cfi_jt";
+    suffix[1] = ".cfi";
+    suffix[2] = "";
+
+    uintptr_t addr = 0;
+
+    char buffer[256];
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 3; j++) {
+            snprintf(buffer, sizeof(buffer), "%s%s%s", prefix[i], name, suffix[j]);
+            addr = kallsyms_lookup_name(buffer);
+            if (addr) break;
+        }
+        if (addr) break;
+    }
+    if (!is_compat) {
+        syscall_name_table[nr].addr = addr;
+    } else {
+        compat_syscall_name_table[nr].addr = addr;
+    }
+    return addr;
+}
+KP_EXPORT_SYMBOL(syscalln_name_addr);
+
+uintptr_t syscalln_addr(int nr, int is_compat)
+{
+    if (!is_compat && sys_call_table) return sys_call_table[nr];
+    if (is_compat && compat_sys_call_table) return compat_sys_call_table[nr];
+    return syscalln_name_addr(nr, is_compat);
+}
+KP_EXPORT_SYMBOL(syscalln_addr);
+
 long raw_syscall0(long nr)
 {
-    uintptr_t addr = sys_call_table[nr];
+    uintptr_t addr = syscalln_addr(nr, 0);
     if (has_syscall_wrapper) {
         struct pt_regs regs;
-        memset(&regs, 0, sizeof(regs));
+        regs.syscallno = nr;
+        regs.regs[8] = nr;
         return ((warp_raw_syscall_f)addr)(&regs);
     }
     return ((raw_syscall0_f)addr)();
-    return 0;
 }
+KP_EXPORT_SYMBOL(raw_syscall0);
 
 long raw_syscall1(long nr, long arg0)
 {
-    uintptr_t addr = sys_call_table[nr];
+    uintptr_t addr = syscalln_addr(nr, 0);
     if (has_syscall_wrapper) {
         struct pt_regs regs;
-        memset(&regs, 0, sizeof(regs));
+        regs.syscallno = nr;
+        regs.regs[8] = nr;
+        regs.regs[0] = arg0;
         return ((warp_raw_syscall_f)addr)(&regs);
     }
     return ((raw_syscall1_f)addr)(arg0);
 }
+KP_EXPORT_SYMBOL(raw_syscall1);
 
 long raw_syscall2(long nr, long arg0, long arg1)
 {
-    uintptr_t addr = sys_call_table[nr];
+    uintptr_t addr = syscalln_addr(nr, 0);
     if (has_syscall_wrapper) {
         struct pt_regs regs;
-        memset(&regs, 0, sizeof(regs));
+        regs.syscallno = nr;
+        regs.regs[8] = nr;
         regs.regs[0] = arg0;
         regs.regs[1] = arg1;
         return ((warp_raw_syscall_f)addr)(&regs);
     }
     return ((raw_syscall2_f)addr)(arg0, arg1);
 }
+KP_EXPORT_SYMBOL(raw_syscall2);
 
 long raw_syscall3(long nr, long arg0, long arg1, long arg2)
 {
-    uintptr_t addr = sys_call_table[nr];
+    uintptr_t addr = syscalln_addr(nr, 0);
     if (has_syscall_wrapper) {
         struct pt_regs regs;
-        memset(&regs, 0, sizeof(regs));
+        regs.syscallno = nr;
+        regs.regs[8] = nr;
         regs.regs[0] = arg0;
         regs.regs[1] = arg1;
         regs.regs[2] = arg2;
@@ -147,13 +209,15 @@ long raw_syscall3(long nr, long arg0, long arg1, long arg2)
     }
     return ((raw_syscall3_f)addr)(arg0, arg1, arg2);
 }
+KP_EXPORT_SYMBOL(raw_syscall3);
 
 long raw_syscall4(long nr, long arg0, long arg1, long arg2, long arg3)
 {
-    uintptr_t addr = sys_call_table[nr];
+    uintptr_t addr = syscalln_addr(nr, 0);
     if (has_syscall_wrapper) {
         struct pt_regs regs;
-        memset(&regs, 0, sizeof(regs));
+        regs.syscallno = nr;
+        regs.regs[8] = nr;
         regs.regs[0] = arg0;
         regs.regs[1] = arg1;
         regs.regs[2] = arg2;
@@ -162,13 +226,15 @@ long raw_syscall4(long nr, long arg0, long arg1, long arg2, long arg3)
     }
     return ((raw_syscall4_f)addr)(arg0, arg1, arg2, arg3);
 }
+KP_EXPORT_SYMBOL(raw_syscall4);
 
 long raw_syscall5(long nr, long arg0, long arg1, long arg2, long arg3, long arg4)
 {
-    uintptr_t addr = sys_call_table[nr];
+    uintptr_t addr = syscalln_addr(nr, 0);
     if (has_syscall_wrapper) {
         struct pt_regs regs;
-        memset(&regs, 0, sizeof(regs));
+        regs.syscallno = nr;
+        regs.regs[8] = nr;
         regs.regs[0] = arg0;
         regs.regs[1] = arg1;
         regs.regs[2] = arg2;
@@ -178,13 +244,15 @@ long raw_syscall5(long nr, long arg0, long arg1, long arg2, long arg3, long arg4
     }
     return ((raw_syscall5_f)addr)(arg0, arg1, arg2, arg3, arg4);
 }
+KP_EXPORT_SYMBOL(raw_syscall5);
 
 long raw_syscall6(long nr, long arg0, long arg1, long arg2, long arg3, long arg4, long arg5)
 {
-    uintptr_t addr = sys_call_table[nr];
+    uintptr_t addr = syscalln_addr(nr, 0);
     if (has_syscall_wrapper) {
         struct pt_regs regs;
-        memset(&regs, 0, sizeof(regs));
+        regs.syscallno = nr;
+        regs.regs[8] = nr;
         regs.regs[0] = arg0;
         regs.regs[1] = arg1;
         regs.regs[2] = arg2;
@@ -195,72 +263,101 @@ long raw_syscall6(long nr, long arg0, long arg1, long arg2, long arg3, long arg4
     }
     return ((raw_syscall6_f)addr)(arg0, arg1, arg2, arg3, arg4, arg5);
 }
+KP_EXPORT_SYMBOL(raw_syscall6);
 
-static uint64_t search_sys_call_table_addr()
+hook_err_t fp_wrap_syscalln(int nr, int narg, int is_compat, void *before, void *after, void *udata)
 {
-    uint64_t addr = kernel_va;
-    uint64_t _etext = kallsyms_lookup_name("_etext");
-    addr = addr > _etext ? addr : _etext;
-
-    char *prefix[2];
-    prefix[0] = "__arm64_";
-    prefix[1] = "";
-
-    char *io_setup = "sys_io_setup";
-    char *io_destory = "sys_io_destroy";
-
-    char *suffix[3];
-    suffix[0] = ".cfi_jt";
-    suffix[1] = ".cfi";
-    suffix[2] = "";
-
-    char buf[128];
-
-    uint64_t sc0_addr = 0;
-    uint64_t sc1_addr = 0;
-
-    int i = 0, k = 0;
-
-    for (; k < 3; k++) {
-        i = 0;
-        for (; i < 2; i++) {
-            buf[0] = '\0';
-            strcat(buf, prefix[i]);
-            strcat(buf, io_setup);
-            strcat(buf, suffix[k]);
-            sc0_addr = kallsyms_lookup_name(buf);
-            if (!sc0_addr) continue;
-
-            buf[0] = '\0';
-            strcat(buf, prefix[i]);
-            strcat(buf, io_destory);
-            strcat(buf, suffix[k]);
-            sc1_addr = kallsyms_lookup_name(buf);
-            if (!sc1_addr) return 0;
-        }
+    if (!is_compat) {
+        if (!sys_call_table) return HOOK_BAD_ADDRESS;
+        uintptr_t fp_addr = (uintptr_t)(sys_call_table + nr);
+        if (has_syscall_wrapper) narg = 1;
+        return fp_hook_wrap(fp_addr, narg, before, after, udata);
+    } else {
+        if (!compat_sys_call_table) return HOOK_BAD_ADDRESS;
+        uintptr_t fp_addr = (uintptr_t)(compat_sys_call_table + nr);
+        if (has_syscall_wrapper) narg = 1;
+        return fp_hook_wrap(fp_addr, narg, before, after, udata);
     }
-
-    for (; addr < kernel_va + kernel_size; addr += 8) {
-        uint64_t val0 = *(uint64_t *)addr;
-        if (val0 != sc0_addr) continue;
-        uint64_t val1 = *(uint64_t *)(addr + 8);
-        if (val1 == sc1_addr) return addr;
-    }
-    return 0;
 }
+KP_EXPORT_SYMBOL(fp_wrap_syscalln);
 
-int syscall_init()
+void fp_unwrap_syscalln(int nr, int is_compat, void *before, void *after)
 {
-    int rc = 0;
+    if (!is_compat) {
+        if (!sys_call_table) return;
+        uintptr_t fp_addr = (uintptr_t)(sys_call_table + nr);
+        fp_hook_unwrap(fp_addr, before, after);
+    } else {
+        if (!compat_sys_call_table) return;
+        uintptr_t fp_addr = (uintptr_t)(compat_sys_call_table + nr);
+        fp_hook_unwrap(fp_addr, before, after);
+    }
+}
+KP_EXPORT_SYMBOL(fp_unwrap_syscalln);
+
+/*
+sys_xxx.cfi_jt
+
+hint #0x22  # bti c
+b #0xfffffffffeb452f4
+*/
+hook_err_t inline_wrap_syscalln(int nr, int narg, int is_compat, void *before, void *after, void *udata)
+{
+    uintptr_t addr = syscalln_name_addr(nr, is_compat);
+    if (!addr) return -HOOK_BAD_ADDRESS;
+    if (has_syscall_wrapper) narg = 1;
+    return hook_wrap((void *)addr, narg, before, after, udata);
+}
+KP_EXPORT_SYMBOL(inline_wrap_syscalln);
+
+void inline_unwrap_syscalln(int nr, int is_compat, void *before, void *after)
+{
+    uintptr_t addr = syscalln_name_addr(nr, is_compat);
+    hook_unwrap((void *)addr, before, after);
+}
+KP_EXPORT_SYMBOL(inline_unwrap_syscalln);
+
+hook_err_t hook_syscalln(int nr, int narg, void *before, void *after, void *udata)
+{
+    if (sys_call_table) return fp_wrap_syscalln(nr, narg, 0, before, after, udata);
+    return inline_wrap_syscalln(nr, narg, 0, before, after, udata);
+}
+KP_EXPORT_SYMBOL(hook_syscalln);
+
+void unhook_syscalln(int nr, void *before, void *after)
+{
+    if (sys_call_table) return fp_unwrap_syscalln(nr, 0, before, after);
+    return inline_unwrap_syscalln(nr, 0, before, after);
+}
+KP_EXPORT_SYMBOL(unhook_syscalln);
+
+hook_err_t hook_compat_syscalln(int nr, int narg, void *before, void *after, void *udata)
+{
+    if (compat_sys_call_table) return fp_wrap_syscalln(nr, narg, 1, before, after, udata);
+    return inline_wrap_syscalln(nr, narg, 1, before, after, udata);
+}
+KP_EXPORT_SYMBOL(hook_compat_syscalln);
+
+void unhook_compat_syscalln(int nr, void *before, void *after)
+{
+    if (compat_sys_call_table) return fp_unwrap_syscalln(nr, 1, before, after);
+    return inline_unwrap_syscalln(nr, 1, before, after);
+}
+KP_EXPORT_SYMBOL(unhook_compat_syscalln);
+
+void syscall_init()
+{
+    for (int i = 0; i < sizeof(syscall_name_table) / sizeof(syscall_name_table[0]); i++) {
+        uintptr_t *addr = (uintptr_t *)&syscall_name_table[i].name;
+        *addr = link2runtime(*addr);
+    }
+
+    for (int i = 0; i < sizeof(compat_syscall_name_table) / sizeof(compat_syscall_name_table[0]); i++) {
+        uintptr_t *addr = (uintptr_t *)&compat_syscall_name_table[i].name;
+        *addr = link2runtime(*addr);
+    }
+
     sys_call_table = (typeof(sys_call_table))kallsyms_lookup_name("sys_call_table");
-    if (unlikely(!sys_call_table)) {
-        sys_call_table = (typeof(sys_call_table))search_sys_call_table_addr();
-    }
-    if (unlikely(!sys_call_table)) {
-        rc = -ENOENT;
-        log_boot("no symbol sys_call_table\n");
-        goto out;
-    }
     log_boot("sys_call_table addr: %llx\n", sys_call_table);
 
     compat_sys_call_table = (typeof(compat_sys_call_table))kallsyms_lookup_name("compat_sys_call_table");
@@ -282,9 +379,5 @@ int syscall_init()
     }
 
     log_boot("syscall config_compat: %d\n", has_config_compat);
-
     log_boot("syscall has_wrapper: %d\n", has_syscall_wrapper);
-
-out:
-    return rc;
 }

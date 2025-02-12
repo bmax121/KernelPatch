@@ -11,7 +11,7 @@ jobs:
       contents: write
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
         with:
           submodules: "recursive"
           fetch-depth: 0
@@ -38,16 +38,19 @@ jobs:
       - name: Build kpimg
         run: |
           export TARGET_COMPILE=`pwd`/arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-elf/bin/aarch64-none-elf-
-
           cd kernel
-          make
-          mv kpimg kpimg-linux
-          mv kpimg.elf kpimg.elf-linux
-          make clean
+
           export ANDROID=1
           make
           mv kpimg kpimg-android
           mv kpimg.elf kpimg.elf-android
+          make clean
+
+          unset ANDROID
+          make
+          mv kpimg kpimg-linux
+          mv kpimg.elf kpimg.elf-linux
+          make clean
 
           cd ..
           cd kpms
@@ -65,7 +68,7 @@ jobs:
           mv syscallhook.kpm demo-syscallhook.kpm
 
       - name: Upload elf
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           path: |
             kernel/kpimg.elf-linux
@@ -73,7 +76,7 @@ jobs:
           name: kpimg.elf
 
       - name: Release
-        uses: ncipollo/release-action@v1.14.0
+        uses: ncipollo/release-action@v1.12.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
@@ -95,7 +98,7 @@ jobs:
       contents: write
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
       - name: Generate version
         id: parse_version
         run: |
@@ -115,7 +118,7 @@ jobs:
           zip -r kpuser.zip user
 
       - name: Release
-        uses: ncipollo/release-action@v1.14.0
+        uses: ncipollo/release-action@v1.12.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
@@ -125,13 +128,13 @@ jobs:
           replacesArtifacts: true
           omitBodyDuringUpdate: true
 
-  Build-android-kpatch-kptools:
+  Build-android-kptools:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
         with:
           submodules: "recursive"
           fetch-depth: 0
@@ -149,7 +152,7 @@ jobs:
         uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
-          ndk-version: r26d
+          ndk-version: r26b
           add-to-path: true
 
       - name: Make hdr
@@ -157,21 +160,6 @@ jobs:
           export TARGET_COMPILE=placeholder
           cd kernel
           make hdr
-
-      - name: Build kpatch-android
-        run: |
-          cd user
-          export ANDROID=1
-          mkdir -p build/android && cd build/android
-          echo ${{ steps.setup-ndk.outputs.ndk-path }}
-          cmake \
-            -DCMAKE_TOOLCHAIN_FILE=${{ steps.setup-ndk.outputs.ndk-path }}/build/cmake/android.toolchain.cmake \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DANDROID_PLATFORM=android-33 \
-            -DANDROID_ABI=arm64-v8a ../..
-          cmake --build .
-          unset ANDROID
-          mv kpatch kpatch-android
 
       - name: Build kptools-android
         run: |
@@ -187,13 +175,11 @@ jobs:
           mv kptools kptools-android
 
       - name: Release
-        uses: ncipollo/release-action@v1.14.0
+        uses: ncipollo/release-action@v1.12.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
           artifacts: |
-            user/build/android/kpatch-android
-            user/build/android/libapjni.so
             tools/build/android/kptools-android
           allowUpdates: true
           replacesArtifacts: true
@@ -205,7 +191,7 @@ jobs:
       contents: write
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
       - name: Generate version
         id: parse_version
         run: |
@@ -232,7 +218,7 @@ jobs:
           mv kptools kptools-linux
 
       - name: Release
-        uses: ncipollo/release-action@v1.14.0
+        uses: ncipollo/release-action@v1.12.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
@@ -248,7 +234,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
       - name: Generate version
         shell: pwsh
         run: |
@@ -267,6 +253,7 @@ jobs:
           install: >-
             msys/make
             msys/gcc
+            msys/zlib-devel
       - name: Copyfile
         shell: pwsh
         run: |
@@ -283,10 +270,13 @@ jobs:
       - name: Copyfile2
         shell: pwsh
         run: |
-          cp .\tools\kptools.exe .\tools\kptools-msys2.exe
-          7z a kptools-msys2-win .\tools\kptools-msys2.exe D:\a\_temp\msys64\usr\bin\msys-2.0.dll
+          mkdir .\win
+          cp .\tools\kptools.exe .\win\kptools-msys2.exe
+          cp D:\a\_temp\msys64\usr\bin\msys-2.0.dll .\win
+          cp D:\a\_temp\msys64\usr\bin\msys-z.dll .\win
+          7z a kptools-msys2-win .\win 
       - name: Release
-        uses: ncipollo/release-action@v1.14.0
+        uses: ncipollo/release-action@v1.12.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ env.VERSION }}
@@ -295,60 +285,13 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
 
-  Build-kptools-windows-llvm:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Check out
-        uses: actions/checkout@v4
-      - name: Install mingw32 cross toolchains
-        run: |
-          MINGW_LLVM_URL="https://github.com/mstorsjo/llvm-mingw/releases/download/20231128/llvm-mingw-20231128-msvcrt-ubuntu-20.04-x86_64.tar.xz"
-          mkdir -p $HOME/mingw-llvm
-          wget $MINGW_LLVM_URL -O $HOME/mingw-llvm/llvm.tar.xz
-          cd $HOME/mingw-llvm
-          tar -xvf llvm.tar.xz --strip-components 1
-      - name: Generate version
-        id: parse_version
-        run: |
-          MAJOR=$(grep '#define MAJOR' version | awk '{print $3}')
-          MINOR=$(grep '#define MINOR' version | awk '{print $3}')
-          PATCH=$(grep '#define PATCH' version | awk '{print $3}')
-          VERSION="$MAJOR.$MINOR.$PATCH"
-          echo "Generated Version: $VERSION"
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-      - name: Build kptools
-        run: |
-          export PATH="$HOME/mingw-llvm/bin:$PATH"
-          export ANDROID=1
-          ABIS="x86_64 i686 aarch64 armv7"
-          for i in $ABIS; do
-          make -C kernel hdr TARGET_COMPILE=placeholder
-          echo "- Compiling kptools-$i-win.exe"
-          make -C tools CC=$i-w64-mingw32-clang
-          mv tools/kptools.exe kptools-$i-win.exe
-          make -C tools clean
-          done
-          7za a kptools-llvm-win.zip -tZIP *.exe
-      - name: Release
-        uses: ncipollo/release-action@v1.14.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ steps.parse_version.outputs.VERSION }}
-          artifacts: |
-            kptools-llvm-win.zip
-          allowUpdates: true
-          replacesArtifacts: true
-          omitBodyDuringUpdate: true
-
   Build-kptools-mac:
     runs-on: macos-latest
     permissions:
       contents: write
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
       - name: Generate version
         id: parse_version
         run: |
@@ -374,7 +317,7 @@ jobs:
           make
           mv kptools kptools-mac
       - name: Release
-        uses: ncipollo/release-action@v1.14.0
+        uses: ncipollo/release-action@v1.12.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}

@@ -17,6 +17,7 @@
 #define __section(s) __attribute__((section(#s)))
 #define __noinline __attribute__((__noinline__))
 #define __aligned(x) __attribute__((aligned(x)))
+#define __bti_c __attribute__((target("branch-protection=bti")))
 
 #endif
 

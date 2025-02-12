@@ -7,6 +7,7 @@
 #include <common.h>
 #include <log.h>
 #include <sha256.h>
+#include <symbol.h>
 
 #include "start.h"
 #include "pgtable.h"
@@ -16,20 +17,24 @@ extern start_preset_t start_preset;
 
 static char *superkey = 0;
 static char *root_superkey = 0;
-static struct patch_symbol *patch_symbol = 0;
+
+struct patch_config *patch_config = 0;
+KP_EXPORT_SYMBOL(patch_config);
 
 static const char bstr[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
 static uint64_t _rand_next = 1000000007;
-static int enable_root_key = 1;
+static bool enable_root_key = false;
 
 int auth_superkey(const char *key)
 {
     int rc = 0;
-    rc = lib_strncmp(superkey, key, SUPER_KEY_LEN);
-    if (!rc) return rc;
+    for (int i = 0; superkey[i]; i++) {
+        rc |= (superkey[i] ^ key[i]);
+    }
+    if (!rc) goto out;
 
-    if (!enable_root_key) return rc;
+    if (!enable_root_key) goto out;
 
     BYTE hash[SHA256_BLOCK_SIZE];
     SHA256_CTX ctx;
@@ -39,23 +44,24 @@ int auth_superkey(const char *key)
     int len = SHA256_BLOCK_SIZE > ROOT_SUPER_KEY_HASH_LEN ? ROOT_SUPER_KEY_HASH_LEN : SHA256_BLOCK_SIZE;
     rc = lib_memcmp(root_superkey, hash, len);
 
-    static int first_time = 1;
+    static bool first_time = true;
     if (!rc && first_time) {
-        first_time = 0;
+        first_time = false;
         reset_superkey(key);
+        enable_root_key = false;
     }
 
-    return rc;
+out:
+    return !!rc;
 }
 
 void reset_superkey(const char *key)
 {
-    lib_strncpy(superkey, key, SUPER_KEY_LEN - 1);
-    superkey[SUPER_KEY_LEN - 1] = '\0';
+    lib_strlcpy(superkey, key, SUPER_KEY_LEN);
     dsb(ish);
 }
 
-void enable_auth_root_key(int enable)
+void enable_auth_root_key(bool enable)
 {
     enable_root_key = enable;
 }
@@ -71,9 +77,9 @@ const char *get_superkey()
     return superkey;
 }
 
-struct patch_symbol *get_preset_patch_sym()
+const char *get_build_time()
 {
-    return patch_symbol;
+    return setup_header->compile_time;
 }
 
 int on_each_extra_item(int (*callback)(const patch_extra_item_t *extra, const char *arg, const void *con, void *udata),
@@ -114,8 +120,11 @@ void predata_init()
     if (*(uint64_t *)(superkey)) _rand_next *= *(uint64_t *)(superkey);
     if (*(uint64_t *)(root_superkey)) _rand_next *= *(uint64_t *)(root_superkey);
 
+    enable_root_key = false;
+
     // random key
     if (lib_strnlen(superkey, SUPER_KEY_LEN) <= 0) {
+        enable_root_key = true;
         int len = SUPER_KEY_LEN > 16 ? 16 : SUPER_KEY_LEN;
         len--;
         for (int i = 0; i < len; ++i) {
@@ -125,9 +134,9 @@ void predata_init()
     }
     log_boot("gen rand key: %s\n", superkey);
 
-    patch_symbol = &start_preset.patch_symbol;
+    patch_config = &start_preset.patch_config;
 
-    for (uintptr_t addr = (uint64_t)patch_symbol; addr < (uintptr_t)patch_symbol + PATCH_SYMBOL_LEN;
+    for (uintptr_t addr = (uint64_t)patch_config; addr < (uintptr_t)patch_config + PATCH_CONFIG_LEN;
          addr += sizeof(uintptr_t)) {
         uintptr_t *p = (uintptr_t *)addr;
         if (*p) *p += kernel_va;

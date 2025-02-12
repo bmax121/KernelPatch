@@ -244,7 +244,7 @@ char *lib_strncat(char *dst, const char *src, size_t n)
         *q++ = ch = *p++;
         if (!ch) return dst;
     }
-    *q = '\0';
+    // *q = '\0';
     return dst;
 }
 
@@ -277,7 +277,7 @@ char *lib_strncpy(char *dst, const char *src, size_t n)
         *q++ = ch = *p++;
         if (!ch) break;
     }
-    *q = '\0';
+    // *q = '\0';
     return dst;
 }
 

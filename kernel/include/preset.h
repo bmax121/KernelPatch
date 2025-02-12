@@ -20,7 +20,7 @@
 #define COMPILE_TIME_LEN 0x18
 #define MAP_MAX_SIZE 0xa00
 #define HOOK_ALLOC_SIZE (1 << 20)
-#define MEMORY_ROX_SIZE (2 << 20)
+#define MEMORY_ROX_SIZE (4 << 20)
 #define MEMORY_RW_SIZE (2 << 20)
 #define MAP_ALIGN 0x10
 
@@ -30,7 +30,7 @@
 #define MAP_SYMBOL_NUM (5)
 #define MAP_SYMBOL_SIZE (MAP_SYMBOL_NUM * 8)
 
-#define PATCH_SYMBOL_LEN (512)
+#define PATCH_CONFIG_LEN (512)
 
 #define ADDITIONAL_LEN (512)
 
@@ -98,7 +98,12 @@ _Static_assert(sizeof(map_symbol_t) == MAP_SYMBOL_SIZE, "sizeof map_symbol_t mis
 #endif
 
 #ifndef __ASSEMBLY__
-struct patch_symbol
+
+#define PATCH_CONFIG_SU_ENABLE 0x1
+#define PATCH_CONFIG_SU_HOOK_NO_WRAP 0x2
+#define PATCH_CONFIG_SU_ENABLE32 0x2
+
+struct patch_config
 {
     union
     {
@@ -106,7 +111,6 @@ struct patch_symbol
         {
             uint64_t kallsyms_lookup_name;
             uint64_t printk;
-            uint64_t vm_area_add_early;
 
             uint64_t panic;
             uint64_t rest_init;
@@ -117,24 +121,17 @@ struct patch_symbol
             uint64_t __cfi_slowpath;
             uint64_t copy_process;
             uint64_t cgroup_post_fork;
-            uint64_t do_execveat_common;
-            uint64_t __do_execve_file;
-            uint64_t do_execve_common;
-            uint64_t do_faccessat;
-            uint64_t sys_faccessat;
-            uint64_t sys_faccessat2;
-            uint64_t sys_newfstatat;
-            uint64_t vfs_statx;
-            uint64_t vfs_fstatat;
             uint64_t avc_denied;
             uint64_t slow_avc_audit;
             uint64_t input_handle_event;
+
+            uint8_t patch_su_config;
         };
-        char _cap[PATCH_SYMBOL_LEN];
+        char _cap[PATCH_CONFIG_LEN];
     };
 };
-typedef struct patch_symbol patch_symbol_t;
-_Static_assert(sizeof(patch_symbol_t) == PATCH_SYMBOL_LEN, "sizeof patch_symbol_t mismatch");
+typedef struct patch_config patch_config_t;
+_Static_assert(sizeof(patch_config_t) == PATCH_CONFIG_LEN, "sizeof patch_config_t mismatch");
 #endif
 
 #ifndef __ASSEMBLY__
@@ -220,7 +217,7 @@ typedef struct
     map_symbol_t map_symbol;
     uint8_t header_backup[HDR_BACKUP_SIZE];
     uint8_t superkey[SUPER_KEY_LEN];
-    patch_symbol_t patch_symbol;
+    patch_config_t patch_config;
     char additional[ADDITIONAL_LEN];
 } setup_preset_be_000a04_t;
 
@@ -245,7 +242,7 @@ typedef struct _setup_preset_t
     uint8_t superkey[SUPER_KEY_LEN];
     uint8_t root_superkey[ROOT_SUPER_KEY_HASH_LEN];
     uint8_t __[SETUP_PRESERVE_LEN];
-    patch_symbol_t patch_symbol;
+    patch_config_t patch_config;
     char additional[ADDITIONAL_LEN];
 } setup_preset_t;
 #else
@@ -266,8 +263,8 @@ typedef struct _setup_preset_t
 #define setup_header_backup_offset (setup_map_symbol_offset + MAP_SYMBOL_SIZE)
 #define setup_superkey_offset (setup_header_backup_offset + HDR_BACKUP_SIZE)
 #define setup_root_superkey_offset (setup_superkey_offset + SUPER_KEY_LEN)
-#define setup_patch_symbol_offset (setup_root_superkey_offset + ROOT_SUPER_KEY_HASH_LEN + SETUP_PRESERVE_LEN)
-#define setup_end (setup_patch_symbol_offset + PATCH_SYMBOL_LEN)
+#define setup_patch_config_offset (setup_root_superkey_offset + ROOT_SUPER_KEY_HASH_LEN + SETUP_PRESERVE_LEN)
+#define setup_end (setup_patch_config_offset + PATCH_CONFIG_LEN)
 #endif
 
 #ifndef __ASSEMBLY__

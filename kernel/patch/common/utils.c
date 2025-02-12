@@ -15,6 +15,8 @@
 #include <linux/err.h>
 #include <linux/errno.h>
 #include <linux/random.h>
+#include <linux/sched.h>
+#include <linux/cred.h>
 
 extern int kfunc_def(xt_data_to_user)(void __user *dst, const void *src, int usersize, int size, int aligned_size);
 
@@ -96,8 +98,6 @@ KP_EXPORT_SYMBOL(compat_copy_to_user);
 
 long compat_strncpy_from_user(char *dest, const char __user *src, long count)
 {
-    kfunc_call(strncpy_from_user_nofault, dest, src, count);
-    kfunc_call(strncpy_from_unsafe_user, dest, src, count);
     if (kfunc(strncpy_from_user)) {
         long rc = kfunc(strncpy_from_user)(dest, src, count);
         if (rc >= count) {
@@ -108,6 +108,8 @@ long compat_strncpy_from_user(char *dest, const char __user *src, long count)
         }
         return rc;
     }
+    kfunc_call(strncpy_from_user_nofault, dest, src, count);
+    kfunc_call(strncpy_from_unsafe_user, dest, src, count);
     return 0;
 }
 KP_EXPORT_SYMBOL(compat_strncpy_from_user);
@@ -123,15 +125,15 @@ struct pt_regs *_task_pt_reg(struct task_struct *task)
     } else {
 #ifndef ANDROID
         if (kver < VERSION(4, 4, 19)) {
-            addr -= sizeof(struct pt_regs_lt4419);
+            addr -= sizeof(struct pt_regs_lt4419); // 0x120
         } else if (kver < VERSION(4, 14, 0)) {
-            addr -= sizeof(struct pt_regs_lt4140);
+            addr -= sizeof(struct pt_regs_lt4140); // 0x130
         } else
 #endif
             if (kver < VERSION(5, 10, 0)) {
-            addr -= sizeof(struct pt_regs_lt5100);
+            addr -= sizeof(struct pt_regs_lt5100); // 0x140
         } else {
-            addr -= sizeof(struct pt_regs);
+            addr -= sizeof(struct pt_regs); // 0x150
         }
     }
 
@@ -156,3 +158,12 @@ uint64_t get_random_u64(void)
     return rand_next();
 }
 KP_EXPORT_SYMBOL(get_random_u64);
+
+// todo: rcu_dereference_protected
+uid_t current_uid()
+{
+    struct cred *cred = *(struct cred **)((uintptr_t)current + task_struct_offset.cred_offset);
+    uid_t uid = *(uid_t *)((uintptr_t)cred + cred_offset.uid_offset);
+    return uid;
+}
+KP_EXPORT_SYMBOL(current_uid);

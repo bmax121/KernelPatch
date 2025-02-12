@@ -97,113 +97,82 @@ extern bool kfunc_def(creds_are_invalid)(const struct cred *cred);
 
 static inline void __put_cred(struct cred *cred)
 {
-    kfunc_call(__put_cred, cred);
-    kfunc_not_found();
+    kfunc_direct_call(__put_cred, cred);
 }
+
 static inline void exit_creds(struct task_struct *task)
 {
-    kfunc_call(exit_creds, task);
-    kfunc_not_found();
+    kfunc_direct_call_void(exit_creds, task);
 }
+
 static inline int copy_creds(struct task_struct *p, unsigned long clone_flags)
 {
-    kfunc_call(copy_creds, p, clone_flags);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(copy_creds, p, clone_flags);
 }
+
 static inline const struct cred *get_task_cred(struct task_struct *task)
 {
-    kfunc_call(get_task_cred, task);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(get_task_cred, task);
 }
+
 static inline struct cred *cred_alloc_blank(void)
 {
-    kfunc_call(cred_alloc_blank);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(cred_alloc_blank);
 }
+
 static inline struct cred *prepare_creds(void)
 {
-    kfunc_call(prepare_creds);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(prepare_creds);
 }
+
 static inline struct cred *prepare_exec_creds(void)
 {
-    kfunc_call(prepare_exec_creds);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(prepare_exec_creds);
 }
+
 static inline int commit_creds(struct cred *new)
 {
-    kfunc_call(commit_creds, new);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(commit_creds, new);
 }
+
 static inline void abort_creds(struct cred *new)
 {
-    kfunc_call(abort_creds, new);
-    kfunc_not_found();
+    kfunc_direct_call_void(abort_creds, new);
 }
+
 static inline const struct cred *override_creds(const struct cred *new)
 {
-    kfunc_call(override_creds, new);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(override_creds, new);
 }
+
 static inline void revert_creds(const struct cred *old)
 {
-    kfunc_call(revert_creds, old);
-    kfunc_not_found();
+    kfunc_direct_call(revert_creds, old);
 }
+
 static inline struct cred *prepare_kernel_cred(struct task_struct *daemon)
 {
-    kfunc_call(prepare_kernel_cred, daemon);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(prepare_kernel_cred, daemon);
 }
-static inline int change_create_files_as(struct cred *cred, struct inode *inode)
-{
-    kfunc_call(change_create_files_as, cred, inode);
-    kfunc_not_found();
-    return 0;
-}
+
 static inline int set_security_override(struct cred *new, u32 secid)
 {
-    kfunc_call(set_security_override, new, secid);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(set_security_override, new, secid);
 }
+
 static inline int set_security_override_from_ctx(struct cred *new, const char *secctx)
 {
-    kfunc_call(set_security_override_from_ctx, new, secctx);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(set_security_override_from_ctx, new, secctx);
 }
-static inline int set_create_files_as(struct cred *new, struct inode *inode)
-{
-    kfunc_call(set_create_files_as, new, inode);
-    kfunc_not_found();
-    return 0;
-}
+
 static inline int cred_fscmp(const struct cred *a, const struct cred *b)
 {
-    kfunc_call(cred_fscmp, a, b);
-    kfunc_not_found();
-    return 0;
-}
-static inline void cred_init(void)
-{
-    kfunc_call(cred_init);
-    kfunc_not_found();
+    kfunc_direct_call(cred_fscmp, a, b);
 }
 
 static inline bool creds_are_invalid(const struct cred *cred)
 {
-    kfunc_call(creds_are_invalid, cred);
-    kfunc_not_found();
-    return 0;
+    kfunc_direct_call(creds_are_invalid, cred);
 }
 
 #endif

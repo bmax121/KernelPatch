@@ -337,8 +337,7 @@ static void extra_append(char *kimg, const void *data, int len, int *offset)
 }
 
 int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey,
-                     bool root_key, const char **additional, const char *kpatch_path, extra_config_t *extra_configs,
-                     int extra_config_num)
+                     bool root_key, const char **additional, extra_config_t *extra_configs, int extra_config_num)
 {
     set_log_enable(true);
 
@@ -371,18 +370,6 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     char *kpimg = NULL;
     int kpimg_len = 0;
     read_file_align(kpimg_path, &kpimg, &kpimg_len, 0x10);
-
-    // embed kpatch executable
-    if (kpatch_path) {
-        // add new
-        extra_config_t *config = extra_configs + extra_config_num;
-        extra_config_num++;
-        config->extra_type = EXTRA_TYPE_EXEC;
-        config->is_path = true;
-        config->path = kpatch_path;
-        config->priority = __INT32_MAX__;
-        config->set_name = "kpatch";
-    }
 
     // extra
     int extra_size = 0;
@@ -544,7 +531,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     memcpy(setup->header_backup, kallsym_kimg, sizeof(setup->header_backup));
 
     // start symbol
-    fillin_patch_symbol(&kallsym, kallsym_kimg, ori_kimg_len, &setup->patch_symbol, kinfo->is_be, 0);
+    fillin_patch_config(&kallsym, kallsym_kimg, ori_kimg_len, &setup->patch_config, kinfo->is_be, 0);
 
     // superkey
     if (!root_key) {
@@ -693,6 +680,20 @@ int dump_kallsym(const char *kimg_path)
         return -1;
     }
     dump_all_symbols(&kallsym, kernel_file.kimg);
+    set_log_enable(false);
+    free_kernel_file(&kernel_file);
+    return 0;
+}
+int dump_ikconfig(const char *kimg_path)
+{
+    if (!kimg_path) tools_loge_exit("empty kernel image\n");
+    set_log_enable(true);
+    // read image files
+    kernel_file_t kernel_file;
+    read_kernel_file(kimg_path, &kernel_file);
+
+    
+    dump_all_ikconfig(kernel_file.kimg,kernel_file.kimg_len);
     set_log_enable(false);
     free_kernel_file(&kernel_file);
     return 0;

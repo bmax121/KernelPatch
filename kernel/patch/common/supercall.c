@@ -29,6 +29,9 @@
 #include <pidmem.h>
 #include <predata.h>
 #include <linux/random.h>
+#include <sucompat.h>
+#include <accctl.h>
+#include <kstorage.h>
 
 #define MAX_KEY_LEN 128
 
@@ -36,19 +39,6 @@
 
 static long call_test(long arg1, long arg2, long arg3)
 {
-    // char *cmd = "/system/bin/touch";
-    // // const char *superkey = get_superkey();
-    // char *argv[] = {
-    //     cmd,
-    //     "/data/local/tmp/test.txt",
-    //     NULL,
-    // };
-    // char *envp[] = {
-    //     "PATH=/system/bin:/data/adb",
-    //     NULL,
-    // };
-    // int rc = call_usermodehelper(cmd, argv, envp, UMH_WAIT_PROC);
-    // log_boot("user_init: %d\n", rc);
     return 0;
 }
 
@@ -69,16 +59,25 @@ static long call_klog(const char __user *arg1)
 {
     char buf[1024];
     long len = compat_strncpy_from_user(buf, arg1, sizeof(buf));
-    if (unlikely(len <= 0)) return -EINVAL;
-    if (likely(len > 0)) logki("user log: %s", buf);
+    if (len <= 0) return -EINVAL;
+    if (len > 0) logki("user log: %s", buf);
     return 0;
+}
+
+static long call_buildtime(char __user *out_buildtime, int u_len)
+{
+    const char *buildtime = get_build_time();
+    int len = strlen(buildtime);
+    if (len >= u_len) return -ENOMEM;
+    int rc = compat_copy_to_user(out_buildtime, buildtime, len + 1);
+    return rc;
 }
 
 static long call_kpm_load(const char __user *arg1, const char *__user arg2, void *__user reserved)
 {
     char path[1024], args[KPM_ARGS_LEN];
     long pathlen = compat_strncpy_from_user(path, arg1, sizeof(path));
-    if (unlikely(pathlen <= 0)) return -EINVAL;
+    if (pathlen <= 0) return -EINVAL;
     long arglen = compat_strncpy_from_user(args, arg2, sizeof(args));
     return load_module_path(path, arglen <= 0 ? 0 : args, reserved);
 }
@@ -87,7 +86,7 @@ static long call_kpm_control(const char __user *arg1, const char *__user arg2, v
 {
     char name[KPM_NAME_LEN], args[KPM_ARGS_LEN];
     long namelen = compat_strncpy_from_user(name, arg1, sizeof(name));
-    if (unlikely(namelen <= 0)) return -EINVAL;
+    if (namelen <= 0) return -EINVAL;
     long arglen = compat_strncpy_from_user(args, arg2, sizeof(args));
     return module_control0(name, arglen <= 0 ? 0 : args, out_msg, outlen);
 }
@@ -96,7 +95,7 @@ static long call_kpm_unload(const char *__user arg1, void *__user reserved)
 {
     char name[KPM_NAME_LEN];
     long len = compat_strncpy_from_user(name, arg1, sizeof(name));
-    if (unlikely(len <= 0)) return -EINVAL;
+    if (len <= 0) return -EINVAL;
     return unload_module(name, reserved);
 }
 
@@ -110,7 +109,7 @@ static long call_kpm_list(char *__user names, int len)
     if (len <= 0) return -EINVAL;
     char buf[4096];
     int sz = list_modules(buf, sizeof(buf));
-    if (unlikely(sz > len)) return -ENOBUFS;
+    if (sz > len) return -ENOBUFS;
     sz = compat_copy_to_user(names, buf, len);
     return sz;
 }
@@ -121,10 +120,10 @@ static long call_kpm_info(const char *__user uname, char *__user out_info, int o
     char name[64];
     char buf[2048];
     int len = compat_strncpy_from_user(name, uname, sizeof(name));
-    if (unlikely(len <= 0)) return -EINVAL;
+    if (len <= 0) return -EINVAL;
     int sz = get_module_info(name, buf, sizeof(buf));
     if (sz < 0) return sz;
-    if (unlikely(sz > out_len)) return -ENOBUFS;
+    if (sz > out_len) return -ENOBUFS;
     sz = compat_copy_to_user(out_info, buf, sz);
     return sz;
 }
@@ -132,7 +131,7 @@ static long call_kpm_info(const char *__user uname, char *__user out_info, int o
 static long call_su(struct su_profile *__user uprofile)
 {
     struct su_profile *profile = memdup_user(uprofile, sizeof(struct su_profile));
-    if (unlikely(!profile) || unlikely(IS_ERR(profile))) return PTR_ERR(profile);
+    if (!profile || IS_ERR(profile)) return PTR_ERR(profile);
     profile->scontext[sizeof(profile->scontext) - 1] = '\0';
     int rc = commit_su(profile->to_uid, profile->scontext);
     kvfree(profile);
@@ -154,7 +153,7 @@ static long call_skey_get(char *__user out_key, int out_len)
     const char *key = get_superkey();
     int klen = strlen(key);
     if (klen >= out_len) return -ENOMEM;
-    int rc = compat_copy_to_user(out_key, get_superkey(), klen + 1);
+    int rc = compat_copy_to_user(out_key, key, klen + 1);
     return rc;
 }
 
@@ -173,12 +172,95 @@ static long call_skey_root_enable(int enable)
     return 0;
 }
 
-static unsigned long call_pid_virt_to_phys(pid_t pid, uintptr_t vaddr)
+static long call_grant_uid(struct su_profile *__user uprofile)
 {
-    return pid_virt_to_phys(pid, vaddr);
+    struct su_profile *profile = memdup_user(uprofile, sizeof(struct su_profile));
+    if (!profile || IS_ERR(profile)) return PTR_ERR(profile);
+    int rc = su_add_allow_uid(profile->uid, profile->to_uid, profile->scontext);
+    kvfree(profile);
+    return rc;
 }
 
-static long supercall(long cmd, long arg1, long arg2, long arg3, long arg4)
+static long call_revoke_uid(uid_t uid)
+{
+    return su_remove_allow_uid(uid);
+}
+
+static long call_su_allow_uid_nums()
+{
+    return su_allow_uid_nums();
+}
+
+#ifdef ANDROID
+extern int android_is_safe_mode;
+static long call_su_get_safemode()
+{
+    int result = android_is_safe_mode;
+    logkfd("[call_su_get_safemode] %d\n", result);
+    return result;
+}
+#endif
+
+static long call_su_list_allow_uid(uid_t *__user uids, int num)
+{
+    return su_allow_uids(1, uids, num);
+}
+
+static long call_su_allow_uid_profile(uid_t uid, struct su_profile *__user uprofile)
+{
+    return su_allow_uid_profile(1, uid, uprofile);
+}
+
+static long call_reset_su_path(const char *__user upath)
+{
+    return su_reset_path(strndup_user(upath, SU_PATH_MAX_LEN));
+}
+
+static long call_su_get_path(char *__user ubuf, int buf_len)
+{
+    const char *path = su_get_path();
+    int len = strlen(path);
+    if (buf_len <= len) return -ENOBUFS;
+    return compat_copy_to_user(ubuf, path, len + 1);
+}
+
+static long call_su_get_allow_sctx(char *__user usctx, int ulen)
+{
+    int len = strlen(all_allow_sctx);
+    if (ulen <= len) return -ENOBUFS;
+    return compat_copy_to_user(usctx, all_allow_sctx, len + 1);
+}
+
+static long call_su_set_allow_sctx(char *__user usctx)
+{
+    char buf[SUPERCALL_SCONTEXT_LEN];
+    buf[0] = '\0';
+    int len = compat_strncpy_from_user(buf, usctx, sizeof(buf));
+    if (len >= SUPERCALL_SCONTEXT_LEN && buf[SUPERCALL_SCONTEXT_LEN - 1]) return -E2BIG;
+    return set_all_allow_sctx(buf);
+}
+
+static long call_kstorage_read(int gid, long did, void *out_data, int offset, int dlen)
+{
+    return read_kstorage(gid, did, out_data, offset, dlen, true);
+}
+
+static long call_kstorage_write(int gid, long did, void *data, int offset, int dlen)
+{
+    return write_kstorage(gid, did, data, offset, dlen, true);
+}
+
+static long call_list_kstorage_ids(int gid, long *ids, int ids_len)
+{
+    return list_kstorage_ids(gid, ids, ids_len, false);
+}
+
+static long call_kstorage_remove(int gid, long did)
+{
+    return remove_kstorage(gid, did);
+}
+
+static long supercall(int is_key_auth, long cmd, long arg1, long arg2, long arg3, long arg4)
 {
     switch (cmd) {
     case SUPERCALL_HELLO:
@@ -190,7 +272,65 @@ static long supercall(long cmd, long arg1, long arg2, long arg3, long arg4)
         return kpver;
     case SUPERCALL_KERNEL_VER:
         return kver;
+    case SUPERCALL_BUILD_TIME:
+        return call_buildtime((char *__user)arg1, (int)arg2);
     }
+
+    switch (cmd) {
+    case SUPERCALL_SU:
+        return call_su((struct su_profile * __user) arg1);
+    case SUPERCALL_SU_TASK:
+        return call_su_task((pid_t)arg1, (struct su_profile * __user) arg2);
+
+    case SUPERCALL_SU_GRANT_UID:
+        return call_grant_uid((struct su_profile * __user) arg1);
+    case SUPERCALL_SU_REVOKE_UID:
+        return call_revoke_uid((uid_t)arg1);
+    case SUPERCALL_SU_NUMS:
+        return call_su_allow_uid_nums();
+    case SUPERCALL_SU_LIST:
+        return call_su_list_allow_uid((uid_t *)arg1, (int)arg2);
+    case SUPERCALL_SU_PROFILE:
+        return call_su_allow_uid_profile((uid_t)arg1, (struct su_profile * __user) arg2);
+    case SUPERCALL_SU_RESET_PATH:
+        return call_reset_su_path((const char *)arg1);
+    case SUPERCALL_SU_GET_PATH:
+        return call_su_get_path((char *__user)arg1, (int)arg2);
+    case SUPERCALL_SU_GET_ALLOW_SCTX:
+        return call_su_get_allow_sctx((char *__user)arg1, (int)arg2);
+    case SUPERCALL_SU_SET_ALLOW_SCTX:
+        return call_su_set_allow_sctx((char *__user)arg1);
+
+    case SUPERCALL_KSTORAGE_READ:
+        return call_kstorage_read((int)arg1, (long)arg2, (void *)arg3, (int)((long)arg4 >> 32), (long)arg4 << 32 >> 32);
+    case SUPERCALL_KSTORAGE_WRITE:
+        return call_kstorage_write((int)arg1, (long)arg2, (void *)arg3, (int)((long)arg4 >> 32),
+                                   (long)arg4 << 32 >> 32);
+    case SUPERCALL_KSTORAGE_LIST_IDS:
+        return call_list_kstorage_ids((int)arg1, (long *)arg2, (int)arg3);
+    case SUPERCALL_KSTORAGE_REMOVE:
+        return call_kstorage_remove((int)arg1, (long)arg2);
+
+#ifdef ANDROID
+    case SUPERCALL_SU_GET_SAFEMODE:
+        return call_su_get_safemode();
+#endif
+    default:
+        break;
+    }
+
+    switch (cmd) {
+    case SUPERCALL_BOOTLOG:
+        return call_bootlog();
+    case SUPERCALL_PANIC:
+        return call_panic();
+    case SUPERCALL_TEST:
+        return call_test(arg1, arg2, arg3);
+    default:
+        break;
+    }
+
+    if (!is_key_auth) return -EPERM;
 
     switch (cmd) {
     case SUPERCALL_SKEY_GET:
@@ -203,10 +343,6 @@ static long supercall(long cmd, long arg1, long arg2, long arg3, long arg4)
     }
 
     switch (cmd) {
-    case SUPERCALL_SU:
-        return call_su((struct su_profile * __user) arg1);
-    case SUPERCALL_SU_TASK:
-        return call_su_task((pid_t)arg1, (struct su_profile * __user) arg2);
     case SUPERCALL_KPM_LOAD:
         return call_kpm_load((const char *__user)arg1, (const char *__user)arg2, (void *__user)arg3);
     case SUPERCALL_KPM_UNLOAD:
@@ -219,21 +355,14 @@ static long supercall(long cmd, long arg1, long arg2, long arg3, long arg4)
         return call_kpm_list((char *__user)arg1, (int)arg2);
     case SUPERCALL_KPM_INFO:
         return call_kpm_info((const char *__user)arg1, (char *__user)arg2, (int)arg3);
-    case SUPERCALL_MEM_PHYS:
-        return call_pid_virt_to_phys((pid_t)arg1, (uintptr_t)arg2);
-
-    case SUPERCALL_BOOTLOG:
-        return call_bootlog();
-    case SUPERCALL_PANIC:
-        return call_panic();
-    case SUPERCALL_TEST:
-        return call_test(arg1, arg2, arg3);
     }
 
-#ifdef ANDROID
-    return supercall_android(cmd, arg1, arg2, arg3);
-#endif
-    return NO_SYSCALL;
+    switch (cmd) {
+    default:
+        break;
+    }
+
+    return -ENOSYS;
 }
 
 static void before(hook_fargs6_t *args, void *udata)
@@ -250,8 +379,18 @@ static void before(hook_fargs6_t *args, void *udata)
 
     char key[MAX_KEY_LEN];
     long len = compat_strncpy_from_user(key, ukey, MAX_KEY_LEN);
-    if (unlikely(len <= 0)) return;
-    if (likely(auth_superkey(key))) return;
+    if (len <= 0) return;
+
+    int is_key_auth = 0;
+
+    if (!auth_superkey(key)) {
+        is_key_auth = 1;
+    } else if (!strcmp("su", key)) {
+        uid_t uid = current_uid();
+        if (!is_su_allow_uid(uid)) return;
+    } else {
+        return;
+    }
 
     long a1 = (long)syscall_argn(args, 2);
     long a2 = (long)syscall_argn(args, 3);
@@ -259,14 +398,14 @@ static void before(hook_fargs6_t *args, void *udata)
     long a4 = (long)syscall_argn(args, 5);
 
     args->skip_origin = 1;
-    args->ret = supercall(cmd, a1, a2, a3, a4);
+    args->ret = supercall(is_key_auth, cmd, a1, a2, a3, a4);
 }
 
 int supercall_install()
 {
     int rc = 0;
 
-    hook_err_t err = fp_hook_syscalln(__NR_supercall, 6, before, 0, 0);
+    hook_err_t err = hook_syscalln(__NR_supercall, 6, before, 0, 0);
     if (err) {
         log_boot("install supercall hook error: %d\n", err);
         rc = err;
