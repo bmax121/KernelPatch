@@ -465,7 +465,7 @@ static int find_num_syms(kallsym_t *info, char *img, int32_t imglen)
         break;
     }
 
-    if (info->kallsyms_num_syms_offset) {
+    if (!info->kallsyms_num_syms_offset || !info->kallsyms_num_syms) {
         info->kallsyms_num_syms = approx_num_syms - NSYMS_MAX_GAP;
         tools_logw("can't find kallsyms_num_syms, try: 0x%08x\n", info->kallsyms_num_syms);
     } else {
