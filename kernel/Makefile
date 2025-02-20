@@ -47,7 +47,6 @@ ifdef ANDROID
 endif
 
 SRCS += $(BASE_SRCS)
-SRCS += $(LINUX_SRCS)
 
 OBJS := $(SRCS:.c=.o)
 OBJS := $(OBJS:.S=.o)
