@@ -220,6 +220,7 @@ static hook_err_t hook_chain_prepare(uint32_t *transit, int32_t argno)
 void fp_hook(uintptr_t fp_addr, void *replace, void **backup)
 {
     uint64_t *entry = pgtable_entry_kernel(fp_addr);
+    contpte_try_unfold(fp_addr, entry);
     uint64_t ori_prot = *entry;
     *entry = (ori_prot | PTE_DBM) & ~PTE_RDONLY;
     flush_tlb_kernel_page(fp_addr);
@@ -234,6 +235,7 @@ KP_EXPORT_SYMBOL(fp_hook);
 void fp_unhook(uintptr_t fp_addr, void *backup)
 {
     uint64_t *entry = pgtable_entry_kernel(fp_addr);
+    contpte_try_unfold(fp_addr, entry);
     uint64_t ori_prot = *entry;
     *entry = (ori_prot | PTE_DBM) & ~PTE_RDONLY;
     flush_tlb_kernel_page(fp_addr);

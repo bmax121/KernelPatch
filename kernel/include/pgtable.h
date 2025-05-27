@@ -8,12 +8,17 @@
 
 #include <ktypes.h>
 
-#define MT_DEVICE_nGnRnE
-#define MT_DEVICE_nGnRE
-#define MT_DEVICE_GRE
-#define MT_NORMAL_NC
-#define MT_NORMAL
-#define MT_NORMAL_WT
+#define CONT_PTE_SHIFT (4 + page_shift)
+#define CONT_PTES (1 << (CONT_PTE_SHIFT - page_shift))
+#define CONT_PTE_SIZE (CONT_PTES * page_size)
+#define CONT_PTE_MASK (~(CONT_PTE_SIZE - 1))
+
+#define MT_DEVICE_nGnRnE 0
+#define MT_DEVICE_nGnRE 1
+#define MT_DEVICE_GRE 2
+#define MT_NORMAL_NC 3
+#define MT_NORMAL 4
+#define MT_NORMAL_WT 5
 
 #define PTE_VALID (1ul << 0)
 #define PTE_TYPE_MASK (3ul << 0)
@@ -167,6 +172,18 @@ uint64_t *pgtable_entry(uint64_t pgd, uint64_t va);
 static inline uint64_t *pgtable_entry_kernel(uint64_t va)
 {
     return pgtable_entry(pgd_va, va);
+}
+
+static inline void contpte_try_unfold(uint64_t addr, uint64_t *ptep)
+{
+    if (!ptep || !(*ptep & PTE_CONT)) return;
+
+    addr &= CONT_PTE_MASK;
+    ptep = (uint64_t *)((uintptr_t)ptep & ~(sizeof(ptep) * CONT_PTES - 1));
+    for (int i = 0; i < CONT_PTES; i++, ptep++, addr += page_size) {
+        *ptep &= ~PTE_CONT;
+        flush_tlb_kernel_page(addr);
+    }
 }
 
 #endif

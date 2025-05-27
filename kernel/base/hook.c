@@ -605,6 +605,7 @@ void hook_install(hook_t *hook)
 {
     uint64_t va = hook->origin_addr;
     uint64_t *entry = pgtable_entry_kernel(va);
+    contpte_try_unfold(va, entry);
     uint64_t ori_prot = *entry;
     *entry = (ori_prot | PTE_DBM) & ~PTE_RDONLY;
     flush_tlb_kernel_page(va);
@@ -623,6 +624,7 @@ void hook_uninstall(hook_t *hook)
 {
     uint64_t va = hook->origin_addr;
     uint64_t *entry = pgtable_entry_kernel(va);
+    contpte_try_unfold(va, entry);
     uint64_t ori_prot = *entry;
     *entry = (ori_prot | PTE_DBM) & ~PTE_RDONLY;
     flush_tlb_kernel_page(va);
