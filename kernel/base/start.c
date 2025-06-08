@@ -174,6 +174,25 @@ uint64_t *pgtable_entry(uint64_t pgd, uint64_t va)
 }
 KP_EXPORT_SYMBOL(pgtable_entry);
 
+void modify_entry_kernel(uint64_t va, uint64_t *entry, uint64_t value)
+{
+    if (!pte_valid_cont(*entry) && !pte_valid_cont(value)) {
+        *entry = value;
+        flush_tlb_kernel_page(va);
+        return;
+    }
+
+    uint64_t table_pa_mask = (((1ul << (48 - page_shift)) - 1) << page_shift);
+    uint64_t prot = value & ~table_pa_mask;
+    uint64_t *p = (uint64_t *)((uintptr_t)entry & ~(sizeof(entry) * CONT_PTES - 1));
+    for (int i = 0; i < CONT_PTES; ++i, ++p)
+        *p = (*p & table_pa_mask) | prot;
+
+    *entry = value;
+    va &= CONT_PTE_MASK;
+    flush_tlb_kernel_range(va, va + CONT_PTES * page_size);
+}
+
 static void prot_myself()
 {
     uint64_t *kpte = pgtable_entry_kernel(kernel_stext_va);
