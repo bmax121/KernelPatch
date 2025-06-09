@@ -203,7 +203,7 @@ int resolve_cred_offset()
     kernel_cap_t new_cap_e = { 0xff }, new_cap_i = { 0xf }, new_cap_p = { 0xfff };
     cap_capset(cred1, cred, &new_cap_e, &new_cap_i, &new_cap_p);
 
-    for (int i = 0; i < CRED_MAX_SIZE; i += sizeof(kernel_cap_t)) {
+    for (int i = 0; i < CRED_MAX_SIZE; i += sizeof(uint32_t)) {
         if (is_bl(i)) continue;
         kernel_cap_t cap = *(kernel_cap_t *)((uintptr_t)cred + i);
         kernel_cap_t cap1 = *(kernel_cap_t *)((uintptr_t)cred1 + i);
@@ -225,7 +225,7 @@ int resolve_cred_offset()
     }
 
     // cap_bset
-    for (int i = 0; i < CRED_MAX_SIZE; i += sizeof(kernel_cap_t)) {
+    for (int i = 0; i < CRED_MAX_SIZE; i += sizeof(uint32_t)) {
         if (is_bl(i)) continue;
         kernel_cap_t cap1 = *(kernel_cap_t *)((uintptr_t)cred1 + i);
         if (cap1.val == effective.val) {
@@ -239,7 +239,7 @@ int resolve_cred_offset()
     log_boot("    cap_bset offset: %x\n", cred_offset.cap_bset_offset);
 
     // securebits
-    for (int i = 0; i < CRED_MAX_SIZE; i += sizeof(unsigned)) {
+    for (int i = 0; i < CRED_MAX_SIZE; i += sizeof(uint32_t)) {
         if (is_bl(i)) continue;
         unsigned *sbitsp = (unsigned *)((uintptr_t)cred + i);
         unsigned oribits = *sbitsp;
@@ -257,7 +257,7 @@ int resolve_cred_offset()
     log_boot("    securebits offset: %x\n", cred_offset.securebits_offset);
 
     // euid, uid, egid, gid
-    for (int i = 0; i < CRED_MAX_SIZE; i += sizeof(uid_t)) {
+    for (int i = 0; i < CRED_MAX_SIZE; i += sizeof(uint32_t)) {
         if (is_bl(i)) continue;
         uid_t *uidp = (uid_t *)((uintptr_t)cred + i);
         if (*uidp) continue;
@@ -283,7 +283,7 @@ int resolve_cred_offset()
     log_boot("    egid offset: %x\n", cred_offset.egid_offset);
 
     // fsuid
-    for (int i = 0; i < CRED_MAX_SIZE; i += sizeof(uid_t)) {
+    for (int i = 0; i < CRED_MAX_SIZE; i += sizeof(uint32_t)) {
         if (is_bl(i)) continue;
         uid_t *uidp = (uid_t *)((uintptr_t)cred + i);
         uid_t backup = *uidp;
@@ -300,7 +300,7 @@ int resolve_cred_offset()
 
     // fsgid
     struct cred *new_cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
-    for (int i = 0; i < CRED_MAX_SIZE; i += sizeof(gid_t)) {
+    for (int i = 0; i < CRED_MAX_SIZE; i += sizeof(uint32_t)) {
         if (is_bl(i)) continue;
         gid_t *gidp = (gid_t *)((uintptr_t)new_cred + i);
         gid_t backup = *gidp;
@@ -318,7 +318,7 @@ int resolve_cred_offset()
     // suid
     raw_syscall3(__NR_setresuid, 0, 0, 1158);
     new_cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
-    for (int i = 0; i < CRED_MAX_SIZE; i += sizeof(uid_t)) {
+    for (int i = 0; i < CRED_MAX_SIZE; i += sizeof(uint32_t)) {
         if (is_bl(i)) continue;
         uid_t *uidp = (uid_t *)((uintptr_t)new_cred + i);
         if (*uidp == 1158) {
@@ -333,7 +333,7 @@ int resolve_cred_offset()
     // sgid
     raw_syscall3(__NR_setresgid, 0, 0, 1158);
     new_cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
-    for (int i = 0; i < CRED_MAX_SIZE; i += sizeof(gid_t)) {
+    for (int i = 0; i < CRED_MAX_SIZE; i += sizeof(uint32_t)) {
         if (is_bl(i)) continue;
         gid_t *uidp = (gid_t *)((uintptr_t)new_cred + i);
         if (*uidp == 1158) {
@@ -353,7 +353,7 @@ int resolve_cred_offset()
     *(unsigned *)((uintptr_t)new_cred + cred_offset.securebits_offset) = 0;
     cap_task_prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_RAISE, 0xf, 0, 0);
     new_cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
-    for (int i = 0; i < CRED_MAX_SIZE; i += sizeof(kernel_cap_t)) {
+    for (int i = 0; i < CRED_MAX_SIZE; i += sizeof(uint32_t)) {
         if (is_bl(i)) continue;
         kernel_cap_t cap = *(kernel_cap_t *)((uintptr_t)cred + i);
         kernel_cap_t new_cap = *(kernel_cap_t *)((uintptr_t)new_cred + i);
@@ -379,7 +379,7 @@ static int find_swapper_comm_offset(uint64_t start, int size)
     if (!is_kimg_range(start) || !is_kimg_range(start + size)) return -1;
     char swapper_comm[TASK_COMM_LEN] = "swapper";
     char swapper_comm_1[TASK_COMM_LEN] = "swapper/0";
-    for (uint64_t i = start; i < start + size; i += 8) {
+    for (uint64_t i = start; i < start + size; i += sizeof(uint32_t)) {
         if (!lib_strcmp(swapper_comm, (char *)i) || !lib_strcmp(swapper_comm_1, (char *)i)) {
             return i - start;
         }
@@ -401,7 +401,7 @@ int resolve_task_offset()
     int cred_offset_idx = 0;
     init_cred = get_task_cred(init_task); // todo: get_task_cred not export
     log_boot("    init_cred addr: %llx\n", init_cred);
-    for (uintptr_t i = (uintptr_t)init_task; i < (uintptr_t)init_task + TASK_STRUCT_MAX_SIZE; i += sizeof(uintptr_t)) {
+    for (uintptr_t i = (uintptr_t)init_task; i < (uintptr_t)init_task + TASK_STRUCT_MAX_SIZE; i += sizeof(uint32_t)) {
         uintptr_t val = *(uintptr_t *)i;
         if (val == (uintptr_t)init_cred) {
             cred_offset[cred_offset_idx++] = i - (uintptr_t)init_task;
@@ -426,7 +426,7 @@ int resolve_task_offset()
 
     // seccomp
     if (kfunc(prctl_get_seccomp)) {
-        for (uintptr_t i = (uintptr_t)task; i < (uintptr_t)task + TASK_STRUCT_MAX_SIZE; i += sizeof(uintptr_t)) {
+        for (uintptr_t i = (uintptr_t)task; i < (uintptr_t)task + TASK_STRUCT_MAX_SIZE; i += sizeof(uint32_t)) {
             int *modep = (int *)i;
             int mode_back = *modep;
             if (mode_back) continue;
@@ -443,7 +443,7 @@ int resolve_task_offset()
     // active_mm
     init_mm = (struct mm_struct *)kallsyms_lookup_name("init_mm");
     if (init_mm) {
-        for (uintptr_t i = (uintptr_t)task; i < (uintptr_t)task + TASK_STRUCT_MAX_SIZE; i += sizeof(uintptr_t)) {
+        for (uintptr_t i = (uintptr_t)task; i < (uintptr_t)task + TASK_STRUCT_MAX_SIZE; i += sizeof(uint32_t)) {
             uintptr_t active_mm = *(uintptr_t *)i;
             if (active_mm == (uintptr_t)init_mm) {
                 task_struct_offset.active_mm_offset = i - (uintptr_t)task;
@@ -516,7 +516,7 @@ int resolve_current()
         uint64_t sp_low = sp & ~(tsz - 1);
         // uint64_t sp_high = sp_low + tsz; // user_stack_pointer
         uint64_t psp = sp_low;
-        for (; psp < sp_low + THREAD_INFO_MAX_SIZE; psp += 8) {
+        for (; psp < sp_low + THREAD_INFO_MAX_SIZE; psp += sizeof(uint32_t)) {
             if (*(uint64_t *)psp == STACK_END_MAGIC) {
                 if (psp == sp_low) {
                     thread_size = tsz;
@@ -544,7 +544,7 @@ int resolve_current()
     if (!thread_info_in_task) {
         uint64_t thread_info_addr = (uint64_t)current_thread_info_sp();
         if (init_task) {
-            for (uint64_t ptr = thread_info_addr; ptr < thread_info_addr + stack_end_offset; ptr += sizeof(uint64_t)) {
+            for (uint64_t ptr = thread_info_addr; ptr < thread_info_addr + stack_end_offset; ptr += sizeof(uint32_t)) {
                 uint64_t pv = *(uint64_t *)ptr;
                 if (pv == (uint64_t)init_task) {
                     task_in_thread_info_offset = ptr - thread_info_addr;
@@ -552,7 +552,7 @@ int resolve_current()
                 }
             }
         } else { // unlikely
-            for (uint64_t ptr = thread_info_addr; ptr < thread_info_addr + stack_end_offset; ptr += sizeof(uint64_t)) {
+            for (uint64_t ptr = thread_info_addr; ptr < thread_info_addr + stack_end_offset; ptr += sizeof(uint32_t)) {
                 uint64_t pv = *(uint64_t *)ptr;
                 task_struct_offset.comm_offset = find_swapper_comm_offset(pv, TASK_STRUCT_MAX_SIZE);
                 if (task_struct_offset.comm_offset > 0) {
@@ -573,7 +573,7 @@ int resolve_current()
 
     // stack,
     uint64_t stack_base = (sp & ~(thread_size - 1));
-    for (uintptr_t i = (uintptr_t)init_task; i < (uintptr_t)init_task + TASK_STRUCT_MAX_SIZE; i += sizeof(uintptr_t)) {
+    for (uintptr_t i = (uintptr_t)init_task; i < (uintptr_t)init_task + TASK_STRUCT_MAX_SIZE; i += sizeof(uint32_t)) {
         uintptr_t val = *(uintptr_t *)i;
         if (stack_base == val) {
             stack_in_task_offset = i - (uintptr_t)init_task;
@@ -599,7 +599,7 @@ int resolve_mm_struct_offset()
     uintptr_t init_mm_addr = (uintptr_t)init_mm;
     if (!init_mm_addr) return 0;
 
-    for (uintptr_t i = init_mm_addr; i < init_mm_addr + MM_STRUCT_MAX_SIZE; i += sizeof(uintptr_t)) {
+    for (uintptr_t i = init_mm_addr; i < init_mm_addr + MM_STRUCT_MAX_SIZE; i += sizeof(uint32_t)) {
         uint64_t pgd = *(uintptr_t *)i;
         if (pgd == phys_to_kimg(pgd_pa)) {
             mm_struct_offset.pgd_offset = i - init_mm_addr;

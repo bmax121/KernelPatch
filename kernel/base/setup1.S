@@ -223,6 +223,29 @@ map_prepare:
     add x13, x15, x19
     // map_data.paging_init_backup = *(uint32_t *)(paging_init_pa);
     ldr w12, [x13]
+
+    mov w3, #0x201F
+    movk w3, #0xD503, lsl#16
+    orr w1, w3, #0x100
+    mov w2, #0xFFFFFD1F
+    and w0, w12, w2
+    // if ((map_data.paging_init_backup & 0xFFFFFD1F) == 0xD503211F)
+    cmp w0, w1
+    b.ne .backup
+    // map_data.paging_init_backup = NOP
+    mov w12, w3
+    // uint32_t *p = (uint32_t *)paging_init_pa + 1;
+    add x11, x13, #4
+.cmp_auti:
+    // while ((*p & 0xFFFFFD1F) != 0xD503211F) ++p;
+    ldr w0, [x11], #4
+    and w0, w0, w2
+    cmp w0, w1
+    b.ne .cmp_auti
+    // *p = NOP
+    stur w3, [x11, #-4]
+
+.backup:
     str w12, [x9, #map_paging_init_backup_offset]
     dsb ish
 

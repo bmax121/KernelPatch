@@ -47,6 +47,13 @@
 #define PTATTR_RDONLY (1ul << 62) /* AP[2], write note permited at any exception level*/
 #define PTATTR_NS (1ul << 63) /* Indicates whether the table identifier is located in Secure PA space */
 
+#define pte_valid_cont(pte)	(((pte) & (PTE_VALID | PTE_TABLE_BIT | PTE_CONT)) == (PTE_VALID | PTE_TABLE_BIT | PTE_CONT))
+
+#define CONT_PTE_SHIFT (4 + page_shift)
+#define CONT_PTES (1 << (CONT_PTE_SHIFT - page_shift))
+#define CONT_PTE_SIZE (CONT_PTES * page_size)
+#define CONT_PTE_MASK (~(CONT_PTE_SIZE - 1))
+
 #define mask_ul(h, l) (((~0ul) << (l)) & (~0ul >> (63 - (h))))
 
 #define sev() asm volatile("sev" : : : "memory")
@@ -168,5 +175,7 @@ static inline uint64_t *pgtable_entry_kernel(uint64_t va)
 {
     return pgtable_entry(pgd_va, va);
 }
+
+void modify_entry_kernel(uint64_t va, uint64_t *entry, uint64_t value);
 
 #endif

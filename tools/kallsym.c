@@ -668,10 +668,10 @@ static int correct_addresses_or_offsets_by_vectors(kallsym_t *info, char *img, i
         uint64_t base = uint_unpack(img + info->_approx_addresses_or_offsets_offset, elem_size, info->is_be);
         base_cand[0] = base;
         if (info->kernel_base) {
-            base_cand[++base_cand_num] = info->kernel_base;
+            base_cand[base_cand_num++] = info->kernel_base;
         }
         if (info->kernel_base != ELF64_KERNEL_MIN_VA) {
-            base_cand[++base_cand_num] = ELF64_KERNEL_MIN_VA;
+            base_cand[base_cand_num++] = ELF64_KERNEL_MIN_VA;
         }
     }
 

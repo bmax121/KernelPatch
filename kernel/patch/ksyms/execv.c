@@ -38,7 +38,7 @@ static void before_execve(hook_fargs3_t *args, void *udata)
     unsigned long stack = (unsigned long)get_stack(current);
     uintptr_t addr = (uintptr_t)(thread_size + stack);
 
-    for (uintptr_t i = addr - sizeof(struct pt_regs) - 0x40; i < addr - 32 * 8; i += 0x10) {
+    for (uintptr_t i = addr - sizeof(struct pt_regs) - 0x40; i < addr - 32 * 8; i += sizeof(uint32_t)) {
         uintptr_t val0 = *(uintptr_t *)i;
         uintptr_t val1 = *(uintptr_t *)(i + 0x8);
         uintptr_t val2 = *(uintptr_t *)(i + 0x10);

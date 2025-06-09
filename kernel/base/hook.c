@@ -606,16 +606,14 @@ void hook_install(hook_t *hook)
     uint64_t va = hook->origin_addr;
     uint64_t *entry = pgtable_entry_kernel(va);
     uint64_t ori_prot = *entry;
-    *entry = (ori_prot | PTE_DBM) & ~PTE_RDONLY;
-    flush_tlb_kernel_page(va);
+    modify_entry_kernel(va, entry, (ori_prot | PTE_DBM) & ~PTE_RDONLY);
     // todo: cpu_stop_machine
     // todo: can use aarch64_insn_patch_text_nosync, aarch64_insn_patch_text directly?
     for (int32_t i = 0; i < hook->tramp_insts_num; i++) {
         *((uint32_t *)hook->origin_addr + i) = hook->tramp_insts[i];
     }
     flush_icache_all();
-    *entry = ori_prot;
-    flush_tlb_kernel_page(va);
+    modify_entry_kernel(va, entry, ori_prot);
 }
 KP_EXPORT_SYMBOL(hook_install);
 
@@ -624,14 +622,13 @@ void hook_uninstall(hook_t *hook)
     uint64_t va = hook->origin_addr;
     uint64_t *entry = pgtable_entry_kernel(va);
     uint64_t ori_prot = *entry;
-    *entry = (ori_prot | PTE_DBM) & ~PTE_RDONLY;
+    modify_entry_kernel(va, entry, (ori_prot | PTE_DBM) & ~PTE_RDONLY);
     flush_tlb_kernel_page(va);
     for (int32_t i = 0; i < hook->tramp_insts_num; i++) {
         *((uint32_t *)hook->origin_addr + i) = hook->origin_insts[i];
     }
     flush_icache_all();
-    *entry = ori_prot;
-    flush_tlb_kernel_page(va);
+    modify_entry_kernel(va, entry, ori_prot);
 }
 KP_EXPORT_SYMBOL(hook_uninstall);
 

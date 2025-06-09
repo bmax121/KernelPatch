@@ -221,13 +221,12 @@ void fp_hook(uintptr_t fp_addr, void *replace, void **backup)
 {
     uint64_t *entry = pgtable_entry_kernel(fp_addr);
     uint64_t ori_prot = *entry;
-    *entry = (ori_prot | PTE_DBM) & ~PTE_RDONLY;
+    modify_entry_kernel(fp_addr, entry, (ori_prot | PTE_DBM) & ~PTE_RDONLY);
     flush_tlb_kernel_page(fp_addr);
     *(uintptr_t *)backup = *(uintptr_t *)fp_addr;
     *(uintptr_t *)fp_addr = (uintptr_t)replace;
     dsb(ish);
-    *entry = ori_prot;
-    flush_tlb_kernel_page(fp_addr);
+    modify_entry_kernel(fp_addr, entry, ori_prot);
 }
 KP_EXPORT_SYMBOL(fp_hook);
 
@@ -235,14 +234,12 @@ void fp_unhook(uintptr_t fp_addr, void *backup)
 {
     uint64_t *entry = pgtable_entry_kernel(fp_addr);
     uint64_t ori_prot = *entry;
-    *entry = (ori_prot | PTE_DBM) & ~PTE_RDONLY;
-    flush_tlb_kernel_page(fp_addr);
+    modify_entry_kernel(fp_addr, entry, (ori_prot | PTE_DBM) & ~PTE_RDONLY);
     *(uintptr_t *)fp_addr = (uintptr_t)backup;
     dsb(ish);
     isb();
     flush_icache_all();
-    *entry = ori_prot;
-    flush_tlb_kernel_page(fp_addr);
+    modify_entry_kernel(fp_addr, entry, ori_prot);
 }
 KP_EXPORT_SYMBOL(fp_unhook);
 
