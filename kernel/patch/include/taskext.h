@@ -64,7 +64,7 @@ static inline bool task_ext_valid(struct task_ext *ext)
 static inline int reg_task_local(int size)
 {
     int offset = task_ext_size;
-    task_ext_size += size;
+    offset += size;
     return offset;
 }
 
