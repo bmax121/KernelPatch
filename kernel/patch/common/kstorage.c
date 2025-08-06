@@ -34,8 +34,11 @@ static void reclaim_callback(struct rcu_head *rcu)
 int try_alloc_kstroage_group()
 {
     spin_lock(&used_max_group_lock);
+    if (used_max_group + 1 >= KSTRORAGE_MAX_GROUP_NUM) {
+        spin_unlock(&used_max_group_lock);
+        return -1;
+    }
     used_max_group++;
-    if (used_max_group < 0 || used_max_group >= KSTRORAGE_MAX_GROUP_NUM) return -1;
     spin_unlock(&used_max_group_lock);
     return used_max_group;
 }
@@ -65,7 +68,11 @@ int write_kstorage(int gid, long did, void *data, int offset, int len, bool data
         }
     }
 
-    struct kstorage *new = (struct kstorage *)vmalloc(sizeof(struct kstorage) + len);
+    struct kstorage *new = (struct kstorage *)vmalloc(sizeof(struct kstorage) + len);   
+    if (!new) {
+        rcu_read_unlock();
+        return -ENOMEM;
+    }
     new->gid = gid;
     new->did = did;
     new->dlen = 0;
