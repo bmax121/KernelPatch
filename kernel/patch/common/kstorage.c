@@ -226,7 +226,7 @@ int remove_kstorage(int gid, long did)
             list_del_rcu(&pos->list);
             spin_unlock(lock);
 
-            group_sizes[did]--;
+            group_sizes[gid]--;
 
             bool async = true;
             if (async) {
