@@ -250,8 +250,6 @@ jobs:
         run: |
           cp .\kernel\include\preset.h .\tools\
           cd tools
-          (Get-Content -Path "Makefile") -replace '\$\(CC\)', " x86_64-pc-msys-gcc.exe" | Set-Content -Path "Makefile"
-          (Get-Content -Path "Makefile") -replace '\${CC}', "x86_64-pc-msys-gcc.exe" | Set-Content -Path "Makefile"
       - name: build
         shell: cmd
         run: |
@@ -260,15 +258,15 @@ jobs:
       - name: Showinfo
         shell: cmd
         run: |
-          ls C:\a\_temp\
+          ls D:\a\_temp\
 
       - name: Copyfile2
         shell: pwsh
         run: |
           mkdir .\win
           cp .\tools\kptools.exe .\win\kptools-msys2.exe
-          cp C:\a\_temp\msys64\usr\bin\msys-2.0.dll .\win
-          cp C:\a\_temp\msys64\usr\bin\msys-z.dll .\win
+          cp D:\a\_temp\msys64\usr\bin\msys-2.0.dll .\win
+          cp D:\a\_temp\msys64\usr\bin\msys-z.dll .\win
           7z a kptools-msys2-win .\win 
       - name: Release
         uses: ncipollo/release-action@v1.12.0
