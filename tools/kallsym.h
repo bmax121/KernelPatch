@@ -61,7 +61,6 @@ enum current_type
     SP_EL0,
     SP
 };
-
 #define ELF64_KERNEL_MIN_VA 0xffffff8008080000
 #define ELF64_KERNEL_MAX_VA 0xffffffffffffffff
 
