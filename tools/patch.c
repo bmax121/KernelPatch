@@ -336,6 +336,29 @@ static void extra_append(char *kimg, const void *data, int len, int *offset)
     *offset += len;
 }
 
+static void disable_pi_map(char *img, int32_t imglen)
+{
+    
+    const unsigned char pattern[] = {
+        0xE6, 0x03, 0x16, 0xAA,
+        0xE7, 0x03, 0x1F, 0x2A,
+        0x34, 0x11, 0x88, 0x9A
+    };
+    const size_t pattern_len = sizeof(pattern);
+
+    const unsigned char replace[] = {
+        0xE6, 0x03, 0x16, 0xAA,
+        0xE7, 0x03, 0x1F, 0x2A,
+        0xF4, 0x03, 0x09, 0xAA
+    };
+
+    unsigned char *p = memmem(img, imglen, pattern, pattern_len);
+    if (p) {
+        memcpy(p, replace, pattern_len);
+    }
+
+}
+
 int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey,
                      bool root_key, const char **additional, extra_config_t *extra_configs, int extra_config_num)
 {
@@ -362,6 +385,9 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     char *kallsym_kimg = (char *)malloc(pimg.ori_kimg_len);
     memcpy(kallsym_kimg, pimg.kimg, pimg.ori_kimg_len);
     kallsym_t kallsym = { 0 };
+
+    if (kernel_if_need_patch(&kallsym, kallsym_kimg ,pimg.ori_kimg_len))disable_pi_map(kernel_file.kimg, kernel_file.kimg_len);
+    
     if (analyze_kallsym_info(&kallsym, kallsym_kimg, pimg.ori_kimg_len, ARM64, 1)) {
         tools_loge_exit("analyze_kallsym_info error\n");
     }

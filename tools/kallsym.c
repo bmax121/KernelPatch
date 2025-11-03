@@ -85,6 +85,39 @@ static int find_linux_banner(kallsym_t *info, char *img, int32_t imglen)
     return 0;
 }
 
+int kernel_if_need_patch(kallsym_t *info, char *img, int32_t imglen)
+{
+    char linux_banner_prefix[] = "Linux version ";
+    size_t prefix_len = strlen(linux_banner_prefix);
+
+    char *imgend = img + imglen;
+    char *banner = (char *)img;
+    info->banner_num = 0;
+    while ((banner = (char *)memmem(banner + 1, imgend - banner - 1, linux_banner_prefix, prefix_len)) != NULL) {
+        if (isdigit(*(banner + prefix_len)) && *(banner + prefix_len + 1) == '.') {
+            info->linux_banner_offset[info->banner_num++] = (int32_t)(banner - img);
+        }
+    }
+    banner = img + info->linux_banner_offset[info->banner_num - 1];
+
+    char *uts_release_start = banner + prefix_len;
+    char *space = strchr(banner + prefix_len, ' ');
+
+    char *dot = NULL;
+
+    // VERSION
+    info->version.major = (uint8_t)strtoul(uts_release_start, &dot, 10);
+    // PATCHLEVEL
+    info->version.minor = (uint8_t)strtoul(dot + 1, &dot, 10);
+    // SUBLEVEL
+    int32_t patch = (int32_t)strtoul(dot + 1, &dot, 10);
+    info->version.patch = patch <= 256 ? patch : 255;
+
+    if (info->version.major < 6)return 0;
+    if (info->version.minor < 7)return 0;
+    return 1;
+}
+
 static int dump_kernel_config(kallsym_t *info, char *img, int32_t imglen)
 {
     // todo:
