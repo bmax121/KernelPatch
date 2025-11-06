@@ -236,6 +236,7 @@ typedef struct _setup_preset_t
     int64_t map_max_size;
     int64_t kallsyms_lookup_name_offset;
     int64_t paging_init_offset;
+    int64_t paging_init_bl_offset;
     int64_t printk_offset;
     map_symbol_t map_symbol;
     uint8_t header_backup[HDR_BACKUP_SIZE];
@@ -258,7 +259,8 @@ typedef struct _setup_preset_t
 #define setup_map_max_size_offset (setup_map_offset_offset + 8)
 #define setup_kallsyms_lookup_name_offset_offset (setup_map_max_size_offset + 8)
 #define setup_paging_init_offset_offset (setup_kallsyms_lookup_name_offset_offset + 8)
-#define setup_printk_offset_offset (setup_paging_init_offset_offset + 8)
+#define setup_paging_init_bl_offset_offset (setup_paging_init_offset_offset + 8)
+#define setup_printk_offset_offset (setup_paging_init_bl_offset_offset + 8)
 #define setup_map_symbol_offset (setup_printk_offset_offset + 8)
 #define setup_header_backup_offset (setup_map_symbol_offset + MAP_SYMBOL_SIZE)
 #define setup_superkey_offset (setup_header_backup_offset + HDR_BACKUP_SIZE)

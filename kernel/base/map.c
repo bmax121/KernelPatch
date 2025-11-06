@@ -66,9 +66,9 @@ static void flush_icache_all(void)
     asm volatile("isb" : : : "memory");
 }
 
-static map_data_t *mem_proc()
+static void mem_proc(map_data_t *data)
 {
-    map_data_t *data = get_data();
+	*data = *get_data();
     uint64_t kernel_va = get_kva();
 
     // relocation
@@ -105,8 +105,6 @@ static map_data_t *mem_proc()
     uint64_t detect_virt = (uint64_t)((memblock_virt_alloc_try_nid_f)data->map_symbol.memblock_virt_alloc_relo)(
         0, 0x10, detect_phys, detect_phys, NUMA_NO_NODE);
     data->linear_voffset = detect_virt - detect_phys;
-
-    return data;
 }
 
 // todo: 52-bits pa
@@ -175,7 +173,10 @@ static uint64_t __noinline get_or_create_pte(map_data_t *data, uint64_t va, uint
 // todo: bti
 void __noinline _paging_init()
 {
-    map_data_t *data = mem_proc();
+	map_data_t buf;
+	map_data_t *data = &buf;
+    mem_proc(data);
+
 #ifdef MAP_DEBUG
     printk_f printk = (printk_f)(data->printk_relo);
 #define map_debug(idx, val) printk(data->str_fmt_px, idx, val)
@@ -202,10 +203,7 @@ void __noinline _paging_init()
         ((memblock_mark_nomap_f)(data->map_symbol.memblock_mark_nomap_relo))(start_pa, all_size);
 
     // paging_init
-    uint64_t paging_init_va = data->paging_init_relo;
-    *(uint32_t *)(paging_init_va) = data->paging_init_backup;
-    flush_icache_all();
-    ((paging_init_f)(paging_init_va))();
+    ((paging_init_f)(data->paging_init_relo))();
     // can't write data below
 
     // AttrIndx[2:0] encoding
@@ -243,7 +241,7 @@ void __noinline _paging_init()
     }
 
     flush_icache_all();
-
+	
     // free old start
     ((memblock_free_f)data->map_symbol.memblock_free_relo)(old_start_pa, reserve_size);
 

@@ -182,7 +182,10 @@ map_prepare:
     // map_data.paging_init_relo = setup_preset.paging_init_offset;
     ldr x11, [x10, #setup_paging_init_offset_offset]
     str x11, [x9, #map_paging_init_relo_offset]
-    mov x15, x11
+
+    ldr x15, [x10, #setup_paging_init_bl_offset_offset]
+    // uint64_t paging_init_bl_pa = paging_init_bl_offset + kernel_pa;
+    add x13, x15, x19
 
     // map_data.map_symbol = setup_preset.map_symbol
     add x0, x9, #map_map_symbol_offset
@@ -218,37 +221,6 @@ map_prepare:
     add x11, x11, #MEMORY_RW_SIZE
     str x11, [x9, #map_alloc_size_offset]
 
-    // backup and hook paging_init
-    // uint64_t paging_init_pa = paging_init_offset + kernel_pa;
-    add x13, x15, x19
-    // map_data.paging_init_backup = *(uint32_t *)(paging_init_pa);
-    ldr w12, [x13]
-
-    mov w3, #0x201F
-    movk w3, #0xD503, lsl#16
-    orr w1, w3, #0x100
-    mov w2, #0xFFFFFD1F
-    and w0, w12, w2
-    // if ((map_data.paging_init_backup & 0xFFFFFD1F) == 0xD503211F)
-    cmp w0, w1
-    b.ne .backup
-    // map_data.paging_init_backup = NOP
-    mov w12, w3
-    // uint32_t *p = (uint32_t *)paging_init_pa + 1;
-    add x11, x13, #4
-.cmp_auti:
-    // while ((*p & 0xFFFFFD1F) != 0xD503211F) ++p;
-    ldr w0, [x11], #4
-    and w0, w0, w2
-    cmp w0, w1
-    b.ne .cmp_auti
-    // *p = NOP
-    stur w3, [x11, #-4]
-
-.backup:
-    str w12, [x9, #map_paging_init_backup_offset]
-    dsb ish
-
     // uint64_t replace_offset = (uint64_t)(_paging_init - _map_start) + map_offset;
     adrp x11, _paging_init
     add x11, x11, :lo12:_paging_init
@@ -257,11 +229,11 @@ map_prepare:
     sub x11, x11, x12
     add x11, x11, x14
 
-    // *(uint32_t *)paging_init_pa = B_REL(paging_init_offset, replace_offset);
-    // #define B_REL(src, dst) (0x14000000u | (((dst - src) & 0x0FFFFFFFu) >> 2u))
+    // *(uint32_t *)paging_init_bl_pa = B_REL(paging_init_bl_offset, replace_offset);
+    // #define BL_REL(src, dst) (0x94000000u | (((dst - src) & 0x0FFFFFFFu) >> 2u))
     sub x15, x11, x15
     ubfx w15, w15, #2, #26
-    mov w12, #0x14000000
+    mov w12, #0x94000000
     orr w15, w15, w12
     str w15, [x13]
 

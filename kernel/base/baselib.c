@@ -345,3 +345,8 @@ char *lib_strstr(const char *haystack, const char *needle)
 {
     return (char *)lib_memmem(haystack, lib_strlen(haystack), needle, lib_strlen(needle));
 }
+
+void *memset(void *dst, int c, size_t n)
+{
+    return lib_memset(dst, c, n);
+}

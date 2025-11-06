@@ -75,15 +75,15 @@ int __must_check compat_copy_to_user(void __user *to, const void *from, int n)
 {
     int cplen = 0;
 
-    if (kfunc(seq_buf_to_user)) {
-        cplen = seq_buf_copy_to_user(to, from, n);
-    } else if (kfunc(xt_data_to_user)) {
+    if (kfunc(xt_data_to_user)) {
         // xt_data_to_user, xt_obj_to_user
         cplen = compat_xt_data_copy_to_user(to, from, n);
         if (!cplen) cplen = n;
     } else if (kfunc(bits_to_user)) {
         // bits_to_user, str_to_user
         cplen = compat_bits_copy_to_user(to, from, n);
+    } else if (kfunc(seq_buf_to_user)) {
+        cplen = seq_buf_copy_to_user(to, from, n);
     } else if (kfunc(trace_seq_to_user)) {
         cplen = trace_seq_copy_to_user(to, from, n);
     } else {

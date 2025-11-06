@@ -44,6 +44,7 @@ extern bool log_enable;
 #define align_ceil(x, align) (((uint64_t)(x) + (uint64_t)(align)-1) & ~((uint64_t)(align)-1))
 
 #define INSN_IS_B(inst) (((inst) & 0xFC000000) == 0x14000000)
+#define INSN_IS_BL(inst) (((inst) & 0xFC000000) == 0x94000000)
 
 #define bits32(n, high, low) ((uint32_t)((n) << (31u - (high))) >> (31u - (high) + (low)))
 

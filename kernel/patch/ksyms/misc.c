@@ -336,6 +336,7 @@ void *kfunc_def(vm_map_ram)(struct page **pages, unsigned int count, int node) =
 void kfunc_def(vm_unmap_aliases)(void) = 0;
 
 void *kfunc_def(vmalloc)(unsigned long size) = 0;
+void *kfunc_def(vmalloc_noprof)(unsigned long size) = 0;
 void *kfunc_def(vzalloc)(unsigned long size) = 0;
 void *kfunc_def(vmalloc_user)(unsigned long size) = 0;
 void *kfunc_def(vmalloc_node)(unsigned long size, int node) = 0;
@@ -383,6 +384,7 @@ static void _linux_mm_vmalloc_sym_match(const char *name, unsigned long addr)
     // kfunc_match(vm_unmap_aliases, name, addr);
 
     kfunc_match(vmalloc, name, addr);
+    kfunc_match(vmalloc_noprof, name, addr);
     kfunc_match(vzalloc, name, addr);
     // kfunc_match(vmalloc_user, name, addr);
     // kfunc_match(vmalloc_node, name, addr);

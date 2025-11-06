@@ -25,8 +25,6 @@
 typedef struct
 {
     // preset
-    uint32_t paging_init_backup;
-    uint32_t __;
     int64_t map_offset;
     int64_t start_offset;
     int64_t start_size;
@@ -49,8 +47,7 @@ typedef struct
     uint64_t linear_voffset;
 } map_data_t;
 #else
-#define map_paging_init_backup_offset 0
-#define map_map_offset_offset (map_paging_init_backup_offset + 8)
+#define map_map_offset_offset 0
 #define map_start_offset_offset (map_map_offset_offset + 8)
 #define map_start_size_offset (map_start_offset_offset + 8)
 #define map_start_img_size_offset (map_start_size_offset + 8)
