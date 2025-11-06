@@ -75,12 +75,12 @@ int __must_check compat_copy_to_user(void __user *to, const void *from, int n)
 {
     int cplen = 0;
 
-    if (kfunc(seq_buf_to_user)) {
-        cplen = seq_buf_copy_to_user(to, from, n);
-    } else if (kfunc(xt_data_to_user)) {
+    if (kfunc(xt_data_to_user)) {
         // xt_data_to_user, xt_obj_to_user
         cplen = compat_xt_data_copy_to_user(to, from, n);
         if (!cplen) cplen = n;
+    } else if (kfunc(seq_buf_to_user)) {
+        cplen = seq_buf_copy_to_user(to, from, n);
     } else if (kfunc(bits_to_user)) {
         // bits_to_user, str_to_user
         cplen = compat_bits_copy_to_user(to, from, n);
@@ -98,6 +98,8 @@ KP_EXPORT_SYMBOL(compat_copy_to_user);
 
 long compat_strncpy_from_user(char *dest, const char __user *src, long count)
 {
+    kfunc_call(strncpy_from_user_nofault, dest, src, count);
+    kfunc_call(strncpy_from_unsafe_user, dest, src, count);
     if (kfunc(strncpy_from_user)) {
         long rc = kfunc(strncpy_from_user)(dest, src, count);
         if (rc >= count) {
@@ -108,8 +110,6 @@ long compat_strncpy_from_user(char *dest, const char __user *src, long count)
         }
         return rc;
     }
-    kfunc_call(strncpy_from_user_nofault, dest, src, count);
-    kfunc_call(strncpy_from_unsafe_user, dest, src, count);
     return 0;
 }
 KP_EXPORT_SYMBOL(compat_strncpy_from_user);
