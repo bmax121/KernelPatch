@@ -64,6 +64,7 @@ extern void *kfunc_def(vm_map_ram)(struct page **pages, unsigned int count, int 
 extern void kfunc_def(vm_unmap_aliases)(void);
 
 extern void *kfunc_def(vmalloc)(unsigned long size);
+extern void *kfunc_def(vmalloc_noprof)(unsigned long size);
 extern void *kfunc_def(vzalloc)(unsigned long size);
 extern void *kfunc_def(vmalloc_user)(unsigned long size);
 extern void *kfunc_def(vmalloc_node)(unsigned long size, int node);
@@ -121,6 +122,7 @@ static inline void vm_unmap_aliases(void)
 static inline void *vmalloc(unsigned long size)
 {
     kfunc_call(vmalloc, size);
+    kfunc_call(vmalloc_noprof, size);
     kfunc_not_found();
     return 0;
 }

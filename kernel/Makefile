@@ -9,7 +9,7 @@ LD = $(TARGET_COMPILE)ld
 AS = $(TARGET_COMPILE)as
 OBJCOPY = $(TARGET_COMPILE)objcopy
 
-CFLAGS += -Wall -fno-builtin -std=gnu11 -nostdinc
+CFLAGS += -Wall -fno-builtin -std=gnu11 -nostdinc -mgeneral-regs-only
 CFLAGS += -g
 
 ifdef DEBUG

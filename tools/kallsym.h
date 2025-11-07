@@ -117,6 +117,7 @@ typedef struct
 
 } kallsym_t;
 
+int kernel_if_need_patch(kallsym_t *info, char *img, int32_t imglen);
 int analyze_kallsym_info(kallsym_t *info, char *img, int32_t imglen, enum arch_type arch, int32_t is_64);
 int dump_all_symbols(kallsym_t *info, char *img);
 int dump_all_ikconfig(char *img, int32_t imglen);
