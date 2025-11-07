@@ -521,7 +521,6 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
         setup->map_max_size = i64swp(setup->map_max_size);
         setup->kallsyms_lookup_name_offset = i64swp(setup->kallsyms_lookup_name_offset);
         setup->paging_init_offset = i64swp(setup->paging_init_offset);
-        setup->paging_init_bl_offset = i64swp(setup->paging_init_bl_offset);
         setup->printk_offset = i64swp(setup->printk_offset);
     }
 
@@ -552,24 +551,8 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     }
 
     // modify kernel entry
-    int setup_arch_offset = relo_branch_func(kallsym_kimg, get_symbol_offset_exit(&kallsym, kallsym_kimg, "setup_arch"));
-    int paging_init_offset = relo_branch_func(kallsym_kimg, get_symbol_offset_exit(&kallsym, kallsym_kimg, "paging_init"));
-    int paging_init_bl_offset = 0;
-    for (int offset = setup_arch_offset; offset < ori_kimg_len; offset += sizeof(uint32_t)) {
-        uint32_t inst = *(uint32_t *)(kallsym_kimg + offset);
-        if (INSN_IS_BL(inst)) {
-            int target = (int)((uint64_t)offset + sign64_extend((uint64_t)bits32(inst, 25, 0) << 2, 28));
-            if (target == paging_init_offset) {
-                paging_init_bl_offset = offset;
-            }
-        }
-    }
-    if (!paging_init_bl_offset) tools_loge_exit("can't find bl paging_init\n\n");
-    tools_logi("paging_init_bl: offset: 0x%08x\n", paging_init_bl_offset);
-
-    setup->paging_init_offset = paging_init_offset;
-    setup->paging_init_bl_offset = paging_init_bl_offset;
-
+    int paging_init_offset = get_symbol_offset_exit(&kallsym, kallsym_kimg, "paging_init");
+    setup->paging_init_offset = relo_branch_func(kallsym_kimg, paging_init_offset);
     int text_offset = align_kimg_len + SZ_4K;
     b((uint32_t *)(out_kernel_file.kimg + kinfo->b_stext_insn_offset), kinfo->b_stext_insn_offset, text_offset);
 
