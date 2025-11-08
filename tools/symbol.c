@@ -60,8 +60,14 @@ void select_map_area(kallsym_t *kallsym, char *image_buf, int32_t *map_start, in
 {
     int32_t addr = 0x200;
     addr = get_symbol_offset_exit(kallsym, image_buf, "tcp_init_sock");
-    *map_start = align_ceil(addr, 16);
+    *map_start = align_floor(addr, 16);
     *max_size = 0x800;
+        //打印tcp_init_sock附件的16条指令
+    uint32_t *code = (uint32_t *)(image_buf + addr);
+    for (int i = 0; i < 16; i++) {
+        tools_logi("  [%02x]: %08x", i*4, code[i]);
+    }
+    tools_logi("\n");
 }
 
 int fillin_map_symbol(kallsym_t *kallsym, char *img_buf, map_symbol_t *symbol, int32_t target_is_be)
