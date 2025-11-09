@@ -60,14 +60,61 @@ void select_map_area(kallsym_t *kallsym, char *image_buf, int32_t *map_start, in
 {
     int32_t addr = 0x200;
     addr = get_symbol_offset_exit(kallsym, image_buf, "tcp_init_sock");
+    // 地址对齐问题，导致函数开头可能被跳过，导致PAC指令未备份而AUC指令被NOP，造成崩溃
     *map_start = align_floor(addr, 16);
     *max_size = 0x800;
-        //打印tcp_init_sock附件的16条指令
-    uint32_t *code = (uint32_t *)(image_buf + addr);
-    for (int i = 0; i < 16; i++) {
-        tools_logi("  [%02x]: %08x", i*4, code[i]);
+
+#define NOP 0xD503201F
+#define PAC 0xd503233f
+#define AUT 0xd50323bf
+#define PAC_MASK 0xFFFFFD1F
+#define PAC_PATTERN 0xD503211F
+
+    //遍历*max_size大小的区域，打印每个指令
+    //判断pac验证是否成对出现
+    uint32_t pos = 0;
+    uint32_t count = 0;
+    uint32_t asmbit = sizeof(uint32_t);
+    bool is_first_pac = false;
+    for (uint32_t i = 0; i < *max_size; i += asmbit) {
+        uint32_t insn = *(uint32_t *)(image_buf + addr + i);
+        if (!is_first_pac && insn == PAC && i < asmbit * 5) {
+            is_first_pac = true;
+        }
+        if ((insn & 0xFFFFFD1F) == 0xD503211F) {
+            pos = i;
+            count++;
+            *(uint32_t *)(image_buf + addr + pos) = NOP;
+        }
     }
-    tools_logi("\n");
+
+    if (!is_first_pac) {
+        tools_logi("no first pac instruction found \n");
+    }
+
+    if (count % 2 != 0) {
+        tools_logi("pac verify not pair  pos: %x  count: %d\n", pos, count);
+
+        //开始查找后续aut指令
+        uint32_t second_pos = 0;
+        for (uint32_t j = *max_size; j < *max_size * 2; j += asmbit) {
+            uint32_t insn = *(uint32_t *)(image_buf + addr + j);
+            if ((insn & 0xFFFFFD1F) == 0xD503211F) {
+                second_pos = j;
+                break;
+            }
+        }
+        tools_logi("second_pos: %x \n", second_pos);
+        //开始nop pac指令
+        // *(uint32_t *)(image_buf + addr + pos) = NOP;
+        *(uint32_t *)(image_buf + addr + second_pos) = NOP;
+    }
+
+#undef NOP
+#undef PAC
+#undef AUT
+#undef PAC_MASK
+#undef PAC_PATTERN
 }
 
 int fillin_map_symbol(kallsym_t *kallsym, char *img_buf, map_symbol_t *symbol, int32_t target_is_be)
