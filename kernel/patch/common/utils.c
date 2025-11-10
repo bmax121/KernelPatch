@@ -86,6 +86,9 @@ int __must_check compat_copy_to_user(void __user *to, const void *from, int n)
         cplen = compat_bits_copy_to_user(to, from, n);
     } else if (kfunc(trace_seq_to_user)) {
         cplen = trace_seq_copy_to_user(to, from, n);
+    } else if(kfunc(xt_data_to_user)) {
+        cplen = compat_xt_data_copy_to_user(to, from, n);
+        if (!cplen) cplen = n;
     } else {
         logke("no compat_copy_to_user\n");
         // copy_arg_to_user,
@@ -113,6 +116,8 @@ long compat_strncpy_from_user(char *dest, const char __user *src, long count)
         }
         return rc;
     }
+    kfunc_call(strncpy_from_user_nofault, dest, src, count);
+    kfunc_call(strncpy_from_unsafe_user, dest, src, count);
     
     return 0;
 }
