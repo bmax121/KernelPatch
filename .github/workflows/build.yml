@@ -1,321 +1,97 @@
-name: Build CI
+Build-wireguard-kpm-apatch:
+  name: Build WireGuard KPM (apatch format)
+  runs-on: ubuntu-latest
+  needs: [Build-kpimg]  # 可选依赖：确保 kpimg 已构建（用于打包）
 
-on:
-  workflow_call:
-  workflow_dispatch:
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
 
-jobs:
-  Build-kpimg:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Check out
-        uses: actions/checkout@v4
-        with:
-          submodules: "recursive"
-          fetch-depth: 0
-      - name: Generate version
-        id: parse_version
-        run: |
-          MAJOR=$(grep '#define MAJOR' version | awk '{print $3}')
-          MINOR=$(grep '#define MINOR' version | awk '{print $3}')
-          PATCH=$(grep '#define PATCH' version | awk '{print $3}')
-          VERSION="$MAJOR.$MINOR.$PATCH"
-          echo "Generated Version: $VERSION"
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-      - name: Install Compiler
-        run: |
-          curl -o arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-elf.tar.xz https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu/12.2.rel1/binrel/arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-elf.tar.xz
-          tar -Jxf arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-elf.tar.xz
-      - name: Build kpimg
-        run: |
-          export TARGET_COMPILE=`pwd`/arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-elf/bin/aarch64-none-elf-
-          cd kernel
+    - name: Parse version
+      id: version
+      run: |
+        source <(grep -E '^#define' version | sed 's/#define\s\+\([A-Z_]\+\)\s\+\(.*\)/\1=\2/')
+        echo "tag=v${MAJOR}.${MINOR}.${PATCH}" >> $GITHUB_OUTPUT
+        echo "version=${MAJOR}.${MINOR}.${PATCH}" >> $GITHUB_OUTPUT
 
-          export ANDROID=1
-          make
-          mv kpimg kpimg-android
-          mv kpimg.elf kpimg.elf-android
-          make clean
+    - name: Setup build environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libelf-dev linux-headers-$(uname -r) git
 
-          unset ANDROID
-          make
-          mv kpimg kpimg-linux
-          mv kpimg.elf kpimg.elf-linux
-          make clean
+    - name: Clone WireGuard-Linux
+      run: |
+        git clone https://git.zx2c4.com/WireGuard-linux-compat src/wireguard-src
+        mkdir -p wireguard-module
+        cp -r src/wireguard-src/src/* wireguard-module/
+        # 清理不需要的文件
+        rm -f wireguard-module/{main,Makefile}
 
-          cd ..
-          cd kpms
+    - name: Write Makefile for WireGuard module
+      run: |
+        cat > wireguard-module/Makefile << 'EOF'
+obj-m += main.o
+main-y := noise.o handshake.o handshake_cookie.o peer.o timers.o device.o qdisc.o socket.o send.o receive.o netlink.o allowedips.o ratelimiter.o queueing.o debugfs.o selftest.o
+ccflags-y += -I$(src)/uapi
+EXTRA_CFLAGS += -DCONFIG_WIREGUARD_MODULE
+KBUILD_EXTRA_SYMBOLS = ${PWD}/kpimg/kpimg.symvers
+EOF
 
-          cd demo-hello
-          make
-          mv hello.kpm demo-hello.kpm
+    - name: Copy UAPI headers
+      run: |
+        mkdir -p wireguard-module/uapi
+        cp src/wireguard-src/uapi/*.h wireguard-module/uapi/
 
-          cd ../demo-inlinehook
-          make
-          mv inlinehook.kpm demo-inlinehook.kpm
+    - name: Build kpimg (if not already built)
+      run: |
+        mkdir -p kpimg
+        make ARCH=arm64 CROSS_COMPILE=aarch64-none-elf- -C kpimg clean all
 
-          cd ../demo-syscallhook
-          make
-          mv syscallhook.kpm demo-syscallhook.kpm
+    - name: Build WireGuard .ko
+      run: |
+        make -C /lib/modules/$(uname -r)/build M=${PWD}/wireguard-module modules
+        mv wireguard-module/main.ko wireguard.ko
 
-      - name: Upload elf
-        uses: actions/upload-artifact@v4
-        with:
-          path: |
-            kernel/kpimg.elf-linux
-            kernel/kpimg.elf-android
-          name: kpimg.elf
+    - name: Create apatch-style KPM package
+      run: |
+        mkdir -p wireguard-kpm/{metadata,modules}
+        
+        # 创建 metadata.json（关键！适配 apatch 格式）
+        cat > wireguard-kpm/metadata/metadata.json << EOF
+{
+  "name": "wireguard",
+  "version": "${{ steps.version.outputs.version }}",
+  "author": "zx2c4",
+  "description": "WireGuard Kernel Module for apatch",
+  "kernel": "5.4+",
+  "min_apatch": "1.0.0",
+  "module_path": "modules/wireguard.ko",
+  "auto_mount": true,
+  "loader": "kpimg"
+}
+EOF
 
-      - name: Release
-        uses: ncipollo/release-action@v1.14.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ steps.parse_version.outputs.VERSION }}
-          artifacts: |
-            kernel/kpimg-linux
-            kernel/kpimg-android
-            kpms/demo-hello/demo-hello.kpm
-            kpms/demo-inlinehook/demo-inlinehook.kpm
-            kpms/demo-syscallhook/demo-syscallhook.kpm
-          generateReleaseNotes: true
-          allowUpdates: true
-          replacesArtifacts: true
- 
+        # 复制 ko 文件
+        cp wireguard.ko wireguard-kpm/modules/
 
-  Release-user-lib:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Check out
-        uses: actions/checkout@v4
-      - name: Generate version
-        id: parse_version
-        run: |
-          MAJOR=$(grep '#define MAJOR' version | awk '{print $3}')
-          MINOR=$(grep '#define MINOR' version | awk '{print $3}')
-          PATCH=$(grep '#define PATCH' version | awk '{print $3}')
-          VERSION="$MAJOR.$MINOR.$PATCH"
-          echo "Generated Version: $VERSION"
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        # 打包为 .kpm
+        cd wireguard-kpm && zip -r ../wireguard.apatch.kpm ./*
 
-      - name: Zip-lib
-        run: |
-          export TARGET_COMPILE=placeholder
-          cd kernel
-          make hdr
-          cd ..
-          zip -r kpuser.zip user
+    - name: Upload KPM Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: wireguard-kpm
+        path: wireguard.apatch.kpm
 
-      - name: Release
-        uses: ncipollo/release-action@v1.14.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ steps.parse_version.outputs.VERSION }}
-          artifacts: |
-            kpuser.zip
-          allowUpdates: true
-          replacesArtifacts: true
- 
-
-  Build-android-kptools:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Check out
-        uses: actions/checkout@v4
-        with:
-          submodules: "recursive"
-          fetch-depth: 0
-      - name: Generate version
-        id: parse_version
-        run: |
-          MAJOR=$(grep '#define MAJOR' version | awk '{print $3}')
-          MINOR=$(grep '#define MINOR' version | awk '{print $3}')
-          PATCH=$(grep '#define PATCH' version | awk '{print $3}')
-          VERSION="$MAJOR.$MINOR.$PATCH"
-          echo "Generated Version: $VERSION"
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Setup Android NDK
-        uses: nttld/setup-ndk@v1
-        id: setup-ndk
-        with:
-          ndk-version: r26b
-          add-to-path: true
-
-      - name: Make hdr
-        run: |
-          export TARGET_COMPILE=placeholder
-          cd kernel
-          make hdr
-
-      - name: Build kptools-android
-        run: |
-          cd tools
-          mkdir -p build/android && cd build/android
-          echo ${{ steps.setup-ndk.outputs.ndk-path }}
-          cmake \
-            -DCMAKE_TOOLCHAIN_FILE=${{ steps.setup-ndk.outputs.ndk-path }}/build/cmake/android.toolchain.cmake \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DANDROID_PLATFORM=android-33 \
-            -DANDROID_ABI=arm64-v8a ../..
-          cmake --build .
-          mv kptools kptools-android
-
-      - name: Release
-        uses: ncipollo/release-action@v1.14.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ steps.parse_version.outputs.VERSION }}
-          artifacts: |
-            tools/build/android/kptools-android
-          allowUpdates: true
-          replacesArtifacts: true
- 
-
-  Build-kptools-linux:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Check out
-        uses: actions/checkout@v4
-      - name: Generate version
-        id: parse_version
-        run: |
-          MAJOR=$(grep '#define MAJOR' version | awk '{print $3}')
-          MINOR=$(grep '#define MINOR' version | awk '{print $3}')
-          PATCH=$(grep '#define PATCH' version | awk '{print $3}')
-          VERSION="$MAJOR.$MINOR.$PATCH"
-          echo "Generated Version: $VERSION"
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Make hdr
-        run: |
-          export TARGET_COMPILE=placeholder
-          cd kernel
-          make hdr
-
-      - name: Build kptools
-        run: |
-          export ANDROID=1
-          cd tools
-          mkdir -p build && cd build
-          cmake ..
-          make
-          mv kptools kptools-linux
-
-      - name: Release
-        uses: ncipollo/release-action@v1.14.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ steps.parse_version.outputs.VERSION }}
-          artifacts: |
-            tools/build/kptools-linux
-          allowUpdates: true
-          replacesArtifacts: true
- 
-  Build-kptools-windows-msys2:
-    runs-on: windows-2022
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-      - name: Generate version
-        shell: pwsh
-        run: |
-          $MAJOR = (Select-String -Path version -Pattern '#define MAJOR').Line.Split(' ')[2]
-          $MINOR = (Select-String -Path version -Pattern '#define MINOR').Line.Split(' ')[2]
-          $PATCH = (Select-String -Path version -Pattern '#define PATCH').Line.Split(' ')[2]
-          $VERSION = "$MAJOR.$MINOR.$PATCH"
-          Write-Output "Generated Version: $VERSION"
-          "VERSION=$VERSION" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "VERSION=$VERSION"
-      - uses: msys2/setup-msys2@v2
-        with:
-          update: true
-          msystem: ucrt64
-          path-type: inherit
-          install: >-
-            msys/make
-            msys/gcc
-            msys/zlib-devel
-      - name: Copyfile
-        shell: pwsh
-        run: |
-          cp .\kernel\include\preset.h .\tools\
-          cd tools
-      - name: build
-        shell: cmd
-        run: |
-          cd tools
-          msys2 -c 'make'
-      - name: Showinfo
-        shell: cmd
-        run: |
-          ls D:\a\_temp\
-
-      - name: Copyfile2
-        shell: pwsh
-        run: |
-          mkdir .\win
-          cp .\tools\kptools.exe .\win\kptools-msys2.exe
-          cp D:\a\_temp\msys64\usr\bin\msys-2.0.dll .\win
-          cp D:\a\_temp\msys64\usr\bin\msys-z.dll .\win
-          7z a kptools-msys2-win .\win 
-      - name: Release
-        uses: ncipollo/release-action@v1.12.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ env.VERSION }}
-          artifacts: |
-            kptools-msys2-win.7z
-          allowUpdates: true
-          replacesArtifacts: true
-
-  Build-kptools-mac:
-    runs-on: macos-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Check out
-        uses: actions/checkout@v4
-      - name: Generate version
-        id: parse_version
-        run: |
-          MAJOR=$(grep '#define MAJOR' version | awk '{print $3}')
-          MINOR=$(grep '#define MINOR' version | awk '{print $3}')
-          PATCH=$(grep '#define PATCH' version | awk '{print $3}')
-          VERSION="$MAJOR.$MINOR.$PATCH"
-          echo "Generated Version: $VERSION"
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Make hdr
-        run: |
-          export TARGET_COMPILE=placeholder
-          cd kernel
-          make hdr
-
-      - name: Build kptools
-        run: |
-          export ANDROID=1
-          cd tools
-          mkdir -p build && cd build
-          cmake ..
-          make
-          mv kptools kptools-mac
-      - name: Release
-        uses: ncipollo/release-action@v1.14.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ steps.parse_version.outputs.VERSION }}
-          artifacts: |
-            tools/build/kptools-mac
-          allowUpdates: true
-          replacesArtifacts: true
- 
+    - name: Upload to GitHub Release
+      uses: softprops/action-gh-release@v2
+      if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+      with:
+        tag_name: ${{ steps.version.outputs.tag }}
+        name: "Release ${{ steps.version.outputs.version }}"
+        body: "Automated release with WireGuard KPM (apatch)"
+        files: wireguard.apatch.kpm
+        allow_updates: true
+        replaces_artifacts: true
