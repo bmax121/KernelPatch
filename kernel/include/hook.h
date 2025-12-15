@@ -40,8 +40,8 @@ typedef int8_t chain_item_state;
 #define local_container_of(ptr, type, member) ({ (type *)((char *)(ptr) - local_offsetof(type, member)); })
 
 #define HOOK_MEM_REGION_NUM 4
-#define TRAMPOLINE_MAX_NUM 6
-#define RELOCATE_INST_NUM (TRAMPOLINE_MAX_NUM * 8 + 8)
+#define TRAMPOLINE_MAX_NUM 8
+#define RELOCATE_INST_NUM (TRAMPOLINE_MAX_NUM * 8)
 
 #define HOOK_CHAIN_NUM 0x10
 #define TRANSIT_INST_NUM 0x60
