@@ -583,11 +583,6 @@ hook_err_t hook_prepare(hook_t *hook)
         hook->relo_insts[i] = ARM64_NOP;
     }
 
-    uint32_t *bti = hook->relo_insts + hook->relo_insts_num;
-    bti[0] = ARM64_BTI_JC;
-    bti[1] = ARM64_NOP;
-    hook->relo_insts_num += 2;
-
     for (int i = 0; i < hook->tramp_insts_num; i++) {
         uint64_t inst_addr = hook->origin_addr + i * 4;
         uint32_t inst = hook->origin_insts[i];

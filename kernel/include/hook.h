@@ -66,7 +66,7 @@ typedef struct
     int32_t tramp_insts_num;
     int32_t relo_insts_num;
     uint32_t origin_insts[TRAMPOLINE_MAX_NUM] __attribute__((aligned(8)));
-    uint32_t tramp_insts[TRAMPOLINE_MAX_NUM] __attribute__((aligned(4)));
+    uint32_t tramp_insts[TRAMPOLINE_MAX_NUM] __attribute__((aligned(8)));
     uint32_t relo_insts[RELOCATE_INST_NUM] __attribute__((aligned(8)));
 } hook_t __attribute__((aligned(8)));
 
