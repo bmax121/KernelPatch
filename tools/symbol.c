@@ -60,7 +60,7 @@ void select_map_area(kallsym_t *kallsym, char *image_buf, int32_t *map_start, in
 {
     int32_t addr = 0x200;
     addr = get_symbol_offset_exit(kallsym, image_buf, "tcp_init_sock");
-    // 地址对齐问题，导致函数开头可能被跳过，导致PAC指令未备份而AUC指令被NOP，造成崩溃
+    
     *map_start = align_floor(addr, 16);
     *max_size = 0x800;
 
@@ -70,8 +70,6 @@ void select_map_area(kallsym_t *kallsym, char *image_buf, int32_t *map_start, in
 #define PAC_MASK 0xFFFFFD1F
 #define PAC_PATTERN 0xD503211F
 
-    //遍历*max_size大小的区域，打印每个指令
-    //判断pac验证是否成对出现
     uint32_t pos = 0;
     uint32_t count = 0;
     uint32_t asmbit = sizeof(uint32_t);
@@ -95,7 +93,6 @@ void select_map_area(kallsym_t *kallsym, char *image_buf, int32_t *map_start, in
     if (count % 2 != 0) {
         tools_logi("pac verify not pair  pos: %x  count: %d\n", pos, count);
 
-        //开始查找后续aut指令
         uint32_t second_pos = 0;
         for (uint32_t j = *max_size; j < *max_size * 2; j += asmbit) {
             uint32_t insn = *(uint32_t *)(image_buf + addr + j);
@@ -105,8 +102,6 @@ void select_map_area(kallsym_t *kallsym, char *image_buf, int32_t *map_start, in
             }
         }
         tools_logi("second_pos: %x \n", second_pos);
-        //开始nop pac指令
-        // *(uint32_t *)(image_buf + addr + pos) = NOP;
         *(uint32_t *)(image_buf + addr + second_pos) = NOP;
     }
 
