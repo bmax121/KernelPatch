@@ -530,6 +530,18 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     setup->map_max_size = map_max_size;
     tools_logi("map_start: 0x%x, max_size: 0x%x\n", map_start, map_max_size);
 
+    int tcp_init_sock_offset = get_symbol_offset_exit(&kallsym, kallsym_kimg, "tcp_init_sock");
+    int sync_start = tcp_init_sock_offset;
+    int sync_size = map_max_size * 2;
+    if (sync_start + sync_size > ori_kimg_len) {
+        sync_size = ori_kimg_len - sync_start;
+    }
+    if (sync_size > 0) {
+        memcpy(out_kernel_file.kimg + sync_start, kallsym_kimg + sync_start, sync_size);
+        tools_logi("Synced NOP modifications from kallsym_kimg to output file (offset: 0x%x, size: 0x%x)\n", 
+                   sync_start, sync_size);
+    }
+
     setup->kallsyms_lookup_name_offset = get_symbol_offset_exit(&kallsym, kallsym_kimg, "kallsyms_lookup_name");
 
     setup->printk_offset = get_symbol_offset_zero(&kallsym, kallsym_kimg, "printk");
