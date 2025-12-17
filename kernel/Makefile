@@ -63,6 +63,9 @@ ${TARGET}.elf: ${OBJS}
 %.o: %.c
 	${CC} $(CFLAGS) $(INCLUDE) -c -O2 -o $@ $<
 
+base/sha256.o: base/sha256.c
+	${CC} $(CFLAGS) $(INCLUDE) -c -O0 -o $@ $<
+
 %.o: %.S
 	${CC} $(CFLAGS) $(INCLUDE) -c -o $@ $<
 

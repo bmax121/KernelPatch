@@ -118,7 +118,7 @@ static uint64_t branch_func_addr_once(uint64_t addr)
         uint64_t imm26 = bits32(inst, 25, 0);
         uint64_t imm64 = sign64_extend(imm26 << 2u, 28u);
         ret = addr + imm64;
-    } else if (inst == ARM64_BTI_C || inst == ARM64_BTI_J || inst == ARM64_BTI_JC) {
+    } else if (inst == ARM64_BTI_C || inst == ARM64_BTI_J || (inst == ARM64_BTI_JC && !hook_get_mem_from_origin(addr))) {
         ret = addr + 4;
     } else {
     }
@@ -566,21 +566,22 @@ hook_err_t hook_prepare(hook_t *hook)
     if (is_bad_address((void *)hook->relo_addr)) return -HOOK_BAD_ADDRESS;
 
     // backup origin instruction
-    for (int i = 0; i < TRAMPOLINE_NUM; i++) {
+    for (int i = 0; i < TRAMPOLINE_MAX_NUM; i++) {
         hook->origin_insts[i] = *((uint32_t *)hook->origin_addr + i);
     }
     // trampline to replace_addr
-    hook->tramp_insts_num = branch_from_to(hook->tramp_insts, hook->origin_addr, hook->replace_addr);
+    if (hook->origin_insts[0] == ARM64_PACIASP || hook->origin_insts[0] == ARM64_PACIBSP) {
+        hook->tramp_insts_num = branch_from_to(&hook->tramp_insts[1], hook->origin_addr, hook->replace_addr);
+        hook->tramp_insts[0] = ARM64_BTI_JC;
+        hook->tramp_insts_num++;
+    } else {
+        hook->tramp_insts_num = branch_from_to(hook->tramp_insts, hook->origin_addr, hook->replace_addr);
+    }
 
     // relocate
     for (int i = 0; i < sizeof(hook->relo_insts) / sizeof(hook->relo_insts[0]); i++) {
         hook->relo_insts[i] = ARM64_NOP;
     }
-
-    uint32_t *bti = hook->relo_insts + hook->relo_insts_num;
-    bti[0] = ARM64_BTI_JC;
-    bti[1] = ARM64_NOP;
-    hook->relo_insts_num += 2;
 
     for (int i = 0; i < hook->tramp_insts_num; i++) {
         uint64_t inst_addr = hook->origin_addr + i * 4;
