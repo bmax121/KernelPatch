@@ -228,7 +228,12 @@ int parse_image_patch_info(const char *kimg, int kimg_len, patched_kimg_t *pimg)
     if (is_be() ^ kinfo->is_be) saved_kimg_len = i32swp(saved_kimg_len);
 
     int align_kimg_len = (char *)old_preset - kimg;
-    if (align_kimg_len != (int)align_ceil(saved_kimg_len, SZ_4K)) tools_loge_exit("saved kernel image size error\n");
+    if (align_kimg_len != (int)align_ceil(saved_kimg_len, SZ_4K)) {
+        tools_logw("found magic string but saved kernel image size mismatch, ignoring (false positive?)\n");
+        pimg->preset = NULL;
+        pimg->ori_kimg_len = pimg->kimg_len;
+        return 0;
+    }
     pimg->ori_kimg_len = saved_kimg_len;
 
     memcpy((char *)kimg, old_preset->setup.header_backup, sizeof(old_preset->setup.header_backup));
