@@ -214,7 +214,33 @@ int parse_image_patch_info(const char *kimg, int kimg_len, patched_kimg_t *pimg)
     if (!pimg->banner) tools_loge_exit("can't find linux banner\n");
 
     // patched or new
-    preset_t *old_preset = get_preset(kimg, kimg_len);
+    preset_t *old_preset = NULL;
+    const char *search_ptr = kimg;
+    int search_len = kimg_len;
+    int32_t saved_kimg_len = 0;
+    int align_kimg_len = 0;
+
+    while (search_len > 0) {
+        old_preset = get_preset(search_ptr, search_len);
+        if (!old_preset) break;
+
+        saved_kimg_len = old_preset->setup.kimg_size;
+        if (is_be() ^ kinfo->is_be) saved_kimg_len = i32swp(saved_kimg_len);
+
+        align_kimg_len = (char *)old_preset - kimg;
+        if (align_kimg_len == (int)align_ceil(saved_kimg_len, SZ_4K)) {
+            break;
+        }
+
+        tools_logw("found magic string at 0x%x but saved kernel image size mismatch, ignoring (false positive?)\n",
+                   align_kimg_len);
+
+        // Search next
+        search_ptr = (char *)old_preset + 1;
+        search_len = kimg_len - (search_ptr - kimg);
+        old_preset = NULL;
+    }
+
     pimg->preset = old_preset;
 
     if (!old_preset) {
@@ -224,16 +250,6 @@ int parse_image_patch_info(const char *kimg, int kimg_len, patched_kimg_t *pimg)
     }
 
     tools_logi("patched kernel image ...\n");
-    int32_t saved_kimg_len = old_preset->setup.kimg_size;
-    if (is_be() ^ kinfo->is_be) saved_kimg_len = i32swp(saved_kimg_len);
-
-    int align_kimg_len = (char *)old_preset - kimg;
-    if (align_kimg_len != (int)align_ceil(saved_kimg_len, SZ_4K)) {
-        tools_logw("found magic string but saved kernel image size mismatch, ignoring (false positive?)\n");
-        pimg->preset = NULL;
-        pimg->ori_kimg_len = pimg->kimg_len;
-        return 0;
-    }
     pimg->ori_kimg_len = saved_kimg_len;
 
     memcpy((char *)kimg, old_preset->setup.header_backup, sizeof(old_preset->setup.header_backup));
