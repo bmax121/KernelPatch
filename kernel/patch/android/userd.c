@@ -340,9 +340,9 @@ static void after_openat(hook_fargs4_t *args, void *udata)
 {
     if (args->local.data0) {
         const char *origin_rc =
-            (args->local.data3 == 2)
-                ? ORIGIN_RC_FILE2
-                : ORIGIN_RC_FILE;
+            (args->local.data3 == 1)
+                ? ORIGIN_RC_FILE
+                : ORIGIN_RC_FILE2;
         compat_copy_to_user((void *)args->local.data1, origin_rc, strlen(origin_rc)+1);
         log_boot("restore rc file: %x\n", args->local.data0);
     }
