@@ -343,7 +343,10 @@ static void after_openat(hook_fargs4_t *args, void *udata)
             (args->local.data3 == 1)
                 ? ORIGIN_RC_FILE
                 : ORIGIN_RC_FILE2;
-        compat_copy_to_user((void *)args->local.data1, origin_rc, strlen(origin_rc)+1);
+        compat_copy_to_user(
+            (void *)args->local.data1,
+            origin_rc,
+            (args->local.data3 == 2) ? sizeof(ORIGIN_RC_FILE2) : sizeof(ORIGIN_RC_FILE));
         log_boot("restore rc file: %x\n", args->local.data0);
     }
     if (args->local.data2) {
