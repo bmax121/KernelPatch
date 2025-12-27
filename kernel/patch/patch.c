@@ -45,6 +45,11 @@ enum kmsg_dump_reason {
     KMSG_DUMP_SOFT_REBOOT,
 };
 
+struct kmsg_dump_iter {
+    loff_t cur_idx;
+    bool syslog;
+    size_t size;
+};
 
 struct kmsg_dumper {
     struct list_head list;
@@ -66,13 +71,15 @@ typedef void (*kmsg_dump_rewind_t)(void *iter);
 typedef bool (*kmsg_dump_get_line_t)(void *iter, bool syslog, char *line, size_t size, size_t *len);
 
 
+typedef bool (*kmsg_dump_get_buffer_t)(struct kmsg_dump_iter *iter,bool syslog,char *buf,size_t size,size_t *len);
+
 static struct kmsg_dumper kernelpatch_dumper;
 static kmsg_dump_register_t kmsg_dump_register_fn = NULL;
 static kmsg_dump_unregister_t kmsg_dump_unregister_fn = NULL;
 static kmsg_dump_rewind_t kmsg_dump_rewind_fn = NULL;
 static kmsg_dump_get_line_t kmsg_dump_get_line_fn = NULL;
 static bool kmsg_dump_registered = false;
-
+static kmsg_dump_get_buffer_t   kmsg_dump_get_buffer_fn;
 
 static int simple_snprintf(char *buf, size_t size, const char *fmt, ...)
 {
@@ -423,20 +430,74 @@ void before_panic(hook_fargs12_t *args, void *udata)
     
     
     int (*do_syslog)(int type, char *buf, int len) = (int (*)(int, char *, int))kallsyms_lookup_name("do_syslog");
-    
+    printk("KernelPatch: do_syslog addr: %llx\n", do_syslog ? (unsigned long long)do_syslog : 0);
     if (do_syslog) {
-        void *(*kmalloc_fn)(size_t, unsigned int) = (void *(*)(size_t, unsigned int))kallsyms_lookup_name("kmalloc");
+        void *(*kmalloc_fn)(size_t, unsigned int) = (void *(*)(size_t, unsigned int))kallsyms_lookup_name("__kmalloc");
+        if (!kmalloc_fn) {
+            kmalloc_fn = (void *(*)(size_t, unsigned int))kallsyms_lookup_name("__kmalloc_noprof");
+        }
         void (*kfree_fn)(const void *) = (void (*)(const void *))kallsyms_lookup_name("kfree");
-        
+        printk("KernelPatch: kmalloc addr: %llx, kfree addr: %llx\n",
+               kmalloc_fn ? (unsigned long long)kmalloc_fn : 0,
+               kfree_fn ? (unsigned long long)kfree_fn : 0);
         if (kmalloc_fn && kfree_fn) {
-            char *buf = kmalloc_fn(64 * 1024, 0x20u); // GFP_ATOMIC
-            if (buf) {
-                int len = do_syslog(3, buf, 64 * 1024);
-                if (len > 0) {
-                    kernel_write_file(LOG_FILE_PATH, buf, len, 0644);
-                    printk("KernelPatch: Saved %d bytes via do_syslog\n", len);
+            if (kver<VERSION(5, 10, 0)) {
+                
+                char *buf = kmalloc_fn(64 * 1024, 0x20u); // GFP_ATOMIC
+                printk("KernelPatch: Allocated buffer at %llx\n", buf ? (unsigned long long)buf : 0);
+                if (buf) {
+                    int len = do_syslog(3, buf, 64 * 1024);
+                    printk("KernelPatch: do_syslog returned %d\n", len);
+                    if (len > 0) {
+                        kernel_write_file(LOG_FILE_PATH, buf, len, 0644);
+                        printk("KernelPatch: Saved %d bytes via do_syslog\n", len);
+                    }
+                    kfree_fn(buf);
                 }
-                kfree_fn(buf);
+            } else {
+                kmsg_dump_rewind_fn =
+                    (kmsg_dump_rewind_t)kallsyms_lookup_name("kmsg_dump_rewind");
+
+                kmsg_dump_get_buffer_fn =
+                    (kmsg_dump_get_buffer_t)kallsyms_lookup_name("kmsg_dump_get_buffer");
+
+                printk("KernelPatch: kmsg_dump_rewind = %px\n", kmsg_dump_rewind_fn);
+                printk("KernelPatch: kmsg_dump_get_buffer = %px\n",
+                    kmsg_dump_get_buffer_fn);
+                if (kmsg_dump_rewind_fn && kmsg_dump_get_buffer_fn) {
+                    
+                    struct kmsg_dump_iter iter;
+                    char *buf;
+                    size_t len;
+
+                    buf = kmalloc_fn(64 * 1024, 0x20u);
+                    printk("KernelPatch: Allocated buffer at %px\n", buf);
+
+                    if (!buf)
+                        return;
+
+                    memset(&iter, 0, sizeof(iter));
+
+                    /* rewind log buffer */
+                    kmsg_dump_rewind_fn(&iter);
+
+                    /* dump all dmesg */
+                    while (kmsg_dump_get_buffer_fn(&iter,
+                                                true,     /* syslog format */
+                                                buf,
+                                                64 * 1024,
+                                                &len)) {
+                        if (len > 0) {
+                            printk("KernelPatch: Writing %zu bytes to log file\n", len);
+                            kernel_write_file(LOG_FILE_PATH, buf, len, 0644);
+                        }
+                    }
+
+                    kfree_fn(buf);
+
+                    printk("KernelPatch: kmsg_dump finished\n");
+                
+                }
             }
         }
     }
