@@ -14,6 +14,7 @@
 #include <module.h>
 #include <predata.h>
 #include <linux/string.h>
+#include <linux/vmalloc.h>
 #include <linux/kernel.h>  
 
 #define LOG_FILE_PATH "/data/adb/ap/log/kernel.log"
@@ -32,23 +33,37 @@
 #ifndef O_APPEND
 #define O_APPEND  00002000
 #endif
+#ifndef O_DSYNC
+#define O_DSYNC   00010000
+#endif
 
+#ifndef O_SYNC
+#define __O_SYNC	04000000
+#define O_SYNC		(__O_SYNC|O_DSYNC)
+#endif
 
+/*
+ * Keep this list arranged in rough order of priority. Anything listed after
+ * KMSG_DUMP_OOPS will not be logged by default unless printk.always_kmsg_dump
+ * is passed to the kernel.
+ */
 enum kmsg_dump_reason {
-    KMSG_DUMP_UNDEF,
-    KMSG_DUMP_PANIC,
-    KMSG_DUMP_OOPS,
-    KMSG_DUMP_EMERG,
-    KMSG_DUMP_RESTART,
-    KMSG_DUMP_HALT,
-    KMSG_DUMP_POWEROFF,
-    KMSG_DUMP_SOFT_REBOOT,
+	KMSG_DUMP_UNDEF,
+	KMSG_DUMP_PANIC,
+	KMSG_DUMP_OOPS,
+	KMSG_DUMP_EMERG,
+	KMSG_DUMP_SHUTDOWN,
+	KMSG_DUMP_MAX
 };
 
+/**
+ * struct kmsg_dump_iter - iterator for retrieving kernel messages
+ * @cur_seq:	Points to the oldest message to dump
+ * @next_seq:	Points after the newest message to dump
+ */
 struct kmsg_dump_iter {
-    loff_t cur_idx;
-    bool syslog;
-    size_t size;
+	u64	cur_seq;
+	u64	next_seq;
 };
 
 struct kmsg_dumper {
@@ -144,6 +159,27 @@ static int get_current_cpu_id(void)
     return 0; 
 }
 
+static const void *kernel_read_file(const char *path, loff_t *len)
+{
+    set_priv_sel_allow(current, true);
+    void *data = 0;
+
+    struct file *filp = filp_open(path, O_RDONLY, 0);
+    if (!filp || IS_ERR(filp)) {
+        log_boot("open file: %s error: %d\n", path, PTR_ERR(filp));
+        goto out;
+    }
+    *len = vfs_llseek(filp, 0, SEEK_END);
+    vfs_llseek(filp, 0, SEEK_SET);
+    data = vmalloc(*len);
+    loff_t pos = 0;
+    kernel_read(filp, data, *len, &pos);
+    filp_close(filp, 0);
+
+out:
+    set_priv_sel_allow(current, false);
+    return data;
+}
 
 static loff_t kernel_write_file(const char *path, const void *data, loff_t len, umode_t mode)
 {
@@ -160,13 +196,19 @@ static loff_t kernel_write_file(const char *path, const void *data, loff_t len, 
     
     kernel_write_fn = (ssize_t (*)(struct file *, const void *, size_t, loff_t *))kallsyms_lookup_name("kernel_write");
     if (!kernel_write_fn) return -1;
-    
-    struct file *fp = filp_open_fn(path, O_WRONLY | O_CREAT | O_TRUNC, mode);
+
+    typedef int (*vfs_fsync_t)(struct file *, loff_t, loff_t, int); 
+    static vfs_fsync_t vfs_fsync_fn; 
+    vfs_fsync_fn = (vfs_fsync_t)kallsyms_lookup_name("vfs_fsync");
+    if (!vfs_fsync_fn) return -1;
+
+    struct file *fp = filp_open_fn(path, O_SYNC | O_CREAT | O_TRUNC, mode);
     if (!fp || IS_ERR(fp)) {
         return -1;
     }
     
     kernel_write_fn(fp, data, len, &off);
+    vfs_fsync_fn(fp, 0, 0x7fffffffffffffffLL, 0);
     filp_close_fn(fp, 0);
     
     return off;
@@ -490,6 +532,9 @@ void before_panic(hook_fargs12_t *args, void *udata)
                         if (len > 0) {
                             printk("KernelPatch: Writing %zu bytes to log file\n", len);
                             kernel_write_file(LOG_FILE_PATH, buf, len, 0644);
+                            memset(buf, 0, 64 * 1024);
+                            //buf = kernel_read_file(LOG_FILE_PATH, &len);
+                            //printk("KernelPatch: Log file size now %zu bytes\n", len);
                         }
                     }
 
