@@ -290,7 +290,7 @@ static void before_openat(hook_fargs4_t *args, void *udata)
         (args->local.data3 == 1) ? ORIGIN_RC_FILE : ORIGIN_RC_FILE2;
 
     loff_t ori_len = 0;
-    struct file *newfp = filp_open(origin_rc, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    struct file *newfp = filp_open(REPLACE_RC_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (!newfp || IS_ERR(newfp)) {
         log_boot("create replace rc error: %d\n", PTR_ERR(newfp));
         goto out;
