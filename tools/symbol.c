@@ -174,7 +174,7 @@ int fillin_patch_config(kallsym_t *kallsym, char *img_buf, int imglen, patch_con
 
     symbol->slow_avc_audit = try_get_symbol_offset_zero(kallsym, img_buf, "slow_avc_audit");
 
-    symbol->input_handle_event = get_symbol_offset_zero(kallsym, img_buf, "input_handle_event");
+    symbol->input_handle_event = try_get_symbol_offset_zero(kallsym, img_buf, "input_handle_event");
 
     if ((is_be() ^ target_is_be)) {
         for (int64_t *pos = (int64_t *)symbol; pos <= (int64_t *)symbol; pos++) {
