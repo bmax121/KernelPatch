@@ -34,6 +34,7 @@
 #include <uapi/linux/stat.h>
 
 #define ORIGIN_RC_FILE "/system/etc/init/hw/init.rc"
+#define ORIGIN_RC_FILE2 "/init.rc"
 #define REPLACE_RC_FILE "/dev/user_init.rc"
 
 #define ADB_FLODER "/data/adb/"
@@ -262,7 +263,12 @@ static void before_openat(hook_fargs4_t *args, void *udata)
     args->local.data1 = 0;
     // unhook flag
     args->local.data2 = 0;
-
+    /* Meaning of args->local.data3 values:
+     * 0 = no match
+     * 1 = ORIGIN_RC_FILE
+     * 2 = ORIGIN_RC_FILE2
+     */
+    args->local.data3 = 0; 
     static int replaced = 0;
     if (replaced) return;
 
@@ -270,19 +276,28 @@ static void before_openat(hook_fargs4_t *args, void *udata)
     char buf[32];
     long rc = compat_strncpy_from_user(buf, filename, sizeof(buf));
     if (rc <= 0) return;
-    if (strcmp(ORIGIN_RC_FILE, buf)) return;
+
+    if (!strcmp(buf, ORIGIN_RC_FILE)) {
+        args->local.data3 = 1;
+    } else if (!strcmp(buf, ORIGIN_RC_FILE2)) {
+        args->local.data3 = 2;
+    } else {
+        return;
+    }
 
     replaced = 1;
+    const char *origin_rc =
+        (args->local.data3 == 1) ? ORIGIN_RC_FILE : ORIGIN_RC_FILE2;
 
     loff_t ori_len = 0;
-    struct file *newfp = filp_open(REPLACE_RC_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    struct file *newfp = filp_open(origin_rc, O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (!newfp || IS_ERR(newfp)) {
         log_boot("create replace rc error: %d\n", PTR_ERR(newfp));
         goto out;
     }
 
     loff_t off = 0;
-    const char *ori_rc_data = kernel_read_file(ORIGIN_RC_FILE, &ori_len);
+    const char *ori_rc_data = kernel_read_file(origin_rc, &ori_len);
     if (!ori_rc_data) goto out;
     kernel_write(newfp, ori_rc_data, ori_len, &off);
     if (off != ori_len) {
@@ -324,7 +339,14 @@ out:
 static void after_openat(hook_fargs4_t *args, void *udata)
 {
     if (args->local.data0) {
-        compat_copy_to_user((void *)args->local.data1, ORIGIN_RC_FILE, sizeof(ORIGIN_RC_FILE));
+        const char *origin_rc =
+            (args->local.data3 == 1)
+                ? ORIGIN_RC_FILE
+                : ORIGIN_RC_FILE2;
+        compat_copy_to_user(
+            (void *)args->local.data1,
+            origin_rc,
+            (args->local.data3 == 2) ? sizeof(ORIGIN_RC_FILE2) : sizeof(ORIGIN_RC_FILE));
         log_boot("restore rc file: %x\n", args->local.data0);
     }
     if (args->local.data2) {
