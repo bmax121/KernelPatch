@@ -263,11 +263,11 @@ static void before_openat(hook_fargs4_t *args, void *udata)
     args->local.data1 = 0;
     // unhook flag
     args->local.data2 = 0;
-    /* args->local.data3 取值含义
-    * 0 = 未匹配
-    * 1 = ORIGIN_RC_FILE
-    * 2 = ORIGIN_RC_FILE2
-    */
+    /* Meaning of args->local.data3 values:
+     * 0 = no match
+     * 1 = ORIGIN_RC_FILE
+     * 2 = ORIGIN_RC_FILE2
+     */
     args->local.data3 = 0; 
     static int replaced = 0;
     if (replaced) return;
