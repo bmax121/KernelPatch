@@ -1,4 +1,4 @@
-#!/system/bin/bash
+#!/bin/bash
 
 in_file="user_init.sh"
 out_file="gen/user_init.c"
