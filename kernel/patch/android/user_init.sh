@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/system/bin/sh
 
 KPMS_DIR="/data/adb/ap/kpms/"
 MAGISK_POLICY_PATH="/data/adb/ap/bin/magiskpolicy"
