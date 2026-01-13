@@ -16,7 +16,7 @@
 #define KPM_LICENSE_LEN 32
 #define KPM_AUTHOR_LEN 32
 #define KPM_DESCRIPTION_LEN 512
-#define KPM_ARGS_LEN 1024
+#define KPM_ARGS_LEN 10000
 
 #define KPM_NAME(x) KPM_INFO(name, x, KPM_NAME_LEN)
 #define KPM_VERSION(x) KPM_INFO(version, x, KPM_VERSION_LEN)
