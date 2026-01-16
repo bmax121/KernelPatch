@@ -357,27 +357,44 @@ static void extra_append(char *kimg, const void *data, int len, int *offset)
     *offset += len;
 }
 
-static void disable_pi_map(char *img, int32_t imglen)
+static void hexstr_to_bytes(const char *hexstr, size_t out_len, unsigned char *out)
 {
-    
-    const unsigned char pattern[] = {
-        0xE6, 0x03, 0x16, 0xAA,
-        0xE7, 0x03, 0x1F, 0x2A,
-        0x34, 0x11, 0x88, 0x9A
-    };
-    const size_t pattern_len = sizeof(pattern);
-
-    const unsigned char replace[] = {
-        0xE6, 0x03, 0x16, 0xAA,
-        0xE7, 0x03, 0x1F, 0x2A,
-        0xF4, 0x03, 0x09, 0xAA
-    };
-
-    unsigned char *p = memmem(img, imglen, pattern, pattern_len);
-    if (p) {
-        memcpy(p, replace, pattern_len);
+    for (size_t i = 0; i < out_len; i++) {
+        char tmp[3] = { hexstr[i * 2], hexstr[i * 2 + 1], 0 };
+        out[i] = (unsigned char)strtoul(tmp, NULL, 16);
     }
+}
 
+static void hex_patch(char *img, size_t imglen,
+                      const char *pattern_hex,
+                      const char *replace_hex)
+{
+    size_t patternlen = strlen(pattern_hex) / 2;
+    size_t replacelen = strlen(replace_hex) / 2;
+
+    if (patternlen != replacelen)
+        return;
+
+    unsigned char pattern[32];
+    unsigned char replace[32];
+
+    hexstr_to_bytes(pattern_hex, patternlen, pattern);
+    hexstr_to_bytes(replace_hex, replacelen, replace);
+
+    unsigned char *p = memmem(img, imglen, pattern, patternlen);
+    if (p) {
+        memcpy(p, replace, patternlen);
+    }
+}
+
+static void disable_pi_map(char *img, size_t imglen)
+{
+    hex_patch(
+        img,
+        imglen,
+        "E60316AAE7031F2A3411889A",
+        "E60316AAE7031F2AF40309AA"
+    );
 }
 
 int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey,
