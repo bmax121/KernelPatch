@@ -372,8 +372,6 @@ static void hex_patch(char *img, size_t imglen,
     size_t patternlen = strlen(pattern_hex) / 2;
     size_t replacelen = strlen(replace_hex) / 2;
 
-    if (patternlen != replacelen)
-        return;
 
     unsigned char pattern[32];
     unsigned char replace[32];
