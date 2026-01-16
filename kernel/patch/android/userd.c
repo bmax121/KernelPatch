@@ -480,7 +480,7 @@ static void before_input_handle_event(hook_fargs4_t *args, void *udata)
 
 
 
-int try_to_hook_ko_init(){
+int try_to_hook_ko_init() {
     printk("try_to_hook_ko_init %d...\n",__NR_finit_module);
     init_nofault();
     if (!copy_from_kernel_nofault_fn) {
