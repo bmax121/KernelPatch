@@ -52,7 +52,7 @@
 
 
 long (*copy_from_kernel_nofault_fn)(void *dst, const void *src, size_t size);
-typedef int (*verity_handle_err_t)(void *v,int type,unsigned long long block,void *io,void *iter);
+typedef int (*verity_handle_err_t)(void *v, int type, unsigned long long block, void *io, void *iter);
 extern struct file *kfunc_def(fget)(int fd);
 extern void *kfunc_def(fput)(struct file *file);
 extern char *kfunc_def(d_path)(const struct path *, char *, int);
