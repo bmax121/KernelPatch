@@ -84,8 +84,16 @@ static const char user_rc_data[] = { //
 
 static int is_blacklisted(const char *path)
 {
-    /* TODO: Implement actual blacklist checking for the given path.
-     * Currently this is a placeholder that always allows the path.
+    /*
+     * Blacklist check stub.
+     *
+     * This implementation intentionally always returns 0, meaning no
+     * path is considered blacklisted by default.
+     *
+     * The logic here is designed to be patched or overridden by a kpm
+     * module at runtime to enable actual blacklist matching when needed.
+     *
+     * We do NOT ship any built-in blacklist rules.
      */
     return 0;
 }
