@@ -84,6 +84,9 @@ static const char user_rc_data[] = { //
 
 static int is_blacklisted(const char *path)
 {
+    /* TODO: Implement actual blacklist checking for the given path.
+     * Currently this is a placeholder that always allows the path.
+     */
     return 0;
 }
 KP_EXPORT_SYMBOL(is_blacklisted);
