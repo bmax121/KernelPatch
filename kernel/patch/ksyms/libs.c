@@ -238,6 +238,12 @@ int kfunc_def(sscanf)(const char *buf, const char *fmt, ...) = 0;
 KP_EXPORT_SYMBOL(kfunc(sscanf));
 int kfunc_def(vsscanf)(const char *buf, const char *fmt, va_list args) = 0;
 KP_EXPORT_SYMBOL(kfunc(vsscanf));
+struct file *kfunc_def(fget)(int fd) = 0;
+KP_EXPORT_SYMBOL(kfunc(fget));
+struct path *kfunc_def(d_path)(const struct path *path, char *buf, int buflen) = 0;
+KP_EXPORT_SYMBOL(kfunc(d_path));
+struct file *kfunc_def(fput)(struct file *file) = 0;
+KP_EXPORT_SYMBOL(kfunc(fput));
 
 static void _linux_include_kernel_sym_match(const char *name, unsigned long addr)
 {
@@ -251,6 +257,10 @@ static void _linux_include_kernel_sym_match(const char *name, unsigned long addr
     kfunc_match(kvasprintf, name, addr);
     kfunc_match(sscanf, name, addr);
     kfunc_match(vsscanf, name, addr);
+    kfunc_match(fget, name, addr);
+    kfunc_match(fput, name, addr);
+    kfunc_match(d_path, name, addr);
+
 }
 
 static void _linux_libs_symbol_init(void *data, const char *name, struct module *m, unsigned long addr)
