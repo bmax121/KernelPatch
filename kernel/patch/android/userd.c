@@ -544,6 +544,6 @@ int android_user_init()
         log_boot("hook input_handle_event rc: %d\n", rc);
     }
     try_to_hook_ko_init();
-    //sansumg_patch();
+    //samsung_patch();
     return ret;
 }
