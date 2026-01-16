@@ -236,7 +236,8 @@ static void after_execveat(hook_fargs5_t *args, void *udata);
 static void before_finit_module(hook_fargs3_t *args, void *udata);
 static void after_finit_module(hook_fargs3_t *args, void *udata);
 
-void init_nofault(void) {
+void init_nofault(void)
+{
     copy_from_kernel_nofault_fn = (void *)kallsyms_lookup_name("copy_from_kernel_nofault");
     if (!copy_from_kernel_nofault_fn) {
         copy_from_kernel_nofault_fn = (void *)kallsyms_lookup_name("probe_kernel_read");
