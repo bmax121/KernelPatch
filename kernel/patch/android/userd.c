@@ -489,7 +489,7 @@ int try_to_hook_ko_init() {
     }
     hook_err_t rc = hook_syscalln(__NR_finit_module, 3, before_finit_module, after_finit_module, (void *)__NR_finit_module);
     //rc |= hook_syscalln(__NR_init_module, 3, before_finit_module, after_finit_module, (void *)__NR_finit_module);
-    log_boot("hook __NR_execve rc: %d\n", rc);
+    log_boot("hook __NR_finit_module rc: %d\n", rc);
     printk("try_to_hook_ko_init rc: %d\n", rc);
     return rc;
 }
