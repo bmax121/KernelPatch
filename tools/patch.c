@@ -381,7 +381,7 @@ static void hex_patch(char *img, size_t imglen,
 
     unsigned char *p = memmem(img, imglen, pattern, patternlen);
     if (p) {
-        memcpy(p, replace, patternlen);
+        memcpy(p, replace, replacelen);
     }
 }
 
