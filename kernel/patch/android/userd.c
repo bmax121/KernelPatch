@@ -495,7 +495,7 @@ int try_to_hook_ko_init() {
 }
 
 
-void sansumg_patch()
+void samsung_patch()
 {
     skip_function("verity_handle_err_hex_debug");
 }
