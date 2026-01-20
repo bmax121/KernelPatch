@@ -219,6 +219,16 @@ static hook_err_t hook_chain_prepare(uint32_t *transit, int32_t argno)
 
 void fp_hook(uintptr_t fp_addr, void *replace, void **backup)
 {
+    if (kp_aarch64_insn_patch_text)
+    {
+        *(uintptr_t *)backup = *(uintptr_t *)fp_addr;
+        void *addrs[2];
+        addrs[0] = (void *)fp_addr;
+        addrs[1] = (void *)(fp_addr + 4);
+        kp_aarch64_insn_patch_text(addrs, (u32 *)&replace, 2);
+        return;
+    }
+
     uint64_t *entry = pgtable_entry_kernel(fp_addr);
     uint64_t ori_prot = *entry;
     modify_entry_kernel(fp_addr, entry, (ori_prot | PTE_DBM) & ~PTE_RDONLY);
@@ -232,6 +242,15 @@ KP_EXPORT_SYMBOL(fp_hook);
 
 void fp_unhook(uintptr_t fp_addr, void *backup)
 {
+    if (kp_aarch64_insn_patch_text)
+    {
+        void *addrs[2];
+        addrs[0] = (void *)fp_addr;
+        addrs[1] = (void *)(fp_addr + 4);
+        kp_aarch64_insn_patch_text(addrs, (u32 *)&backup, 2);
+        return;
+    }
+
     uint64_t *entry = pgtable_entry_kernel(fp_addr);
     uint64_t ori_prot = *entry;
     modify_entry_kernel(fp_addr, entry, (ori_prot | PTE_DBM) & ~PTE_RDONLY);

@@ -34,6 +34,8 @@ int (*kallsyms_on_each_symbol)(int (*fn)(void *data, const char *name, struct mo
                                void *data) = 0;
 KP_EXPORT_SYMBOL(kallsyms_on_each_symbol);
 
+int (*kp_aarch64_insn_patch_text)(void *addrs[], u32 insns[], int cnt) = 0;
+
 unsigned long (*kallsyms_lookup_name)(const char *name) = 0;
 KP_EXPORT_SYMBOL(kallsyms_lookup_name);
 
@@ -430,6 +432,7 @@ static void start_init(uint64_t kimage_voff, uint64_t linear_voff)
     log_boot("KernelPatch link base: %llx, runtime base: %llx\n", link_base_addr, runtime_base_addr);
 
     kallsyms_on_each_symbol = (typeof(kallsyms_on_each_symbol))kallsyms_lookup_name("kallsyms_on_each_symbol");
+    kp_aarch64_insn_patch_text = (typeof(kp_aarch64_insn_patch_text))kallsyms_lookup_name("aarch64_insn_patch_text");
 
     uint64_t tcr_el1;
     asm volatile("mrs %0, tcr_el1" : "=r"(tcr_el1));

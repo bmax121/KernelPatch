@@ -176,6 +176,8 @@ static inline uint64_t *pgtable_entry_kernel(uint64_t va)
     return pgtable_entry(pgd_va, va);
 }
 
+extern int (*kp_aarch64_insn_patch_text)(void *addrs[], u32 insns[], int cnt);
+
 void modify_entry_kernel(uint64_t va, uint64_t *entry, uint64_t value);
 
 #endif

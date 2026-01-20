@@ -604,6 +604,16 @@ KP_EXPORT_SYMBOL(hook_prepare);
 // todo:
 void hook_install(hook_t *hook)
 {
+    if (kp_aarch64_insn_patch_text)
+    {
+        void *addrs[TRAMPOLINE_MAX_NUM];
+        for (int32_t i = 0; i < hook->tramp_insts_num; i++) {
+            addrs[i] = (uint32_t *)hook->origin_addr + i;
+        }
+        kp_aarch64_insn_patch_text(addrs, hook->tramp_insts, hook->tramp_insts_num);
+        return;
+    }
+
     uint64_t va = hook->origin_addr;
     uint64_t *entry = pgtable_entry_kernel(va);
     uint64_t ori_prot = *entry;
@@ -620,6 +630,16 @@ KP_EXPORT_SYMBOL(hook_install);
 
 void hook_uninstall(hook_t *hook)
 {
+    if (kp_aarch64_insn_patch_text)
+    {
+        void *addrs[TRAMPOLINE_MAX_NUM];
+        for (int32_t i = 0; i < hook->tramp_insts_num; i++) {
+            addrs[i] = (uint32_t *)hook->origin_addr + i;
+        }
+        kp_aarch64_insn_patch_text(addrs, hook->origin_insts, hook->tramp_insts_num);
+        return;
+    }
+
     uint64_t va = hook->origin_addr;
     uint64_t *entry = pgtable_entry_kernel(va);
     uint64_t ori_prot = *entry;
