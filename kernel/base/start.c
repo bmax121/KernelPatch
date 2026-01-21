@@ -34,8 +34,6 @@ int (*kallsyms_on_each_symbol)(int (*fn)(void *data, const char *name, struct mo
                                void *data) = 0;
 KP_EXPORT_SYMBOL(kallsyms_on_each_symbol);
 
-int (*kp_aarch64_insn_patch_text)(void *addrs[], u32 insns[], int cnt) = 0;
-
 unsigned long (*kallsyms_lookup_name)(const char *name) = 0;
 KP_EXPORT_SYMBOL(kallsyms_lookup_name);
 
@@ -145,7 +143,6 @@ uint64_t *pgtable_entry(uint64_t pgd, uint64_t va)
         uint64_t pxd_shift = (page_shift - 3) * (4 - lv) + 3;
         uint64_t pxd_index = (va >> pxd_shift) & (pxd_ptrs - 1);
         pxd_entry_va = pxd_va + pxd_index * 8;
-        if (!pxd_entry_va) return 0;
         uint64_t pxd_desc = *((uint64_t *)pxd_entry_va);
         if ((pxd_desc & 0b11) == 0b11) { // table
             pxd_pa = pxd_desc & (((1ul << (48 - page_shift)) - 1) << page_shift);
@@ -176,6 +173,35 @@ uint64_t *pgtable_entry(uint64_t pgd, uint64_t va)
 }
 KP_EXPORT_SYMBOL(pgtable_entry);
 
+uint64_t pgtable_phys(uint64_t pgd, uint64_t va)
+{
+    uint64_t pxd_bits = page_shift - 3;
+    uint64_t pxd_ptrs = 1u << pxd_bits;
+    uint64_t pxd_pa = 0;
+    uint64_t pxd_va = pgd;
+    __flush_dcache_area((void *)pxd_va, page_size);
+    for (int64_t lv = 4 - page_level; lv < 4; ++lv) {
+        uint64_t pxd_shift = pxd_bits * (4 - lv) + 3;
+        uint64_t pxd_index = (va >> pxd_shift) & (pxd_ptrs - 1);
+        uint64_t pxd_desc = ((uint64_t *)pxd_va)[pxd_index];
+        uint8_t valid_table = pxd_desc & 0b11;
+        if (valid_table == 0b11) {
+            pxd_pa = pxd_desc & (((1ul << (48 - page_shift)) - 1) << page_shift);
+        } else if (valid_table == 0b01) {
+            uint64_t bits = (3 - lv) * pxd_bits;
+            uint64_t block_bits = bits + page_shift;
+            pxd_pa = (pxd_desc & (((1ul << (48 - block_bits)) - 1) << block_bits)) +
+                     (va & (((1ul << bits) - 1) << page_shift));
+            break;
+        } else {
+            return 0;
+        }
+        pxd_va = phys_to_virt(pxd_pa);
+    }
+    return pxd_pa ? pxd_pa + (va & (page_size - 1)) : 0;
+}
+KP_EXPORT_SYMBOL(pgtable_phys);
+
 void modify_entry_kernel(uint64_t va, uint64_t *entry, uint64_t value)
 {
     if (!pte_valid_cont(*entry) && !pte_valid_cont(value)) {
@@ -187,8 +213,9 @@ void modify_entry_kernel(uint64_t va, uint64_t *entry, uint64_t value)
     uint64_t table_pa_mask = (((1ul << (48 - page_shift)) - 1) << page_shift);
     uint64_t prot = value & ~table_pa_mask;
     uint64_t *p = (uint64_t *)((uintptr_t)entry & ~(sizeof(entry) * CONT_PTES - 1));
-    for (int i = 0; i < CONT_PTES; ++i, ++p)
+    for (int i = 0; i < CONT_PTES; ++i, ++p) {
         *p = (*p & table_pa_mask) | prot;
+    }
 
     *entry = value;
     va &= CONT_PTE_MASK;
@@ -432,7 +459,6 @@ static void start_init(uint64_t kimage_voff, uint64_t linear_voff)
     log_boot("KernelPatch link base: %llx, runtime base: %llx\n", link_base_addr, runtime_base_addr);
 
     kallsyms_on_each_symbol = (typeof(kallsyms_on_each_symbol))kallsyms_lookup_name("kallsyms_on_each_symbol");
-    kp_aarch64_insn_patch_text = (typeof(kp_aarch64_insn_patch_text))kallsyms_lookup_name("aarch64_insn_patch_text");
 
     uint64_t tcr_el1;
     asm volatile("mrs %0, tcr_el1" : "=r"(tcr_el1));

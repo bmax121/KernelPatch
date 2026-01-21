@@ -47,7 +47,7 @@
 #define PTATTR_RDONLY (1ul << 62) /* AP[2], write note permited at any exception level*/
 #define PTATTR_NS (1ul << 63) /* Indicates whether the table identifier is located in Secure PA space */
 
-#define pte_valid_cont(pte)	(((pte) & (PTE_VALID | PTE_TABLE_BIT | PTE_CONT)) == (PTE_VALID | PTE_TABLE_BIT | PTE_CONT))
+#define pte_valid_cont(pte) (((pte) & (PTE_VALID | PTE_TABLE_BIT | PTE_CONT)) == (PTE_VALID | PTE_TABLE_BIT | PTE_CONT))
 
 #define CONT_PTE_SHIFT (4 + page_shift)
 #define CONT_PTES (1 << (CONT_PTE_SHIFT - page_shift))
@@ -176,7 +176,12 @@ static inline uint64_t *pgtable_entry_kernel(uint64_t va)
     return pgtable_entry(pgd_va, va);
 }
 
-extern int (*kp_aarch64_insn_patch_text)(void *addrs[], u32 insns[], int cnt);
+uint64_t pgtable_phys(uint64_t pgd, uint64_t va);
+
+static inline uint64_t pgtable_phys_kernel(uint64_t va)
+{
+    return pgtable_phys(pgd_va, va);
+}
 
 void modify_entry_kernel(uint64_t va, uint64_t *entry, uint64_t value);
 
