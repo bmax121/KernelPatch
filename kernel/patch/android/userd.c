@@ -32,8 +32,6 @@
 #include <linux/umh.h>
 #include <uapi/scdefs.h>
 #include <uapi/linux/stat.h>
-#include <uapi/linux/fs.h>
-#include <linux/fs.h>
 
 #define ORIGIN_RC_FILE "/system/etc/init/hw/init.rc"
 #define ORIGIN_RC_FILE2 "/init.rc"
@@ -49,14 +47,6 @@
 #define USER_INIT_SH_PATH "/dev/user_init.sh"
 
 #include "gen/user_init.c"
-
-
-long (*copy_from_kernel_nofault_fn)(void *dst, const void *src, size_t size);
-typedef int (*verity_handle_err_t)(void *v, int type, unsigned long long block, void *io, void *iter);
-extern struct file *kfunc_def(fget)(int fd);
-extern void *kfunc_def(fput)(struct file *file);
-extern char *kfunc_def(d_path)(const struct path *, char *, int);
-
 
 static const char user_rc_data[] = { //
     "\n"
@@ -79,26 +69,6 @@ static const char user_rc_data[] = { //
     "    exec -- " SUPERCMD " su -c \"mv -f " DEV_LOG_DIR " " AP_LOG_DIR "\"\n"
     ""
 };
-
-
-
-static int is_blacklisted(const char *path)
-{
-    /*
-     * Blacklist check stub.
-     *
-     * This implementation intentionally always returns 0, meaning no
-     * path is considered blacklisted by default.
-     *
-     * The logic here is designed to be patched or overridden by a kpm
-     * module at runtime to enable actual blacklist matching when needed.
-     *
-     * We do NOT ship any built-in blacklist rules.
-     */
-    return 0;
-}
-KP_EXPORT_SYMBOL(is_blacklisted);
-
 
 static const void *kernel_read_file(const char *path, loff_t *len)
 {
@@ -241,86 +211,6 @@ static void before_execve(hook_fargs3_t *args, void *udata);
 static void after_execve(hook_fargs3_t *args, void *udata);
 static void before_execveat(hook_fargs5_t *args, void *udata);
 static void after_execveat(hook_fargs5_t *args, void *udata);
-static void before_finit_module(hook_fargs3_t *args, void *udata);
-static void after_finit_module(hook_fargs3_t *args, void *udata);
-
-void init_nofault(void)
-{
-    copy_from_kernel_nofault_fn = (void *)kallsyms_lookup_name("copy_from_kernel_nofault");
-    if (!copy_from_kernel_nofault_fn) {
-        copy_from_kernel_nofault_fn = (void *)kallsyms_lookup_name("probe_kernel_read");
-    }
-}
-
-//https://cs.android.com/android/platform/superproject/main/+/main:system/core/libmodprobe/libmodprobe_ext.cpp;l=53;drc=61197364367c9e404c7da6900658f1b16c42d0da
-static void before_finit_module(hook_fargs3_t *args, void *udata) {
-    int fd = (int)syscall_argn(args, 0);
-    struct file *file = kfunc(fget)(fd);
-    if (!file || IS_ERR(file)) return;
-
-    unsigned long *ptr = (unsigned long *)file;
-    int found = 0;
-
-
-    for (int i = 0; i < 30; i++) {
-        unsigned long dentry_addr;
-
-        if (copy_from_kernel_nofault_fn(&dentry_addr, &ptr[i], sizeof(unsigned long)) != 0)
-            continue;
-        if (dentry_addr < 0xffffff0000000000 || dentry_addr == 0xffffffffffffffff || found)
-            continue;
-
-        
-
-
-        unsigned long *d_ptr = (unsigned long *)dentry_addr;
-        for (int k = 0; k < 30; k++) {
-            unsigned long val;
-
-
-            
-            if (copy_from_kernel_nofault_fn(&val, &d_ptr[k], sizeof(unsigned long)) != 0)
-                continue;
-            if (val < 0xffffff0000000000 || val == 0xffffffffffffffff || found)
-                continue;
-            
-
-   
-            char name_sample[64];
-            if (copy_from_kernel_nofault_fn(name_sample, (void *)val, sizeof(name_sample)) == 0) {
-                
-
-                if (name_sample[0] >= 32 && name_sample[0] <= 126) {
-                    
-                    if (strstr(name_sample, ".ko")) {
-                        //printk("finit_module >>> DETECTED: %s (FileOff: %d, DentryOff: %d)\n", 
-                        //        name_sample, i * 8, k * 8);
-
-                        if (is_blacklisted(name_sample)) {
-                            printk("finit_module: !!! BLACKLIST MATCHED !!!\n");
-                            args->skip_origin = 1; 
-                        }
-                        found = 1;
-                        break; 
-                    }
-                }
-            }
-        }
-        if (found) break;
-    }
-    
-    
-  
-    kfunc(fput)(file); 
-
-}
-
-
-__maybe_unused static void after_finit_module(hook_fargs3_t *args, void *udata)
-{
-    return;
-}
-
 
 static void handle_after_execve(hook_local_t *hook_local)
 {
@@ -378,7 +268,7 @@ static void before_openat(hook_fargs4_t *args, void *udata)
      * 1 = ORIGIN_RC_FILE
      * 2 = ORIGIN_RC_FILE2
      */
-    args->local.data3 = 0; 
+    args->local.data3 = 0;
     static int replaced = 0;
     if (replaced) return;
 
@@ -396,8 +286,7 @@ static void before_openat(hook_fargs4_t *args, void *udata)
     }
 
     replaced = 1;
-    const char *origin_rc =
-        (args->local.data3 == 1) ? ORIGIN_RC_FILE : ORIGIN_RC_FILE2;
+    const char *origin_rc = (args->local.data3 == 1) ? ORIGIN_RC_FILE : ORIGIN_RC_FILE2;
 
     loff_t ori_len = 0;
     struct file *newfp = filp_open(REPLACE_RC_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0600);
@@ -449,14 +338,9 @@ out:
 static void after_openat(hook_fargs4_t *args, void *udata)
 {
     if (args->local.data0) {
-        const char *origin_rc =
-            (args->local.data3 == 1)
-                ? ORIGIN_RC_FILE
-                : ORIGIN_RC_FILE2;
-        compat_copy_to_user(
-            (void *)args->local.data1,
-            origin_rc,
-            (args->local.data3 == 2) ? sizeof(ORIGIN_RC_FILE2) : sizeof(ORIGIN_RC_FILE));
+        const char *origin_rc = (args->local.data3 == 1) ? ORIGIN_RC_FILE : ORIGIN_RC_FILE2;
+        compat_copy_to_user((void *)args->local.data1, origin_rc,
+                            (args->local.data3 == 2) ? sizeof(ORIGIN_RC_FILE2) : sizeof(ORIGIN_RC_FILE));
         log_boot("restore rc file: %x\n", args->local.data0);
     }
     if (args->local.data2) {
@@ -486,48 +370,6 @@ static void before_input_handle_event(hook_fargs4_t *args, void *udata)
     }
 }
 
-
-
-int try_to_hook_ko_init() {
-    printk("try_to_hook_ko_init %d...\n",__NR_finit_module);
-    init_nofault();
-    if (!copy_from_kernel_nofault_fn) {
-        printk("finit_module: Error - copy_from_kernel_nofault_fn is NULL\n");
-        return;
-    }
-    hook_err_t rc = hook_syscalln(__NR_finit_module, 3, before_finit_module, after_finit_module, (void *)__NR_finit_module);
-    //rc |= hook_syscalln(__NR_init_module, 3, before_finit_module, after_finit_module, (void *)__NR_finit_module);
-    log_boot("hook __NR_finit_module rc: %d\n", rc);
-    printk("try_to_hook_ko_init rc: %d\n", rc);
-    return rc;
-}
-
-
-void samsung_patch()
-{
-    skip_function("verity_handle_err_hex_debug");
-}
-
-static void before_skip_function(hook_fargs8_t *args, void *udata)
-{
-    args->skip_origin = 1;
-    log_boot("skip function.\n");
-    return;
-}
-
-int skip_function(char *func_name)
-{
-    void *func_addr = (void *)kallsyms_lookup_name(func_name);
-    if (!func_addr) {
-        printk("skip_function: %s not found\n", func_name);
-        return -1;
-    }
-    printk("skip_function: %s @ %px\n", func_name, func_addr);
-    hook_wrap0(func_addr, before_skip_function, 0, 0);
-    return 0;
-}
-KP_EXPORT_SYMBOL(skip_function);
-
 int android_user_init()
 {
     hook_err_t ret = 0;
@@ -551,7 +393,6 @@ int android_user_init()
         ret |= rc;
         log_boot("hook input_handle_event rc: %d\n", rc);
     }
-    try_to_hook_ko_init();
-    //samsung_patch();
+
     return ret;
 }
