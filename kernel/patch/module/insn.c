@@ -217,8 +217,7 @@ int aarch64_insn_patch_text_sync(void *addrs[], u32 insns[], int cnt)
 
     if (cnt <= 0) return -EINVAL;
 
-    // return stop_machine(aarch64_insn_patch_text_cb, &patch, cpu_online_mask);
-    return stop_machine(aarch64_insn_patch_text_cb, &patch, 0);
+    return stop_machine(aarch64_insn_patch_text_cb, &patch, cpu_online_mask);
 }
 
 int aarch64_insn_patch_text(void *addrs[], u32 insns[], int cnt)

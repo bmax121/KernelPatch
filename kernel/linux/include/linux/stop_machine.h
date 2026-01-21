@@ -8,8 +8,8 @@ typedef int (*cpu_stop_fn_t)(void *arg);
 
 struct cpumask;
 
-extern bool kvar_def(stop_machine_initialized);
-extern const struct cpumask *kvar_def(cpu_online_mask);
+extern const struct cpumask *kvar(__cpu_online_mask);
+#define cpu_online_mask kvar(__cpu_online_mask)
 
 /**
  * stop_machine: freeze the machine on all CPUs and run this function
@@ -40,8 +40,8 @@ static inline int stop_machine(cpu_stop_fn_t fn, void *data, const struct cpumas
     // ret = fn(data);
     // local_irq_restore(flags);
     // return ret;
-    kfunc_not_found();
-    return 0;
+    // kfunc_not_found();
+    return fn(data);
 }
 
 #endif
