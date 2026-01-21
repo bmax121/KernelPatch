@@ -26,7 +26,6 @@
 #include <linux/err.h>
 #include <linux/slab.h>
 #include <kputils.h>
-#include <pidmem.h>
 #include <predata.h>
 #include <linux/random.h>
 #include <sucompat.h>
