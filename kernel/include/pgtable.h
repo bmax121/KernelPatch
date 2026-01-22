@@ -183,6 +183,4 @@ static inline uint64_t pgtable_phys_kernel(uint64_t va)
     return pgtable_phys(pgd_va, va);
 }
 
-void modify_entry_kernel(uint64_t va, uint64_t *entry, uint64_t value);
-
 #endif

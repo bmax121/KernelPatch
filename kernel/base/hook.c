@@ -4,11 +4,11 @@
  */
 
 #include <hook.h>
-#include <cache.h>
-#include <pgtable.h>
-#include <kpmalloc.h>
 #include <io.h>
 #include <symbol.h>
+#include <pgtable.h>
+#include <hotpatch.h>
+#include <kpmalloc.h>
 #include "hmem.h"
 
 #define bits32(n, high, low) ((uint32_t)((n) << (31u - (high))) >> (31u - (high) + (low)))
@@ -118,7 +118,8 @@ static uint64_t branch_func_addr_once(uint64_t addr)
         uint64_t imm26 = bits32(inst, 25, 0);
         uint64_t imm64 = sign64_extend(imm26 << 2u, 28u);
         ret = addr + imm64;
-    } else if (inst == ARM64_BTI_C || inst == ARM64_BTI_J || (inst == ARM64_BTI_JC && !hook_get_mem_from_origin(addr))) {
+    } else if (inst == ARM64_BTI_C || inst == ARM64_BTI_J ||
+               (inst == ARM64_BTI_JC && !hook_get_mem_from_origin(addr))) {
         ret = addr + 4;
     } else {
     }
@@ -601,55 +602,23 @@ hook_err_t hook_prepare(hook_t *hook)
 }
 KP_EXPORT_SYMBOL(hook_prepare);
 
-// todo:
 void hook_install(hook_t *hook)
 {
-    if (kp_aarch64_insn_patch_text)
-    {
-        void *addrs[TRAMPOLINE_MAX_NUM];
-        for (int32_t i = 0; i < hook->tramp_insts_num; i++) {
-            addrs[i] = (uint32_t *)hook->origin_addr + i;
-        }
-        kp_aarch64_insn_patch_text(addrs, hook->tramp_insts, hook->tramp_insts_num);
-        return;
+    void *addrs[TRAMPOLINE_MAX_NUM];
+    for (int32_t i = 0; i < hook->tramp_insts_num; ++i) {
+        addrs[i] = (uint32_t *)hook->origin_addr + i;
     }
-
-    uint64_t va = hook->origin_addr;
-    uint64_t *entry = pgtable_entry_kernel(va);
-    uint64_t ori_prot = *entry;
-    modify_entry_kernel(va, entry, (ori_prot | PTE_DBM) & ~PTE_RDONLY);
-    // todo: cpu_stop_machine
-    // todo: can use aarch64_insn_patch_text_nosync, aarch64_insn_patch_text directly?
-    for (int32_t i = 0; i < hook->tramp_insts_num; i++) {
-        *((uint32_t *)hook->origin_addr + i) = hook->tramp_insts[i];
-    }
-    flush_icache_all();
-    modify_entry_kernel(va, entry, ori_prot);
+    hotpatch(addrs, hook->tramp_insts, hook->tramp_insts_num);
 }
 KP_EXPORT_SYMBOL(hook_install);
 
 void hook_uninstall(hook_t *hook)
 {
-    if (kp_aarch64_insn_patch_text)
-    {
-        void *addrs[TRAMPOLINE_MAX_NUM];
-        for (int32_t i = 0; i < hook->tramp_insts_num; i++) {
-            addrs[i] = (uint32_t *)hook->origin_addr + i;
-        }
-        kp_aarch64_insn_patch_text(addrs, hook->origin_insts, hook->tramp_insts_num);
-        return;
+    void *addrs[TRAMPOLINE_MAX_NUM];
+    for (int32_t i = 0; i < hook->tramp_insts_num; ++i) {
+        addrs[i] = (uint32_t *)hook->origin_addr + i;
     }
-
-    uint64_t va = hook->origin_addr;
-    uint64_t *entry = pgtable_entry_kernel(va);
-    uint64_t ori_prot = *entry;
-    modify_entry_kernel(va, entry, (ori_prot | PTE_DBM) & ~PTE_RDONLY);
-    flush_tlb_kernel_page(va);
-    for (int32_t i = 0; i < hook->tramp_insts_num; i++) {
-        *((uint32_t *)hook->origin_addr + i) = hook->origin_insts[i];
-    }
-    flush_icache_all();
-    modify_entry_kernel(va, entry, ori_prot);
+    hotpatch(addrs, hook->origin_insts, hook->tramp_insts_num);
 }
 KP_EXPORT_SYMBOL(hook_uninstall);
 

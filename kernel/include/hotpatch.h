@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /* 
- * Copyright (C) 2024 bmax121. All Rights Reserved.
+ * Copyright (C) 2026 bmax121. All Rights Reserved.
  */
 
 #ifndef _KP_HOTPATCH_H_
@@ -8,6 +8,7 @@
 
 #include <stdint.h>
 
-int kp_insn_patch_text(void *addrs[], uint32_t insn[], int cnt);
+int hotpatch(void *addrs[], uint32_t values[], int cnt);
+int hotpatch_nosync(void *addr, uint32_t value);
 
 #endif

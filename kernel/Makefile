@@ -31,6 +31,7 @@ BASE_SRCS += base/map.c
 BASE_SRCS += base/map1.S 
 BASE_SRCS += base/hook.c 
 BASE_SRCS += base/fphook.c 
+BASE_SRCS += base/hotpatch.c 
 BASE_SRCS += base/hmem.c 
 BASE_SRCS += base/predata.c 
 BASE_SRCS += base/symbol.c 

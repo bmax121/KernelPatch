@@ -40,9 +40,11 @@ void before_panic(hook_fargs12_t *args, void *udata)
 
 void linux_misc_symbol_init();
 void linux_libs_symbol_init();
+void hotpatch_symbol_init();
 
 int resolve_struct();
 int task_observer();
+int hotpatch_init();
 int bypass_kcfi();
 int bypass_selinux();
 int resolve_pt_regs();
@@ -61,6 +63,9 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
 {
     int rc = 0;
     log_boot("entering init ...\n");
+
+    if ((rc = hotpatch_init())) goto out;
+    log_boot("hotpatch_init done: %d\n", rc);
 
     if ((rc = bypass_kcfi())) goto out;
     log_boot("bypass_kcfi done: %d\n", rc);
@@ -124,6 +129,7 @@ int patch()
 {
     linux_libs_symbol_init();
     linux_misc_symbol_init();
+    hotpatch_symbol_init();
     module_init();
     syscall_init();
 
