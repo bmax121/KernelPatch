@@ -179,6 +179,7 @@ uint64_t pgtable_phys(uint64_t pgd, uint64_t va)
     uint64_t pxd_ptrs = 1u << pxd_bits;
     uint64_t pxd_pa = 0;
     uint64_t pxd_va = pgd;
+    uint64_t block_lv = 0;
     __flush_dcache_area((void *)pxd_va, page_size);
     for (int64_t lv = 4 - page_level; lv < 4; ++lv) {
         uint64_t pxd_shift = pxd_bits * (4 - lv) + 3;
@@ -192,13 +193,20 @@ uint64_t pgtable_phys(uint64_t pgd, uint64_t va)
             uint64_t block_bits = bits + page_shift;
             pxd_pa = (pxd_desc & (((1ul << (48 - block_bits)) - 1) << block_bits)) +
                      (va & (((1ul << bits) - 1) << page_shift));
+            block_lv = lv;
             break;
         } else {
             return 0;
         }
         pxd_va = phys_to_virt(pxd_pa);
     }
-    return pxd_pa ? pxd_pa + (va & (page_size - 1)) : 0;
+    if (!pxd_pa) {
+        return 0;
+    }else {
+        uint64_t left_bit = page_shift + (block_lv ? (3 - block_lv) * pxd_bits : 0);
+        uint64_t tpa = pxd_pa + (va & ((1u << left_bit) - 1));
+        return tpa;
+    }
 }
 KP_EXPORT_SYMBOL(pgtable_phys);
 
