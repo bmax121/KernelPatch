@@ -40,8 +40,8 @@ static inline int stop_machine(cpu_stop_fn_t fn, void *data, const struct cpumas
     // ret = fn(data);
     // local_irq_restore(flags);
     // return ret;
-    // kfunc_not_found();
-    return fn(data);
+    kfunc_not_found();
+    return 0;
 }
 
 #endif
