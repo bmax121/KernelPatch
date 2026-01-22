@@ -266,6 +266,15 @@ static void _linux_kernel_stop_machine_sym_match(const char *name, unsigned long
     kfunc_match(stop_machine, name, addr);
 }
 
+#include <linux/cpumask.h>
+
+const unsigned int kvar_def(nr_cpu_ids) = 0;
+
+static void _linux_cpumask_sym_match(const char *name, unsigned long addr)
+{
+    kvar_match(nr_cpu_ids, name, addr);
+}
+
 // mm/util.c
 struct file;
 struct page;
@@ -843,6 +852,7 @@ static int _linux_misc_symbol_init(void *data, const char *name, struct module *
     _linux_kernel_cred_sym_match(name, addr);
     _linux_kernel_pid_sym_match(name, addr);
     _linux_kernel_stop_machine_sym_match(name, addr);
+    _linux_cpumask_sym_match(name, addr);
     _linux_mm_utils_sym_match(name, addr);
     _linux_mm_vmalloc_sym_match(name, addr);
     _linux_fs_sym_match(name, addr);

@@ -1,7 +1,12 @@
 #ifndef __LINUX_CPUMASK_H
 #define __LINUX_CPUMASK_H
 
-struct cpumask;
+#include <linux/bitmap.h>
+
+typedef struct cpumask
+{
+    unsigned long bits[0];
+} cpumask_t;
 
 /**
  * cpumask_bits - get the bits in a cpumask
@@ -21,13 +26,16 @@ struct cpumask;
 #define cpu_present(cpu) cpumask_test_cpu((cpu), cpu_present_mask)
 #define cpu_active(cpu) cpumask_test_cpu((cpu), cpu_active_mask)
 
+extern const unsigned int kvar_def(nr_cpu_ids);
+#define nr_cpumask_bits kvar_val(nr_cpu_ids)
+
 /**
  * cpumask_weight - Count of bits in *srcp
  * @srcp: the cpumask to count bits (< nr_cpu_ids) in.
  */
 static inline unsigned int cpumask_weight(const struct cpumask *srcp)
 {
-    return bitmap_weight(cpumask_bits(srcp), nr_cpumask_bits);
+    return __bitmap_weight(cpumask_bits(srcp), nr_cpumask_bits);
 }
 
 #endif

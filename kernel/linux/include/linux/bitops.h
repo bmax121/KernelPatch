@@ -13,27 +13,9 @@
         _tmp;                                   \
     })
 
-#define BIT(nr) (1UL << (nr))
 #define BIT_MASK(nr) (1UL << ((nr) % BITS_PER_LONG))
 #define BIT_WORD(nr) ((nr) / BITS_PER_LONG)
 #define BITS_PER_BYTE 8
-#define BITS_TO_LONGS(nr) DIV_ROUND_UP(nr, BITS_PER_BYTE * sizeof(long))
-
-static inline void set_bit(int nr, volatile unsigned long *addr)
-{
-    unsigned long mask = BIT_MASK(nr);
-    unsigned long *p = ((unsigned long *)addr) + BIT_WORD(nr);
-    unsigned long flags;
-    *p |= mask;
-}
-
-static inline void clear_bit(int nr, volatile unsigned long *addr)
-{
-    unsigned long mask = BIT_MASK(nr);
-    unsigned long *p = ((unsigned long *)addr) + BIT_WORD(nr);
-    unsigned long flags;
-    *p &= ~mask;
-}
 
 static inline unsigned int __sw_hweight8(unsigned int w)
 {
@@ -312,52 +294,5 @@ static inline unsigned long __ffs64(u64 word)
     return __ffs((unsigned long)word);
 }
 
-/**
- * assign_bit - Assign value to a bit in memory
- * @nr: the bit to set
- * @addr: the address to start counting from
- * @value: the value to assign
- */
-static __always_inline void assign_bit(long nr, volatile unsigned long *addr, bool value)
-{
-    if (value)
-        set_bit(nr, addr);
-    else
-        clear_bit(nr, addr);
-}
-
-static __always_inline void __assign_bit(long nr, volatile unsigned long *addr, bool value)
-{
-    if (value)
-        __set_bit(nr, addr);
-    else
-        __clear_bit(nr, addr);
-}
-
-#define set_mask_bits(ptr, mask, bits)                         \
-    ({                                                         \
-        const typeof(*(ptr)) mask__ = (mask), bits__ = (bits); \
-        typeof(*(ptr)) old__, new__;                           \
-                                                               \
-        do {                                                   \
-            old__ = READ_ONCE(*(ptr));                         \
-            new__ = (old__ & ~mask__) | bits__;                \
-        } while (cmpxchg(ptr, old__, new__) != old__);         \
-                                                               \
-        old__;                                                 \
-    })
-
-#define bit_clear_unless(ptr, clear, test)                                  \
-    ({                                                                      \
-        const typeof(*(ptr)) clear__ = (clear), test__ = (test);            \
-        typeof(*(ptr)) old__, new__;                                        \
-                                                                            \
-        do {                                                                \
-            old__ = READ_ONCE(*(ptr));                                      \
-            new__ = old__ & ~clear__;                                       \
-        } while (!(old__ & test__) && cmpxchg(ptr, old__, new__) != old__); \
-                                                                            \
-        !(old__ & test__);                                                  \
-    })
 
 #endif
