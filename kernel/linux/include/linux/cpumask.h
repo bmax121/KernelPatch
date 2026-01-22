@@ -8,6 +8,10 @@ typedef struct cpumask
     unsigned long bits[0];
 } cpumask_t;
 
+extern const struct cpumask *kvar(cpu_online_mask);
+extern const struct cpumask *kvar(__cpu_online_mask);
+#define cpu_online_mask (kvar(__cpu_online_mask) ? kvar(__cpu_online_mask) : kvar(cpu_online_mask))
+
 /**
  * cpumask_bits - get the bits in a cpumask
  * @maskp: the struct cpumask *

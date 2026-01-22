@@ -6,6 +6,7 @@
 #include <pgtable.h>
 #include <cache.h>
 #include <linux/panic.h>
+#include <linux/cpumask.h>
 #include <asm/atomic.h>
 
 #include <ktypes.h>

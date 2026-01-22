@@ -8,9 +8,6 @@ typedef int (*cpu_stop_fn_t)(void *arg);
 
 struct cpumask;
 
-extern const struct cpumask *kvar(__cpu_online_mask);
-#define cpu_online_mask kvar(__cpu_online_mask)
-
 /**
  * stop_machine: freeze the machine on all CPUs and run this function
  * @fn: the function to run

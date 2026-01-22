@@ -257,21 +257,21 @@ void _linux_kernel_pid_sym_match(const char *name, unsigned long addr)
 // kernel/stop_machine.c
 #include <linux/stop_machine.h>
 
-const struct cpumask *kvar(__cpu_online_mask) = 0;
 int kfunc_def(stop_machine)(int (*fn)(void *), void *data, const struct cpumask *cpus) = 0;
 
 static void _linux_kernel_stop_machine_sym_match(const char *name, unsigned long addr)
 {
-    kvar_match(__cpu_online_mask, name, addr);
     kfunc_match(stop_machine, name, addr);
 }
 
-#include <linux/cpumask.h>
-
+const struct cpumask *kvar(cpu_online_mask) = 0;
+const struct cpumask *kvar(__cpu_online_mask) = 0;
 const unsigned int kvar_def(nr_cpu_ids) = 0;
 
 static void _linux_cpumask_sym_match(const char *name, unsigned long addr)
 {
+    kvar_match(cpu_online_mask, name, addr);
+    kvar_match(__cpu_online_mask, name, addr);
     kvar_match(nr_cpu_ids, name, addr);
 }
 
