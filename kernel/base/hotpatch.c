@@ -100,7 +100,7 @@ static inline int is_interrupt_masked()
     unsigned long daif;
     asm volatile("mrs %0, daif" : "=r"(daif));
     // https://developer.arm.com/documentation/ddi0601/latest/AArch64-Registers/DAIF--Interrupt-Mask-Bits
-    return (daif & 0xC0) == 0xC0;
+    return daif & 0xC0;
 }
 
 int hotpatch(void *addrs[], uint32_t values[], int cnt)
