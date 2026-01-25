@@ -50,7 +50,7 @@
 static const char ORIGIN_RC_FILES[][64] = {
     "/system/etc/init/hw/init.rc",
     "/init.rc",
-    "/vendor/etc/init/hw/init.rc",
+    "/vendor/etc/init/hw/init.target.rc",
     ""
 };
 
