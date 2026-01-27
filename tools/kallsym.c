@@ -21,6 +21,8 @@
 #define IKCFG_ED "IKCFG_ED"
 #include "zlib.h"
 
+#define STRICTER_KALLSYMS 1
+
 #ifdef _WIN32
 #include <string.h>
 static void *memmem(const void *haystack, size_t haystack_len, const void *const needle, const size_t needle_len)
@@ -499,6 +501,10 @@ static int find_num_syms(kallsym_t *info, char *img, int32_t imglen)
     }
 
     if (!info->kallsyms_num_syms_offset || !info->kallsyms_num_syms) {
+#ifdef STRICTER_KALLSYMS
+        // If we bail earlier here, we'll prevent kallsyms vector based fixup getting confused later
+        return -1;
+#endif
         info->kallsyms_num_syms = approx_num_syms - NSYMS_MAX_GAP;
         tools_logw("can't find kallsyms_num_syms, try: 0x%08x\n", info->kallsyms_num_syms);
     } else {
@@ -641,6 +647,9 @@ static int find_names(kallsym_t *info, char *img, int32_t imglen)
 
 static int arm64_verify_pid_vnr(kallsym_t *info, char *img, int32_t offset)
 {
+    // prevent segfaults due to obviously wrong values, TBD: check kernel end
+    if (offset < 0)
+        return -1;
     for (int i = 0; i < 6; i++) {
         int32_t insn_offset = offset + i * 4;
         uint32_t insn = uint_unpack(img + insn_offset, 4, 0);
@@ -712,10 +721,51 @@ static int correct_addresses_or_offsets_by_vectors(kallsym_t *info, char *img, i
     int32_t search_end = info->_approx_addresses_or_offsets_end - pid_vnr_index * elem_size;
 
     int break_flag = 0;
+#if 0
+
+    // If the 'vector' / 'pid_vnr' heuristic is failing, put first 10 entries from your kallsyms here.
+    //
+    // You can get it via
+    // echo 0 > /proc/sys/kernel/kptr_restrict
+    // head -10 /proc/kallsyms | awk '{printf "0x%s,", $1}' | sed '1s/^/{ /;$s/$/ }/'
+    //
+    // You'll need to temporarily use other root, ie magisk
+
+    #define NOFS 10
+    uint64_t ofs[NOFS] = { 0xffffff88c9481000,0xffffff88c9481000,0xffffff88c9481000,0xffffff88c94811c4,0xffffff88c948167c,0xffffff88c9481768,0xffffff88c94818a4,0xffffff88c9481944,0xffffff88c9481a2c,0xffffff88c9481c08, };
+
+    // you may try to set search_start to 0 also
+    for (pos = search_start; pos < search_end; pos += elem_size) {
+        uint64_t first = uint_unpack(img + pos, elem_size, info->is_be) - ofs[0];
+        for (int i = 1; i < NOFS; i++) {
+            if ((uint_unpack(img + pos + i * elem_size, elem_size, info->is_be) - ofs[i]) != first) {
+                goto gonext;
+            }
+        }
+        break;
+gonext:;
+    }
+
+    // if this fails, bail
+    if (pos >= search_end) {
+        tools_loge("can't locate kallsyms base (via explicit entry list)\n");
+        return -1;
+    }
+#endif
+
+#if 1
     for (int i = 0; i < base_cand_num; i++) {
         uint64_t base = base_cand[i];
 
         for (pos = search_start; pos < search_end; pos += elem_size) {
+#ifdef STRICTER_KALLSYMS
+            // HACK: Ensure first 3 kallsyms entries are the same
+            uint64_t first = uint_unpack(img + pos, elem_size, info->is_be);
+            for (int j = 1; j < 3; j++) {
+                if (uint_unpack(img + pos + j * elem_size, elem_size, info->is_be) != first)
+                    goto skip;
+            }
+#endif
             int32_t vector_offset = uint_unpack(img + pos + vector_index * elem_size, elem_size, info->is_be) - base;
             int32_t vector_next_offset =
                 uint_unpack(img + pos + vector_index * elem_size + elem_size, elem_size, info->is_be) - base;
@@ -730,10 +780,12 @@ static int correct_addresses_or_offsets_by_vectors(kallsym_t *info, char *img, i
                     break;
                 }
             }
+skip:;
         }
 
         if (break_flag) break;
     }
+#endif
 
     if (pos >= search_end) {
         tools_loge("can't locate vectors\n");
