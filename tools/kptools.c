@@ -74,14 +74,13 @@ int main(int argc, char *argv[])
 {
     version = (MAJOR << 16) + (MINOR << 8) + PATCH;
     program_name = argv[0];
-    if (strcmp(argv[1], "unpack") == 0) {
-        return extract_kernel(argv[2]);
-    } 
-    else if (strcmp(argv[1], "repack") == 0) {
-		return repack_bootimg(argv[2], "kernel", "new_boot.img");
-    } 
-    else {
-        fprintf(stdout,"loading kptools\n");
+    if (argc >3){
+        if (strcmp(argv[1], "unpack") == 0) {
+            return extract_kernel(argv[2]);
+        } 
+        else if (strcmp(argv[1], "repack") == 0) {
+            return repack_bootimg(argv[2], "kernel", "new_boot.img");
+        } 
     }
     struct option longopts[] = { { "help", no_argument, NULL, 'h' },
                                  { "version", no_argument, NULL, 'v' },

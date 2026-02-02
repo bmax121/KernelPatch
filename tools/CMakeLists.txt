@@ -14,6 +14,7 @@ set(SOURCES
 	kpm.c
 	common.c
 	sha256.c
+	bootimg.c
 )
 
 add_executable(
