@@ -75,6 +75,7 @@ int main(int argc, char *argv[])
     version = (MAJOR << 16) + (MINOR << 8) + PATCH;
     program_name = argv[0];
     if (argc > 2){
+        set_log_enable(true);
         if (strcmp(argv[1], "unpack") == 0) {
             return extract_kernel(argv[2]);
         } 
