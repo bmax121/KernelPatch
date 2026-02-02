@@ -9,50 +9,6 @@
 #include "common.h"
 
 
-#define ALIGN(x, a) (((x) + (a) - 1) & ~((a) - 1))
-#define PAGE_SIZE_DEFAULT 4096
-struct boot_img_hdr {
-    uint8_t magic[8];           // "ANDROID!"
-    uint32_t kernel_size;
-    uint32_t kernel_addr;     //when it come to V3 ,it should be ramdisk_size
-    uint32_t ramdisk_size;
-    uint32_t ramdisk_addr;
-    uint32_t second_size;
-    uint32_t second_addr;
-    uint32_t tags_addr;
-    uint32_t page_size;         // 4096
-    uint32_t unused[2];
-    uint8_t name[16];
-    uint8_t cmdline[512];
-    uint32_t id[8];
-	uint8_t extra_cmdline[1024];     // command
-    
-    // v2 
-    uint32_t recovery_dtbo_size;     
-    uint64_t recovery_dtbo_offset;   
-    uint32_t header_size;            
-    
-    // v3 
-    uint32_t dtb_size;               
-    uint64_t dtb_addr;               
-};
-struct kernel_hdr {
-	uint32_t code0;      // Executable code
-    uint32_t code1;      // Executable code
-    uint64_t text_offset; // Image load offset, little endian
-    uint64_t image_size;  // Effective Image size, little endian
-    uint64_t flags;       // kernel flags, little endian
-    uint64_t res2;        // reserved
-    uint64_t res3;        // reserved
-    uint64_t res4;        // reserved
-    uint32_t magic;       // Magic number, "ARM\x64"
-    uint32_t res5;        // reserved
-	
-};
-
-typedef struct {
-     uint8_t magic[8];
-} compress_head;
 
 int write_data_to_file(const char *path, const void *data, size_t size) {
     FILE *fp = fopen(path, "wb");
@@ -121,10 +77,12 @@ int decompress_gzip(const uint8_t *in_data, size_t in_size, const char *out_path
 
 int auto_depress(const uint8_t *data, size_t size, const char *out_path) {
     if (size < 4) return -1;
+    compress_head k_head;
+    memcpy(&k_head, data, sizeof(k_head));
+    int method = detect_compress_method(k_head);
 
-
-    // Gzip: 1F 8B
-    if (data[0] == 0x1F && data[1] == 0x8B) {
+    
+    if (method == 1) { //Gzip
         tools_logi("[Info] Detected GZIP compressed kernel.\n");
         if (decompress_gzip(data, size, out_path) == 0) {
             tools_logi("[Success] Decompressed to %s\n", out_path);
@@ -135,8 +93,8 @@ int auto_depress(const uint8_t *data, size_t size, const char *out_path) {
         }
     }
     
-    // LZ4 Frame: 04 22 4D 18
-    if (data[0] == 0x04 && data[1] == 0x22 && data[2] == 0x4D && data[3] == 0x18) {
+ 
+    if (method == 2) { //LZ4 Frame
         tools_logi("[Info] Detected LZ4 compressed kernel.\n");
         char lz4_path[128];
         snprintf(lz4_path, sizeof(lz4_path), "%s.lz4", out_path);
