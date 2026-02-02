@@ -5,7 +5,7 @@
 #include <string.h>
 #include <zlib.h>
 
-#include "bootima.h"
+#include "bootimg.h"
 #include "common.h"
 
 
@@ -139,7 +139,7 @@ int auto_depress(const uint8_t *data, size_t size, const char *out_path) {
     if (data[0] == 0x04 && data[1] == 0x22 && data[2] == 0x4D && data[3] == 0x18) {
         tools_logi("[Info] Detected LZ4 compressed kernel.\n");
         char lz4_path[128];
-        tools_logi(lz4_path, sizeof(lz4_path), "%s.lz4", out_path);
+        snprintf(lz4_path, sizeof(lz4_path), "%s.lz4", out_path);
         write_data_to_file(lz4_path, data, size);
         tools_logi("[Action] Saved as %s (Please use 'lz4 -d' to decompress manually if liblz4 code is not added)\n", lz4_path);
         return 1;
