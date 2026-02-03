@@ -231,6 +231,11 @@ int repack_bootimg(const char *orig_boot_path,
     fseek(f_orig, 0, SEEK_END);
     long total_size = ftell(f_orig);
 
+    uint8_t *foot_buf = NULL;
+    foot_buf = malloc(64);
+    fseek(f_orig, total_size-64, SEEK_SET);
+    fread(foot_buf, 1, 64, f_orig);
+
     uint32_t header_ver = hdr.unused[0]; 
     uint32_t page_size = (header_ver >= 3) ? 4096 : hdr.page_size;
     tools_logi("[Info] Header Version: %u, Page Size: %u\n", header_ver, page_size);
@@ -306,15 +311,23 @@ int repack_bootimg(const char *orig_boot_path,
     if (extracted_dtb) {
         fwrite(extracted_dtb, 1, dtb_size, f_out);
     }
+    tools_logi("dtb_size=%d\n",dtb_size);
 
     uint32_t new_k_total_aligned = ALIGN(hdr.kernel_size, page_size);
     fseek(f_out, page_size + new_k_total_aligned, SEEK_SET);
+    //tools_logi("rest_data_size=%d,total_size=%d,rest_data_offset=%d,now=%d\n",rest_data_size , total_size , rest_data_offset,page_size + new_k_total_aligned);
     if (rest_buf) {
-        fwrite(rest_buf, 1, rest_data_size, f_out);
+        if (rest_data_size > total_size - page_size - new_k_total_aligned){
+            fwrite(rest_buf, 1, total_size - page_size - new_k_total_aligned -64, f_out);
+            fwrite(foot_buf, 1, 64 , f_out);
+        }else{
+            fwrite(rest_buf, 1, rest_data_size, f_out);
+        }
     }
 
     //  Padding
     long current_pos = ftell(f_out);
+    //tools_logi("current_post=%d,total_size=%d\n",current_pos,total_size);
     if (current_pos < total_size) {
         uint32_t padding = total_size - current_pos;
         uint8_t *zero_pad = calloc(1, padding);
@@ -331,4 +344,3 @@ int repack_bootimg(const char *orig_boot_path,
     tools_logi("[Success] Repack completed: %s\n", out_boot_path);
     return 0;
 }
-
