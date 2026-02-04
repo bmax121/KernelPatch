@@ -75,11 +75,16 @@ int main(int argc, char *argv[])
     version = (MAJOR << 16) + (MINOR << 8) + PATCH;
     program_name = argv[0];
     if (argc > 2){
-        set_log_enable(true);
+        
         if (strcmp(argv[1], "unpack") == 0) {
+            set_log_enable(true);
+            return extract_kernel(argv[2]);
+        }
+        if (strcmp(argv[1], "unpacknolog") == 0) {
             return extract_kernel(argv[2]);
         } 
         else if (strcmp(argv[1], "repack") == 0) {
+            set_log_enable(true);
             return repack_bootimg(argv[2], "kernel", "new-boot.img");
         } 
     }
