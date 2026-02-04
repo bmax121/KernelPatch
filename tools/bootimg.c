@@ -608,7 +608,7 @@ int repack_bootimg(const char *orig_boot_path,
         }
     }
     if (method == 4) {
-        tools_logi("[error] Kernel use ztsd ,we have not support palse report to dev\n");
+        tools_logi("[error] Kernel uses zstd, we have not supported it yet, please report to dev\n");
         return -1;
     }
 
