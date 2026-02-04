@@ -596,13 +596,13 @@ int repack_bootimg(const char *orig_boot_path,
         }
     }
     if (method == 2) { 
-        tools_logi("[Info] Compressing new kernel with GZIP...\n");
+        tools_logi("[Info] Compressing new kernel with LZ4...\n");
         if (compress_lz4(raw_k_buf, raw_k_size, &compressed_buf, &final_k_size) == 0) {
             final_k_buf = compressed_buf;
         }
     }
     if (method == 3) { 
-        tools_logi("[Info] Compressing new kernel with GZIP...\n");
+        tools_logi("[Info] Compressing new kernel with LZ4 Legacy...\n");
         if (compress_lz4_le(raw_k_buf, raw_k_size, &compressed_buf, &final_k_size) == 0) {
             final_k_buf = compressed_buf;
         }
