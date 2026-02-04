@@ -80,7 +80,7 @@ int main(int argc, char *argv[])
             return extract_kernel(argv[2]);
         } 
         else if (strcmp(argv[1], "repack") == 0) {
-            return repack_bootimg(argv[2], "kernel", "new_boot.img");
+            return repack_bootimg(argv[2], "kernel", "new-boot.img");
         } 
     }
     struct option longopts[] = { { "help", no_argument, NULL, 'h' },
