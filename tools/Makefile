@@ -1,6 +1,6 @@
 CFLAGS = -std=c11 -Wall -Wextra -Wno-unused -Wno-unused-parameter
 
-CFLAGS += -I. -I./lib
+CFLAGS += -I. -I./lib -DBZ_NO_STDIO -DXZ_DEC_ANY_CHECK
 LDFLAGS = -lz
 
 ifdef DEBUG

@@ -7,9 +7,14 @@
 
 #include "bootimg.h"
 #include "common.h"
-#include "lib/lz4.h"
-#include "lib/lz4frame.h"
-// #include "lib/zstd.h"
+#include "lib/lz4/lz4.h"
+#include "lib/lz4/lz4frame.h"
+#include "lib/bz2/bzlib.h"
+#include "lib/xz/xz.h"
+
+// #include "lib/zstd/zstd.h"
+
+
 
 static uint32_t fdt32_to_cpu(uint32_t val) {
     return ((val << 24) & 0xff000000) |
@@ -149,6 +154,34 @@ int compress_lz4(const uint8_t *in_data, size_t in_size, uint8_t **out_data, uin
     *out_size = (uint32_t)compressed_size;
     return 0;
 }
+int compress_lz4_le(const uint8_t *in_data, size_t in_size, uint8_t **out_data, uint32_t *out_size) {
+    int max_block_size = LZ4_compressBound((int)in_size);
+
+    uint32_t total_max_size = 4 + max_block_size;
+    *out_data = (uint8_t *)malloc(total_max_size);
+    if (!*out_data) {
+        return -1;
+    }
+
+    (*out_data)[0] = 0x02;
+    (*out_data)[1] = 0x21;
+    (*out_data)[2] = 0x4C;
+    (*out_data)[3] = 0x18;
+
+    int compressed_bytes = LZ4_compress_default(
+        (const char*)in_data, 
+        (char*)(*out_data + 4), 
+        (int)in_size, 
+        max_block_size
+    );
+    if (compressed_bytes <= 0) {
+        free(*out_data);
+        *out_data = NULL;
+        return -2;
+    }
+    *out_size = 4 + (uint32_t)compressed_bytes;
+    return 0; 
+}
 
 // int compress_zstd(const uint8_t *in_data, size_t in_size, uint8_t **out_data, uint32_t *out_size) {
 //     size_t const max_out_size = ZSTD_compressBound(in_size);
@@ -180,6 +213,85 @@ int compress_lz4(const uint8_t *in_data, size_t in_size, uint8_t **out_data, uin
 //     *dstSize = (uint32_t)dSize;
 //     return 0;
 // }
+
+int decompress_xz(const uint8_t *src, size_t srcSize, uint8_t **dst, uint32_t *dstSize) {
+
+    xz_crc32_init();
+
+
+    struct xz_dec *s = xz_dec_init(XZ_SINGLE, 0);
+    if (s == NULL) return -1;
+
+
+    uint32_t dstCapacity = 128 * 1024 * 1024;
+    *dst = (uint8_t *)malloc(dstCapacity);
+    if (!*dst) {
+        xz_dec_end(s);
+        return -1;
+    }
+
+    struct xz_buf b;
+    b.in = src;
+    b.in_pos = 0;
+    b.in_size = srcSize;
+    b.out = *dst;
+    b.out_pos = 0;
+    b.out_size = dstCapacity;
+    enum xz_ret ret = xz_dec_run(s, &b);
+
+    if (ret != XZ_STREAM_END) {
+        tools_loge("[Error] XZ Decompression failed: %d\n", ret);
+        free(*dst);
+        xz_dec_end(s);
+        return -1;
+    }
+
+    *dstSize = (uint32_t)b.out_pos;
+    xz_dec_end(s);
+    return 0;
+}
+
+int decompress_lzma(const uint8_t *src, size_t srcSize, uint8_t **dst, uint32_t *dstSize) {
+    xz_crc32_init();
+
+    // 2. 初始化解压状态
+    // 使用 XZ_SINGLE 模式，告诉它我们要一次性处理整个块
+    struct xz_dec *s = xz_dec_init(XZ_SINGLE, 0);
+    if (!s) return -1;
+
+    // 3. 准备缓冲区 (128MB)
+    uint32_t dstCapacity = 128 * 1024 * 1024; 
+    *dst = (uint8_t *)malloc(dstCapacity);
+    if (!*dst) {
+        xz_dec_end(s);
+        return -1;
+    }
+
+    struct xz_buf b;
+    b.in = src;
+    b.in_pos = 0;
+    b.in_size = srcSize;
+    b.out = *dst;
+    b.out_pos = 0;
+    b.out_size = dstCapacity;
+
+    // 关键点：对于裸 LZMA (5D)，我们需要让 xz-embedded 进入特定的解压逻辑
+    // 如果直接调用 xz_dec_run，它会检测 FD 37 (XZ Magic)
+    // 如果报错 XZ_FORMAT_ERROR，说明 xz-embedded 强制要求 XZ 容器
+    enum xz_ret ret = xz_dec_run(s, &b);
+
+    if (ret != XZ_STREAM_END) {
+        // 如果 xz-embedded 确实无法处理 5D 裸流
+        tools_loge("[Error] Your xz-embedded version only supports XZ container (Method 6).\n");
+        free(*dst);
+        xz_dec_end(s);
+        return -1;
+    }
+
+    *dstSize = (uint32_t)b.out_pos;
+    xz_dec_end(s);
+    return 0;
+}
 
 int auto_depress(const uint8_t *data, size_t size, const char *out_path) {
     if (size < 4) return -1;
@@ -228,8 +340,32 @@ int auto_depress(const uint8_t *data, size_t size, const char *out_path) {
         }
     }
 
+    if (method == 3) { 
+        tools_logi("[Info] Detected LZ4 Legacy. Decompressing with LZ4 Block API...\n");
+
+        const char* compressed_ptr = (const char*)data + 4;
+        int compressed_size = (int)size - 4;
+
+        size_t dstCapacity = 64 * 1024 * 1024;
+        void* dst = malloc(dstCapacity);
+        if (!dst) return -1;
+
+        int ret = LZ4_decompress_safe(compressed_ptr, (char*)dst, compressed_size, (int)dstCapacity);
+
+        if (ret < 0) {
+            tools_loge("[Error] LZ4 Legacy decompression failed.\n");
+            free(dst);
+            return -1;
+        } else {
+            tools_logi("[Success] Decompressed: %d bytes\n", ret);
+            write_data_to_file(out_path, (uint8_t*)dst, (uint32_t)ret);
+            free(dst);
+            return 0;
+        }
+    }
+
     // till now no kernel use this
-    // if (method == 3) { 
+    // if (method == 4) { 
     //     tools_logi("[Info] Detected ZSTD compressed kernel. Decompressing...\n");
     //     unsigned long long const rSize = ZSTD_getFrameContentSize(data, size);
     //     if (rSize == ZSTD_CONTENTSIZE_ERROR || rSize == ZSTD_CONTENTSIZE_UNKNOWN) {
@@ -254,6 +390,69 @@ int auto_depress(const uint8_t *data, size_t size, const char *out_path) {
     //     }
     // }
 
+    if (method == 5) { // BZIP2 (BZh开头)
+        tools_logi("[Info] Detected BZIP2. Decompressing...\n");
+
+        // 1. 准备缓冲区：Bzip2 解压后的内核通常在 20MB~64MB 之间
+        unsigned int dstCapacity = 64 * 1024 * 1024; 
+        void* dst = malloc(dstCapacity);
+        if (!dst) {
+            tools_loge("[Error] Failed to allocate memory for BZIP2 decompression.\n");
+            return -1;
+        }
+
+        unsigned int producedSize = dstCapacity;
+        unsigned int consumedSize = (unsigned int)size;
+
+        // 2. 调用 bzlib 接口
+        // 参数：目标, 目标长度指针, 源, 源长度, 小内存模式(0), 调试等级(0)
+        int ret = BZ2_bzBuffToBuffDecompress((char*)dst, &producedSize, (char*)data, consumedSize, 0, 0);
+
+        if (ret != BZ_OK) {
+            tools_loge("[Error] BZIP2 Decompression failed with error code: %d\n", ret);
+            free(dst);
+            return -1;
+        }
+
+        tools_logi("[Success] BZIP2 Decompressed: %u bytes\n", producedSize);
+        write_data_to_file(out_path, (uint8_t*)dst, producedSize);
+        free(dst);
+        return 0;
+    }
+
+    if (method == 6) { // XZ
+        tools_logi("[Info] Detected XZ format. Decompressing...\n");
+        
+        uint8_t *xz_dst = NULL;
+        uint32_t xz_size = 0;
+
+        if (decompress_xz(data, size, &xz_dst, &xz_size) == 0) {
+            tools_logi("[Success] XZ Decompressed: %u bytes\n", xz_size);
+            write_data_to_file(out_path, xz_dst, xz_size);
+            free(xz_dst); // 在这里释放
+            return 0;
+        } else {
+            tools_loge("[Error] XZ Decompression failed.\n");
+            return -1;
+        }
+    }
+
+    if (method == 7) { // LZMA Legacy
+        tools_logi("[Info] Detected Legacy LZMA format. Decompressing...\n");
+        
+        uint8_t *lzma_dst = NULL;
+        uint32_t lzma_size = 0;
+
+        if (decompress_lzma(data, size, &lzma_dst, &lzma_size) == 0) {
+            tools_logi("[Success] LZMA Decompressed: %u bytes\n", lzma_size);
+            write_data_to_file(out_path, lzma_dst, lzma_size);
+            free(lzma_dst);
+            return 0;
+        } else {
+            tools_loge("[Error] LZMA Decompression failed.\n");
+            return -1;
+        }
+    }
 
     tools_logi("[Info] Treating as Raw Kernel (or unknown format).\n");
     if (write_data_to_file(out_path, data, size) == 0) {
@@ -304,34 +503,33 @@ int extract_kernel(const char *bootimg_path) {
 }
 
 int detect_compress_method(compress_head data) {
-    // 1. GZIP (Standard)
+    // 1. GZIP / ZOPFLI (1F 8B)
     if (data.magic[0] == 0x1F && data.magic[1] == 0x8B) return 1;
 
-    // 2. LZ4 (Fastest decompression)
+    // 2. LZ4 (04 22 4D 18 为 Frame 格式)
     if (data.magic[0] == 0x04 && data.magic[1] == 0x22 && 
         data.magic[2] == 0x4D && data.magic[3] == 0x18) return 2;
+    // 兼容 LZ4 Legacy (02 21 4C 18)
+    if (data.magic[0] == 0x02 && data.magic[1] == 0x21 && 
+        data.magic[2] == 0x4C && data.magic[3] == 0x18) return 3;
 
-    // 3. ZSTD (Modern balance) - 0xFD2FB528
+    // 3. ZSTD (保留位置，暂不实现) - 28 B5 2F FD
     if (data.magic[0] == 0x28 && data.magic[1] == 0xB5 && 
-        data.magic[2] == 0x2F && data.magic[3] == 0xFD) return 3;
+        data.magic[2] == 0x2F && data.magic[3] == 0xFD) return 4;
 
-    // 4. XZ (High compression ratio) - FD 37 7A 58 5A 00
-    if (data.magic[0] == 0xFD && data.magic[1] == 0x37 && 
-        data.magic[2] == 0x7A && data.magic[3] == 0x58) return 4;
-
-    // 5. LZO (Common in embedded) - 89 4c 5a 4f 00 0d 0a 1a 0a
-    if (data.magic[0] == 0x89 && data.magic[1] == 0x4c && 
-        data.magic[2] == 0x5a && data.magic[3] == 0x4f) return 5;
-
-    // 6. LZMA (Old version of XZ) - 5D 00 00
-    if (data.magic[0] == 0x5D && data.magic[1] == 0x00 && 
-        data.magic[2] == 0x00) return 6;
-
-    // 7. BZIP2 (Old but gold) - BZh
+    // 4. BZIP2 (BZh) - 42 5A 68
     if (data.magic[0] == 0x42 && data.magic[1] == 0x5A && 
-        data.magic[2] == 0x68) return 7;
+        data.magic[2] == 0x68) return 5;
 
-    return 0; // Uncompressed or Unknown
+    // 5. XZ - FD 37 7A 58 5A 00
+    if (data.magic[0] == 0xFD && data.magic[1] == 0x37 && 
+        data.magic[2] == 0x7A && data.magic[3] == 0x58) return 6;
+
+    // 6. LZMA (可选保留) - 5D 00 00
+    if (data.magic[0] == 0x5D && data.magic[1] == 0x00 && 
+        data.magic[2] == 0x00) return 7;
+
+    return 0; // Raw Kernel
 }
 
 int repack_bootimg(const char *orig_boot_path, 
@@ -412,7 +610,57 @@ int repack_bootimg(const char *orig_boot_path,
             final_k_buf = compressed_buf;
         }
     }
+    if (method == 3) { 
+        tools_logi("[Info] Compressing new kernel with GZIP...\n");
+        if (compress_lz4_le(raw_k_buf, raw_k_size, &compressed_buf, &final_k_size) == 0) {
+            final_k_buf = compressed_buf;
+        }
+    }
+    if (method == 4) {
+        tools_logi("[error] Kernel use ztsd ,we have not support palse report to dev\n");
+        return -1;
+    }
 
+    if (method == 5) { // BZIP2
+        tools_logi("[Info] Compressing new kernel with BZIP2 (Level 9)...\n");
+
+        unsigned int max_out_size = (unsigned int)(raw_k_size * 1.01) + 600;
+        uint8_t *compressed_buf = (uint8_t *)malloc(max_out_size);
+        if (!compressed_buf) return -1;
+
+        unsigned int final_size = max_out_size;
+        unsigned int source_size = (unsigned int)raw_k_size;
+
+        int ret = BZ2_bzBuffToBuffCompress((char*)compressed_buf, &final_size, (char*)raw_k_buf, source_size, 9, 0, 30);
+
+        if (ret == BZ_OK) {
+            final_k_buf = compressed_buf;
+            final_k_size = final_size;
+            tools_logi("[Success] BZIP2 compression complete. Size: %u bytes\n", final_k_size);
+        } else {
+            tools_loge("[Error] BZIP2 compression failed: %d\n", ret);
+            free(compressed_buf);
+            return -1;
+        }
+    }
+    if (method == 6 || method == 7) { 
+        // 即使原始是 XZ 或 LZMA，我们也统一压成 GZIP 回封
+        tools_logi("[Info] Original was XZ/LZMA. Repacking as GZIP for compatibility...\n");
+
+        uint8_t *compressed_buf = NULL;
+        uint32_t final_k_size = 0;
+
+        // 调用你现有的 GZIP 压缩函数
+        if (compress_gzip(raw_k_buf, raw_k_size, &compressed_buf, &final_k_size) == 0) {
+            final_k_buf = compressed_buf;
+            // 重要：更新 method 为 1，确保后续写入 Header 或 Magic 时标志位正确
+            method = 1; 
+            tools_logi("[Success] Repacked as GZIP. New Size: %u bytes\n", final_k_size);
+        } else {
+            tools_loge("[Error] GZIP compression failed during XZ-to-GZIP conversion.\n");
+            return -1;
+        }
+    }
 
     uint32_t old_k_aligned = ALIGN(hdr.kernel_size, page_size);
     uint32_t rest_data_offset = page_size + old_k_aligned;

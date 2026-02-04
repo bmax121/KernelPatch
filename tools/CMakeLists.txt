@@ -5,7 +5,7 @@ file(GLOB_RECURSE LIB_SOURCES "lib/*.c")
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 add_definitions(-DZSTD_DISABLE_ASM)
-
+add_definitions(-DXZ_DEC_ANY_CHECK)
 set(SOURCES
     image.c
     kallsym.c
@@ -35,7 +35,8 @@ endforeach()
 list(REMOVE_DUPLICATES LIB_INCLUDE_DIRS)
 
 target_include_directories(kptools PRIVATE ${LIB_INCLUDE_DIRS})
-
+target_compile_definitions(kptools PRIVATE BZ_NO_STDIO)
 find_package(ZLIB REQUIRED)
 target_include_directories(kptools PRIVATE ${ZLIB_INCLUDE_DIRS})
+
 target_link_libraries(kptools PRIVATE ${ZLIB_LIBRARIES})
