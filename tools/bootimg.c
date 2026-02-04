@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <zlib.h>
-
+#include <sys/stat.h>
 #include "bootimg.h"
 #include "common.h"
 #include "lib/lz4/lz4.h"
@@ -74,6 +74,7 @@ int write_data_to_file(const char *path, const void *data, size_t size) {
     if (!fp) return -1;
     fwrite(data, 1, size, fp);
     fclose(fp);
+    chmod(path, 0644);
     return 0;
 }
 
@@ -129,6 +130,7 @@ int decompress_gzip(const uint8_t *in_data, size_t in_size, const char *out_path
     } while (ret != Z_STREAM_END);
 
     fclose(out);
+    chmod(out_path, 0644);
     inflateEnd(&strm);
     return 0;
 }
