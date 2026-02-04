@@ -142,8 +142,8 @@ int compress_lz4(const uint8_t *in_data, size_t in_size, uint8_t **out_data, uin
         return -1;
     }
 
-    // 2. use default config
-    // LZ4F_compressFrame will grant 0x184D2204 
+    // 2. use default config (NULL -> default LZ4F_preferences_t)
+    // LZ4F_compressFrame will produce a standard LZ4 frame (magic number 0x184D2204)
     size_t compressed_size = LZ4F_compressFrame(*out_data, max_out_size, in_data, in_size, NULL);
 
     if (LZ4F_isError(compressed_size)) {
