@@ -7,6 +7,9 @@
 
 #include "bootimg.h"
 #include "common.h"
+#include "lib/lz4.h"
+#include "lib/lz4frame.h"
+// #include "lib/zstd.h"
 
 static uint32_t fdt32_to_cpu(uint32_t val) {
     return ((val << 24) & 0xff000000) |
@@ -125,6 +128,58 @@ int decompress_gzip(const uint8_t *in_data, size_t in_size, const char *out_path
     return 0;
 }
 
+int compress_lz4(const uint8_t *in_data, size_t in_size, uint8_t **out_data, uint32_t *out_size) {
+
+    size_t max_out_size = LZ4F_compressFrameBound(in_size, NULL);
+    
+    *out_data = (uint8_t *)malloc(max_out_size);
+    if (!*out_data) {
+        return -1;
+    }
+
+    // 2. use default config
+    // LZ4F_compressFrame will grant 0x184D2204 
+    size_t compressed_size = LZ4F_compressFrame(*out_data, max_out_size, in_data, in_size, NULL);
+
+    if (LZ4F_isError(compressed_size)) {
+        free(*out_data);
+        return -2;
+    }
+
+    *out_size = (uint32_t)compressed_size;
+    return 0;
+}
+
+// int compress_zstd(const uint8_t *in_data, size_t in_size, uint8_t **out_data, uint32_t *out_size) {
+//     size_t const max_out_size = ZSTD_compressBound(in_size);
+//     *out_data = malloc(max_out_size);
+//     if (!*out_data) return -1;
+//     size_t const cSize = ZSTD_compress(*out_data, max_out_size, in_data, in_size, 3);
+
+//     if (ZSTD_isError(cSize)) {
+//         free(*out_data);
+//         return -2;
+//     }
+//     *out_size = (uint32_t)cSize;
+//     return 0;
+// }
+// int decompress_zstd(const uint8_t *src, size_t srcSize, uint8_t **dst, uint32_t *dstSize) {
+//     unsigned long long const rSize = ZSTD_getFrameContentSize(src, srcSize);
+//     if (rSize == ZSTD_CONTENTSIZE_ERROR) return -1;
+//     if (rSize == ZSTD_CONTENTSIZE_UNKNOWN) return -2;
+
+//     *dst = malloc((size_t)rSize);
+//     if (!*dst) return -3;
+
+//     size_t const dSize = ZSTD_decompress(*dst, (size_t)rSize, src, srcSize);
+
+//     if (ZSTD_isError(dSize)) {
+//         free(*dst);
+//         return -4;
+//     }
+//     *dstSize = (uint32_t)dSize;
+//     return 0;
+// }
 
 int auto_depress(const uint8_t *data, size_t size, const char *out_path) {
     if (size < 4) return -1;
@@ -145,14 +200,59 @@ int auto_depress(const uint8_t *data, size_t size, const char *out_path) {
     }
     
  
-    if (method == 2) { //LZ4 Frame
-        tools_logi("[Info] Detected LZ4 compressed kernel.\n");
-        char lz4_path[128];
-        snprintf(lz4_path, sizeof(lz4_path), "%s.lz4", out_path);
-        write_data_to_file(lz4_path, data, size);
-        tools_logi("[Action] Saved as %s (Please use 'lz4 -d' to decompress manually if liblz4 code is not added)\n", lz4_path);
-        return 1;
+    if (method == 2) { 
+        tools_logi("[Info] Detected LZ4 Frame. Decompressing with lz4frame...\n");
+        LZ4F_decompressionContext_t dctx;
+        LZ4F_createDecompressionContext(&dctx, LZ4F_VERSION);
+
+        size_t dstCapacity = 64 * 1024 * 1024; // 预估 64MB
+        void* dst = malloc(dstCapacity);
+        if (!dst) return -1;
+
+        size_t consumedSize = size;
+        size_t producedSize = dstCapacity;
+
+        size_t ret = LZ4F_decompress(dctx, dst, &producedSize, data, &consumedSize, NULL);
+
+        if (LZ4F_isError(ret)) {
+            tools_loge("[Error] LZ4 Decompression failed: %s\n", LZ4F_getErrorName(ret));
+            free(dst);
+            LZ4F_freeDecompressionContext(dctx);
+            return -1;
+        } else {
+            tools_logi("[Success] Decompressed: %zu bytes\n", producedSize);
+            write_data_to_file(out_path, (uint8_t*)dst, (uint32_t)producedSize);
+            free(dst);
+            LZ4F_freeDecompressionContext(dctx);
+            return 0;
+        }
     }
+
+    // till now no kernel use this
+    // if (method == 3) { 
+    //     tools_logi("[Info] Detected ZSTD compressed kernel. Decompressing...\n");
+    //     unsigned long long const rSize = ZSTD_getFrameContentSize(data, size);
+    //     if (rSize == ZSTD_CONTENTSIZE_ERROR || rSize == ZSTD_CONTENTSIZE_UNKNOWN) {
+    //         tools_loge("[Error] Not a valid Zstd frame or size unknown.\n");
+    //         return -1;
+    //     }
+
+    //     uint8_t *dst = malloc((size_t)rSize);
+    //     if (!dst) return -1;
+
+    //     size_t const dSize = ZSTD_decompress(dst, (size_t)rSize, data, size);
+
+    //     if (ZSTD_isError(dSize)) {
+    //         tools_loge("[Error] Zstd Decompression failed: %s\n", ZSTD_getErrorName(dSize));
+    //         free(dst);
+    //         return -1;
+    //     } else {
+    //         tools_logi("[Success] Decompressed: %zu bytes\n", dSize);
+    //         write_data_to_file(out_path, dst, (uint32_t)dSize);
+    //         free(dst);
+    //         return 0;
+    //     }
+    // }
 
 
     tools_logi("[Info] Treating as Raw Kernel (or unknown format).\n");
@@ -203,13 +303,36 @@ int extract_kernel(const char *bootimg_path) {
     return res;
 }
 
-int detect_compress_method(compress_head data){
-    if (data.magic[0] == 0x1F && data.magic[1] == 0x8B) return 1; // GZIP
-    if (data.magic[0] == 0x04 && data.magic[1] == 0x22 && 
-        data.magic[2] == 0x4D && data.magic[3] == 0x18) return 2; // LZ4
-    return 0;
-}
+int detect_compress_method(compress_head data) {
+    // 1. GZIP (Standard)
+    if (data.magic[0] == 0x1F && data.magic[1] == 0x8B) return 1;
 
+    // 2. LZ4 (Fastest decompression)
+    if (data.magic[0] == 0x04 && data.magic[1] == 0x22 && 
+        data.magic[2] == 0x4D && data.magic[3] == 0x18) return 2;
+
+    // 3. ZSTD (Modern balance) - 0xFD2FB528
+    if (data.magic[0] == 0x28 && data.magic[1] == 0xB5 && 
+        data.magic[2] == 0x2F && data.magic[3] == 0xFD) return 3;
+
+    // 4. XZ (High compression ratio) - FD 37 7A 58 5A 00
+    if (data.magic[0] == 0xFD && data.magic[1] == 0x37 && 
+        data.magic[2] == 0x7A && data.magic[3] == 0x58) return 4;
+
+    // 5. LZO (Common in embedded) - 89 4c 5a 4f 00 0d 0a 1a 0a
+    if (data.magic[0] == 0x89 && data.magic[1] == 0x4c && 
+        data.magic[2] == 0x5a && data.magic[3] == 0x4f) return 5;
+
+    // 6. LZMA (Old version of XZ) - 5D 00 00
+    if (data.magic[0] == 0x5D && data.magic[1] == 0x00 && 
+        data.magic[2] == 0x00) return 6;
+
+    // 7. BZIP2 (Old but gold) - BZh
+    if (data.magic[0] == 0x42 && data.magic[1] == 0x5A && 
+        data.magic[2] == 0x68) return 7;
+
+    return 0; // Uncompressed or Unknown
+}
 
 int repack_bootimg(const char *orig_boot_path, 
                    const char *new_kernel_path, 
@@ -280,6 +403,12 @@ int repack_bootimg(const char *orig_boot_path,
     if (method == 1) { 
         tools_logi("[Info] Compressing new kernel with GZIP...\n");
         if (compress_gzip(raw_k_buf, raw_k_size, &compressed_buf, &final_k_size) == 0) {
+            final_k_buf = compressed_buf;
+        }
+    }
+    if (method == 2) { 
+        tools_logi("[Info] Compressing new kernel with GZIP...\n");
+        if (compress_lz4(raw_k_buf, raw_k_size, &compressed_buf, &final_k_size) == 0) {
             final_k_buf = compressed_buf;
         }
     }
