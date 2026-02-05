@@ -527,10 +527,14 @@ int extract_kernel(const char *bootimg_path) {
 int detect_compress_method(compress_head data) {
     // 1. GZIP / ZOPFLI (1F 8B)
     if (data.magic[0] == 0x1F && data.magic[1] == 0x8B) return 1;
-
+    if (data.magic[0] == 0x1F && data.magic[1] == 0x9E) return 1;
     // 2. LZ4 (04 22 4D 18 is Frame )
     if (data.magic[0] == 0x04 && data.magic[1] == 0x22 && 
         data.magic[2] == 0x4D && data.magic[3] == 0x18) return 2;
+
+    if (data.magic[0] == 0x03 && data.magic[1] == 0x21 && 
+        data.magic[2] == 0x4C && data.magic[3] == 0x18) return 2;
+
     // LZ4 Legacy (02 21 4C 18)
     if (data.magic[0] == 0x02 && data.magic[1] == 0x21 && 
         data.magic[2] == 0x4C && data.magic[3] == 0x18) return 3;
