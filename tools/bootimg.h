@@ -16,11 +16,11 @@ struct boot_img_hdr {
     uint8_t cmdline[512];
     uint32_t id[8];
 	uint8_t extra_cmdline[1024];     // command
-    
+
     // v2 
     uint32_t recovery_dtbo_size;     
     uint64_t recovery_dtbo_offset;   
-    uint32_t header_size;            
+         
     
     // v3 
     uint32_t dtb_size;               

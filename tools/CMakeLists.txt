@@ -16,7 +16,6 @@ set(SOURCES
     symbol.c
     kpm.c
     common.c
-    sha256.c
     bootimg.c
 )
 

@@ -11,7 +11,8 @@
 #include "lib/lz4/lz4frame.h"
 #include "lib/bz2/bzlib.h"
 #include "lib/xz/xz.h"
-
+#include "lib/sha/sha256.h"
+#include "lib/sha/sha1.h"
 // #include "lib/zstd/zstd.h"
 
 
@@ -55,6 +56,17 @@ static void *my_memmem(const void *haystack, size_t haystacklen,
         }
     }
     return NULL;
+}
+
+int is_sha256(uint32_t id[8]) {
+    if ((id[0] | id[1] | id[2] | id[3] | id[4] | id[5]) == 0) {
+        return 1;
+    }
+    if (id[6] != 0 || id[7] != 0) {
+        return 2;
+    }
+    
+    return 0;
 }
 
 static int find_dtb_offset(const uint8_t *buf, unsigned int sz) {
@@ -570,9 +582,10 @@ int repack_bootimg(const char *orig_boot_path,
     fread(&avb, sizeof(avb), 1, f_orig);
 
     uint32_t header_ver = hdr.unused[0]; 
+    if (header_ver == 0){tools_loge_exit("we don't support this device any more\n");}
     uint32_t page_size = (header_ver >= 3) ? 4096 : hdr.page_size;
     uint32_t fmt_size =  (header_ver >= 3) ? hdr.kernel_addr : hdr.ramdisk_size;
-    
+
     tools_logi("Header Version: %u, Page Size: %u, fmt_size: %u\n", header_ver, page_size,fmt_size);
 
     uint8_t *old_k_full = malloc(hdr.kernel_size);
@@ -674,6 +687,8 @@ int repack_bootimg(const char *orig_boot_path,
     uint32_t old_k_aligned = ALIGN(hdr.kernel_size, page_size);
     uint32_t rest_data_offset = page_size + old_k_aligned;
     uint32_t rest_data_size = (total_size > rest_data_offset) ? (total_size - rest_data_offset) : 0;
+    
+    uint32_t checksum_aligned = ALIGN(fmt_size , page_size);
 
     uint8_t *rest_buf = NULL;
     if (rest_data_size > 0) {
@@ -683,7 +698,66 @@ int repack_bootimg(const char *orig_boot_path,
     }
     fclose(f_orig);
 
+    uint32_t use_sha256 = is_sha256(hdr.id);
+    int len = use_sha256 ? SHA256_BLOCK_SIZE : SHA1_BLOCK_SIZE;
+    BYTE buf[len];
+    if (use_sha256 != 1 || header_ver <= 3) {
 
+        if (use_sha256){
+            SHA256_CTX ctx;
+            sha256_init(&ctx);
+            sha256_update(&ctx, (const BYTE *)raw_k_buf, raw_k_size);
+            sha256_update(&ctx, (const BYTE *)&hdr.kernel_size, 4);
+            sha256_update(&ctx, (const BYTE *)rest_buf, fmt_size);
+            sha256_update(&ctx, (const BYTE *)&fmt_size, sizeof(fmt_size));
+
+            sha256_update(&ctx, (const BYTE *)rest_buf + checksum_aligned, hdr.second_size);
+            sha256_update(&ctx, (const BYTE *)&hdr.second_size, 4);
+            if (hdr.second_size > 0){
+                checksum_aligned += ALIGN(hdr.second_size , page_size);
+            }
+            if (header_ver == 1 || header_ver == 2){
+                sha256_update(&ctx, (const BYTE *)rest_buf + checksum_aligned, hdr.recovery_dtbo_size);
+                sha256_update(&ctx, (const BYTE *)&hdr.recovery_dtbo_size, 4);
+                checksum_aligned += ALIGN(hdr.recovery_dtbo_size , page_size);
+            }
+            if (header_ver == 2){
+                sha256_update(&ctx, (const BYTE *)rest_buf + checksum_aligned, hdr.dtb_size);
+                sha256_update(&ctx, (const BYTE *)&hdr.dtb_size, 4);
+            }
+            
+            sha256_final(&ctx, buf);
+            memcpy(hdr.id, buf, 32);
+        }else{
+            SHA1_CTX ctx;
+            sha1_init(&ctx);
+            sha1_update(&ctx, (const BYTE *)raw_k_buf, raw_k_size);
+            sha1_update(&ctx, (const BYTE *)&hdr.kernel_size, 4);
+            sha1_update(&ctx, (const BYTE *)rest_buf, fmt_size);
+            sha1_update(&ctx, (const BYTE *)&fmt_size, sizeof(fmt_size));
+            
+            
+            sha1_update(&ctx, (const BYTE *)rest_buf + checksum_aligned, hdr.second_size);
+            sha1_update(&ctx, (const BYTE *)&hdr.second_size, 4);
+            if (hdr.second_size > 0){
+                checksum_aligned += ALIGN(hdr.second_size , page_size);
+            }
+            
+            if (header_ver == 1 || header_ver == 2){
+                sha1_update(&ctx, (const BYTE *)rest_buf + checksum_aligned, hdr.recovery_dtbo_size);
+                sha1_update(&ctx, (const BYTE *)&hdr.recovery_dtbo_size, 4);
+                checksum_aligned += ALIGN(hdr.recovery_dtbo_size , page_size);
+            }
+            
+            if (header_ver == 2){
+                sha1_update(&ctx, (const BYTE *)rest_buf + checksum_aligned, hdr.dtb_size);
+                sha1_update(&ctx, (const BYTE *)&hdr.dtb_size, 4);
+            }
+            printf("dtb_size=%d,dtb_addr=%lu\n",hdr.dtb_size,hdr.dtb_addr);
+            sha1_final(&ctx, buf);
+            memcpy(hdr.id, buf, 20);
+        }
+    }
     FILE *f_out = fopen(out_boot_path, "wb");
     if (!f_out) { return -4; }
 
