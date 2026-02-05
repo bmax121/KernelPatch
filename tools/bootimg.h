@@ -76,3 +76,4 @@ int repack_bootimg(const char *orig_boot_path,
 int extract_kernel(const char *bootimg_path);
 
 int detect_compress_method(compress_head data);
+int cacluate_sha1(const char *file);

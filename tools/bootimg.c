@@ -827,3 +827,23 @@ int repack_bootimg(const char *orig_boot_path,
     tools_logi("Repack completed: %s\n", out_boot_path);
     return 0;
 }
+int cacluate_sha1(const char *file) {
+    FILE *fp = fopen(file, "rb");
+    if (!fp) {
+        return -1;
+    }
+    SHA1_CTX ctx;
+    sha1_init(&ctx);
+    uint8_t buffer[4096];
+    size_t bytesRead;
+    while ((bytesRead = fread(buffer, 1, sizeof(buffer), fp)) > 0) {
+        sha1_update(&ctx, buffer, bytesRead);
+    }
+    fclose(fp);
+    uint8_t hash[SHA1_BLOCK_SIZE];
+    sha1_final(&ctx, hash);
+    for (int i = 0; i < 20; i++) { 
+        printf("%02x", hash[i]);
+    }
+    return 0;
+}
