@@ -753,7 +753,7 @@ int repack_bootimg(const char *orig_boot_path,
                 sha1_update(&ctx, (const BYTE *)rest_buf + checksum_aligned, hdr.dtb_size);
                 sha1_update(&ctx, (const BYTE *)&hdr.dtb_size, 4);
             }
-            printf("dtb_size=%d,dtb_addr=%lu\n",hdr.dtb_size,hdr.dtb_addr);
+            tools_logi("dtb_size=%d,dtb_addr=%lu\n",hdr.dtb_size,hdr.dtb_addr);
             sha1_final(&ctx, buf);
             memcpy(hdr.id, buf, 20);
         }
