@@ -15,6 +15,23 @@
 // #include "lib/zstd/zstd.h"
 
 
+static uint64_t XXH_swap64(uint64_t x) {
+    return ((x << 56) & 0xff00000000000000ULL) |
+           ((x << 40) & 0x00ff000000000000ULL) |
+           ((x << 24) & 0x0000ff0000000000ULL) |
+           ((x << 8)  & 0x000000ff00000000ULL) |
+           ((x >> 8)  & 0x00000000ff000000ULL) |
+           ((x >> 24) & 0x0000000000ff0000ULL) |
+           ((x >> 40) & 0x000000000000ff00ULL) |
+           ((x >> 56) & 0x00000000000000ffULL);
+}
+
+static uint32_t XXH_swap32(uint32_t x) {
+    return ((x >> 24) & 0x000000FF) |
+           ((x >>  8) & 0x0000FF00) |
+           ((x <<  8) & 0x00FF0000) |
+           ((x << 24) & 0xFF000000);
+}
 
 static uint32_t fdt32_to_cpu(uint32_t val) {
     return ((val << 24) & 0xff000000) |
@@ -534,6 +551,7 @@ int repack_bootimg(const char *orig_boot_path,
     if (!f_orig) return -1;
 
     struct boot_img_hdr hdr;
+    struct avb_footer avb;
     fread(&hdr, sizeof(hdr), 1, f_orig);
 
     if (memcmp(hdr.magic, "ANDROID!", 8) != 0) {
@@ -545,13 +563,14 @@ int repack_bootimg(const char *orig_boot_path,
     fseek(f_orig, 0, SEEK_END);
     long total_size = ftell(f_orig);
 
-    uint8_t *foot_buf = NULL;
-    foot_buf = malloc(64);
+    //uint8_t *foot_buf = NULL;
+    //foot_buf = malloc(64);
     fseek(f_orig, total_size-64, SEEK_SET);
-    fread(foot_buf, 1, 64, f_orig);
+    fread(&avb, sizeof(avb), 1, f_orig);
 
     uint32_t header_ver = hdr.unused[0]; 
     uint32_t page_size = (header_ver >= 3) ? 4096 : hdr.page_size;
+    uint32_t fmt_size =  (header_ver >= 3) ? hdr.kernel_addr : hdr.ramdisk_size;
     tools_logi("Header Version: %u, Page Size: %u\n", header_ver, page_size);
 
     uint8_t *old_k_full = malloc(hdr.kernel_size);
@@ -667,6 +686,9 @@ int repack_bootimg(const char *orig_boot_path,
     if (!f_out) { return -4; }
 
     hdr.kernel_size = final_k_size + dtb_size;
+    uint32_t avb_size = (final_k_size + dtb_size + fmt_size + 0x1000)& 0xFFFFFF00;
+    avb.data_size1 = XXH_swap32(avb_size);
+    avb.data_size2 = XXH_swap32(avb_size);
     fwrite(&hdr, sizeof(hdr), 1, f_out);
 
     fseek(f_out, page_size, SEEK_SET);
@@ -684,20 +706,22 @@ int repack_bootimg(const char *orig_boot_path,
     if (rest_buf) {
         if (rest_data_size > total_size - page_size - new_k_total_aligned){
             fwrite(rest_buf, 1, total_size - page_size - new_k_total_aligned -64, f_out);
-            fwrite(foot_buf, 1, 64 , f_out);
+            fwrite(&avb, sizeof(avb), 1, f_out);
         }else{
-            fwrite(rest_buf, 1, rest_data_size, f_out);
+            fwrite(rest_buf, 1, rest_data_size - 64 , f_out);
+            fwrite(&avb, sizeof(avb), 1, f_out);
         }
     }
 
     //  Padding
     long current_pos = ftell(f_out);
     //tools_logi("current_post=%d,total_size=%d\n",current_pos,total_size);
-    if (current_pos < total_size) {
-        uint32_t padding = total_size - current_pos;
+    if (current_pos < total_size - 64) {
+        uint32_t padding = total_size - current_pos - 64;
         uint8_t *zero_pad = calloc(1, padding);
         fwrite(zero_pad, 1, padding, f_out);
         free(zero_pad);
+        fwrite(&avb, sizeof(avb), 1, f_out);
     }
 
     fclose(f_out);
