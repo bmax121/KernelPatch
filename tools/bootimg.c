@@ -563,6 +563,7 @@ int repack_bootimg(const char *orig_boot_path,
     fseek(f_orig, 0, SEEK_END);
     long total_size = ftell(f_orig);
 
+    uint32_t avb_size = 0;
     //uint8_t *foot_buf = NULL;
     //foot_buf = malloc(64);
     fseek(f_orig, total_size-64, SEEK_SET);
@@ -571,7 +572,8 @@ int repack_bootimg(const char *orig_boot_path,
     uint32_t header_ver = hdr.unused[0]; 
     uint32_t page_size = (header_ver >= 3) ? 4096 : hdr.page_size;
     uint32_t fmt_size =  (header_ver >= 3) ? hdr.kernel_addr : hdr.ramdisk_size;
-    tools_logi("Header Version: %u, Page Size: %u\n", header_ver, page_size);
+    
+    tools_logi("Header Version: %u, Page Size: %u, fmt_size: %u\n", header_ver, page_size,fmt_size);
 
     uint8_t *old_k_full = malloc(hdr.kernel_size);
     fseek(f_orig, page_size, SEEK_SET);
@@ -686,9 +688,7 @@ int repack_bootimg(const char *orig_boot_path,
     if (!f_out) { return -4; }
 
     hdr.kernel_size = final_k_size + dtb_size;
-    uint32_t avb_size = (final_k_size + dtb_size + fmt_size + 0x1000)& 0xFFFFFF00;
-    avb.data_size1 = XXH_swap32(avb_size);
-    avb.data_size2 = XXH_swap32(avb_size);
+
     fwrite(&hdr, sizeof(hdr), 1, f_out);
 
     fseek(f_out, page_size, SEEK_SET);
@@ -703,7 +703,18 @@ int repack_bootimg(const char *orig_boot_path,
     uint32_t new_k_total_aligned = ALIGN(hdr.kernel_size, page_size);
     fseek(f_out, page_size + new_k_total_aligned, SEEK_SET);
     //tools_logi("rest_data_size=%d,total_size=%d,rest_data_offset=%d,now=%d\n",rest_data_size , total_size , rest_data_offset,page_size + new_k_total_aligned);
+    const uint8_t avb_magic[] = "AVB0";
+    
+
     if (rest_buf) {
+        uint8_t *avb_ptr = my_memmem(rest_buf, rest_data_size, avb_magic, 4);
+        if (avb_ptr) {
+            size_t avb_offset = avb_ptr - rest_buf;
+            tools_logi("avb_offset=%zu\n",avb_offset);
+            uint32_t avb_size = page_size + avb_offset + new_k_total_aligned;
+            avb.data_size1 = XXH_swap32(avb_size);
+            avb.data_size2 = XXH_swap32(avb_size);
+        }
         if (rest_data_size > total_size - page_size - new_k_total_aligned){
             fwrite(rest_buf, 1, total_size - page_size - new_k_total_aligned -64, f_out);
             fwrite(&avb, sizeof(avb), 1, f_out);
@@ -712,9 +723,14 @@ int repack_bootimg(const char *orig_boot_path,
             fwrite(&avb, sizeof(avb), 1, f_out);
         }
     }
+    
+
+    avb_size = (avb_size== 0) ? (final_k_size + dtb_size + fmt_size + 0x1000)& 0xFFFFFF00 : 0;
+    avb.data_size1 = XXH_swap32(avb_size);
+    avb.data_size2 = XXH_swap32(avb_size);
+    long current_pos = ftell(f_out);
 
     //  Padding
-    long current_pos = ftell(f_out);
     //tools_logi("current_post=%d,total_size=%d\n",current_pos,total_size);
     if (current_pos < total_size - 64) {
         uint32_t padding = total_size - current_pos - 64;
