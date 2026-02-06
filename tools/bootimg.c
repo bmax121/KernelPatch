@@ -185,23 +185,27 @@ int compress_lz4(const uint8_t *in_data, size_t in_size, uint8_t **out_data, uin
     *out_size = (uint32_t)compressed_size;
     return 0;
 }
-int compress_lz4_le(const uint8_t *in_data, size_t in_size, uint8_t **out_data, uint32_t *out_size) {
+int compress_lz4_le(const uint8_t *in_data, size_t in_size, uint8_t **out_data, uint32_t *out_size, compress_head data) {
     int max_block_size = LZ4_compressBound((int)in_size);
 
-    uint32_t total_max_size = 4 + max_block_size;
+    uint32_t total_max_size = 8 + max_block_size;
     *out_data = (uint8_t *)malloc(total_max_size);
     if (!*out_data) {
         return -1;
     }
 
-    (*out_data)[0] = 0x02;
-    (*out_data)[1] = 0x21;
-    (*out_data)[2] = 0x4C;
-    (*out_data)[3] = 0x18;
+    (*out_data)[0] = data.magic[0];
+    (*out_data)[1] = data.magic[1];
+    (*out_data)[2] = data.magic[2];
+    (*out_data)[3] = data.magic[3]; 
+    (*out_data)[4] = data.magic[4];
+    (*out_data)[5] = data.magic[5];
+    (*out_data)[6] = data.magic[6];
+    (*out_data)[7] = data.magic[7];
 
     int compressed_bytes = LZ4_compress_default(
         (const char*)in_data, 
-        (char*)(*out_data + 4), 
+        (char*)(*out_data + 8), 
         (int)in_size, 
         max_block_size
     );
@@ -210,7 +214,7 @@ int compress_lz4_le(const uint8_t *in_data, size_t in_size, uint8_t **out_data, 
         *out_data = NULL;
         return -2;
     }
-    *out_size = 4 + (uint32_t)compressed_bytes;
+    *out_size = 8 + (uint32_t)compressed_bytes;
     return 0; 
 }
 
@@ -367,8 +371,8 @@ int auto_depress(const uint8_t *data, size_t size, const char *out_path) {
     if (method == 3) { 
         tools_logi("Detected LZ4 Legacy. Decompressing with LZ4 Block API...\n");
 
-        const char* compressed_ptr = (const char*)data + 4;
-        int compressed_size = (int)size - 4;
+        const char* compressed_ptr = (const char*)data + 8;
+        int compressed_size = (int)size - 8;
 
         size_t dstCapacity = 64 * 1024 * 1024;
         void* dst = malloc(dstCapacity);
@@ -643,7 +647,7 @@ int repack_bootimg(const char *orig_boot_path,
     }
     if (method == 3) { 
         tools_logi("Compressing new kernel with LZ4 Legacy...\n");
-        if (compress_lz4_le(raw_k_buf, raw_k_size, &compressed_buf, &final_k_size) == 0) {
+        if (compress_lz4_le(raw_k_buf, raw_k_size, &compressed_buf, &final_k_size, k_head) == 0) {
             final_k_buf = compressed_buf;
         }
     }
