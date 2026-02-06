@@ -691,7 +691,7 @@ int repack_bootimg(const char *orig_boot_path,
     uint32_t old_k_aligned = ALIGN(hdr.kernel_size, page_size);
     uint32_t rest_data_offset = page_size + old_k_aligned;
     uint32_t rest_data_size = (total_size > rest_data_offset) ? (total_size - rest_data_offset) : 0;
-    
+    hdr.kernel_size = final_k_size + dtb_size;
     uint32_t checksum_aligned = ALIGN(fmt_size , page_size);
 
     uint8_t *rest_buf = NULL;
@@ -710,22 +710,26 @@ int repack_bootimg(const char *orig_boot_path,
         if (use_sha256){
             SHA256_CTX ctx;
             sha256_init(&ctx);
-            sha256_update(&ctx, (const BYTE *)raw_k_buf, raw_k_size);
+            sha256_update(&ctx, (const BYTE *)final_k_buf, hdr.kernel_size);
             sha256_update(&ctx, (const BYTE *)&hdr.kernel_size, 4);
             sha256_update(&ctx, (const BYTE *)rest_buf, fmt_size);
             sha256_update(&ctx, (const BYTE *)&fmt_size, sizeof(fmt_size));
 
             sha256_update(&ctx, (const BYTE *)rest_buf + checksum_aligned, hdr.second_size);
             sha256_update(&ctx, (const BYTE *)&hdr.second_size, 4);
+            tools_logi("second_size=%d\n",hdr.second_size);
             if (hdr.second_size > 0){
                 checksum_aligned += ALIGN(hdr.second_size , page_size);
             }
+            //to do extra data
             if (header_ver == 1 || header_ver == 2){
+                tools_logi("recovery_dtbo_size=%d\n",hdr.recovery_dtbo_size);
                 sha256_update(&ctx, (const BYTE *)rest_buf + checksum_aligned, hdr.recovery_dtbo_size);
                 sha256_update(&ctx, (const BYTE *)&hdr.recovery_dtbo_size, 4);
                 checksum_aligned += ALIGN(hdr.recovery_dtbo_size , page_size);
             }
             if (header_ver == 2){
+                tools_logi("dtb_size=%d\n",hdr.dtb_size);
                 sha256_update(&ctx, (const BYTE *)rest_buf + checksum_aligned, hdr.dtb_size);
                 sha256_update(&ctx, (const BYTE *)&hdr.dtb_size, 4);
             }
@@ -735,7 +739,7 @@ int repack_bootimg(const char *orig_boot_path,
         }else{
             SHA1_CTX ctx;
             sha1_init(&ctx);
-            sha1_update(&ctx, (const BYTE *)raw_k_buf, raw_k_size);
+            sha1_update(&ctx, (const BYTE *)final_k_buf, hdr.kernel_size);
             sha1_update(&ctx, (const BYTE *)&hdr.kernel_size, 4);
             sha1_update(&ctx, (const BYTE *)rest_buf, fmt_size);
             sha1_update(&ctx, (const BYTE *)&fmt_size, sizeof(fmt_size));
@@ -746,18 +750,21 @@ int repack_bootimg(const char *orig_boot_path,
             if (hdr.second_size > 0){
                 checksum_aligned += ALIGN(hdr.second_size , page_size);
             }
-            
+            tools_logi("second_size=%d\n",hdr.second_size);
+            //to do extra data
             if (header_ver == 1 || header_ver == 2){
+                tools_logi("recovery_dtbo_size=%d\n",hdr.recovery_dtbo_size);
                 sha1_update(&ctx, (const BYTE *)rest_buf + checksum_aligned, hdr.recovery_dtbo_size);
                 sha1_update(&ctx, (const BYTE *)&hdr.recovery_dtbo_size, 4);
                 checksum_aligned += ALIGN(hdr.recovery_dtbo_size , page_size);
             }
             
             if (header_ver == 2){
+                tools_logi("dtb_size=%d,dtb_addr=%lu\n",hdr.dtb_size,hdr.dtb_addr);
                 sha1_update(&ctx, (const BYTE *)rest_buf + checksum_aligned, hdr.dtb_size);
                 sha1_update(&ctx, (const BYTE *)&hdr.dtb_size, 4);
             }
-            tools_logi("dtb_size=%d,dtb_addr=%lu\n",hdr.dtb_size,hdr.dtb_addr);
+            
             sha1_final(&ctx, buf);
             memcpy(hdr.id, buf, 20);
         }
@@ -765,10 +772,8 @@ int repack_bootimg(const char *orig_boot_path,
     FILE *f_out = fopen(out_boot_path, "wb");
     if (!f_out) { return -4; }
 
-    hdr.kernel_size = final_k_size + dtb_size;
 
     fwrite(&hdr, sizeof(hdr), 1, f_out);
-
     fseek(f_out, page_size, SEEK_SET);
 
 
@@ -834,7 +839,8 @@ int cacluate_sha1(const char *file) {
     }
     SHA1_CTX ctx;
     sha1_init(&ctx);
-    uint8_t buffer[4096];
+
+    uint8_t *buffer = malloc(409600);
     size_t bytesRead;
     while ((bytesRead = fread(buffer, 1, sizeof(buffer), fp)) > 0) {
         sha1_update(&ctx, buffer, bytesRead);
@@ -842,6 +848,7 @@ int cacluate_sha1(const char *file) {
     fclose(fp);
     uint8_t hash[SHA1_BLOCK_SIZE];
     sha1_final(&ctx, hash);
+    free(buffer);
     for (int i = 0; i < 20; i++) { 
         printf("%02x", hash[i]);
     }
