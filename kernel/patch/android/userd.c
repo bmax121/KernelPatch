@@ -43,7 +43,7 @@
 #define AP_LOG_DIR AP_DIR "log/"
 #define AP_MAGISKPOLICY_PATH AP_BIN_DIR "magiskpolicy"
 #define MAGISK_SCTX "u:r:magisk:s0"
-#define USER_INIT_SH_PATH "/dev/user_init.sh"
+#define APD_BIN "/data/adb/apd"
 
 #include "gen/user_init.c"
 
@@ -57,21 +57,21 @@ static const char ORIGIN_RC_FILES[][64] = {
 static const char user_rc_data[] = { //
     "\n"
     "on early-init\n"
-    "    exec -- " SUPERCMD " su exec " USER_INIT_SH_PATH " %s early-init\n"
+    "    exec -- " SUPERCMD " su exec " APD_BIN " -s %s early-init\n"
     "on init\n"
-    "    exec -- " SUPERCMD " su exec " USER_INIT_SH_PATH " %s init\n"
+    "    exec -- " SUPERCMD " su exec " APD_BIN " -s %s init\n"
     "on late-init\n"
-    "    exec -- " SUPERCMD " su exec " USER_INIT_SH_PATH " %s late-init\n"
+    "    exec -- " SUPERCMD " su exec " APD_BIN " -s %s late-init\n"
     "on post-fs-data\n"
-    "    exec -- " SUPERCMD " su exec " USER_INIT_SH_PATH " %s post-fs-data\n"
+    "    exec -- " SUPERCMD " su exec " APD_BIN " -s %s post-fs-data\n"
     "on nonencrypted\n"
-    "    exec -- " SUPERCMD " su exec " USER_INIT_SH_PATH " %s services\n"
+    "    exec -- " SUPERCMD " su exec " APD_BIN " -s %s services\n"
     "on property:vold.decrypt=trigger_restart_framework\n"
-    "    exec -- " SUPERCMD " su exec " USER_INIT_SH_PATH " %s services\n"
+    "    exec -- " SUPERCMD " su exec " APD_BIN " -s %s services\n"
     "on property:sys.boot_completed=1\n"
-    "    exec -- " SUPERCMD " su exec " USER_INIT_SH_PATH " %s boot-completed\n"
+    "    exec -- " SUPERCMD " su exec " APD_BIN " -s %s boot-completed\n"
+    "    exec -- " SUPERCMD " su exec " APD_BIN " -s %s uid-listener &\n"
     "    rm " REPLACE_RC_FILE "\n"
-    "    rm " USER_INIT_SH_PATH "\n"
     "    exec -- " SUPERCMD " su -c \"mv -f " DEV_LOG_DIR " " AP_LOG_DIR "\"\n"
     ""
 };
@@ -122,11 +122,6 @@ out:
     return off;
 }
 
-static void pre_user_exec_init()
-{
-    log_boot("event: %s\n", EXTRA_EVENT_PRE_EXEC_INIT);
-    kernel_write_file(USER_INIT_SH_PATH, user_init, sizeof(user_init), 0700);
-}
 
 static void pre_init_second_stage()
 {
@@ -162,7 +157,6 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
         if (!first_user_init_executed) {
             first_user_init_executed = 1;
             log_boot("exec first user init: %s\n", filename);
-            pre_user_exec_init();
         }
 
         if (!init_second_stage_executed) {
