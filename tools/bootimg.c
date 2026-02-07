@@ -705,7 +705,7 @@ int repack_bootimg(const char *orig_boot_path,
     fread(&avb, sizeof(avb), 1, f_orig);
 
     uint32_t header_ver = hdr.unused[0]; 
-    if (header_ver == 0){tools_loge_exit("we don't support this device any more\n");}
+    //if (header_ver == 0){tools_loge_exit("we don't support this device any more\n");}
     uint32_t page_size = (header_ver >= 3) ? 4096 : hdr.page_size;
     uint32_t fmt_size =  (header_ver >= 3) ? hdr.kernel_addr : hdr.ramdisk_size;
 
@@ -918,6 +918,7 @@ int repack_bootimg(const char *orig_boot_path,
             avb.data_size2 = XXH_swap32(avb_size);
         }
         if (rest_data_size > total_size - page_size - new_k_total_aligned){
+            total_size = ALIGN(page_size + new_k_total_aligned + rest_data_size, page_size); // when rest data is larger than original, we need to expand the total size to fit it
             fwrite(rest_buf, 1, total_size - page_size - new_k_total_aligned -64, f_out);
             fwrite(&avb, sizeof(avb), 1, f_out);
         }else{
