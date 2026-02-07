@@ -9,6 +9,7 @@
 #include "common.h"
 #include "lib/lz4/lz4.h"
 #include "lib/lz4/lz4frame.h"
+#include "lib/lz4/lz4hc.h"
 #include "lib/bz2/bzlib.h"
 #include "lib/xz/xz.h"
 #include "lib/sha/sha256.h"
@@ -185,37 +186,76 @@ int compress_lz4(const uint8_t *in_data, size_t in_size, uint8_t **out_data, uin
     *out_size = (uint32_t)compressed_size;
     return 0;
 }
-int compress_lz4_le(const uint8_t *in_data, size_t in_size, uint8_t **out_data, uint32_t *out_size, compress_head data) {
-    int max_block_size = LZ4_compressBound((int)in_size);
+int compress_lz4_le(
+    const uint8_t *in_data,
+    size_t in_size,
+    uint8_t **out_data,
+    uint32_t *out_size,
+    compress_head k_head
+) {
 
-    uint32_t total_max_size = 8 + max_block_size;
-    *out_data = (uint8_t *)malloc(total_max_size);
-    if (!*out_data) {
-        return -1;
-    }
+    size_t max_blocks =
+        (in_size + LZ4_BLOCK_SIZE - 1) / LZ4_BLOCK_SIZE;
+    // uint32_t max_blocks_1 =
+    //   ((uint32_t)k_head.magic[4])
+    // | ((uint32_t)k_head.magic[5] << 8)
+    // | ((uint32_t)k_head.magic[6] << 16)
+    // | ((uint32_t)k_head.magic[7] << 24);
+    tools_logi("Calculated max blocks: %zu\n", max_blocks);
+    size_t max_out =
+        sizeof(uint32_t) +                         // MAGIC
+        max_blocks * (sizeof(uint32_t) +           // block header
+        LZ4_compressBound(LZ4_BLOCK_SIZE));
 
-    (*out_data)[0] = data.magic[0];
-    (*out_data)[1] = data.magic[1];
-    (*out_data)[2] = data.magic[2];
-    (*out_data)[3] = data.magic[3]; 
-    (*out_data)[4] = data.magic[4];
-    (*out_data)[5] = data.magic[5];
-    (*out_data)[6] = data.magic[6];
-    (*out_data)[7] = data.magic[7];
-
-    int compressed_bytes = LZ4_compress_default(
-        (const char*)in_data, 
-        (char*)(*out_data + 8), 
-        (int)in_size, 
-        max_block_size
-    );
-    if (compressed_bytes <= 0) {
-        free(*out_data);
-        *out_data = NULL;
+    uint8_t *out = malloc(max_out);
+    if (!out) {
+        tools_loge("Failed to allocate memory for LZ4 compression,size: %zu\n",max_out);
         return -2;
     }
-    *out_size = 8 + (uint32_t)compressed_bytes;
-    return 0; 
+
+    size_t out_off = 0;
+
+    /* write MAGIC */
+    uint32_t magic = LZ4_MAGIC;
+    memcpy(out + out_off, &magic, sizeof(magic));
+    out_off += sizeof(magic);
+
+    size_t in_off = 0;
+
+    while (in_off < in_size) {
+        size_t chunk_size = in_size - in_off;
+        if (chunk_size > LZ4_BLOCK_SIZE)
+            chunk_size = LZ4_BLOCK_SIZE;
+
+        int max_dst = LZ4_compressBound((int)chunk_size);
+
+        int compressed = LZ4_compress_HC(
+            (const char *)(in_data + in_off),
+            (char *)(out + out_off + sizeof(uint32_t)),
+            (int)chunk_size,
+            max_dst,
+            LZ4HC_CLEVEL
+        );
+
+        if (compressed <= 0) {
+            tools_loge("LZ4 compression failed for block at offset %zu\n", in_off);
+            free(out);
+            return -3;
+        }
+
+        /* write compressed block size */
+        uint32_t csz = (uint32_t)compressed;
+        memcpy(out + out_off, &csz, sizeof(csz));
+        out_off += sizeof(uint32_t);
+
+        /* advance over compressed data */
+        out_off += compressed;
+        in_off += chunk_size;
+    }
+
+    *out_data = out;
+    *out_size = (uint32_t)out_off;
+    return 0;
 }
 
 // int compress_zstd(const uint8_t *in_data, size_t in_size, uint8_t **out_data, uint32_t *out_size) {
@@ -326,7 +366,7 @@ int auto_depress(const uint8_t *data, size_t size, const char *out_path) {
     compress_head k_head;
     memcpy(&k_head, data, sizeof(k_head));
     int method = detect_compress_method(k_head);
-
+    tools_logi("Auto-detect compression method: %d\n", method);
     
     if (method == 1) { //Gzip
         tools_logi("Detected GZIP compressed kernel.\n");
@@ -367,29 +407,104 @@ int auto_depress(const uint8_t *data, size_t size, const char *out_path) {
             return 0;
         }
     }
+    
+    if (method == 3) {
+        tools_logi("Probing LZ4 Legacy (block-based)...\n");
 
-    if (method == 3) { 
-        tools_logi("Detected LZ4 Legacy. Decompressing with LZ4 Block API...\n");
+        const uint8_t *p   = (const uint8_t *)data;
+        const uint8_t *end = p + size;
 
-        const char* compressed_ptr = (const char*)data + 8;
-        int compressed_size = (int)size - 8;
 
-        size_t dstCapacity = 64 * 1024 * 1024;
-        void* dst = malloc(dstCapacity);
-        if (!dst) return -1;
+        if (size < 4)
+            goto not_lz4;
 
-        int ret = LZ4_decompress_safe(compressed_ptr, (char*)dst, compressed_size, (int)dstCapacity);
 
-        if (ret < 0) {
-            tools_loge("LZ4 Legacy decompression failed.\n");
-            free(dst);
-            return -1;
-        } else {
-            tools_logi("Decompressed: %d bytes\n", ret);
-            write_data_to_file(out_path, (uint8_t*)dst, (uint32_t)ret);
-            free(dst);
-            return 0;
+        if (*(uint32_t *)p != LZ4_MAGIC)
+            goto not_lz4;
+
+        p += 4;  
+
+        size_t out_cap = 64 * 1024 * 1024;
+        uint8_t *out = malloc(out_cap);
+        if (!out)
+            goto not_lz4;
+
+        size_t out_off = 0;
+
+        uint8_t *block_out = malloc(LZ4_BLOCK_SIZE);
+        if (!block_out) {
+            free(out);
+            goto not_lz4;
         }
+
+        int decoded_any = 0;
+        while (1) {
+            uint32_t block_size;
+
+            if (p + 4 > end)
+                break; 
+
+            memcpy(&block_size, p, 4);
+            p += 4;
+
+            if (block_size == 0)
+                break;
+
+            if (block_size > LZ4_compressBound(LZ4_BLOCK_SIZE))
+                goto fail;
+
+            if (p + block_size > end)
+                goto fail;
+
+            int decoded = LZ4_decompress_safe(
+                (const char *)p,
+                (char *)block_out,
+                (int)block_size,
+                LZ4_BLOCK_SIZE
+            );
+
+            if (decoded < 0)
+                goto fail;
+
+            decoded_any = 1;
+
+            if (out_off + (size_t)decoded > out_cap) {
+                size_t new_cap = out_cap * 2;
+                while (new_cap < out_off + (size_t)decoded)
+                    new_cap *= 2;
+
+                uint8_t *tmp = realloc(out, new_cap);
+                if (!tmp)
+                    goto fail;
+
+                out = tmp;
+                out_cap = new_cap;
+            }
+
+            memcpy(out + out_off, block_out, (size_t)decoded);
+            out_off += (size_t)decoded;
+
+            p += block_size;
+        }
+
+
+        if (!decoded_any)
+            goto fail;
+
+        tools_logi("LZ4 block decompressed: %zu bytes\n", out_off);
+        write_data_to_file(out_path, out, (uint32_t)out_off);
+
+        free(block_out);
+        free(out);
+        return 0;
+
+    fail:
+        free(block_out);
+        free(out);
+
+    not_lz4:
+        
+        tools_logi("Not LZ4 block format, fallback.\n");
     }
 
     // till now no kernel use this
@@ -691,7 +806,7 @@ int repack_bootimg(const char *orig_boot_path,
             return -1;
         }
     }
-
+    tools_logi("Final kernel size after compression (if applied): %u bytes\n", final_k_size);
     uint32_t old_k_aligned = ALIGN(hdr.kernel_size, page_size);
     uint32_t rest_data_offset = page_size + old_k_aligned;
     uint32_t rest_data_size = (total_size > rest_data_offset) ? (total_size - rest_data_offset) : 0;

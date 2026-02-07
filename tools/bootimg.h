@@ -1,6 +1,11 @@
 
 #define ALIGN(x, a) (((x) + (a) - 1) & ~((a) - 1))
 #define PAGE_SIZE_DEFAULT 4096
+
+#define LZ4_MAGIC 0x184c2102
+#define LZ4_BLOCK_SIZE 0x800000
+#define LZ4HC_CLEVEL 12
+
 struct boot_img_hdr {
     uint8_t magic[8];           // "ANDROID!"
     uint32_t kernel_size;
