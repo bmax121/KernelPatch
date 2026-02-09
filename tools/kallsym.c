@@ -270,7 +270,8 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
         uint64_t r_offset = uint_unpack(img + cand, 8, info->is_be);
         uint64_t r_info = uint_unpack(img + cand + 8, 8, info->is_be);
         uint64_t r_addend = uint_unpack(img + cand + 16, 8, info->is_be);
-        if ((r_offset & 0xffff000000000000) == 0xffff000000000000 && r_info == 0x403) {
+        uint32_t r_type = r_info & 0xffffffff;
+        if ((r_offset & 0xffff000000000000) == 0xffff000000000000 && (r_type == 0x101 || r_type == 0x403)) {
             if (!(r_addend & 0xfff) && r_addend >= min_va && r_addend < kernel_va) kernel_va = r_addend;
             cand += 24;
             rela_num++;
@@ -328,6 +329,11 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
             tools_logw("bad rela offset: 0x%" PRIx64 "\n", r_offset);
             info->try_relo = 0;
             return -1;
+        }
+
+        uint32_t r_type = r_info & 0xffffffff;
+        if (r_type == 0x101) {
+            r_addend += kernel_va;
         }
 
         uint64_t value = uint_unpack(img + offset, 8, info->is_be);
