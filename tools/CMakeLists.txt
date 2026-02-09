@@ -1,5 +1,9 @@
-cmake_minimum_required(VERSION 3.5)
-project (kptools)
+cmake_minimum_required(VERSION 3.10)
+project (kptools C)
+
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR AND NOT MSVC_IDE)
+    message(FATAL_ERROR "In-source builds are not allowed. Please create a separate build directory.")
+endif()
 
 file(GLOB_RECURSE LIB_SOURCES "lib/*.c")
 
