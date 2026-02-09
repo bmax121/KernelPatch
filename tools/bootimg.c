@@ -110,7 +110,7 @@ int write_data_to_file(const char *path, const void *data, size_t size) {
 
 int compress_gzip(const uint8_t *in_data, size_t in_size, uint8_t **out_data, uint32_t *out_size) {
     z_stream strm = {0};
-    if (deflateInit2(&strm, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 16 + MAX_WBITS, 8, Z_DEFAULT_STRATEGY) != Z_OK) 
+    if (deflateInit2(&strm, 9, Z_DEFLATED, 16 + MAX_WBITS, 8, Z_DEFAULT_STRATEGY) != Z_OK) 
         return -1;
 
     uint32_t max_out_size = deflateBound(&strm, in_size);
@@ -905,11 +905,28 @@ int repack_bootimg(const char *orig_boot_path,
     uint32_t new_k_total_aligned = ALIGN(hdr.kernel_size, page_size);
     fseek(f_out, page_size + new_k_total_aligned, SEEK_SET);
     //tools_logi("rest_data_size=%d,total_size=%d,rest_data_offset=%d,now=%d\n",rest_data_size , total_size , rest_data_offset,page_size + new_k_total_aligned);
-    const uint8_t avb_magic[] = "AVB0";
-    
+    //const uint8_t avb_magic[] = "AVB0";
+    static const uint8_t avb_sig_01[] = {
+        0x41,0x56,0x42,0x30,
+        0x00,0x00,0x00,0x01,
+        0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,
+        0x00,0x00,0x01
+    };
+
+    static const uint8_t avb_sig_02[] = {
+        0x41,0x56,0x42,0x30,
+        0x00,0x00,0x00,0x01,
+        0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,
+        0x00,0x00,0x02
+    };
 
     if (rest_buf) {
-        uint8_t *avb_ptr = my_memmem(rest_buf, rest_data_size, avb_magic, 4);
+        uint8_t *avb_ptr = my_memmem(rest_buf, rest_data_size, avb_sig_01, sizeof(avb_sig_01));
+        if (!avb_ptr) {
+            avb_ptr = my_memmem(rest_buf, rest_data_size, avb_sig_02, sizeof(avb_sig_02));
+        }
         if (avb_ptr) {
             size_t avb_offset = avb_ptr - rest_buf;
             tools_logi("avb_offset=%zu\n",avb_offset);
