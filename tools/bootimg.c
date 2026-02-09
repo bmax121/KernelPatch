@@ -620,12 +620,16 @@ int extract_kernel(const char *bootimg_path) {
         return -2;
     }
 
-    uint32_t kernel_offset = hdr.page_size;
+    uint32_t page_size = hdr.page_size;
+    uint32_t kernel_offset = page_size; // Kernel starts after the first page
     if (hdr.unused[0] >= 3) {
         kernel_offset = 4096;
     }
+    if (hdr.unused[0] > 10) {
+        kernel_offset = page_size;
+    }
 
-    tools_logi("Kernel size: %d, Offset: %d\n", hdr.kernel_size, kernel_offset);
+    tools_logi("Kernel size: %d,Header Version: %d, Offset: %d\n", hdr.kernel_size, hdr.unused[0], kernel_offset);
 
     uint8_t *kernel_data = malloc(hdr.kernel_size);
     if (!kernel_data) {
@@ -687,6 +691,7 @@ int repack_bootimg(const char *orig_boot_path,
 
     struct boot_img_hdr hdr;
     struct avb_footer avb;
+    uint32_t extracted_size = 0;
     fread(&hdr, sizeof(hdr), 1, f_orig);
 
     if (memcmp(hdr.magic, "ANDROID!", 8) != 0) {
@@ -705,6 +710,7 @@ int repack_bootimg(const char *orig_boot_path,
     fread(&avb, sizeof(avb), 1, f_orig);
 
     uint32_t header_ver = hdr.unused[0]; 
+    if (header_ver > 10){header_ver = 0;extracted_size = hdr.unused[0];}
     //if (header_ver == 0){tools_loge_exit("we don't support this device any more\n");}
     uint32_t page_size = (header_ver >= 3) ? 4096 : hdr.page_size;
     uint32_t fmt_size =  (header_ver >= 3) ? hdr.kernel_addr : hdr.ramdisk_size;
@@ -812,7 +818,6 @@ int repack_bootimg(const char *orig_boot_path,
     uint32_t rest_data_size = (total_size > rest_data_offset) ? (total_size - rest_data_offset) : 0;
     hdr.kernel_size = final_k_size + dtb_size;
     uint32_t checksum_aligned = ALIGN(fmt_size , page_size);
-
     uint8_t *rest_buf = NULL;
     if (rest_data_size > 0) {
         rest_buf = malloc(rest_data_size);
@@ -841,6 +846,12 @@ int repack_bootimg(const char *orig_boot_path,
                 checksum_aligned += ALIGN(hdr.second_size , page_size);
             }
             //to do extra data
+            if (extracted_size) {
+                tools_logi("extracted_size=%d\n",extracted_size);
+                sha256_update(&ctx, (const BYTE *)rest_buf + checksum_aligned, page_size);
+                sha256_update(&ctx, (const BYTE *)&extracted_size, 4);
+                checksum_aligned += ALIGN(extracted_size , page_size);
+            }
             if (header_ver == 1 || header_ver == 2){
                 tools_logi("recovery_dtbo_size=%d\n",hdr.recovery_dtbo_size);
                 sha256_update(&ctx, (const BYTE *)rest_buf + checksum_aligned, hdr.recovery_dtbo_size);
@@ -869,10 +880,17 @@ int repack_bootimg(const char *orig_boot_path,
             if (hdr.second_size > 0){
                 checksum_aligned += ALIGN(hdr.second_size , page_size);
             }
-            tools_logi("second_size=%d\n",hdr.second_size);
+            tools_logi("second_size=%d,offset=%d\n",hdr.second_size, checksum_aligned+rest_data_offset);
             //to do extra data
+            if (extracted_size) {
+                tools_logi("extracted_size=%d,offset=%d\n",extracted_size, checksum_aligned+rest_data_offset);
+                sha1_update(&ctx, (const BYTE *)rest_buf + checksum_aligned, page_size);
+                sha1_update(&ctx, (const BYTE *)&extracted_size, 4);
+                checksum_aligned += ALIGN(extracted_size , page_size);
+            }
+
             if (header_ver == 1 || header_ver == 2){
-                tools_logi("recovery_dtbo_size=%d\n",hdr.recovery_dtbo_size);
+                tools_logi("recovery_dtbo_size=%d,offset=%d\n",hdr.recovery_dtbo_size, checksum_aligned+rest_data_offset);
                 sha1_update(&ctx, (const BYTE *)rest_buf + checksum_aligned, hdr.recovery_dtbo_size);
                 sha1_update(&ctx, (const BYTE *)&hdr.recovery_dtbo_size, 4);
                 checksum_aligned += ALIGN(hdr.recovery_dtbo_size , page_size);
