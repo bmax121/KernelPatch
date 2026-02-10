@@ -831,12 +831,18 @@ int repack_bootimg(const char *orig_boot_path,
                 break;
             }
         }
+        if (rest_buf_offset > rest_data_size / 2){
+            tools_logi("warning: overload size of rest data, kptools may crash\n");
+            rest_buf = rest_buf_tmp;
+            rest_data_size = rest_buf_offset + 64;
 
-        rest_buf = malloc(rest_buf_offset);
-        memcpy(rest_buf, rest_buf_tmp, rest_buf_offset);
-        tools_logi("Rest data size: %u bytes, Actual used size: %u bytes\n", rest_data_size, rest_buf_offset);
-        rest_data_size = rest_buf_offset;
-        free(rest_buf_tmp);
+        }else{
+            rest_buf = malloc(rest_buf_offset);
+            memcpy(rest_buf, rest_buf_tmp, rest_buf_offset);
+            tools_logi("Rest data size: %u bytes, Actual used size: %u bytes\n", rest_data_size, rest_buf_offset);
+            rest_data_size = rest_buf_offset;
+            free(rest_buf_tmp);
+        }
 
     }
     fclose(f_orig);
