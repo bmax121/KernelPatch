@@ -831,8 +831,10 @@ int repack_bootimg(const char *orig_boot_path,
                 break;
             }
         }
+
         rest_buf = malloc(rest_buf_offset);
         memcpy(rest_buf, rest_buf_tmp, rest_buf_offset);
+        tools_logi("Rest data size: %u bytes, Actual used size: %u bytes\n", rest_data_size, rest_buf_offset);
         rest_data_size = rest_buf_offset;
         free(rest_buf_tmp);
 
@@ -937,27 +939,27 @@ int repack_bootimg(const char *orig_boot_path,
     fseek(f_out, page_size + new_k_total_aligned, SEEK_SET);
     //tools_logi("rest_data_size=%d,total_size=%d,rest_data_offset=%d,now=%d\n",rest_data_size , total_size , rest_data_offset,page_size + new_k_total_aligned);
     //const uint8_t avb_magic[] = "AVB0";
-    static const uint8_t avb_sig_01[] = {
+    uint8_t avb_sig[] = {
         0x41,0x56,0x42,0x30,
         0x00,0x00,0x00,0x01,
         0x00,0x00,0x00,0x00,
         0x00,0x00,0x00,0x00,
-        0x00,0x00,0x01
+        0x00,0x00,0x00
     };
 
-    static const uint8_t avb_sig_02[] = {
-        0x41,0x56,0x42,0x30,
-        0x00,0x00,0x00,0x01,
-        0x00,0x00,0x00,0x00,
-        0x00,0x00,0x00,0x00,
-        0x00,0x00,0x02
-    };
 
     if (rest_buf) {
-        uint8_t *avb_ptr = my_memmem(rest_buf, rest_data_size, avb_sig_01, sizeof(avb_sig_01));
+        uint8_t *avb_ptr = my_memmem(rest_buf, rest_data_size, avb_sig, sizeof(avb_sig));
+
         if (!avb_ptr) {
-            avb_ptr = my_memmem(rest_buf, rest_data_size, avb_sig_02, sizeof(avb_sig_02));
+            avb_sig[18] = 0x01; // Try next version
+            avb_ptr = my_memmem(rest_buf, rest_data_size, avb_sig, sizeof(avb_sig));
         }
+        if (!avb_ptr) {
+            avb_sig[18] = 0x02; // Try next version
+            avb_ptr = my_memmem(rest_buf, rest_data_size, avb_sig, sizeof(avb_sig));
+        }
+        
         if (avb_ptr) {
             size_t avb_offset = avb_ptr - rest_buf;
             tools_logi("avb_offset=%zu\n",avb_offset);
@@ -970,15 +972,12 @@ int repack_bootimg(const char *orig_boot_path,
             fwrite(rest_buf, 1, total_size - page_size - new_k_total_aligned -64, f_out);
             fwrite(&avb, sizeof(avb), 1, f_out);
         }else{
-            fwrite(rest_buf, 1, rest_data_size - 64 , f_out);
-            fwrite(&avb, sizeof(avb), 1, f_out);
+            fwrite(rest_buf, 1, rest_data_size, f_out);
         }
     }
     
 
-    avb_size = (avb_size== 0) ? (final_k_size + dtb_size + fmt_size + 0x1000)& 0xFFFFFF00 : 0;
-    avb.data_size1 = XXH_swap32(avb_size);
-    avb.data_size2 = XXH_swap32(avb_size);
+
     long current_pos = ftell(f_out);
 
     //  Padding
