@@ -959,7 +959,27 @@ int repack_bootimg(const char *orig_boot_path,
             avb_sig[18] = 0x02; // Try next version
             avb_ptr = my_memmem(rest_buf, rest_data_size, avb_sig, sizeof(avb_sig));
         }
-        
+        if (avb_ptr) {
+            uint8_t *last_avb = NULL;
+            uint8_t *search_ptr = avb_ptr;
+            while (search_ptr) {
+                last_avb = search_ptr;
+                tools_logi("Found AVB footer in rest data.%p\n", search_ptr);
+                uint32_t offset = (uint32_t)(search_ptr - rest_buf) + sizeof(avb_sig);
+                if (offset >= rest_data_size)
+                    break;
+
+                search_ptr = my_memmem(
+                    rest_buf + offset,
+                    rest_data_size - offset,
+                    avb_sig,
+                    sizeof(avb_sig)
+                );
+            }
+            avb_ptr = last_avb;
+
+        }
+
         if (avb_ptr) {
             size_t avb_offset = avb_ptr - rest_buf;
             tools_logi("avb_offset=%zu\n",avb_offset);
