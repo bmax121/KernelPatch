@@ -5,6 +5,7 @@
 #define LZ4_MAGIC 0x184c2102
 #define LZ4_BLOCK_SIZE 0x800000
 #define LZ4HC_CLEVEL 12
+#define AVB_FOOTER_SIZE 64
 
 struct boot_img_hdr {
     uint8_t magic[8];           // "ANDROID!"

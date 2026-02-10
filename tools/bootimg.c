@@ -818,11 +818,24 @@ int repack_bootimg(const char *orig_boot_path,
     uint32_t rest_data_size = (total_size > rest_data_offset) ? (total_size - rest_data_offset) : 0;
     hdr.kernel_size = final_k_size + dtb_size;
     uint32_t checksum_aligned = ALIGN(fmt_size , page_size);
+    uint8_t *rest_buf_tmp = NULL;
     uint8_t *rest_buf = NULL;
+    uint32_t rest_buf_offset  = 0;
     if (rest_data_size > 0) {
-        rest_buf = malloc(rest_data_size);
+        rest_buf_tmp = malloc(rest_data_size);
         fseek(f_orig, rest_data_offset, SEEK_SET);
-        fread(rest_buf, 1, rest_data_size, f_orig);
+        fread(rest_buf_tmp, 1, rest_data_size-64, f_orig);
+        for (int32_t i = (int32_t)rest_data_size - 1; i >= 0; i--) {
+            if (rest_buf_tmp[i] != 0) {
+                rest_buf_offset = (uint32_t)(i + 1);
+                break;
+            }
+        }
+        rest_buf = malloc(rest_buf_offset);
+        memcpy(rest_buf, rest_buf_tmp, rest_buf_offset);
+        rest_data_size = rest_buf_offset;
+        free(rest_buf_tmp);
+
     }
     fclose(f_orig);
 
