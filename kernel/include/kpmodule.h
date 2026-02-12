@@ -12,7 +12,7 @@
     __attribute__((section(".kpm.info"), unused, aligned(1))) = #name "=" info
 
 #define KPM_NAME_LEN 32
-#define KPM_VERSION_LEN 12
+#define KPM_VERSION_LEN 32
 #define KPM_LICENSE_LEN 32
 #define KPM_AUTHOR_LEN 32
 #define KPM_DESCRIPTION_LEN 512
