@@ -17,3 +17,6 @@
 *.elf
 
 *.kpm
+
+# Tools directory
+tools/

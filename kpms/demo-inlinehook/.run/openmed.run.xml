@@ -1,0 +1,20 @@
+﻿<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="openmed" type="RunExe" factoryName=".NET Executable" singleton="true">
+    <option name="EXE_PATH" value="$USER_HOME$/Downloads/opentk-2014-05-19.exe" />
+    <option name="PROGRAM_PARAMETERS" value="" />
+    <option name="WORKING_DIRECTORY" value="$USER_HOME$/Downloads" />
+    <option name="PASS_PARENT_ENVS" value="1" />
+    <option name="ENV_FILE_PATHS" value="$USER_HOME$/Downloads/opentk-2014-05-19.exe" />
+    <option name="REDIRECT_INPUT_PATH" value="C:\Users\rus S E L\Downloads\D7000_V1.0.1.84_1.0.1\D7000-V1.0.1.84_1.0.1.img" />
+    <option name="TERMINAL_MODE" value="EnablePty" />
+    <option name="MIXED_MODE_DEBUG" value="0" />
+    <option name="USE_MONO" value="0" />
+    <option name="RUNTIME_ARGUMENTS" value="" />
+    <option name="AUTO_ATTACH_CHILDREN" value="1" />
+    <option name="RUNTIME_TYPE" value="coreclr" />
+    <method v="2">
+      <option name="Build Solution" enabled="true" />
+      <option name="ToolBeforeRunTask" enabled="true" actionId="Tool_External Tools_ls" />
+    </method>
+  </configuration>
+</component>

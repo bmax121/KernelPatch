@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Title>KernelPatch Module Inline Hook Demo Package</Title>
+    <Authors>bmax121</Authors>
+    <Description>C# Wrapper for KernelPatch Module Inline Hook Demo</Description>
+    <PackageProjectUrl>https://github.com/bmax121/KernelPatch</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/bmax121/KernelPatch</RepositoryUrl>
+    <PackageLicenseExpression>GPL-2.0-or-later</PackageLicenseExpression>
+  </PropertyGroup>
+
+</Project>

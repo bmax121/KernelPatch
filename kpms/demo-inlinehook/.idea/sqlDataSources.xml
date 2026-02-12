@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="DdlMappings">
+    <mapping uuid="1f913a74-daa0-487d-b130-d2da580c0df1" name="DDL Mapping">
+      <data-sources db="4f79fbb4-588b-479c-83f0-802b923c0646" />
+    </mapping>
+    <mapping uuid="d8900a8b-f20f-4152-aa05-f44878fac0ce" name="defaultdb@localhost Mapping">
+      <data-sources db="e6d93a98-133a-47ea-ae72-efbbb91358d3" ddl="c2c93b38-e03a-4212-9694-448d8527164e" />
+      <scope>
+        <node kind="database" negative="1" />
+      </scope>
+    </mapping>
+  </component>
+  <component name="SqlDataSourceStorage">
+    <option name="dataSources">
+      <list>
+        <State>
+          <option name="id" value="c2c93b38-e03a-4212-9694-448d8527164e" />
+          <option name="name" value="Azure Cosmos DB API for MongoDB - @localhost (DDL)" />
+          <option name="dbmsName" value="MONGO" />
+          <option name="urls">
+            <array />
+          </option>
+          <option name="outLayout" value="File per object by schema.groovy" />
+        </State>
+      </list>
+    </option>
+  </component>
+</project>
