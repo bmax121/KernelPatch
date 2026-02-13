@@ -706,7 +706,7 @@ int repack_bootimg(const char *orig_boot_path,
     uint32_t avb_size = 0;
     //uint8_t *foot_buf = NULL;
     //foot_buf = malloc(64);
-    fseek(f_orig, total_size-64, SEEK_SET);
+    fseek(f_orig, total_size-sizeof(avb), SEEK_SET);
     fread(&avb, sizeof(avb), 1, f_orig);
 
     uint32_t header_ver = hdr.unused[0]; 
@@ -824,17 +824,18 @@ int repack_bootimg(const char *orig_boot_path,
     if (rest_data_size > 0) {
         rest_buf_tmp = malloc(rest_data_size);
         fseek(f_orig, rest_data_offset, SEEK_SET);
-        fread(rest_buf_tmp, 1, rest_data_size-64, f_orig);
+        fread(rest_buf_tmp, 1, rest_data_size-sizeof(avb), f_orig);
         for (int32_t i = (int32_t)rest_data_size - 1; i >= 0; i--) {
             if (rest_buf_tmp[i] != 0) {
                 rest_buf_offset = (uint32_t)(i + 1);
                 break;
             }
         }
-        if (rest_buf_offset > rest_data_size / 2){
-            tools_logi("warning: overload size of rest data, kptools may crash\n");
+        if (rest_buf_offset > rest_data_size / 3 * 2){
+            tools_logi("warning: overload size of rest data, kptools may crash,Rest data size: %u bytes, Actual used size: %u bytes\n", rest_data_size, rest_buf_offset);
+            
             rest_buf = rest_buf_tmp;
-            rest_data_size = rest_buf_offset + 64;
+            rest_data_size = rest_buf_offset + sizeof(avb);
 
         }else{
             rest_buf = malloc(rest_buf_offset);
@@ -995,7 +996,7 @@ int repack_bootimg(const char *orig_boot_path,
         }
         if (rest_data_size > total_size - page_size - new_k_total_aligned){
             total_size = ALIGN(page_size + new_k_total_aligned + rest_data_size, page_size); // when rest data is larger than original, we need to expand the total size to fit it
-            fwrite(rest_buf, 1, total_size - page_size - new_k_total_aligned -64, f_out);
+            fwrite(rest_buf, 1, total_size - page_size - new_k_total_aligned -sizeof(avb), f_out);
             fwrite(&avb, sizeof(avb), 1, f_out);
         }else{
             fwrite(rest_buf, 1, rest_data_size, f_out);
@@ -1008,8 +1009,8 @@ int repack_bootimg(const char *orig_boot_path,
 
     //  Padding
     //tools_logi("current_post=%d,total_size=%d\n",current_pos,total_size);
-    if (current_pos < total_size - 64) {
-        uint32_t padding = total_size - current_pos - 64;
+    if (current_pos < total_size - sizeof(avb)) {
+        uint32_t padding = total_size - current_pos - sizeof(avb);
         uint8_t *zero_pad = calloc(1, padding);
         fwrite(zero_pad, 1, padding, f_out);
         free(zero_pad);
