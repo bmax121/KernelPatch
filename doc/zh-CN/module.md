@@ -8,9 +8,9 @@
 
   Here are a few examples that you can use to quickly understand.  
 
-1. A simple hello world KPM: [hello-world](/kpm-demo/hello)  
-2. How to do kernel function inline-hook via KPM: [inline-hook](/kpm-demo/inlinehook)  
-3. How to hook system call via KPM: [syscallhook](/kpm-demo/syscallhook)  
+1. A simple hello world KPM: [hello-world](/kpms/demo-hello)  
+2. How to do kernel function inline-hook via KPM: [inline-hook](/kpms/demo-inlinehook)  
+3. How to hook system call via KPM: [syscallhook](/kpms/demo-syscallhook)  
 
 ### Working without Kernel source tree
 
