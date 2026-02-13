@@ -65,6 +65,7 @@ struct fdt_header {
     uint32_t size_dt_struct;
 };
 struct avb_footer {
+    uint32_t reverse[16];
     /* 0x00 */ uint32_t magic;              /* ("AVBf") */
     /* 0x04 */ uint32_t version;            /*  0x00000001 */
     /* 0x08 */ uint64_t reserved1;          /*  0x0000000000000000 */
