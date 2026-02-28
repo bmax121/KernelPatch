@@ -197,30 +197,6 @@ _Static_assert(sizeof(patch_extra_item_t) == PATCH_EXTRA_ITEM_LEN, "sizeof patch
 
 #ifndef __ASSEMBLY__
 
-// TODO: remove
-typedef struct
-{
-    version_t kernel_version;
-    int32_t _;
-    int64_t kimg_size; // must aligned
-    int64_t kpimg_size; // must aligned
-    int64_t kernel_size; // must aligned
-    int64_t page_shift;
-    int64_t setup_offset; // must aligned
-    int64_t start_offset; // must aligned
-    int64_t extra_size; // must aligned
-    int64_t map_offset; // must aligned MAP_ALIGN
-    int64_t map_max_size;
-    int64_t kallsyms_lookup_name_offset;
-    int64_t paging_init_offset;
-    int64_t printk_offset;
-    map_symbol_t map_symbol;
-    uint8_t header_backup[HDR_BACKUP_SIZE];
-    uint8_t superkey[SUPER_KEY_LEN];
-    patch_config_t patch_config;
-    char additional[ADDITIONAL_LEN];
-} setup_preset_be_000a04_t;
-
 typedef struct _setup_preset_t
 {
     version_t kernel_version;
