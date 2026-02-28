@@ -81,9 +81,13 @@ uint32_t get_kpimg_version(const char *kpimg_path)
     int kpimg_len = 0;
     read_file(kpimg_path, &kpimg, &kpimg_len);
     preset_t *preset = get_preset(kpimg, kpimg_len);
-    if (!preset) tools_loge_exit("not patched kernel image\n");
+    if (!preset) {
+        free(kpimg);
+        tools_loge_exit("not patched kernel image\n");
+    }
     version_t ver = preset->header.kp_version;
     uint32_t version = (ver.major << 16) + (ver.minor << 8) + ver.patch;
+    free(kpimg);
     return version;
 }
 
@@ -125,11 +129,16 @@ const char *extra_type_str(extra_item_type extra_type)
 
 static char *bytes_to_hexstr(const unsigned char *data, int len)
 {
-    char *buf = (char *)malloc(2 * len + 1);
-    buf[2 * len] = '\0';
+    enum { HEX_CHARS_PER_BYTE = 2 };
+    static const char hex_digits[] = "0123456789abcdef";
+
+    char *buf = (char *)malloc((size_t)len * HEX_CHARS_PER_BYTE + 1);
     for (int i = 0; i < len; i++) {
-        sprintf(&buf[2 * i], "%02x", data[i]);
+        unsigned char byte = data[i];
+        buf[i * HEX_CHARS_PER_BYTE] = hex_digits[byte >> 4];
+        buf[i * HEX_CHARS_PER_BYTE + 1] = hex_digits[byte & 0x0F];
     }
+    buf[len * HEX_CHARS_PER_BYTE] = '\0';
     return buf;
 }
 
@@ -148,19 +157,12 @@ void print_preset_info(preset_t *preset)
     fprintf(stdout, "config=%s,%s\n", is_android ? "android" : "linux", is_debug ? "debug" : "release");
     fprintf(stdout, "superkey=%s\n", setup->superkey);
 
-    // todo: remove compat version
-    if (ver_num > 0xa04) {
-        char *hexstr = bytes_to_hexstr(setup->root_superkey, ROOT_SUPER_KEY_HASH_LEN);
-        fprintf(stdout, "root_superkey=%s\n", hexstr);
-        free(hexstr);
-    }
+    char *hexstr = bytes_to_hexstr(setup->root_superkey, ROOT_SUPER_KEY_HASH_LEN);
+    fprintf(stdout, "root_superkey=%s\n", hexstr);
+    free(hexstr);
 
     fprintf(stdout, INFO_ADDITIONAL_SESSION "\n");
     char *addition = setup->additional;
-    // todo: remove compat version
-    if (ver_num <= 0xa04) {
-        addition -= (ROOT_SUPER_KEY_HASH_LEN + SETUP_PRESERVE_LEN);
-    }
     char *pos = addition;
     while (pos < addition + ADDITIONAL_LEN) {
         int len = *pos;
@@ -177,7 +179,7 @@ void print_preset_info(preset_t *preset)
 int print_kp_image_info_path(const char *kpimg_path)
 {
     int rc = 0;
-    char *kpimg;
+    char *kpimg = NULL;
     int len = 0;
     read_file(kpimg_path, &kpimg, &len);
     preset_t *preset = (preset_t *)kpimg;
@@ -186,8 +188,8 @@ int print_kp_image_info_path(const char *kpimg_path)
     } else {
         print_preset_info(preset);
         fprintf(stdout, "\n");
-        free(kpimg);
     }
+    free(kpimg);
     return rc;
 }
 
@@ -204,12 +206,18 @@ int parse_image_patch_info(const char *kimg, int kimg_len, patched_kimg_t *pimg)
     char linux_banner_prefix[] = "Linux version ";
     size_t prefix_len = strlen(linux_banner_prefix);
     const char *imgend = pimg->kimg + pimg->kimg_len;
-    const char *banner = (char *)pimg->kimg;
-    while ((banner = (char *)memmem(banner + 1, imgend - banner, linux_banner_prefix, prefix_len)) != NULL) {
-        if (isdigit(*(banner + prefix_len)) && *(banner + prefix_len + 1) == '.') {
+    const char *search = pimg->kimg;
+    if (search < imgend) search++;
+    while (search < imgend) {
+        size_t search_len = (size_t)(imgend - search);
+        const char *banner = (const char *)memmem(search, search_len, linux_banner_prefix, prefix_len);
+        if (!banner) break;
+        size_t remaining = (size_t)(imgend - banner);
+        if (remaining > prefix_len + 1 && isdigit((unsigned char)banner[prefix_len]) && banner[prefix_len + 1] == '.') {
             pimg->banner = banner;
             break;
         }
+        search = banner + 1;
     }
     if (!pimg->banner) tools_loge_exit("can't find linux banner\n");
 
