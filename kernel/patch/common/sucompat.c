@@ -49,42 +49,6 @@ static const char *current_su_path = 0;
 static int su_kstorage_gid = -1;
 static int exclude_kstorage_gid = -1;
 
-#define SU_UID_FAST_MAX 32
-static uid_t su_uid_fast_list[SU_UID_FAST_MAX];
-static int su_uid_fast_count = 0;
-
-static inline int is_su_uid_fast(uid_t uid)
-{
-    int count = READ_ONCE(su_uid_fast_count);
-    for (int i = 0; i < count; i++) {
-        if (READ_ONCE(su_uid_fast_list[i]) == uid) return 1;
-    }
-    return 0;
-}
-
-static void su_uid_fast_add(uid_t uid)
-{
-    int count = su_uid_fast_count;
-    for (int i = 0; i < count; i++) {
-        if (su_uid_fast_list[i] == uid) return;
-    }
-    if (count >= SU_UID_FAST_MAX) return;
-    su_uid_fast_list[count] = uid;
-    WRITE_ONCE(su_uid_fast_count, count + 1);
-}
-
-static void su_uid_fast_remove(uid_t uid)
-{
-    int count = su_uid_fast_count;
-    for (int i = 0; i < count; i++) {
-        if (su_uid_fast_list[i] == uid) {
-            su_uid_fast_list[i] = su_uid_fast_list[count - 1];
-            WRITE_ONCE(su_uid_fast_count, count - 1);
-            return;
-        }
-    }
-}
-
 int is_su_allow_uid(uid_t uid)
 {
     int rc = 0;
@@ -110,7 +74,6 @@ int su_add_allow_uid(uid_t uid, uid_t to_uid, const char *scontext)
     };
     memcpy(profile.scontext, scontext, SUPERCALL_SCONTEXT_LEN);
     int rc = write_kstorage(su_kstorage_gid, uid, &profile, 0, sizeof(struct su_profile), false);
-    if (!rc) su_uid_fast_add(uid);
     logkfd("uid: %d, to_uid: %d, sctx: %s, rc: %d\n", uid, to_uid, scontext, rc);
     return rc;
 }
@@ -118,7 +81,6 @@ KP_EXPORT_SYMBOL(su_add_allow_uid);
 
 int su_remove_allow_uid(uid_t uid)
 {
-    su_uid_fast_remove(uid);
     return remove_kstorage(su_kstorage_gid, uid);
 }
 KP_EXPORT_SYMBOL(su_remove_allow_uid);
@@ -293,7 +255,7 @@ static void handle_before_execve(char **__user u_filename_p, char **__user uargv
 static inline void su_redirect_path(struct user_pt_regs *regs)
 {
     uid_t uid = current_uid();
-    if (!is_su_uid_fast(uid)) return;
+    if (!is_su_allow_uid(uid)) return;
 
     char __user *ufilename = (char __user *)regs->regs[1];
     char filename[SU_PATH_MAX_LEN];
