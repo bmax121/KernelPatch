@@ -12,7 +12,6 @@
 #include <hook.h>
 #include <linux/fs.h>
 #include <linux/uaccess.h>
-#include <stdbool.h>
 #include <asm/current.h>
 #include <linux/cred.h>
 #include <linux/sched.h>
@@ -30,13 +29,11 @@
 #include <linux/spinlock.h>
 #include <syscall.h>
 #include <predata.h>
-#include <predata.h>
 #include <kconfig.h>
 #include <linux/vmalloc.h>
 #include <sucompat.h>
 #include <symbol.h>
 #include <uapi/linux/limits.h>
-#include <predata.h>
 #include <kstorage.h>
 
 const char sh_path[] = SH_PATH;
@@ -51,6 +48,42 @@ static const char *current_su_path = 0;
 
 static int su_kstorage_gid = -1;
 static int exclude_kstorage_gid = -1;
+
+#define SU_UID_FAST_MAX 32
+static uid_t su_uid_fast_list[SU_UID_FAST_MAX];
+static int su_uid_fast_count = 0;
+
+static inline int is_su_uid_fast(uid_t uid)
+{
+    int count = READ_ONCE(su_uid_fast_count);
+    for (int i = 0; i < count; i++) {
+        if (READ_ONCE(su_uid_fast_list[i]) == uid) return 1;
+    }
+    return 0;
+}
+
+static void su_uid_fast_add(uid_t uid)
+{
+    int count = su_uid_fast_count;
+    for (int i = 0; i < count; i++) {
+        if (su_uid_fast_list[i] == uid) return;
+    }
+    if (count >= SU_UID_FAST_MAX) return;
+    su_uid_fast_list[count] = uid;
+    WRITE_ONCE(su_uid_fast_count, count + 1);
+}
+
+static void su_uid_fast_remove(uid_t uid)
+{
+    int count = su_uid_fast_count;
+    for (int i = 0; i < count; i++) {
+        if (su_uid_fast_list[i] == uid) {
+            su_uid_fast_list[i] = su_uid_fast_list[count - 1];
+            WRITE_ONCE(su_uid_fast_count, count - 1);
+            return;
+        }
+    }
+}
 
 int is_su_allow_uid(uid_t uid)
 {
@@ -77,6 +110,7 @@ int su_add_allow_uid(uid_t uid, uid_t to_uid, const char *scontext)
     };
     memcpy(profile.scontext, scontext, SUPERCALL_SCONTEXT_LEN);
     int rc = write_kstorage(su_kstorage_gid, uid, &profile, 0, sizeof(struct su_profile), false);
+    if (!rc) su_uid_fast_add(uid);
     logkfd("uid: %d, to_uid: %d, sctx: %s, rc: %d\n", uid, to_uid, scontext, rc);
     return rc;
 }
@@ -84,6 +118,7 @@ KP_EXPORT_SYMBOL(su_add_allow_uid);
 
 int su_remove_allow_uid(uid_t uid)
 {
+    su_uid_fast_remove(uid);
     return remove_kstorage(su_kstorage_gid, uid);
 }
 KP_EXPORT_SYMBOL(su_remove_allow_uid);
@@ -254,72 +289,43 @@ static void handle_before_execve(char **__user u_filename_p, char **__user uargv
     }
 }
 
-// https://elixir.bootlin.com/linux/v6.1/source/fs/exec.c#L2107
-// COMPAT_SYSCALL_DEFINE3(execve, const char __user *, filename,
-// 	const compat_uptr_t __user *, argv,
-// 	const compat_uptr_t __user *, envp)
-
-// https://elixir.bootlin.com/linux/v6.1/source/fs/exec.c#L2087
-// SYSCALL_DEFINE3(execve, const char __user *, filename, const char __user *const __user *, argv,
-//                 const char __user *const __user *, envp)
-
-static void before_execve(hook_fargs3_t *args, void *udata)
-{
-    void *arg0p = syscall_argn_p(args, 0);
-    void *arg1p = syscall_argn_p(args, 1);
-    handle_before_execve((char **)arg0p, (char **)arg1p, udata);
-}
-
-// https://elixir.bootlin.com/linux/v6.1/source/fs/exec.c#L2114
-// COMPAT_SYSCALL_DEFINE5(execveat, int, fd,
-// 		       const char __user *, filename,
-// 		       const compat_uptr_t __user *, argv,
-// 		       const compat_uptr_t __user *, envp,
-// 		       int,  flags)
-
-// https://elixir.bootlin.com/linux/v6.1/source/fs/exec.c#L2095
-// SYSCALL_DEFINE5(execveat, int, fd, const char __user *, filename, const char __user *const __user *, argv,
-//                 const char __user *const __user *, envp, int, flags)
-__maybe_unused static void before_execveat(hook_fargs5_t *args, void *udata)
-{
-    void *arg1p = syscall_argn_p(args, 1);
-    void *arg2p = syscall_argn_p(args, 2);
-    handle_before_execve((char **)arg1p, (char **)arg2p, udata);
-}
-
-// https://elixir.bootlin.com/linux/v6.1/source/fs/stat.c#L431
-// SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
-// 		struct stat __user *, statbuf, int, flag)
-
-// https://elixir.bootlin.com/linux/v6.1/source/fs/open.c#L492
-// SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
-
-// https://elixir.bootlin.com/linux/v6.1/source/fs/open.c#L497
-// SYSCALL_DEFINE4(faccessat2, int, dfd, const char __user *, filename, int, mode, int, flags)
-
-// https://elixir.bootlin.com/linux/v6.1/source/fs/stat.c#L661
-// SYSCALL_DEFINE5(statx,
-// 		int, dfd, const char __user *, filename, unsigned, flags,
-// 		unsigned int, mask,
-// 		struct statx __user *, buffer)
-static void su_handler_arg1_ufilename_before(hook_fargs6_t *args, void *udata)
+// Redirect su path to sh for faccessat/fstatat (makes su binary appear to exist)
+static inline void su_redirect_path(struct user_pt_regs *regs)
 {
     uid_t uid = current_uid();
-    if (!is_su_allow_uid(uid)) return;
+    if (!is_su_uid_fast(uid)) return;
 
-    char __user **u_filename_p = (char __user **)syscall_argn_p(args, 1);
-
+    char __user *ufilename = (char __user *)regs->regs[1];
     char filename[SU_PATH_MAX_LEN];
-    int flen = compat_strncpy_from_user(filename, *u_filename_p, sizeof(filename));
+    int flen = compat_strncpy_from_user(filename, ufilename, sizeof(filename));
     if (flen <= 0) return;
 
     if (!strcmp(current_su_path, filename)) {
         void *uptr = copy_to_user_stack(sh_path, sizeof(sh_path));
-        if (uptr && !IS_ERR(uptr)) {
-            *u_filename_p = uptr;
-        } else {
-            logkfi("su uid: %d, cp stack error: %d\n", uid, uptr);
-        }
+        if (uptr && !IS_ERR(uptr))
+            regs->regs[1] = (uint64_t)uptr;
+    }
+}
+
+// el0_svc_common(struct pt_regs *regs, int scno, int sc_nr, syscall_fn_t *table)
+// Single hook point for ALL syscalls — uniform trampoline overhead prevents
+// timing side-channel detection regardless of baseline syscall choice.
+static void before_svc_common(hook_fargs4_t *args, void *udata)
+{
+    struct user_pt_regs *regs = (struct user_pt_regs *)args->arg0;
+    int scno = (int)args->arg1;
+
+    switch (scno) {
+    case __NR_execve:
+    case 11: // compat32 execve
+        handle_before_execve((char **)&regs->regs[0], (char **)&regs->regs[1], 0);
+        break;
+    case __NR_faccessat:
+    case __NR3264_fstatat:
+    case 334: // compat32 faccessat
+    case 327: // compat32 fstatat64
+        su_redirect_path(regs);
+        break;
     }
 }
 
@@ -383,26 +389,15 @@ int su_compat_init()
 
     // if (!enable) return;
 
-    rc = hook_syscalln(__NR_execve, 3, before_execve, 0, (void *)0);
-    log_boot("hook __NR_execve rc: %d\n", rc);
-
-    rc = hook_syscalln(__NR3264_fstatat, 4, su_handler_arg1_ufilename_before, 0, (void *)0);
-    log_boot("hook __NR3264_fstatat rc: %d\n", rc);
-
-    rc = hook_syscalln(__NR_faccessat, 3, su_handler_arg1_ufilename_before, 0, (void *)0);
-    log_boot("hook __NR_faccessat rc: %d\n", rc);
-
-    // __NR_execve 11
-    rc = hook_compat_syscalln(11, 3, before_execve, 0, (void *)1);
-    log_boot("hook 32 __NR_execve rc: %d\n", rc);
-
-    // __NR_fstatat64 327
-    rc = hook_compat_syscalln(327, 4, su_handler_arg1_ufilename_before, 0, (void *)0);
-    log_boot("hook 32 __NR_fstatat64 rc: %d\n", rc);
-
-    //  __NR_faccessat 334
-    rc = hook_compat_syscalln(334, 3, su_handler_arg1_ufilename_before, 0, (void *)0);
-    log_boot("hook 32 __NR_faccessat rc: %d\n", rc);
+    // Single hook on el0_svc_common covers ALL syscalls (native + compat32)
+    // with uniform trampoline overhead, preventing timing side-channel.
+    // Requires -ffixed-x18 in CFLAGS to preserve shadow call stack.
+    unsigned long svc_common = kallsyms_lookup_name("el0_svc_common.constprop.0");
+    if (!svc_common) svc_common = kallsyms_lookup_name("el0_svc_common");
+    if (svc_common) {
+        rc = hook_wrap4((void *)svc_common, before_svc_common, 0, 0);
+        log_boot("hook el0_svc_common(%lx) rc: %d\n", svc_common, rc);
+    }
 
     return 0;
 }
