@@ -1,6 +1,6 @@
 # Super Command
 
-The super command is implemented by hooking the `truncate` syscall. When `/system/bin/truncate` is executed with a valid superkey (or `su`) as the first argument, KernelPatch intercepts the call and executes the requested command instead.
+The super command is implemented by hooking the `execve` syscall. When `/system/bin/truncate` is executed with a valid superkey (or `su`) as the first argument, KernelPatch intercepts the call and executes the requested command instead.
 
 ## General Usage
 

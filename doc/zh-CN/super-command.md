@@ -1,6 +1,6 @@
 # Super 命令
 
-Super 命令通过 hook `truncate` syscall 实现。当以有效的 superkey（或 `su`）作为第一个参数执行 `/system/bin/truncate` 时，KernelPatch 会拦截调用并执行所请求的命令。
+Super 命令通过 hook `execve` syscall 实现。当以有效的 superkey（或 `su`）作为第一个参数执行 `/system/bin/truncate` 时，KernelPatch 会拦截调用并执行所请求的命令。
 
 ## 基本用法
 
