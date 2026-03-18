@@ -1,22 +1,22 @@
-# How to Build
+# 编译说明
 
-## Build kpimg
+## 编译 kpimg
 
-Require a bare-metal cross compiler  
-[Download here](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)
+需要裸机交叉编译器
+[点击此处下载](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)
 
 ```shell
 export TARGET_COMPILE=aarch64-none-elf-
 cd kernel
-export ANDROID=1 # Android version, including support for the 'su' command
+export ANDROID=1 # Android 版本，包含 su 命令支持
 make
 ```
 
-## Build kptools
+## 编译 kptools
 
-kptools can run anywhere, just compile it.  
+kptools 可在任意平台编译。
 
-- Using Makefile
+- 使用 Makefile
 
 ```shell
 export ANDROID=1
@@ -24,7 +24,7 @@ cd tools
 make
 ```
 
-- Using CMake
+- 使用 CMake
 
 ```shell
 cd tools
@@ -34,19 +34,19 @@ cmake ..
 make
 ```
 
-## Building kpatch
+## 编译 kpatch
 
-kpatch runs in the user space of the target system, so you can build it as usual.  
-If you are using it for Android, you can use AndroidKernelPatch.
+kpatch 运行在目标系统的用户空间，按常规方式编译即可。
+如果用于 Android，可以使用 AndroidKernelPatch。
 
-- Using Makefile
+- 使用 Makefile
 
 ```shell
 cd user
 make
 ```
 
-- Using CMake
+- 使用 CMake
 
 ```shell
 cd user
@@ -56,7 +56,7 @@ cmake ..
 make
 ```
 
-- Compile for Android
+- 编译 Android 版本
 
 ```shell
 export ANDROID_NDK=/path/to/ndk
@@ -70,9 +70,9 @@ cmake -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
 cmake --build .
 ```
 
-## Build KernelPatch Module
+## 编译 KernelPatch 模块
 
-example:
+示例：
 
 ```shell
 export TARGET_COMPILE=aarch64-none-elf-

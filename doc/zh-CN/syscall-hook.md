@@ -1,29 +1,29 @@
 # Syscall Hook
 
-KernelPatch provides dedicated APIs for hooking Linux system calls. These are built on top of the inline hook framework and handle the differences between kernels with and without syscall wrappers automatically.
+KernelPatch 提供专用的系统调用 hook API，底层基于 inline hook 框架，自动处理有无 syscall wrapper 的内核差异。
 
-## Overview
+## 概述
 
-Two hooking strategies are available:
+提供两种 hook 策略：
 
-| Strategy | API prefix | Description |
-|----------|-----------|-------------|
-| Inline hook | `inline_hook_syscalln` | Patches the syscall handler function's code directly |
-| Function pointer hook | `fp_hook_syscalln` | Replaces the function pointer in the syscall table |
+| 策略 | API 前缀 | 说明 |
+|------|---------|------|
+| Inline hook | `inline_hook_syscalln` | 直接修补 syscall 处理函数的代码 |
+| 函数指针 hook | `fp_hook_syscalln` | 替换 syscall 表中的函数指针 |
 
-Both strategies support multiple simultaneous hooks on the same syscall via a chain mechanism.
+两种策略均通过链机制支持对同一 syscall 的多个并发 hook。
 
-## Accessing Syscall Arguments
+## 访问 Syscall 参数
 
-Because some kernels wrap syscalls with a `pt_regs` parameter, always use the provided helpers to access arguments instead of reading `fargs->argN` directly:
+由于部分内核的 syscall 处理函数使用 `pt_regs` 作为参数，必须使用以下辅助函数访问参数，不要直接读取 `fargs->argN`：
 
 ```c
 #include <syscall.h>
 
-// Read argument n (0-based)
+// 读取第 n 个参数（从 0 开始）
 uint64_t val = syscall_argn(args, n);
 
-// Write argument n
+// 写入第 n 个参数
 set_syscall_argn(args, n, new_val);
 ```
 
@@ -34,36 +34,36 @@ hook_err_t inline_hook_syscalln(int nr, int narg, void *before, void *after, voi
 void inline_unhook_syscalln(int nr, void *before, void *after);
 ```
 
-| Parameter | Description |
-|-----------|-------------|
-| `nr`      | Syscall number (e.g., `__NR_openat`) |
-| `narg`    | Number of syscall arguments |
-| `before`  | Callback called before the syscall handler |
-| `after`   | Callback called after the syscall handler (can be `NULL`) |
-| `udata`   | User data pointer passed to callbacks |
+| 参数 | 说明 |
+|------|------|
+| `nr` | syscall 号（如 `__NR_openat`） |
+| `narg` | syscall 参数个数 |
+| `before` | 在 syscall 处理函数执行前调用的回调 |
+| `after` | 在 syscall 处理函数执行后调用的回调（可为 `NULL`） |
+| `udata` | 传递给回调的用户数据指针 |
 
-For 32-bit compat syscalls:
+32 位兼容 syscall：
 
 ```c
 hook_err_t inline_hook_compat_syscalln(int nr, int narg, void *before, void *after, void *udata);
 void inline_unhook_compat_syscalln(int nr, void *before, void *after);
 ```
 
-## Function Pointer Syscall Hook
+## 函数指针 Syscall Hook
 
 ```c
 hook_err_t fp_hook_syscalln(int nr, int narg, void *before, void *after, void *udata);
 void fp_unhook_syscalln(int nr, void *before, void *after);
 ```
 
-For 32-bit compat syscalls:
+32 位兼容 syscall：
 
 ```c
 hook_err_t fp_hook_compat_syscalln(int nr, int narg, void *before, void *after, void *udata);
 void fp_unhook_compat_syscalln(int nr, void *before, void *after);
 ```
 
-## Generic Hook (Auto-Select Strategy)
+## 通用 Hook（自动选择策略）
 
 ```c
 hook_err_t hook_syscalln(int nr, int narg, void *before, void *after, void *udata);
@@ -73,21 +73,21 @@ hook_err_t hook_compat_syscalln(int nr, int narg, void *before, void *after, voi
 void unhook_compat_syscalln(int nr, void *before, void *after);
 ```
 
-These automatically select the best hooking method for the current kernel.
+自动为当前内核选择最合适的 hook 方式。
 
-## Callback Signature
+## 回调签名
 
-Syscall hook callbacks use the same `hook_fargs*_t` types as inline hooks. For a syscall with 4 arguments, use `hook_fargs4_t`:
+Syscall hook 回调使用与 inline hook 相同的 `hook_fargs*_t` 类型。对于有 4 个参数的 syscall，使用 `hook_fargs4_t`：
 
 ```c
 void before_openat(hook_fargs4_t *args, void *udata)
 {
-    // Access arguments using syscall_argn()
+    // 使用 syscall_argn() 访问参数
     int dfd = (int)syscall_argn(args, 0);
     const char __user *filename = (typeof(filename))syscall_argn(args, 1);
     int flags = (int)syscall_argn(args, 2);
 
-    // Read string from userspace
+    // 从用户空间读取字符串
     char buf[256];
     compat_strncpy_from_user(buf, filename, sizeof(buf));
 
@@ -97,13 +97,13 @@ void before_openat(hook_fargs4_t *args, void *udata)
 void after_openat(hook_fargs4_t *args, void *udata)
 {
     long retval = (long)args->ret;
-    pr_info("openat returned: %ld\n", retval);
-    // Override return value:
+    pr_info("openat 返回: %ld\n", retval);
+    // 覆盖返回值：
     // args->ret = -EPERM;
 }
 ```
 
-## Example: Hook openat with Two Independent Chains
+## 示例：用两个独立链 Hook openat
 
 ```c
 #include <compiler.h>
@@ -118,7 +118,7 @@ KPM_NAME("kpm-syscall-hook-demo");
 KPM_VERSION("1.0.0");
 KPM_LICENSE("GPL v2");
 KPM_AUTHOR("author");
-KPM_DESCRIPTION("Syscall hook example");
+KPM_DESCRIPTION("Syscall hook 示例");
 
 uint64_t open_counts = 0;
 
@@ -147,10 +147,10 @@ static long my_init(const char *args, const char *event, void *reserved)
     hook_err_t err;
 
     err = fp_hook_syscalln(__NR_openat, 4, before_openat_0, NULL, NULL);
-    if (err) { pr_err("hook chain0 failed: %d\n", err); return 0; }
+    if (err) { pr_err("hook chain0 失败: %d\n", err); return 0; }
 
     err = fp_hook_syscalln(__NR_openat, 4, before_openat_1, after_openat_1, &open_counts);
-    if (err) { pr_err("hook chain1 failed: %d\n", err); }
+    if (err) { pr_err("hook chain1 失败: %d\n", err); }
 
     return 0;
 }
@@ -166,22 +166,22 @@ KPM_INIT(my_init);
 KPM_EXIT(my_exit);
 ```
 
-## Skipping the Original Syscall
+## 跳过原始 Syscall
 
-Set `args->skip_origin = 1` in the `before` callback to prevent the original syscall from executing. You should also set `args->ret` to an appropriate return value:
+在 `before` 回调中设置 `args->skip_origin = 1` 可阻止原始 syscall 执行，同时应将 `args->ret` 设为合适的返回值：
 
 ```c
 void before_openat(hook_fargs4_t *args, void *udata)
 {
-    // Block all open calls
+    // 拦截所有 open 调用
     args->skip_origin = 1;
     args->ret = (uint64_t)-EPERM;
 }
 ```
 
-## Notes
+## 注意事项
 
-- `syscall_argn()` must be used instead of `args->argN` directly, because on kernels with `CONFIG_HAVE_SYSCALL_WRAPPERS`, the first argument to the handler is a `pt_regs *` pointer.
-- Always call the unhook function in your KPM exit callback.
-- Both inline and function-pointer strategies support chains of up to 16 simultaneous hooks per syscall.
-- Use `compat_strncpy_from_user` / `compat_copy_to_user` for safe userspace memory access inside hooks.
+- 必须使用 `syscall_argn()` 访问参数，不能直接使用 `args->argN`，因为在带 `CONFIG_HAVE_SYSCALL_WRAPPERS` 的内核中，处理函数的第一个参数是 `pt_regs *` 指针。
+- 务必在 KPM 的 exit 回调中调用 unhook 函数。
+- inline 和函数指针两种策略均支持每个 syscall 最多 16 个并发 hook 链项。
+- 在 hook 内部访问用户空间内存时使用 `compat_strncpy_from_user` / `compat_copy_to_user`。
