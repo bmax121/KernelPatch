@@ -12,6 +12,7 @@
 #include <string.h>
 #include <inttypes.h>
 
+#include "bootimg.h"
 #include "kallsym.h"
 #include "order.h"
 #include "insn.h"
@@ -21,25 +22,8 @@
 #define IKCFG_ED "IKCFG_ED"
 #include "zlib.h"
 
-#ifdef _WIN32
-#include <string.h>
-static void *memmem(const void *haystack, size_t haystack_len, const void *const needle, const size_t needle_len)
-{
-    if (haystack == NULL) return NULL; // or assert(haystack != NULL);
-    if (haystack_len == 0) return NULL;
-    if (needle == NULL) return NULL; // or assert(needle != NULL);
-    if (needle_len == 0) return NULL;
 
-    for (const char *h = haystack; haystack_len >= needle_len; ++h, --haystack_len) {
-        if (!memcmp(h, needle, needle_len)) {
-            return (void *)h;
-        }
-    }
-    return NULL;
-}
-#endif
-
-static int find_linux_banner(kallsym_t *info, char *img, int32_t imglen)
+int find_linux_banner(kallsym_t *info, char *img, int32_t imglen, void *opt)
 {
     /*
 	// todo: linux_proc_banner
@@ -52,6 +36,7 @@ static int find_linux_banner(kallsym_t *info, char *img, int32_t imglen)
   c935d99d7cf2016289302412d708641d52d2f7ee)) #0 SMP PREEMPT Thu Aug 5 07:04:42
   UTC 2021
   */
+    int32_t *kver = (int32_t *)opt;
     char linux_banner_prefix[] = "Linux version ";
     size_t prefix_len = strlen(linux_banner_prefix);
 
@@ -61,8 +46,10 @@ static int find_linux_banner(kallsym_t *info, char *img, int32_t imglen)
     while ((banner = (char *)memmem(banner + 1, imgend - banner - 1, linux_banner_prefix, prefix_len)) != NULL) {
         if (isdigit(*(banner + prefix_len)) && *(banner + prefix_len + 1) == '.') {
             info->linux_banner_offset[info->banner_num++] = (int32_t)(banner - img);
-            tools_logi("linux_banner %d: %s", info->banner_num, banner);
-            tools_logi("linux_banner offset: 0x%lx\n", banner - img);
+            if (!kver){
+                tools_logi("linux_banner %d: %s", info->banner_num, banner);
+                tools_logi("linux_banner offset: 0x%lx\n", banner - img);
+            }
         }
     }
     banner = img + info->linux_banner_offset[info->banner_num - 1];
@@ -79,44 +66,13 @@ static int find_linux_banner(kallsym_t *info, char *img, int32_t imglen)
     // SUBLEVEL
     int32_t patch = (int32_t)strtoul(dot + 1, &dot, 10);
     info->version.patch = patch <= 256 ? patch : 255;
+    if (kver) *kver = (info->version.major << 16) + (info->version.minor << 8) + info->version.patch;
 
-    tools_logi("kernel version major: %d, minor: %d, patch: %d\n", info->version.major, info->version.minor,
+    if(!kver)tools_logi("kernel version major: %d, minor: %d, patch: %d\n", info->version.major, info->version.minor,
                info->version.patch);
     return 0;
 }
 
-int kernel_if_need_patch(kallsym_t *info, char *img, int32_t imglen)
-{
-    char linux_banner_prefix[] = "Linux version ";
-    size_t prefix_len = strlen(linux_banner_prefix);
-
-    char *imgend = img + imglen;
-    char *banner = (char *)img;
-    info->banner_num = 0;
-    while ((banner = (char *)memmem(banner + 1, imgend - banner - 1, linux_banner_prefix, prefix_len)) != NULL) {
-        if (isdigit(*(banner + prefix_len)) && *(banner + prefix_len + 1) == '.') {
-            info->linux_banner_offset[info->banner_num++] = (int32_t)(banner - img);
-        }
-    }
-    banner = img + info->linux_banner_offset[info->banner_num - 1];
-
-    char *uts_release_start = banner + prefix_len;
-    char *space = strchr(banner + prefix_len, ' ');
-
-    char *dot = NULL;
-
-    // VERSION
-    info->version.major = (uint8_t)strtoul(uts_release_start, &dot, 10);
-    // PATCHLEVEL
-    info->version.minor = (uint8_t)strtoul(dot + 1, &dot, 10);
-    // SUBLEVEL
-    int32_t patch = (int32_t)strtoul(dot + 1, &dot, 10);
-    info->version.patch = patch <= 256 ? patch : 255;
-
-    if (info->version.major < 6)return 0;
-    if (info->version.minor < 7)return 0;
-    return 1;
-}
 
 static int dump_kernel_config(kallsym_t *info, char *img, int32_t imglen)
 {
@@ -131,7 +87,7 @@ static int dump_kernel_config(kallsym_t *info, char *img, int32_t imglen)
     return 0;
 }
 
-static int find_token_table(kallsym_t *info, char *img, int32_t imglen)
+static int find_token_table(kallsym_t *info, char *img, int32_t imglen, void *opt)
 {
     char nums_syms[20] = { '\0' };
     for (int32_t i = 0; i < 10; i++)
@@ -192,7 +148,7 @@ static int find_token_table(kallsym_t *info, char *img, int32_t imglen)
     return 0;
 }
 
-static int find_token_index(kallsym_t *info, char *img, int32_t imglen)
+static int find_token_index(kallsym_t *info, char *img, int32_t imglen, void *opt)
 {
     uint16_t le_index[KSYM_TOKEN_NUMS] = { 0 };
     uint16_t be_index[KSYM_TOKEN_NUMS] = { 0 };
@@ -896,13 +852,13 @@ int analyze_kallsym_info(kallsym_t *info, char *img, int32_t imglen, enum arch_t
     if (is_64) info->asm_PTR_size = 8;
 
     int rc = -1;
-    static int32_t (*base_funcs[])(kallsym_t *, char *, int32_t) = {
+    static int32_t (*base_funcs[])(kallsym_t *, char *, int32_t, void *) = {
         find_linux_banner,
         find_token_table,
         find_token_index,
     };
     for (int i = 0; i < (int)(sizeof(base_funcs) / sizeof(base_funcs[0])); i++) {
-        if ((rc = base_funcs[i](info, img, imglen))) return rc;
+        if ((rc = base_funcs[i](info, img, imglen, NULL))) return rc;
     }
 
     char *copied_img = (char *)malloc(imglen);

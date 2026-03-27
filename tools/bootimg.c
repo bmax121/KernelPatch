@@ -46,7 +46,7 @@ static uint32_t fdt32_to_cpu(uint32_t val) {
            ((val >> 24) & 0x000000ff);
 }
 
-static void *my_memmem(const void *haystack, size_t haystacklen,
+void *memmem(const void *haystack, size_t haystacklen,
                        const void *needle, size_t needlelen) {
     if (needlelen == 0) return (void *)haystack;
     if (haystacklen < needlelen) return NULL;
@@ -80,7 +80,7 @@ static int find_dtb_offset(const uint8_t *buf, unsigned int sz) {
     const uint8_t *end = buf + sz;
 
     while (curr < end - sizeof(struct fdt_header)) {
-        curr = my_memmem(curr, end - curr, DTB_MAGIC, 4);
+        curr = memmem(curr, end - curr, DTB_MAGIC, 4);
         if (curr == NULL) return -1;
 
         struct fdt_header *fdt_hdr = (struct fdt_header *)curr;
@@ -998,15 +998,15 @@ int repack_bootimg(const char *orig_boot_path,
 
 
     if (rest_buf) {
-        uint8_t *avb_ptr = my_memmem(rest_buf, rest_data_size, avb_sig, sizeof(avb_sig));
+        uint8_t *avb_ptr = memmem(rest_buf, rest_data_size, avb_sig, sizeof(avb_sig));
 
         if (!avb_ptr) {
             avb_sig[18] = 0x01; // Try next version
-            avb_ptr = my_memmem(rest_buf, rest_data_size, avb_sig, sizeof(avb_sig));
+            avb_ptr = memmem(rest_buf, rest_data_size, avb_sig, sizeof(avb_sig));
         }
         if (!avb_ptr) {
             avb_sig[18] = 0x02; // Try next version
-            avb_ptr = my_memmem(rest_buf, rest_data_size, avb_sig, sizeof(avb_sig));
+            avb_ptr = memmem(rest_buf, rest_data_size, avb_sig, sizeof(avb_sig));
         }
         if (avb_ptr) {
             uint8_t *last_avb = NULL;
@@ -1018,7 +1018,7 @@ int repack_bootimg(const char *orig_boot_path,
                 if (offset >= rest_data_size)
                     break;
 
-                search_ptr = my_memmem(
+                search_ptr = memmem(
                     rest_buf + offset,
                     rest_data_size - offset,
                     avb_sig,

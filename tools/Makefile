@@ -29,3 +29,7 @@ kptools: $(ALL_OBJS)
 clean:
 	rm -rf kptools
 	rm *.o
+	rm lib/bz2/*.o
+	rm lib/lz4/*.o
+	rm lib/sha/*.o
+	rm lib/xz/*.o

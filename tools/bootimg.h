@@ -3,6 +3,8 @@
  * Copyright (C) 2026 bmax121. All Rights Reserved.
  */
 
+#include <stdint.h>
+
 #define ALIGN(x, a) (((x) + (a) - 1) & ~((a) - 1))
 #define PAGE_SIZE_DEFAULT 4096
 
@@ -88,3 +90,4 @@ int extract_kernel(const char *bootimg_path);
 
 int detect_compress_method(compress_head data);
 int cacluate_sha1(const char *file);
+void *memmem(const void *haystack, size_t haystacklen,const void *needle, size_t needlelen);
