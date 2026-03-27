@@ -47,7 +47,6 @@
 #define MAGISK_POLICY_PATH "/data/adb/ap/bin/magiskpolicy"
 
 
-#include "gen/user_init.c"
 
 static const char ORIGIN_RC_FILES[][64] = {
     "/system/etc/init/hw/init.rc",
