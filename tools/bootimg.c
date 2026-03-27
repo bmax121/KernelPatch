@@ -1,4 +1,8 @@
-// we need  zlib-devel liblz4-devel liblzma-devel
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* 
+ * Copyright (C) 2026 bmax121. All Rights Reserved.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>

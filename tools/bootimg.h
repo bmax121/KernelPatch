@@ -1,3 +1,7 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* 
+ * Copyright (C) 2026 bmax121. All Rights Reserved.
+ */
 
 #define ALIGN(x, a) (((x) + (a) - 1) & ~((a) - 1))
 #define PAGE_SIZE_DEFAULT 4096
