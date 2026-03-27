@@ -39,6 +39,21 @@ static void *memmem(const void *haystack, size_t haystack_len, const void *const
 }
 #endif
 
+static void record_linux_banner_offset(kallsym_t *info, int32_t offset)
+{
+    const int32_t max = (int32_t)ARRAY_SIZE(info->linux_banner_offset);
+
+    if (info->banner_num < max) {
+        info->linux_banner_offset[info->banner_num++] = offset;
+        return;
+    }
+
+    for (int32_t i = 1; i < max; i++) {
+        info->linux_banner_offset[i - 1] = info->linux_banner_offset[i];
+    }
+    info->linux_banner_offset[max - 1] = offset;
+}
+
 static int find_linux_banner(kallsym_t *info, char *img, int32_t imglen)
 {
     /*
@@ -59,11 +74,17 @@ static int find_linux_banner(kallsym_t *info, char *img, int32_t imglen)
     char *banner = (char *)img;
     info->banner_num = 0;
     while ((banner = (char *)memmem(banner + 1, imgend - banner - 1, linux_banner_prefix, prefix_len)) != NULL) {
-        if (isdigit(*(banner + prefix_len)) && *(banner + prefix_len + 1) == '.') {
-            info->linux_banner_offset[info->banner_num++] = (int32_t)(banner - img);
+        size_t remaining = (size_t)(imgend - banner);
+        if (remaining <= prefix_len + 1) continue;
+        if (isdigit((unsigned char)banner[prefix_len]) && banner[prefix_len + 1] == '.') {
+            record_linux_banner_offset(info, (int32_t)(banner - img));
             tools_logi("linux_banner %d: %s", info->banner_num, banner);
             tools_logi("linux_banner offset: 0x%lx\n", banner - img);
         }
+    }
+    if (info->banner_num <= 0) {
+        tools_loge("can't find linux banner\n");
+        return -1;
     }
     banner = img + info->linux_banner_offset[info->banner_num - 1];
 
@@ -94,10 +115,13 @@ int kernel_if_need_patch(kallsym_t *info, char *img, int32_t imglen)
     char *banner = (char *)img;
     info->banner_num = 0;
     while ((banner = (char *)memmem(banner + 1, imgend - banner - 1, linux_banner_prefix, prefix_len)) != NULL) {
-        if (isdigit(*(banner + prefix_len)) && *(banner + prefix_len + 1) == '.') {
-            info->linux_banner_offset[info->banner_num++] = (int32_t)(banner - img);
+        size_t remaining = (size_t)(imgend - banner);
+        if (remaining <= prefix_len + 1) continue;
+        if (isdigit((unsigned char)banner[prefix_len]) && banner[prefix_len + 1] == '.') {
+            record_linux_banner_offset(info, (int32_t)(banner - img));
         }
     }
+    if (info->banner_num <= 0) tools_loge_exit("can't find linux banner\n");
     banner = img + info->linux_banner_offset[info->banner_num - 1];
 
     char *uts_release_start = banner + prefix_len;
