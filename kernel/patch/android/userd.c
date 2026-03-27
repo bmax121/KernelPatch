@@ -32,6 +32,7 @@
 #include <linux/umh.h>
 #include <uapi/scdefs.h>
 #include <uapi/linux/stat.h>
+#include <sucompat.h>
 
 
 #define REPLACE_RC_FILE "/dev/user_init.rc"
@@ -45,6 +46,7 @@
 #define MAGISK_SCTX "u:r:magisk:s0"
 #define APD_PATH "/data/adb/apd"
 #define MAGISK_POLICY_PATH "/data/adb/ap/bin/magiskpolicy"
+#define AP_PACKAGE_CONFIG_PATH "/data/adb/ap/package_config"
 
 
 
@@ -124,6 +126,128 @@ out:
     return off;
 }
 
+// Simple CSV field parser helper function
+static char *parse_csv_field(char **line_ptr)
+{
+    char *start = *line_ptr;
+    char *end = start;
+
+    if (!start || *start == '\0') return NULL;
+
+    // Skip leading whitespace
+    while (*start == ' ' || *start == '\t') start++;
+
+    // Find comma or end of line
+    end = start;
+    while (*end && *end != ',' && *end != '\n' && *end != '\r') {
+        end++;
+    }
+
+    // Remove trailing whitespace
+    char *trim_end = end - 1;
+    while (trim_end > start && (*trim_end == ' ' || *trim_end == '\t')) {
+        trim_end--;
+    }
+    *(trim_end + 1) = '\0';
+
+    // Update pointer position
+    if (*end == ',') {
+        *line_ptr = end + 1;
+    } else {
+        *line_ptr = end;
+    }
+
+    return start;
+}
+
+// Load APatch package_config configuration file
+// Returns: number of entries loaded, or negative error code
+int load_ap_package_config()
+{
+    loff_t len = 0;
+    const char *data = kernel_read_file(AP_PACKAGE_CONFIG_PATH, &len);
+
+    if (!data || len <= 0) {
+        log_boot("package_config not found or empty\n");
+        return -ENOENT;
+    }
+
+    log_boot("loading package_config, size: %lld\n", len);
+
+    char *content = (char *)data;
+    char *line_start = content;
+    int line_num = 0;
+    int loaded_count = 0;
+
+    // Parse CSV line by line
+    while (line_start < content + len) {
+        char *line_end = line_start;
+
+        // Find end of line
+        while (line_end < content + len && *line_end != '\n' && *line_end != '\r') {
+            line_end++;
+        }
+
+        if (line_end > line_start) {
+            *line_end = '\0';
+
+            line_num++;
+
+            // Skip CSV header
+            if (line_num == 1) {
+                line_start = line_end + 1;
+                continue;
+            }
+
+            char *line_ptr = line_start;
+
+            // Parse CSV fields: pkg,exclude,allow,uid,to_uid,sctx
+            parse_csv_field(&line_ptr); // skip pkg field
+            char *exclude_str = parse_csv_field(&line_ptr);
+            char *allow_str = parse_csv_field(&line_ptr);
+            char *uid_str = parse_csv_field(&line_ptr);
+            char *to_uid_str = parse_csv_field(&line_ptr);
+            char *sctx = parse_csv_field(&line_ptr);
+
+            if (uid_str && to_uid_str && sctx) {
+                unsigned long long uid_tmp = 0, to_uid_tmp = 0;
+                unsigned long long exclude_tmp = 0, allow_tmp = 0;
+
+                // Convert strings to numbers
+                kstrtoull(uid_str, 10, &uid_tmp);
+                kstrtoull(to_uid_str, 10, &to_uid_tmp);
+                if (exclude_str) kstrtoull(exclude_str, 10, &exclude_tmp);
+                if (allow_str) kstrtoull(allow_str, 10, &allow_tmp);
+
+                uid_t uid = (uid_t)uid_tmp;
+                uid_t to_uid = (uid_t)to_uid_tmp;
+                int exclude = (int)exclude_tmp;
+                int allow = (int)allow_tmp;
+
+                // Apply configuration
+                if (allow) {
+                    int rc = su_add_allow_uid(uid, to_uid, sctx);
+                    if (rc == 0) {
+                        loaded_count++;
+                    }
+                }
+
+                // Set exclude flag
+                if (exclude) {
+                    set_ap_mod_exclude(uid, exclude);
+                }
+            }
+        }
+
+        line_start = line_end + 1;
+    }
+
+    kvfree(data);
+    log_boot("package_config loaded: %d entries\n", loaded_count);
+    return loaded_count;
+}
+KP_EXPORT_SYMBOL(load_ap_package_config);
+
 static void pre_user_exec_init()
 {
     log_boot("event: %s\n", EXTRA_EVENT_PRE_EXEC_INIT);
@@ -133,6 +257,9 @@ static void pre_user_exec_init()
 static void pre_init_second_stage()
 {
     log_boot("event: %s\n", EXTRA_EVENT_PRE_SECOND_STAGE);
+
+    // Load APatch package_config during init second stage
+    load_ap_package_config();
 }
 
 static void on_first_app_process()

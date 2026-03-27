@@ -198,6 +198,14 @@ static long call_su_get_safemode()
     logkfd("[call_su_get_safemode] %d\n", result);
     return result;
 }
+
+extern int load_ap_package_config();
+static long call_ap_load_package_config()
+{
+    int result = load_ap_package_config();
+    logkfd("[call_ap_load_package_config] loaded %d entries\n", result);
+    return result;
+}
 #endif
 
 static long call_su_list_allow_uid(uid_t *__user uids, int num)
@@ -313,6 +321,8 @@ static long supercall(int is_key_auth, long cmd, long arg1, long arg2, long arg3
 #ifdef ANDROID
     case SUPERCALL_SU_GET_SAFEMODE:
         return call_su_get_safemode();
+    case SUPERCALL_AP_LOAD_PACKAGE_CONFIG:
+        return call_ap_load_package_config();
 #endif
     default:
         break;

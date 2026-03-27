@@ -1,6 +1,6 @@
 .vscode/*
 .history/
-
+.claude
 **/.DS_Store
 
 build
