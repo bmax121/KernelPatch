@@ -10,10 +10,12 @@
 
 int report_user_event(const char *event, const char *args)
 {
+    #ifdef ANDROID
     if (lib_strcmp(event, "post-fs-data") == 0 && lib_strcmp(args, "before") == 0) {
         logki("post-fs-data before event received, loading ap package config ...\n");
         load_ap_package_config();
     }
+    #endif
     logki("user report event: %s, args: %s\n", event, args);
     return 0;
 }
