@@ -33,7 +33,7 @@
 #include <uapi/scdefs.h>
 #include <uapi/linux/stat.h>
 #include <sucompat.h>
-
+#include <userd.h>
 
 #define REPLACE_RC_FILE "/dev/user_init.rc"
 
@@ -258,8 +258,6 @@ static void pre_init_second_stage()
 {
     log_boot("event: %s\n", EXTRA_EVENT_PRE_SECOND_STAGE);
 
-    // Load APatch package_config during init second stage
-    load_ap_package_config();
 }
 
 static void on_first_app_process()
