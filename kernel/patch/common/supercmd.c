@@ -453,7 +453,7 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
         goto echo;
     #ifdef ANDROID
     } else if (!strcmp("reload-cfg", cmd)) {
-        int rc = load_ap_package_config();
+        load_ap_package_config();
         cmd_res.msg = "reload package config success";
         goto echo;
     #endif
