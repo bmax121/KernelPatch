@@ -335,8 +335,6 @@ int load_ap_package_config()
             int rc = su_add_allow_uid(uid, to_uid, sctx_buf);
             if (rc == 0) {
                 loaded_count++;
-                log_boot("package_config: added allow rule uid=%u to_uid=%u sctx=%s\n", 
-                         uid, to_uid, sctx_buf);
             } else {
                 log_boot("package_config: line %d failed to add allow rule: %d\n", line_num, rc);
                 valid_line = 0;
@@ -346,7 +344,6 @@ int load_ap_package_config()
         // Set exclude flag
         if (exclude) {
             set_ap_mod_exclude(uid, exclude);
-            log_boot("package_config: set exclude uid=%u exclude=%d\n", uid, exclude);
         }
 
 next_line:
