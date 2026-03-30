@@ -188,72 +188,177 @@ int load_ap_package_config()
     char *line_start = content;
     int line_num = 0;
     int loaded_count = 0;
+    int skipped_count = 0;
 
     // Parse CSV line by line
     while (line_start < content + len) {
         char *line_end = line_start;
+        int has_newline = 0;
 
         // Find end of line
         while (line_end < content + len && *line_end != '\n' && *line_end != '\r') {
             line_end++;
         }
 
-        if (line_end > line_start) {
-            *line_end = '\0';
+        // Check if we found a newline
+        if (line_end < content + len) {
+            has_newline = 1;
+            *line_end = '\0';  // Safe because line_end < content + len
+        }
 
-            line_num++;
+        line_num++;
 
-            // Skip CSV header
-            if (line_num == 1) {
+        // Skip CSV header
+        if (line_num == 1) {
+            if (has_newline) {
                 line_start = line_end + 1;
-                continue;
+            } else {
+                break;
             }
+            continue;
+        }
 
-            char *line_ptr = line_start;
+        // Process current line
+        char *line_ptr = line_start;
+        int valid_line = 1;
 
-            // Parse CSV fields: pkg,exclude,allow,uid,to_uid,sctx
-            parse_csv_field(&line_ptr); // skip pkg field
-            char *exclude_str = parse_csv_field(&line_ptr);
-            char *allow_str = parse_csv_field(&line_ptr);
-            char *uid_str = parse_csv_field(&line_ptr);
-            char *to_uid_str = parse_csv_field(&line_ptr);
-            char *sctx = parse_csv_field(&line_ptr);
+        // Parse CSV fields: pkg,exclude,allow,uid,to_uid,sctx
+        parse_csv_field(&line_ptr); // skip pkg field
+        char *exclude_str = parse_csv_field(&line_ptr);
+        char *allow_str = parse_csv_field(&line_ptr);
+        char *uid_str = parse_csv_field(&line_ptr);
+        char *to_uid_str = parse_csv_field(&line_ptr);
+        char *sctx = parse_csv_field(&line_ptr);
 
-            if (uid_str && to_uid_str && sctx) {
-                unsigned long long uid_tmp = 0, to_uid_tmp = 0;
-                unsigned long long exclude_tmp = 0, allow_tmp = 0;
+        // Check required fields
+        if (!uid_str || !to_uid_str || !sctx) {
+            log_boot("package_config: line %d missing required fields (uid/to_uid/sctx)\n", line_num);
+            valid_line = 0;
+            goto next_line;
+        }
 
-                // Convert strings to numbers
-                kstrtoull(uid_str, 10, &uid_tmp);
-                kstrtoull(to_uid_str, 10, &to_uid_tmp);
-                if (exclude_str) kstrtoull(exclude_str, 10, &exclude_tmp);
-                if (allow_str) kstrtoull(allow_str, 10, &allow_tmp);
+        unsigned long long uid_tmp = 0, to_uid_tmp = 0;
+        unsigned long long exclude_tmp = 0, allow_tmp = 0;
+        int ret;
 
-                uid_t uid = (uid_t)uid_tmp;
-                uid_t to_uid = (uid_t)to_uid_tmp;
-                int exclude = (int)exclude_tmp;
-                int allow = (int)allow_tmp;
+        // Convert UID fields - must succeed
+        ret = kstrtoull(uid_str, 10, &uid_tmp);
+        if (ret) {
+            log_boot("package_config: line %d invalid uid '%s': %d\n", line_num, uid_str, ret);
+            valid_line = 0;
+            goto next_line;
+        }
 
-                // Apply configuration
-                if (allow) {
-                    int rc = su_add_allow_uid(uid, to_uid, sctx);
-                    if (rc == 0) {
-                        loaded_count++;
-                    }
-                }
+        ret = kstrtoull(to_uid_str, 10, &to_uid_tmp);
+        if (ret) {
+            log_boot("package_config: line %d invalid to_uid '%s': %d\n", line_num, to_uid_str, ret);
+            valid_line = 0;
+            goto next_line;
+        }
 
-                // Set exclude flag
-                if (exclude) {
-                    set_ap_mod_exclude(uid, exclude);
-                }
+        // Range check for uid_t (typically unsigned int)
+        if (uid_tmp > UINT_MAX) {
+            log_boot("package_config: line %d uid %llu out of range\n", line_num, uid_tmp);
+            valid_line = 0;
+            goto next_line;
+        }
+        if (to_uid_tmp > UINT_MAX) {
+            log_boot("package_config: line %d to_uid %llu out of range\n", line_num, to_uid_tmp);
+            valid_line = 0;
+            goto next_line;
+        }
+
+        // Convert optional fields (exclude and allow)
+        if (exclude_str && *exclude_str) {
+            ret = kstrtoull(exclude_str, 10, &exclude_tmp);
+            if (ret) {
+                log_boot("package_config: line %d invalid exclude '%s': %d, using default 0\n", 
+                         line_num, exclude_str, ret);
+                exclude_tmp = 0;
+            }
+            if (exclude_tmp > INT_MAX) {
+                log_boot("package_config: line %d exclude %llu out of range, clamping\n", 
+                         line_num, exclude_tmp);
+                exclude_tmp = INT_MAX;
             }
         }
 
-        line_start = line_end + 1;
+        if (allow_str && *allow_str) {
+            ret = kstrtoull(allow_str, 10, &allow_tmp);
+            if (ret) {
+                log_boot("package_config: line %d invalid allow '%s': %d, using default 0\n", 
+                         line_num, allow_str, ret);
+                allow_tmp = 0;
+            }
+            if (allow_tmp > INT_MAX) {
+                log_boot("package_config: line %d allow %llu out of range, clamping\n", 
+                         line_num, allow_tmp);
+                allow_tmp = INT_MAX;
+            }
+        }
+
+        uid_t uid = (uid_t)uid_tmp;
+        uid_t to_uid = (uid_t)to_uid_tmp;
+        int exclude = (int)exclude_tmp;
+        int allow = (int)allow_tmp;
+
+        // Validate sctx is not empty
+        if (!sctx || !*sctx) {
+            log_boot("package_config: line %d empty sctx\n", line_num);
+            valid_line = 0;
+            goto next_line;
+        }
+
+        // CRITICAL FIX: Safely copy sctx into a fixed-size buffer with NUL termination
+        // This prevents buffer overflow and ensures proper string handling
+        char sctx_buf[SUPERCALL_SCONTEXT_LEN];
+        size_t sctx_len = strlen(sctx);
+        
+        if (sctx_len >= SUPERCALL_SCONTEXT_LEN) {
+            // Truncate and log warning
+            log_boot("package_config: line %d sctx too long (%zu bytes), truncating to %d bytes\n",
+                     line_num, sctx_len, SUPERCALL_SCONTEXT_LEN - 1);
+            memcpy(sctx_buf, sctx, SUPERCALL_SCONTEXT_LEN - 1);
+            sctx_buf[SUPERCALL_SCONTEXT_LEN - 1] = '\0';
+        } else {
+            // Safe copy with NUL termination
+            memcpy(sctx_buf, sctx, sctx_len + 1);  // +1 includes the NUL terminator
+        }
+
+        // Apply configuration with safe sctx buffer
+        if (allow) {
+            int rc = su_add_allow_uid(uid, to_uid, sctx_buf);
+            if (rc == 0) {
+                loaded_count++;
+                log_boot("package_config: added allow rule uid=%u to_uid=%u sctx=%s\n", 
+                         uid, to_uid, sctx_buf);
+            } else {
+                log_boot("package_config: line %d failed to add allow rule: %d\n", line_num, rc);
+                valid_line = 0;
+            }
+        }
+
+        // Set exclude flag
+        if (exclude) {
+            set_ap_mod_exclude(uid, exclude);
+            log_boot("package_config: set exclude uid=%u exclude=%d\n", uid, exclude);
+        }
+
+next_line:
+        if (!valid_line) {
+            skipped_count++;
+        }
+
+        // Move to next line
+        if (has_newline) {
+            line_start = line_end + 1;
+        } else {
+            break;
+        }
     }
 
     kvfree(data);
-    log_boot("package_config loaded: %d entries\n", loaded_count);
+    log_boot("package_config loaded: %d entries, skipped: %d\n", loaded_count, skipped_count);
     return loaded_count;
 }
 KP_EXPORT_SYMBOL(load_ap_package_config);
