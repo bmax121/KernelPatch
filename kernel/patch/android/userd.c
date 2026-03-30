@@ -34,6 +34,7 @@
 #include <uapi/linux/stat.h>
 #include <sucompat.h>
 #include <userd.h>
+#include <limits.h>
 
 #define REPLACE_RC_FILE "/dev/user_init.rc"
 
