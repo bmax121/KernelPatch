@@ -199,7 +199,7 @@ static long call_su_get_safemode()
     return result;
 }
 
-extern int load_ap_package_config();
+extern int load_ap_package_config(void);
 static long call_ap_load_package_config()
 {
     int result = load_ap_package_config();
