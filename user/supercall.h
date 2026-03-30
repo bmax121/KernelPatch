@@ -526,6 +526,18 @@ static inline long sc_su_get_safemode(const char *key)
     return syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_SU_GET_SAFEMODE));
 }
 
+/**
+ * @brief Load APatch package_config from /data/adb/ap/package_config
+ *
+ * @param key : superkey
+ * @return long : number of entries loaded if succeed, negative value if failed
+ */
+static inline long sc_ap_load_package_config(const char *key)
+{
+    if (!key || !key[0]) return -EINVAL;
+    return syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_AP_LOAD_PACKAGE_CONFIG));
+}
+
 static inline long sc_bootlog(const char *key)
 {
     long ret = syscall(__NR_supercall, key, ver_and_cmd(key, SUPERCALL_BOOTLOG));

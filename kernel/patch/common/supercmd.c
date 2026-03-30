@@ -68,6 +68,7 @@ static const char supercmd_help[] =
     "  version:                     Print Kernel version and KernelPatch version.\n"
     "  buildtime:                   Print KernelPatch build time.\n "
     "    eg: 50a0a,a06 means kernel version 5.10.10, KernelPatch version 0.10.6.\n"
+    "  reload-cfg:                   Reload package configuration.\n "
     "  -c <COMMAND> [...]:          Pass a single COMMAND to the default shell.\n"
     "  exec <PATH> [...]:           Execute command with full PATH.\n"
     "  sumgr <SubCommand> [...]:    SU permission manager\n"
@@ -450,6 +451,12 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
     } else if (!strcmp("buildtime", cmd)) {
         cmd_res.msg = get_build_time();
         goto echo;
+    #ifdef ANDROID
+    } else if (!strcmp("reload-cfg", cmd)) {
+        load_ap_package_config();
+        cmd_res.msg = "reload package config success";
+        goto echo;
+    #endif
     } else if (!strcmp("sumgr", cmd)) {
         handle_cmd_sumgr(u_filename_p, carr, buffer, sizeof(buffer), &cmd_res);
     } else if (!strcmp("event", cmd)) {
