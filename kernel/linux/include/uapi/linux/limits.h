@@ -15,6 +15,9 @@
 #define XATTR_NAME_MAX 255 /* # chars in an extended attribute name */
 #define XATTR_SIZE_MAX 65536 /* size of an extended attribute value (64k) */
 #define XATTR_LIST_MAX 65536 /* size of extended attribute namelist (64k) */
+#define UINT_MAX 4294967295U
+#define INT_MAX 2147483647
+#define INT_MIN (-2147483647 - 1)
 
 #define RTSIG_MAX 32
 
