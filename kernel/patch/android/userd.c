@@ -143,18 +143,28 @@ static char *parse_csv_field(char **line_ptr)
         end++;
     }
 
-    // Remove trailing whitespace
-    char *trim_end = end - 1;
-    while (trim_end > start && (*trim_end == ' ' || *trim_end == '\t')) {
-        trim_end--;
-    }
-    *(trim_end + 1) = '\0';
+    // Preserve delimiter before modifying buffer
+    {
+        char delim = *end;
 
-    // Update pointer position
-    if (*end == ',') {
-        *line_ptr = end + 1;
-    } else {
-        *line_ptr = end;
+        // Remove trailing whitespace only if field is non-empty
+        if (end > start) {
+            char *trim_end = end - 1;
+            while (trim_end > start && (*trim_end == ' ' || *trim_end == '\t')) {
+                trim_end--;
+            }
+            *(trim_end + 1) = '\0';
+        } else {
+            // Empty field: terminate at start so caller sees an empty string
+            *start = '\0';
+        }
+
+        // Update pointer position based on original delimiter
+        if (delim == ',') {
+            *line_ptr = end + 1;
+        } else {
+            *line_ptr = end;
+        }
     }
 
     return start;
