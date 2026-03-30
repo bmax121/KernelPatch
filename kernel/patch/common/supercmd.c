@@ -450,6 +450,10 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
     } else if (!strcmp("buildtime", cmd)) {
         cmd_res.msg = get_build_time();
         goto echo;
+    } else if (!strcmp("reload-cfg", cmd)) {
+        cmd_res.rc = load_ap_package_config();
+        sprintf(cmd_res.msg, "reload %d package config success", cmd_res.rc);
+        goto echo;
     } else if (!strcmp("sumgr", cmd)) {
         handle_cmd_sumgr(u_filename_p, carr, buffer, sizeof(buffer), &cmd_res);
     } else if (!strcmp("event", cmd)) {

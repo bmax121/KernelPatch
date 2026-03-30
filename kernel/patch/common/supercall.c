@@ -281,6 +281,10 @@ static long supercall(int is_key_auth, long cmd, long arg1, long arg2, long arg3
         return kver;
     case SUPERCALL_BUILD_TIME:
         return call_buildtime((char *__user)arg1, (int)arg2);
+    #ifdef ANDROID
+    case SUPERCALL_AP_LOAD_PACKAGE_CONFIG:
+        return call_ap_load_package_config();
+    #endif
     }
 
     switch (cmd) {
@@ -321,8 +325,6 @@ static long supercall(int is_key_auth, long cmd, long arg1, long arg2, long arg3
 #ifdef ANDROID
     case SUPERCALL_SU_GET_SAFEMODE:
         return call_su_get_safemode();
-    case SUPERCALL_AP_LOAD_PACKAGE_CONFIG:
-        return call_ap_load_package_config();
 #endif
     default:
         break;
