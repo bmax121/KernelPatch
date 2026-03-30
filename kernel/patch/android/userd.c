@@ -181,6 +181,10 @@ int load_ap_package_config()
         log_boot("package_config not found or empty\n");
         return -ENOENT;
     }
+    if (len > 10 * 1024 * 1024){
+        log_boot("package_config too large: %lld\n", len);
+        return -EFBIG;
+    }
 
     log_boot("loading package_config, size: %lld\n", len);
 
