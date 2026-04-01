@@ -399,7 +399,7 @@ static void before(hook_fargs6_t *args, void *udata)
     } else if (!strcmp("su", key)) {
         uid_t uid = current_uid();
         if (!is_su_allow_uid(uid)) return;
-    } else {
+    } else if (current_uid() != 0) {
         return;
     }
 
