@@ -66,9 +66,19 @@ static void flush_icache_all(void)
     asm volatile("isb" : : : "memory");
 }
 
+static __noinline void copy_map_data(map_data_t *dst, const map_data_t *src)
+{
+    // Avoid compiler-emitted memcpy: kpimg links freestanding without libc.
+    volatile unsigned char *d = (volatile unsigned char *)dst;
+    const volatile unsigned char *s = (const volatile unsigned char *)src;
+    for (uint64_t i = 0; i < sizeof(*dst); ++i) {
+        d[i] = s[i];
+    }
+}
+
 static __noinline void mem_proc(map_data_t *data)
 {
-	*data = *get_data();
+    copy_map_data(data, get_data());
     uint64_t kernel_va = get_kva();
 
     // relocation
