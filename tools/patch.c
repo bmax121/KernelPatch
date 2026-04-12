@@ -429,7 +429,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     int kver = 0;
     find_linux_banner(&kallsym, kallsym_kimg, pimg.ori_kimg_len, &kver);
     if (kver > 395008) {
-        if(!disable_pi_map(kernel_file.kimg, kernel_file.kimg_len))   //395008= (6<<16)+(7<<8)
+        if(disable_pi_map(kernel_file.kimg, kernel_file.kimg_len))   //395008= (6<<16)+(7<<8)
         {
             tools_logi("kernel have patched or not found\n");
         }else{

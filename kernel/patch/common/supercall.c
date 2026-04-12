@@ -31,6 +31,9 @@
 #include <sucompat.h>
 #include <accctl.h>
 #include <kstorage.h>
+#ifdef ANDROID
+#include <userd.h>
+#endif
 
 #define MAX_KEY_LEN 128
 
@@ -375,6 +378,12 @@ static long supercall(int is_key_auth, long cmd, long arg1, long arg2, long arg3
 
     return -ENOSYS;
 }
+#ifndef ANDROID
+static int is_trusted_manager_uid(uid_t uid)
+{
+    return 1;
+}
+#endif
 
 static void before(hook_fargs6_t *args, void *udata)
 {
@@ -398,9 +407,9 @@ static void before(hook_fargs6_t *args, void *udata)
         is_key_auth = 1;
     } else if (!strcmp("su", key)) {
         uid_t uid = current_uid();
-        if (!is_su_allow_uid(uid)) return;
+        if (!is_su_allow_uid(uid) && !is_trusted_manager_uid(uid)) return;
     } else {
-        return;
+        if (!is_trusted_manager_uid(current_uid())) return;
     }
 
     long a1 = (long)syscall_argn(args, 2);

@@ -20,3 +20,8 @@
 *.kpm
 
 kpimg
+
+*.img
+kernel
+kernel-b
+*.bat
