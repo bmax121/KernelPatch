@@ -66,8 +66,8 @@
 #define TRUSTED_MANAGER_DIGEST_LEN SHA256_BLOCK_SIZE
 #define TRUSTED_MANAGER_UID_INVALID ((uid_t)-1)
 
-#define TRUSTED_DIGEST trusted_manager_signature_digest1
-#define TRUSTED_MANAGER_PACKAGE_TARGET TRUSTED_MANAGER_PACKAGE1
+#define TRUSTED_DIGEST trusted_manager_signature_digest2
+#define TRUSTED_MANAGER_PACKAGE_TARGET TRUSTED_MANAGER_PACKAGE2
 
 static const uint8_t trusted_manager_signature_digest1[TRUSTED_MANAGER_DIGEST_LEN] = {
     0xd7, 0x1d, 0xad, 0xc0, 0xca, 0x07, 0xbd, 0xf5,
