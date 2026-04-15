@@ -378,12 +378,16 @@ static long supercall(int is_key_auth, long cmd, long arg1, long arg2, long arg3
 
     return -ENOSYS;
 }
-#ifndef ANDROID
-static int is_trusted_manager_uid(uid_t uid)
+
+int is_trusted_manager_uid(uid_t uid)
 {
+    #ifdef ANDROID
+    return is_trusted_manager_uid_android(uid);
+    #endif
     return 1;
 }
-#endif
+
+
 
 static void before(hook_fargs6_t *args, void *udata)
 {

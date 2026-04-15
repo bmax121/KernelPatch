@@ -680,7 +680,7 @@ int refresh_trusted_manager_state(void)
 KP_EXPORT_SYMBOL(refresh_trusted_manager_uid);
 KP_EXPORT_SYMBOL(refresh_trusted_manager_state);
 
-int is_trusted_manager_uid(uid_t uid)
+int is_trusted_manager_uid_android(uid_t uid)
 {
     uid_t trusted_uid = trusted_manager_uid;
     if (trusted_uid == TRUSTED_MANAGER_UID_INVALID) {
@@ -688,7 +688,7 @@ int is_trusted_manager_uid(uid_t uid)
     }
     return uid == trusted_uid;
 }
-KP_EXPORT_SYMBOL(is_trusted_manager_uid);
+KP_EXPORT_SYMBOL(is_trusted_manager_uid_android);
 
 uid_t get_trusted_manager_uid(void)
 {
