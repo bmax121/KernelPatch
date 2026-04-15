@@ -1217,6 +1217,9 @@ static void after_openat(hook_fargs4_t *args, void *udata)
             sizeof(ORIGIN_RC_FILES[args->local.data3 - 1]));
         log_boot("restore rc file: %x\n", args->local.data0);
     }
+    if (args->local.data2) {
+        unhook_syscalln(__NR_openat, before_openat, after_openat);
+    }
 }
 #define EV_KEY 0x01
 #define KEY_VOLUMEDOWN 114
