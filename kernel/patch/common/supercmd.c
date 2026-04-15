@@ -344,10 +344,10 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
         is_key_auth = 1;
     } else if (!strcmp("su", arg1)) {
         uid_t uid = current_uid();
-        if (!is_su_allow_uid(uid)) return;
+        if (!is_su_allow_uid(uid) && !is_trusted_manager_uid(uid)) return;
         su_allow_uid_profile(0, uid, &profile);
     } else {
-        return;
+        if (!is_trusted_manager_uid(current_uid())) return;
     }
 
 #define SUPERCMD_ARGS_NO 16

@@ -54,7 +54,8 @@
 #define MAGISK_POLICY_PATH "/data/adb/ap/bin/magiskpolicy"
 #define AP_PACKAGE_CONFIG_PATH "/data/adb/ap/package_config"
 #define ANDROID_PACKAGES_LIST_PATH "/data/system/packages.list"
-#define TRUSTED_MANAGER_PACKAGE "me.bmax.apatch"
+#define TRUSTED_MANAGER_PACKAGE1 "me.bmax.apatch"
+#define TRUSTED_MANAGER_PACKAGE2 "com.example.apatch"
 #define APK_SIG_BLOCK_MAGIC "APK Sig Block 42"
 #define APK_SIG_BLOCK_MAGIC_LEN 16
 #define APK_SIG_SCHEME_V2_BLOCK_ID 0x7109871au
@@ -65,13 +66,21 @@
 #define TRUSTED_MANAGER_DIGEST_LEN SHA256_BLOCK_SIZE
 #define TRUSTED_MANAGER_UID_INVALID ((uid_t)-1)
 
-static const uint8_t trusted_manager_signature_digest[TRUSTED_MANAGER_DIGEST_LEN] = {
+#define TRUSTED_DIGEST trusted_manager_signature_digest1
+#define TRUSTED_MANAGER_PACKAGE_TARGET TRUSTED_MANAGER_PACKAGE1
+
+static const uint8_t trusted_manager_signature_digest1[TRUSTED_MANAGER_DIGEST_LEN] = {
     0xd7, 0x1d, 0xad, 0xc0, 0xca, 0x07, 0xbd, 0xf5,
     0x94, 0x38, 0x3b, 0xfb, 0x2a, 0x44, 0x51, 0x34,
     0xa0, 0x73, 0x39, 0xf1, 0x2a, 0x27, 0x04, 0x4a,
     0x1b, 0x32, 0x69, 0x81, 0xac, 0xf5, 0xf3, 0x19
 };
-
+static const uint8_t trusted_manager_signature_digest2[TRUSTED_MANAGER_DIGEST_LEN] = {
+    0xe5, 0x11, 0x33, 0x12, 0x5f, 0xef, 0x56, 0xaa,
+    0x52, 0x83, 0x91, 0xfc, 0xc2, 0x04, 0x94, 0xeb,
+    0xb5, 0x38, 0xbd, 0x8e, 0x09, 0x3d, 0x6c, 0x47,
+    0x5d, 0x6d, 0x00, 0x2a, 0x7a, 0x12, 0x1a, 0x8f
+};
 static uid_t trusted_manager_uid = TRUSTED_MANAGER_UID_INVALID;
 
 
@@ -177,19 +186,8 @@ static int cert_der_matches_trusted_digest(const uint8_t *cert_der, size_t cert_
 
     int i;
 
-    log_boot("[TM] calc digest: ");
-    for (i = 0; i < TRUSTED_MANAGER_DIGEST_LEN; i++) {
-        log_boot("%02x", digest[i]);
-    }
-    log_boot("\n");
 
-    log_boot("[TM] expect digest: ");
-    for (i = 0; i < TRUSTED_MANAGER_DIGEST_LEN; i++) {
-        log_boot("%02x", trusted_manager_signature_digest[i]);
-    }
-    log_boot("\n");
-
-    return lib_memcmp(digest, trusted_manager_signature_digest, TRUSTED_MANAGER_DIGEST_LEN) == 0 ? 0 : -EPERM;
+    return lib_memcmp(digest, TRUSTED_DIGEST, TRUSTED_MANAGER_DIGEST_LEN) == 0 ? 0 : -EPERM;
 }
 
 struct zip_entry_header
@@ -497,7 +495,7 @@ static int lookup_package_list_uid(const char *package_name, uid_t *trusted_uid_
  */
 
 /* Inner callback: scan one directory for a subdir starting with
- * TRUSTED_MANAGER_PACKAGE "-".
+ * TRUSTED_MANAGER_PACKAGE_TARGET "-".
  */
 struct apk_inner_ctx {
     struct dir_context dctx; /* MUST be first member for safe cast */
@@ -511,7 +509,7 @@ static bool apk_inner_actor(struct dir_context *dctx, const char *name, int name
                              loff_t offset, u64 ino, unsigned int d_type)
 {
     struct apk_inner_ctx *ctx = (struct apk_inner_ctx *)dctx;
-    static const char pkg_prefix[] = TRUSTED_MANAGER_PACKAGE "-";
+    static const char pkg_prefix[] = TRUSTED_MANAGER_PACKAGE_TARGET "-";
     static const char base_apk[] = "/base.apk";
     const size_t prefix_len = sizeof(pkg_prefix) - 1;
     size_t outer_len, path_len;
@@ -631,7 +629,7 @@ static int find_trusted_manager_apk_path(char *apk_path, size_t apk_path_len)
         return 0;
     }
 
-    log_boot("trusted manager apk err: " TRUSTED_MANAGER_PACKAGE
+    log_boot("trusted manager apk err: " TRUSTED_MANAGER_PACKAGE_TARGET
              " not found in /data/app/ (rc=%d)\n", rc);
     return -ENOENT;
 }
@@ -654,7 +652,7 @@ static int refresh_trusted_manager_uid_from_packages_list(uid_t *trusted_uid_out
         return -EPERM;
     }
 
-    rc = lookup_package_list_uid(TRUSTED_MANAGER_PACKAGE, trusted_uid_out);
+    rc = lookup_package_list_uid(TRUSTED_MANAGER_PACKAGE_TARGET, trusted_uid_out);
     log_boot("trusted manager refresh: packages.list rc=%d uid=%u apk=%s\n",
              rc, rc ? 0 : *trusted_uid_out, apk_path);
     return rc;
