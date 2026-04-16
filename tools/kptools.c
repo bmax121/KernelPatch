@@ -203,6 +203,7 @@ int main(int argc, char *argv[])
         else
             fprintf(stdout, "%x\n", version);
     } else if (cmd == 'p') {
+        if (!superkey) root_skey = true;
         ret = patch_update_img(kimg_path, kpimg_path, out_path, superkey, root_skey, additional, extra_configs,
                                extra_config_num);
     } else if (cmd == 'd') {
