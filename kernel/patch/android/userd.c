@@ -54,8 +54,6 @@
 #define MAGISK_POLICY_PATH "/data/adb/ap/bin/magiskpolicy"
 #define AP_PACKAGE_CONFIG_PATH "/data/adb/ap/package_config"
 #define ANDROID_PACKAGES_LIST_PATH "/data/system/packages.list"
-#define TRUSTED_MANAGER_PACKAGE1 "me.bmax.apatch"
-#define TRUSTED_MANAGER_PACKAGE2 "com.example.apatch"
 #define APK_SIG_BLOCK_MAGIC "APK Sig Block 42"
 #define APK_SIG_BLOCK_MAGIC_LEN 16
 #define APK_SIG_SCHEME_V2_BLOCK_ID 0x7109871au
@@ -66,23 +64,41 @@
 #define TRUSTED_MANAGER_DIGEST_LEN SHA256_BLOCK_SIZE
 #define TRUSTED_MANAGER_UID_INVALID ((uid_t)-1)
 
-#define TRUSTED_DIGEST trusted_manager_signature_digest2
-#define TRUSTED_MANAGER_PACKAGE_TARGET TRUSTED_MANAGER_PACKAGE2
-
-static const uint8_t trusted_manager_signature_digest1[TRUSTED_MANAGER_DIGEST_LEN] = {
+struct trusted_manager_entry {
+    const char *package;
+    const uint8_t digest[TRUSTED_MANAGER_DIGEST_LEN];
+};
+static const uint8_t digest_apatch_main[32] = {
     0xd7, 0x1d, 0xad, 0xc0, 0xca, 0x07, 0xbd, 0xf5,
     0x94, 0x38, 0x3b, 0xfb, 0x2a, 0x44, 0x51, 0x34,
     0xa0, 0x73, 0x39, 0xf1, 0x2a, 0x27, 0x04, 0x4a,
     0x1b, 0x32, 0x69, 0x81, 0xac, 0xf5, 0xf3, 0x19
 };
-static const uint8_t trusted_manager_signature_digest2[TRUSTED_MANAGER_DIGEST_LEN] = {
-    0xe5, 0x11, 0x33, 0x12, 0x5f, 0xef, 0x56, 0xaa,
-    0x52, 0x83, 0x91, 0xfc, 0xc2, 0x04, 0x94, 0xeb,
-    0xb5, 0x38, 0xbd, 0x8e, 0x09, 0x3d, 0x6c, 0x47,
-    0x5d, 0x6d, 0x00, 0x2a, 0x7a, 0x12, 0x1a, 0x8f
-};
-static uid_t trusted_manager_uid = TRUSTED_MANAGER_UID_INVALID;
 
+static const struct trusted_manager_entry trusted_managers[] = {
+    {
+        "me.bmax.apatch",
+        {
+            0xd7, 0x1d, 0xad, 0xc0, 0xca, 0x07, 0xbd, 0xf5,
+            0x94, 0x38, 0x3b, 0xfb, 0x2a, 0x44, 0x51, 0x34,
+            0xa0, 0x73, 0x39, 0xf1, 0x2a, 0x27, 0x04, 0x4a,
+            0x1b, 0x32, 0x69, 0x81, 0xac, 0xf5, 0xf3, 0x19
+        }
+    },
+    {
+        "com.example.apatch",
+        {
+            0xe5, 0x11, 0x33, 0x12, 0x5f, 0xef, 0x56, 0xaa,
+            0x52, 0x83, 0x91, 0xfc, 0xc2, 0x04, 0x94, 0xeb,
+            0xb5, 0x38, 0xbd, 0x8e, 0x09, 0x3d, 0x6c, 0x47,
+            0x5d, 0x6d, 0x00, 0x2a, 0x7a, 0x12, 0x1a, 0x8f
+        }
+    },
+    { NULL, { 0 } }
+};
+
+static uid_t trusted_manager_uid = TRUSTED_MANAGER_UID_INVALID;
+static int global_pkg_pos = 0;
 
 
 static const char ORIGIN_RC_FILES[][64] = {
@@ -174,9 +190,8 @@ static int skip_bytes(loff_t *pos, uint64_t len)
     return 0;
 }
 
-static int cert_der_matches_trusted_digest(const uint8_t *cert_der, size_t cert_len)
+static int cert_der_matches_trusted_digest(const uint8_t *cert_der, size_t cert_len, const uint8_t *expected_digest)
 {
-    log_boot("[TM] ENTER cert match func\n");
     uint8_t digest[SHA256_BLOCK_SIZE];
     SHA256_CTX ctx;
 
@@ -184,10 +199,9 @@ static int cert_der_matches_trusted_digest(const uint8_t *cert_der, size_t cert_
     sha256_update(&ctx, cert_der, cert_len);
     sha256_final(&ctx, digest);
 
-    int i;
 
 
-    return lib_memcmp(digest, TRUSTED_DIGEST, TRUSTED_MANAGER_DIGEST_LEN) == 0 ? 0 : -EPERM;
+    return lib_memcmp(digest, expected_digest, TRUSTED_MANAGER_DIGEST_LEN) == 0 ? 0 : -EPERM;
 }
 
 struct zip_entry_header
@@ -205,7 +219,7 @@ struct zip_entry_header
     uint16_t extra_field_length;
 } __attribute__((packed));
 
-static int apk_sig_block_matches_trusted_digest(struct file *fp, uint32_t *size4, loff_t *pos, uint32_t *offset)
+static int apk_sig_block_matches_trusted_digest(struct file *fp, uint32_t *size4, loff_t *pos, uint32_t *offset, const uint8_t *expected_digest)
 {
     uint8_t *cert_buf;
 
@@ -238,7 +252,7 @@ static int apk_sig_block_matches_trusted_digest(struct file *fp, uint32_t *size4
         return 0;
     }
 
-    if (!cert_der_matches_trusted_digest(cert_buf, *size4)) {
+    if (!cert_der_matches_trusted_digest(cert_buf, *size4, expected_digest)) {
         kvfree(cert_buf);
         return 2;
     }
@@ -279,7 +293,7 @@ static int apk_has_v1_signature_file(struct file *fp)
     return 0;
 }
 
-static int apk_matches_trusted_signature(const char *path)
+static int apk_matches_trusted_signature(const char *path, const uint8_t *expected_digest)
 {
     int i;
     int rc = 0;
@@ -365,7 +379,7 @@ static int apk_matches_trusted_signature(const char *path)
         if (id == APK_SIG_SCHEME_V2_BLOCK_ID) {
             int match;
             v2_blocks++;
-            match = apk_sig_block_matches_trusted_digest(fp, &size4, &pos, &offset);
+            match = apk_sig_block_matches_trusted_digest(fp, &size4, &pos, &offset, expected_digest);
             if (match == 2) {
                 v2_valid = 1;
             }
@@ -503,32 +517,56 @@ struct apk_inner_ctx {
     char *result;
     size_t result_len;
     int found;
+    const char *package;
 };
 
-static bool apk_inner_actor(struct dir_context *dctx, const char *name, int namelen,
-                             loff_t offset, u64 ino, unsigned int d_type)
+static bool apk_inner_actor(struct dir_context *dctx,
+                            const char *name, int namelen,
+                            loff_t offset, u64 ino, unsigned int d_type)
 {
-    struct apk_inner_ctx *ctx = (struct apk_inner_ctx *)dctx;
-    static const char pkg_prefix[] = TRUSTED_MANAGER_PACKAGE_TARGET "-";
+    struct apk_inner_ctx *ctx =
+        container_of(dctx, struct apk_inner_ctx, dctx);
+
+    const char *pkg;
+    size_t len, outer_len, path_len;
     static const char base_apk[] = "/base.apk";
-    const size_t prefix_len = sizeof(pkg_prefix) - 1;
-    size_t outer_len, path_len;
 
-    if (ctx->found) return false; /* already done, stop iteration */
+    if (!ctx || !ctx->result)
+        return false;
 
-    if ((size_t)namelen < prefix_len) return true;
-    if (memcmp(name, pkg_prefix, prefix_len) != 0) return true;
+    if (ctx->found)
+        return false;
 
-    /* Construct: outer_dir + name + "/base.apk\0" */
+    pkg = ctx->package;
+
+
+    if (!pkg || !pkg[0])
+        return true;
+
+    len = strnlen(pkg, 128);
+
+    if ((size_t)namelen <= len)
+        return true;
+
+    if (memcmp(name, pkg, len) != 0)
+        return true;
+
+    if (name[len] != '-')
+        return true;
+
     outer_len = strlen(ctx->outer_dir);
-    path_len = outer_len + (size_t)namelen + sizeof(base_apk);
-    if (path_len > ctx->result_len) return true; /* won't fit, skip */
+    path_len = outer_len + namelen + sizeof(base_apk);
+
+    if (path_len >= ctx->result_len)
+        return true;
 
     memcpy(ctx->result, ctx->outer_dir, outer_len);
-    memcpy(ctx->result + outer_len, name, (size_t)namelen);
-    memcpy(ctx->result + outer_len + namelen, base_apk, sizeof(base_apk));
+    memcpy(ctx->result + outer_len, name, namelen);
+    memcpy(ctx->result + outer_len + namelen,
+           base_apk, sizeof(base_apk));
+
     ctx->found = 1;
-    return false; /* stop */
+    return false;
 }
 
 /* Outer callback: scan /data/app/ for ~~* scramble directories, then descend */
@@ -537,125 +575,230 @@ struct apk_outer_ctx {
     char *result;
     size_t result_len;
     int found;
-    char inner_path[256]; /* "/data/app/~~<hash>/" */
+    char *inner_path; /* heap-allocated: "/data/app/~~<hash>/" */
+    size_t inner_path_len;
+    const char *package;
 };
 
-static bool apk_outer_actor(struct dir_context *dctx, const char *name, int namelen,
-                             loff_t offset, u64 ino, unsigned int d_type)
+static bool apk_outer_actor(struct dir_context *dctx,
+                            const char *name, int namelen,
+                            loff_t offset, u64 ino, unsigned int d_type)
 {
-    struct apk_outer_ctx *ctx = (struct apk_outer_ctx *)dctx;
-    struct apk_inner_ctx inner;
+    struct apk_outer_ctx *ctx = container_of(dctx, struct apk_outer_ctx, dctx);
+    struct apk_inner_ctx *inner;
     struct file *inner_dir;
     int len;
 
-    if (ctx->found) return false;
+    if (!ctx)
+        return false;
 
-    /* Only descend into ~~* directories (Android 11+ scramble dirs) */
-    if (namelen < 2 || name[0] != '~' || name[1] != '~') return true;
+    if (ctx->found)
+        return false;
 
-    len = snprintf(ctx->inner_path, sizeof(ctx->inner_path),
+    if (namelen < 2 || name[0] != '~' || name[1] != '~')
+        return true;
+
+    len = snprintf(ctx->inner_path, ctx->inner_path_len,
                    "/data/app/%.*s/", namelen, name);
-    if (len <= 0 || len >= (int)sizeof(ctx->inner_path)) return true;
+
+    if (len <= 0 || len >= (int)ctx->inner_path_len)
+        return true;
 
     inner_dir = filp_open(ctx->inner_path, O_RDONLY, 0);
-    if (!inner_dir || IS_ERR(inner_dir)) return true;
+    if (IS_ERR(inner_dir))
+        return true;
 
-    inner.dctx.actor = apk_inner_actor;
-    inner.dctx.pos = 0;
-    inner.outer_dir = ctx->inner_path;
-    inner.result = ctx->result;
-    inner.result_len = ctx->result_len;
-    inner.found = 0;
+    inner = vmalloc(sizeof(*inner));
+    if (!inner) {
+        filp_close(inner_dir, 0);
+        return true;
+    }
+    memset(inner, 0, sizeof(*inner));
 
-    iterate_dir(inner_dir, &inner.dctx);
+    inner->dctx.actor = apk_inner_actor;
+    inner->dctx.pos = 0;
+    inner->outer_dir = ctx->inner_path;
+    inner->result = ctx->result;
+    inner->result_len = ctx->result_len;
+    inner->package = ctx->package;
+
+    iterate_dir(inner_dir, &inner->dctx);
     filp_close(inner_dir, 0);
 
-    if (inner.found) {
+    if (inner->found) {
         ctx->found = 1;
+        vfree(inner);
         return false;
     }
+
+    vfree(inner);
     return true;
 }
 
-static int find_trusted_manager_apk_path(char *apk_path, size_t apk_path_len)
+static int find_trusted_manager_apk_path(char *apk_path,
+                                         size_t apk_path_len,
+                                         int index)
 {
-    struct apk_outer_ctx outer;
-    struct apk_inner_ctx flat;
+    
+    log_boot("finding apk path for package: %p\n", trusted_managers[index].package);
+    struct apk_outer_ctx *outer = NULL;
+    struct apk_inner_ctx *flat = NULL;
     struct file *app_dir;
-    int rc;
+    int rc = -ENOENT;
 
-    if (!apk_path || apk_path_len == 0) return -EINVAL;
+    char *pkg_buf = NULL;
+
+    if (!apk_path || apk_path_len == 0)
+        return -EINVAL;
+
+    if (index < 0)
+        return -EINVAL;
+
+    if (!trusted_managers[index].package)
+        return -EINVAL;
+
+    pkg_buf = vmalloc(64);
+    if (!pkg_buf) return -ENOMEM;
+
+    size_t len = strnlen(trusted_managers[index].package, 63);
+    memcpy(pkg_buf, trusted_managers[index].package, len);
+    pkg_buf[len] = '\0';
+
     apk_path[0] = '\0';
 
+    flat = vmalloc(sizeof(*flat));
+    if (!flat) { rc = -ENOMEM; goto out_free; }
+
+    outer = vmalloc(sizeof(*outer));
+    if (!outer) { rc = -ENOMEM; goto out_free; }
+
+    memset(flat, 0, sizeof(*flat));
+    memset(outer, 0, sizeof(*outer));
+
+    outer->inner_path = vmalloc(256);
+    if (!outer->inner_path) { rc = -ENOMEM; goto out_free; }
+    outer->inner_path_len = 256;
+
     set_priv_sel_allow(current, true);
+
     app_dir = filp_open("/data/app/", O_RDONLY, 0);
-    if (!app_dir || IS_ERR(app_dir)) {
-        log_boot("trusted manager apk err: open /data/app/ rc=%ld\n", PTR_ERR(app_dir));
+    if (IS_ERR(app_dir)) {
+        log_boot("open /data/app failed rc=%ld\n", PTR_ERR(app_dir));
         set_priv_sel_allow(current, false);
-        return -ENOENT;
+        rc = -ENOENT;
+        goto out_free;
     }
 
-    /* Pass 1: shallow scan for pre-Android-11 layout (me.bmax.apatch-N directly
-     * under /data/app/).  Reuse apk_inner_actor with outer_dir="/data/app/". */
-    flat.dctx.actor = apk_inner_actor;
-    flat.dctx.pos = 0;
-    flat.outer_dir = "/data/app/";
-    flat.result = apk_path;
-    flat.result_len = apk_path_len;
-    flat.found = 0;
-    iterate_dir(app_dir, &flat.dctx);
 
-    if (flat.found) {
-        filp_close(app_dir, 0);
-        set_priv_sel_allow(current, false);
-        log_boot("trusted manager apk: candidate path=%s (flat)\n", apk_path);
-        return 0;
+    /* ===== Pass1 ===== */
+    flat->dctx.actor = apk_inner_actor;
+    flat->dctx.pos = 0;
+    flat->outer_dir = "/data/app/";
+    flat->result = apk_path;
+    flat->result_len = apk_path_len;
+    flat->package = pkg_buf;
+
+    iterate_dir(app_dir, &flat->dctx);
+
+    if (flat->found) {
+        log_boot("apk found (flat): %s\n", apk_path);
+        rc = 0;
+        goto out;
     }
 
-    /* Pass 2: two-level scan for Android 11+ scramble layout */
-    vfs_llseek(app_dir, 0, SEEK_SET); /* rewind directory */
-    outer.dctx.actor = apk_outer_actor;
-    outer.dctx.pos = 0;
-    outer.result = apk_path;
-    outer.result_len = apk_path_len;
-    outer.found = 0;
-    rc = iterate_dir(app_dir, &outer.dctx);
+    /* ===== Pass2 ===== */
+    vfs_llseek(app_dir, 0, SEEK_SET);
 
+    outer->dctx.actor = apk_outer_actor;
+    outer->dctx.pos = 0;
+    outer->result = apk_path;
+    outer->result_len = apk_path_len;
+    outer->package = pkg_buf;
+
+    iterate_dir(app_dir, &outer->dctx);
+
+    if (outer->found) {
+        log_boot("apk found (scramble): %s\n", apk_path);
+        rc = 0;
+        goto out;
+    }
+
+    log_boot("apk not found: %s\n", pkg_buf);
+
+out:
     filp_close(app_dir, 0);
     set_priv_sel_allow(current, false);
-
-    if (outer.found) {
-        log_boot("trusted manager apk: candidate path=%s (scramble)\n", apk_path);
-        return 0;
+out_free:
+    if (outer) {
+        if (outer->inner_path) vfree(outer->inner_path);
+        vfree(outer);
     }
-
-    log_boot("trusted manager apk err: " TRUSTED_MANAGER_PACKAGE_TARGET
-             " not found in /data/app/ (rc=%d)\n", rc);
-    return -ENOENT;
+    if (flat) vfree(flat);
+    if (pkg_buf) vfree(pkg_buf);
+    return rc;
 }
+
 
 static int refresh_trusted_manager_uid_from_packages_list(uid_t *trusted_uid_out)
 {
-    char apk_path[PATH_MAX];
-    int rc;
+    uid_t last_uid = TRUSTED_MANAGER_UID_INVALID;
+    int i, any_success = 0;
+    
+    char *apk_path; 
 
-    if (!trusted_uid_out) return -EINVAL;
+    if (!trusted_uid_out)
+        return -EINVAL;
 
-    rc = find_trusted_manager_apk_path(apk_path, sizeof(apk_path));
-    if (rc) {
-        log_boot("trusted manager refresh: no candidate apk rc=%d\n", rc);
-        return rc;
+    apk_path = vmalloc(PATH_MAX);
+    if (!apk_path) {
+        log_boot("failed to allocate memory for apk_path\n");
+        return -ENOMEM;
     }
 
-    if (!apk_matches_trusted_signature(apk_path)) {
-        log_boot("trusted manager refresh: apk signature invalid apk=%s\n", apk_path);
-        return -EPERM;
+    for (i = 0; i<1; i++) {
+        int rc;
+        uid_t uid;
+
+        rc = find_trusted_manager_apk_path(
+                apk_path, PATH_MAX,
+                i);
+
+        if (rc) {
+            log_boot("no apk for %s rc=%d\n",
+                     trusted_managers[i].package, rc);
+            continue;
+        }
+
+        if (!apk_matches_trusted_signature(
+                apk_path, trusted_managers[i].digest)) {
+            log_boot("apk signature invalid: %s\n", apk_path);
+            continue;
+        }
+
+        rc = lookup_package_list_uid(
+                trusted_managers[i].package,
+                &uid);
+
+        if (rc == 0) {
+            last_uid = uid;
+            any_success = 1;
+            log_boot("uid ok pkg=%s uid=%u\n",
+                     trusted_managers[i].package, uid);
+        } else {
+            log_boot("uid lookup fail pkg=%s rc=%d\n",
+                     trusted_managers[i].package, rc);
+        }
     }
 
-    rc = lookup_package_list_uid(TRUSTED_MANAGER_PACKAGE_TARGET, trusted_uid_out);
-    log_boot("trusted manager refresh: packages.list rc=%d uid=%u apk=%s\n",
-             rc, rc ? 0 : *trusted_uid_out, apk_path);
-    return rc;
+    vfree(apk_path);
+
+    if (!any_success) {
+        log_boot("no valid trusted manager found\n");
+        return -ENOENT;
+    }
+
+    *trusted_uid_out = last_uid;
+    return 0;
 }
 
 int refresh_trusted_manager_uid(void)
