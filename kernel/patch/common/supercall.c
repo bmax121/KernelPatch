@@ -384,7 +384,7 @@ int is_trusted_manager_uid(uid_t uid)
     #ifdef ANDROID
     return is_trusted_manager_uid_android(uid);
     #endif
-    return 1;
+    return 0;
 }
 
 
