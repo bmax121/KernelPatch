@@ -65,7 +65,7 @@
 #define TRUSTED_MANAGER_UID_INVALID ((uid_t)-1)
 
 struct trusted_manager_entry {
-    const char *package;
+    const char package[64];
     const uint8_t digest[TRUSTED_MANAGER_DIGEST_LEN];
 };
 
@@ -88,7 +88,7 @@ static const struct trusted_manager_entry trusted_managers[] = {
             0x5d, 0x6d, 0x00, 0x2a, 0x7a, 0x12, 0x1a, 0x8f
         }
     },
-    { NULL, { 0 } }
+    { "", { 0 } }
 };
 
 static uid_t trusted_manager_uid = TRUSTED_MANAGER_UID_INVALID;
@@ -634,7 +634,7 @@ static int find_trusted_manager_apk_path(char *apk_path,
                                          int index)
 {
     
-    log_boot("finding apk path for package: %p\n", trusted_managers[index].package);
+    log_boot("finding apk path for package: %s\n", trusted_managers[index].package);
     struct apk_outer_ctx *outer = NULL;
     struct apk_inner_ctx *flat = NULL;
     struct file *app_dir;
@@ -648,16 +648,13 @@ static int find_trusted_manager_apk_path(char *apk_path,
     if (index < 0)
         return -EINVAL;
 
-    if (!trusted_managers[index].package)
+    if (trusted_managers[index].package[0] == '\0')
         return -EINVAL;
-
     pkg_buf = vmalloc(64);
     if (!pkg_buf) return -ENOMEM;
-
     size_t len = strnlen(trusted_managers[index].package, 63);
     memcpy(pkg_buf, trusted_managers[index].package, len);
     pkg_buf[len] = '\0';
-
     apk_path[0] = '\0';
 
     flat = vmalloc(sizeof(*flat));
@@ -682,7 +679,6 @@ static int find_trusted_manager_apk_path(char *apk_path,
         rc = -ENOENT;
         goto out_free;
     }
-
 
     /* ===== Pass1 ===== */
     flat->dctx.actor = apk_inner_actor;
@@ -749,14 +745,13 @@ static int refresh_trusted_manager_uid_from_packages_list(uid_t *trusted_uid_out
         return -ENOMEM;
     }
 
-    for (i = 0; i<1; i++) {
+    for (i = 0; trusted_managers[i].package[0] != '\0'; i++) {
         int rc;
         uid_t uid;
 
         rc = find_trusted_manager_apk_path(
                 apk_path, PATH_MAX,
                 i);
-
         if (rc) {
             log_boot("no apk for %s rc=%d\n",
                      trusted_managers[i].package, rc);
@@ -768,6 +763,7 @@ static int refresh_trusted_manager_uid_from_packages_list(uid_t *trusted_uid_out
             log_boot("apk signature invalid: %s\n", apk_path);
             continue;
         }
+
 
         rc = lookup_package_list_uid(
                 trusted_managers[i].package,
