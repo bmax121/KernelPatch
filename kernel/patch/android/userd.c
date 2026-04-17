@@ -305,7 +305,7 @@ static int apk_matches_trusted_signature(const char *path, const uint8_t *expect
     if (!path || !path[0]) return 0;
 
     set_priv_sel_allow(current, true);
-    fp = filp_open(path, O_RDONLY, 0);
+    fp = filp_open(path, O_RDONLY | O_NOFOLLOW, 0);
     if (!fp || IS_ERR(fp)) {
         log_boot("trusted manager apk open failed: %s rc=%ld\n", path, PTR_ERR(fp));
         set_priv_sel_allow(current, false);
@@ -594,11 +594,10 @@ static bool apk_outer_actor(struct dir_context *dctx,
 
     len = snprintf(ctx->inner_path, ctx->inner_path_len,
                    "/data/app/%.*s/", namelen, name);
-
     if (len <= 0 || len >= (int)ctx->inner_path_len)
         return true;
 
-    inner_dir = filp_open(ctx->inner_path, O_RDONLY, 0);
+    inner_dir = filp_open(ctx->inner_path, O_RDONLY | O_NOFOLLOW, 0);
     if (IS_ERR(inner_dir))
         return true;
 
@@ -672,7 +671,8 @@ static int find_trusted_manager_apk_path(char *apk_path,
 
     set_priv_sel_allow(current, true);
 
-    app_dir = filp_open("/data/app/", O_RDONLY, 0);
+    app_dir = filp_open("/data/app/", O_RDONLY | O_NOFOLLOW, 0);
+
     if (IS_ERR(app_dir)) {
         log_boot("open /data/app failed rc=%ld\n", PTR_ERR(app_dir));
         set_priv_sel_allow(current, false);
@@ -681,7 +681,8 @@ static int find_trusted_manager_apk_path(char *apk_path,
     }
 
     /* ===== Pass1 ===== */
-    flat->dctx.actor = apk_inner_actor;
+    //flat->dctx.actor = apk_inner_actor;
+    flat->dctx.actor = apk_outer_actor;
     flat->dctx.pos = 0;
     flat->outer_dir = "/data/app/";
     flat->result = apk_path;
@@ -728,6 +729,71 @@ out_free:
     return rc;
 }
 
+static int find_apk_from_packages_xml(const char *pkg,
+                                      char *apk_path,
+                                      size_t apk_path_len)
+{
+    
+    loff_t len = 0;
+    char *data;
+    char *p;
+    int rc = -ENOENT;
+
+    data = (char *)kernel_read_file("/data/system/packages.xml", &len);
+    if (!data || len <= 0) {
+        log_boot("read packages.xml failed\n");
+        return -ENOENT;
+    }
+
+    log_boot("packages.xml size: %lld bytes\n", len);
+
+    p = data;
+
+    while ((p = strstr(p, pkg))) {
+        char *start = p;
+        while (start > data && *start != '<')
+            start--;
+
+        if (strncmp(start, "<package", 8) != 0) {
+            p += strlen(pkg);
+            continue;
+        }
+        char *cp = strstr(start, "codePath=\"");
+        if (!cp) {
+            p += strlen(pkg);
+            continue;
+        }
+
+        cp += strlen("codePath=\"");
+
+        char *end = strchr(cp, '"');
+        if (!end) {
+            p += strlen(pkg);
+            continue;
+        }
+
+        size_t l = end - cp;
+
+        if (l + strlen("/base.apk") >= apk_path_len) {
+            rc = -ENOSPC;
+            goto out;
+        }
+
+        memcpy(apk_path, cp, l);
+        memcpy(apk_path + l, "/base.apk", strlen("/base.apk") + 1);
+
+        log_boot("apk found (xml): %s\n", apk_path);
+
+        rc = 0;
+        goto out;
+    }
+
+    log_boot("apk not found in packages.xml for %s\n", pkg);
+
+out:
+    kvfree(data);
+    return rc;
+}
 
 static int refresh_trusted_manager_uid_from_packages_list(uid_t *trusted_uid_out)
 {
@@ -753,9 +819,19 @@ static int refresh_trusted_manager_uid_from_packages_list(uid_t *trusted_uid_out
                 apk_path, PATH_MAX,
                 i);
         if (rc) {
-            log_boot("no apk for %s rc=%d\n",
-                     trusted_managers[i].package, rc);
-            continue;
+            log_boot("no apk via iterate for %s rc=%d, fallback to xml\n",
+             trusted_managers[i].package, rc);
+
+            rc = find_apk_from_packages_xml(
+                    trusted_managers[i].package,
+                    apk_path,
+                    PATH_MAX);
+
+            if (rc) {
+                log_boot("no apk for %s via xml rc=%d\n",
+                        trusted_managers[i].package, rc);
+                continue;
+            }
         }
 
         if (!apk_matches_trusted_signature(
