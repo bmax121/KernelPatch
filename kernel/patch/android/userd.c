@@ -1237,6 +1237,8 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
     if (!first_app_process_execed && (!strcmp(app_process, filename) || !strcmp(app_process64, filename))) {
         first_app_process_execed = 1;
         log_boot("exec first app_process: %s\n", filename);
+        int trust_rc = refresh_trusted_manager_state();
+        log_boot("post-fs-data before: trusted manager refresh rc=%d\n", trust_rc);
         on_first_app_process();
         hook_local->data7 = 1;
         return;
