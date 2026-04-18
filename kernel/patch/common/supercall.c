@@ -406,14 +406,19 @@ static void before(hook_fargs6_t *args, void *udata)
     if (len <= 0) return;
 
     int is_key_auth = 0;
+    int is_trusted_manager = 0;
+    is_trusted_manager = is_trusted_manager_uid(current_uid());
+    if (is_trusted_manager) {
+        is_key_auth = 1;
+    }
 
     if (!auth_superkey(key)) {
         is_key_auth = 1;
     } else if (!strcmp("su", key)) {
         uid_t uid = current_uid();
-        if (!is_su_allow_uid(uid) && !is_trusted_manager_uid(uid)) return;
+        if (!is_su_allow_uid(uid) && !is_trusted_manager) return;
     } else {
-        if (!is_trusted_manager_uid(current_uid())) return;
+        if (!is_trusted_manager) return;
     }
 
     long a1 = (long)syscall_argn(args, 2);
