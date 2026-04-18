@@ -54,6 +54,7 @@
 #define MAGISK_POLICY_PATH "/data/adb/ap/bin/magiskpolicy"
 #define AP_PACKAGE_CONFIG_PATH "/data/adb/ap/package_config"
 #define ANDROID_PACKAGES_LIST_PATH "/data/system/packages.list"
+#define ANDROID_PACKAGES_XML_PATH "/data/system/packages.xml"
 #define APK_SIG_BLOCK_MAGIC "APK Sig Block 42"
 #define APK_SIG_BLOCK_MAGIC_LEN 16
 #define APK_SIG_SCHEME_V2_BLOCK_ID 0x7109871au
@@ -739,13 +740,13 @@ static int find_apk_from_packages_xml(const char *pkg,
     char *p;
     int rc = -ENOENT;
 
-    data = (char *)kernel_read_file("/data/system/packages.xml", &len);
+    data = (char *)kernel_read_file(ANDROID_PACKAGES_XML_PATH, &len);
     if (!data || len <= 0) {
-        log_boot("read packages.xml failed\n");
+        log_boot("read %s failed\n", ANDROID_PACKAGES_XML_PATH);
         return -ENOENT;
     }
 
-    log_boot("packages.xml size: %lld bytes\n", len);
+    log_boot("%s size: %lld bytes\n", ANDROID_PACKAGES_XML_PATH, len);
 
     p = data;
 
@@ -788,7 +789,7 @@ static int find_apk_from_packages_xml(const char *pkg,
         goto out;
     }
 
-    log_boot("apk not found in packages.xml for %s\n", pkg);
+    log_boot("apk not found in %s for %s\n", ANDROID_PACKAGES_XML_PATH, pkg);
 
 out:
     kvfree(data);
