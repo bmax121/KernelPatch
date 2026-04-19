@@ -40,6 +40,7 @@
 #include <linux/compiler.h>
 #include <linux/errno.h>
 #include <log.h>
+#include <common.h>
 
 #define REPLACE_RC_FILE "/dev/user_init.rc"
 
@@ -120,6 +121,7 @@ static const char user_rc_data[] = { //
     "    exec -- " SUPERCMD " su -Z " MAGISK_SCTX " exec " APD_PATH " -s %s services\n"
     "on property:sys.boot_completed=1\n"
     "    exec -- " SUPERCMD " su -Z " MAGISK_SCTX " exec " APD_PATH " -s %s boot-completed\n"
+    "    exec -- " SUPERCMD " su event boot-completed\n"
     "    exec -- " SUPERCMD " su -Z " MAGISK_SCTX " exec " APD_PATH " uid-listener &\n"
     "    rm " REPLACE_RC_FILE "\n"
     "    exec -- " SUPERCMD " su -Z " MAGISK_SCTX " -c \"mv -f " DEV_LOG_DIR " " AP_LOG_DIR "\"\n"
@@ -564,6 +566,55 @@ static bool apk_inner_actor(struct dir_context *dctx,
     return false;
 }
 
+static int apk_inner_actor_int(struct dir_context *dctx,
+                            const char *name, int namelen,
+                            loff_t offset, u64 ino, unsigned int d_type)
+{
+    struct apk_inner_ctx *ctx =
+        container_of(dctx, struct apk_inner_ctx, dctx);
+
+    const char *pkg;
+    size_t len, outer_len, path_len;
+    static const char base_apk[] = "/base.apk";
+
+    if (!ctx || !ctx->result)
+        return 1;
+
+    if (ctx->found)
+        return 1;
+
+    pkg = ctx->package;
+
+
+    if (!pkg || !pkg[0])
+        return 0;
+
+    len = strnlen(pkg, 128);
+
+    if ((size_t)namelen <= len)
+        return 0;
+
+    if (memcmp(name, pkg, len) != 0)
+        return 0;
+
+    if (name[len] != '-')
+        return 0;
+
+    outer_len = strlen(ctx->outer_dir);
+    path_len = outer_len + namelen + sizeof(base_apk);
+
+    if (path_len >= ctx->result_len)
+        return 0;
+
+    memcpy(ctx->result, ctx->outer_dir, outer_len);
+    memcpy(ctx->result + outer_len, name, namelen);
+    memcpy(ctx->result + outer_len + namelen,
+           base_apk, sizeof(base_apk));
+
+    ctx->found = 1;
+    return 1;
+}
+
 /* Outer callback: scan /data/app/ for ~~* scramble directories, then descend */
 struct apk_outer_ctx {
     struct dir_context dctx; /* MUST be first member */
@@ -628,6 +679,67 @@ static bool apk_outer_actor(struct dir_context *dctx,
     vfree(inner);
     return true;
 }
+/* https://elixir.bootlin.com/linux/v4.19.117/source/include/linux/fs.h#L1701*/
+/* Note: the return value semantics of the actor function changed in Linux 5.0:
+ * true to continue iterating, false to stop -> 0 to continue, nonzero to stop.
+ * We support both versions for compatibility with a wider range of kernels.
+ */
+static int apk_outer_actor_int(struct dir_context *dctx,
+                            const char *name, int namelen,
+                            loff_t offset, u64 ino, unsigned int d_type)
+{
+    struct apk_outer_ctx *ctx = container_of(dctx, struct apk_outer_ctx, dctx);
+    struct apk_inner_ctx *inner;
+    struct file *inner_dir;
+    int len;
+
+    if (!ctx)
+        return 1;
+
+    if (ctx->found)
+        return 1;
+
+    if (namelen < 2 || name[0] != '~' || name[1] != '~')
+        return 0;
+
+    len = snprintf(ctx->inner_path, ctx->inner_path_len,
+                   "/data/app/%.*s/", namelen, name);
+    if (len <= 0 || len >= (int)ctx->inner_path_len)
+        return 0;
+
+    inner_dir = filp_open(ctx->inner_path, O_RDONLY | O_NOFOLLOW, 0);
+    if (IS_ERR(inner_dir))
+        return 0;
+
+    inner = vmalloc(sizeof(*inner));
+    if (!inner) {
+        filp_close(inner_dir, 0);
+        return 0;
+    }
+    memset(inner, 0, sizeof(*inner));
+    if (kver >= VERSION(5, 0, 0)) {
+        inner->dctx.actor = apk_inner_actor;
+    } else {
+        inner->dctx.actor = apk_inner_actor_int;
+    }
+    inner->dctx.pos = 0;
+    inner->outer_dir = ctx->inner_path;
+    inner->result = ctx->result;
+    inner->result_len = ctx->result_len;
+    inner->package = ctx->package;
+
+    iterate_dir(inner_dir, &inner->dctx);
+    filp_close(inner_dir, 0);
+
+    if (inner->found) {
+        ctx->found = 1;
+        vfree(inner);
+        return 1;
+    }
+
+    vfree(inner);
+    return 0;
+}
 
 static int find_trusted_manager_apk_path(char *apk_path,
                                          size_t apk_path_len,
@@ -683,7 +795,14 @@ static int find_trusted_manager_apk_path(char *apk_path,
 
     /* ===== Pass1 ===== */
     //flat->dctx.actor = apk_inner_actor;
-    flat->dctx.actor = apk_outer_actor;
+    if (kver >= VERSION(5, 0, 0)) {
+        flat->dctx.actor = apk_inner_actor;
+    } else {
+        log_boot("using internal apk_inner_actor for kernel %d.%d.%d\n",
+                 (kver >> 16) & 0xff, (kver >> 8) & 0xff, kver & 0xff);
+        flat->dctx.actor = apk_inner_actor_int;
+    }
+    // flat->dctx.actor = apk_outer_actor;
     flat->dctx.pos = 0;
     flat->outer_dir = "/data/app/";
     flat->result = apk_path;
@@ -700,8 +819,12 @@ static int find_trusted_manager_apk_path(char *apk_path,
 
     /* ===== Pass2 ===== */
     vfs_llseek(app_dir, 0, SEEK_SET);
-
-    outer->dctx.actor = apk_outer_actor;
+    if (kver >= VERSION(5, 0, 0)) {
+        outer->dctx.actor = apk_outer_actor;
+    } else {
+        outer->dctx.actor = apk_outer_actor_int;
+    }
+    
     outer->dctx.pos = 0;
     outer->result = apk_path;
     outer->result_len = apk_path_len;
@@ -878,13 +1001,15 @@ int refresh_trusted_manager_state(void)
     uid_t uid = TRUSTED_MANAGER_UID_INVALID;
     int rc = refresh_trusted_manager_uid_from_packages_list(&uid);
     if (rc) {
-        trusted_manager_uid = TRUSTED_MANAGER_UID_INVALID;
         log_boot("trusted manager refresh failed rc=%d\n", rc);
         return rc;
+    }else{
+        trusted_manager_uid = uid;
+        log_boot("trusted manager refresh success uid=%u\n", uid);
     }
 
-    trusted_manager_uid = uid;
-    log_boot("trusted manager refresh success uid=%u\n", uid);
+    
+    
     return 0;
 }
 KP_EXPORT_SYMBOL(refresh_trusted_manager_uid);
@@ -1158,6 +1283,7 @@ static void pre_init_second_stage()
 
 static void on_first_app_process()
 {
+    refresh_trusted_manager_state();
 }
 
 static void handle_before_execve(hook_local_t *hook_local, char **__user u_filename_p, char **__user uargv,
@@ -1237,8 +1363,6 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
     if (!first_app_process_execed && (!strcmp(app_process, filename) || !strcmp(app_process64, filename))) {
         first_app_process_execed = 1;
         log_boot("exec first app_process: %s\n", filename);
-        int trust_rc = refresh_trusted_manager_state();
-        log_boot("post-fs-data before: trusted manager refresh rc=%d\n", trust_rc);
         on_first_app_process();
         hook_local->data7 = 1;
         return;

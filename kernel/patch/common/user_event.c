@@ -14,8 +14,8 @@ int report_user_event(const char *event, const char *args)
     const char *safe_args = args ? args : "";
 
     #ifdef ANDROID
-    if (lib_strcmp(safe_event, "post-fs-data") == 0 && lib_strcmp(safe_args, "before") == 0) {
-        log_boot("post-fs-data before: loading ap package config ...\n");
+    if (lib_strcmp(safe_event, "post-fs-data") == 0) {
+        log_boot("post-fs-data: loading ap package config ...\n");
         load_ap_package_config();
     }
     if (lib_strcmp(safe_event, "boot-completed") == 0) {
