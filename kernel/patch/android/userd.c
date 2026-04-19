@@ -679,8 +679,8 @@ static bool apk_outer_actor(struct dir_context *dctx,
     vfree(inner);
     return true;
 }
-/* https://elixir.bootlin.com/linux/v4.19.117/source/include/linux/fs.h#L1701*/
-/* Note: the return value semantics of the actor function changed in Linux 5.0:
+/* https://elixir.bootlin.com/linux/v6.0.19/source/include/linux/fs.h#L2049
+/* Note: the return value semantics of the actor function changed in Linux 6.1:
  * true to continue iterating, false to stop -> 0 to continue, nonzero to stop.
  * We support both versions for compatibility with a wider range of kernels.
  */
@@ -717,7 +717,7 @@ static int apk_outer_actor_int(struct dir_context *dctx,
         return 0;
     }
     memset(inner, 0, sizeof(*inner));
-    if (kver >= VERSION(5, 0, 0)) {
+    if (kver >= VERSION(6, 1, 0)) {
         inner->dctx.actor = apk_inner_actor;
     } else {
         inner->dctx.actor = apk_inner_actor_int;
@@ -795,11 +795,9 @@ static int find_trusted_manager_apk_path(char *apk_path,
 
     /* ===== Pass1 ===== */
     //flat->dctx.actor = apk_inner_actor;
-    if (kver >= VERSION(5, 0, 0)) {
+    if (kver >= VERSION(6, 1, 0)) {
         flat->dctx.actor = apk_inner_actor;
     } else {
-        log_boot("using internal apk_inner_actor for kernel %d.%d.%d\n",
-                 (kver >> 16) & 0xff, (kver >> 8) & 0xff, kver & 0xff);
         flat->dctx.actor = apk_inner_actor_int;
     }
     // flat->dctx.actor = apk_outer_actor;
@@ -819,7 +817,7 @@ static int find_trusted_manager_apk_path(char *apk_path,
 
     /* ===== Pass2 ===== */
     vfs_llseek(app_dir, 0, SEEK_SET);
-    if (kver >= VERSION(5, 0, 0)) {
+    if (kver >= VERSION(6, 1, 0)) {
         outer->dctx.actor = apk_outer_actor;
     } else {
         outer->dctx.actor = apk_outer_actor_int;

@@ -19,6 +19,9 @@ int report_user_event(const char *event, const char *args)
         load_ap_package_config();
     }
     if (lib_strcmp(safe_event, "boot-completed") == 0) {
+
+    }
+    if (lib_strcmp(safe_event, "uid_listener") == 0 && lib_strcmp(safe_args, "package-list-updated") == 0) {
         int trust_rc = refresh_trusted_manager_state();
         log_boot("boot-completed: trusted manager refresh rc=%d\n", trust_rc);
     }
