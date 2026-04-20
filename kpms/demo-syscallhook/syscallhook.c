@@ -70,7 +70,7 @@ void after_openat_1(hook_fargs4_t *args, void *udata)
     pr_info("hook_chain_1 after openat task: %llx\n", args->local.data0);
 }
 
-static long syscall_hook_demo_init(const char *args, const char *event, void *__user reserved)
+static long supercall_install_init(const char *args, const char *event, void *__user reserved)
 {
     margs = args;
     pr_info("kpm-syscall-hook-demo init ..., args: %s\n", margs);
@@ -109,13 +109,13 @@ out:
     return 0;
 }
 
-static long syscall_hook_control0(const char *args, char *__user out_msg, int outlen)
+static long supercall_install_control0(const char *args, char *__user out_msg, int outlen)
 {
     pr_info("syscall_hook control, args: %s\n", args);
     return 0;
 }
 
-static long syscall_hook_demo_exit(void *__user reserved)
+static long supercall_install_exit(void *__user reserved)
 {
     pr_info("kpm-syscall-hook-demo exit ...\n");
 
@@ -129,6 +129,6 @@ static long syscall_hook_demo_exit(void *__user reserved)
     return 0;
 }
 
-KPM_INIT(syscall_hook_demo_init);
-KPM_CTL0(syscall_hook_control0);
-KPM_EXIT(syscall_hook_demo_exit);
+KPM_INIT(supercall_install_init);
+KPM_CTL0(supercall_install_control0);
+KPM_EXIT(supercall_install_exit);

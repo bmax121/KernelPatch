@@ -45,6 +45,10 @@ jobs:
           mv kpimg.elf kpimg.elf-linux
           make clean
 
+          cd supercall
+          make
+          cd ..
+
           cd ..
           cd kpms
 
@@ -76,6 +80,7 @@ jobs:
           artifacts: |
             kernel/kpimg-linux
             kernel/kpimg-android
+            kernel/supercall/supercall.kpm
             kpms/demo-hello/demo-hello.kpm
             kpms/demo-inlinehook/demo-inlinehook.kpm
             kpms/demo-syscallhook/demo-syscallhook.kpm
