@@ -4,6 +4,7 @@
  */
 
 #include <ktypes.h>
+#include <ksyms.h>
 #include <uapi/scdefs.h>
 #include <hook.h>
 #include <common.h>
@@ -20,7 +21,6 @@
 #include <linux/sched.h>
 #include <linux/security.h>
 #include <syscall.h>
-#include <accctl.h>
 #include <module.h>
 #include <kputils.h>
 #include <linux/err.h>
@@ -46,6 +46,13 @@ KPM_VERSION("1.0.0");
 KPM_LICENSE("GPL v2");
 KPM_AUTHOR("bmax121");
 KPM_DESCRIPTION("Don't remove!!!");
+
+
+char *kfunc_def(strndup_user)(const char __user *, long) = 0;
+void *kfunc_def(memdup_user)(const void __user *, size_t) = 0;
+void *kfunc_def(vmemdup_user)(const void __user *, size_t) = 0;
+void *kfunc_def(memdup_user_nul)(const void __user *, size_t) = 0;
+void kfunc_def(kvfree)(const void *addr) = 0;
 
 static long call_test(long arg1, long arg2, long arg3)
 {
@@ -454,9 +461,14 @@ out:
 
 
 const char *margs = 0;
+extern int dmesg_restrict;
 static long supercall_install_init(const char *args, const char *event, void *__user reserved)
 {
+    kfunc_match(memdup_user, name, addr);
+    kfunc_match(strndup_user, name, addr);
+    kfunc_match(kvfree, name, addr);
     pr_info("kpm-syscall-hook-demo init ..., args: %s\n", margs);
+    return supercall_install();
 }
 
 static long supercall_install_control0(const char *args, char *__user out_msg, int outlen)

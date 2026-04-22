@@ -11,6 +11,7 @@
 #include <module.h>
 #include <predata.h>
 #include <linux/string.h>
+#include <symbol.h>
 
 void print_bootlog()
 {
@@ -30,6 +31,7 @@ void print_bootlog()
         }
     }
 }
+KP_EXPORT_SYMBOL(print_bootlog);
 
 void before_panic(hook_fargs12_t *args, void *udata)
 {

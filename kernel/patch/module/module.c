@@ -481,6 +481,7 @@ out:
     rcu_read_unlock();
     return rc;
 }
+KP_EXPORT_SYMBOL(unload_module);
 
 long load_module_path(const char *path, const char *args, void *__user reserved)
 {
@@ -521,6 +522,7 @@ free:
 out:
     return rc;
 }
+KP_EXPORT_SYMBOL(load_module_path);
 
 long module_control0(const char *name, const char *ctl_args, char *__user out_msg, int outlen)
 {
@@ -562,6 +564,7 @@ out:
     rcu_read_unlock();
     return rc;
 }
+KP_EXPORT_SYMBOL(module_control0);
 
 long module_control1(const char *name, void *a1, void *a2, void *a3)
 {
@@ -616,6 +619,7 @@ int get_module_nums()
     logkfd("%d\n", n);
     return n;
 }
+KP_EXPORT_SYMBOL(get_module_nums);
 
 int list_modules(char *out_names, int size)
 {
@@ -632,6 +636,7 @@ int list_modules(char *out_names, int size)
     rcu_read_unlock();
     return off;
 }
+KP_EXPORT_SYMBOL(list_modules);
 
 int get_module_info(const char *name, char *out_info, int size)
 {
@@ -657,6 +662,7 @@ int get_module_info(const char *name, char *out_info, int size)
     rcu_read_unlock();
     return sz;
 }
+KP_EXPORT_SYMBOL(get_module_info);
 
 void module_init()
 {

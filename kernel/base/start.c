@@ -123,6 +123,7 @@ void log_boot(const char *fmt, ...)
     printk("KP %s", boot_log + boot_log_offset);
     boot_log_offset += ret;
 }
+KP_EXPORT_SYMBOL(log_boot);
 
 uint64_t *pgtable_entry(uint64_t pgd, uint64_t va)
 {

@@ -24,9 +24,12 @@
 #include <security/selinux/include/avc.h>
 #include <security/selinux/include/security.h>
 #include <predata.h>
+#include <symbol.h>
 #include <linux/slab.h>
 
 char all_allow_sctx[SUPERCALL_SCONTEXT_LEN] = { '\0' };
+KP_EXPORT_SYMBOL(all_allow_sctx);
+
 uint32_t all_allow_sid = SECSID_NULL;
 
 static void su_cred(struct cred *cred, uid_t uid)
@@ -67,6 +70,7 @@ int set_all_allow_sctx(const char *sctx)
     }
     return rc;
 }
+KP_EXPORT_SYMBOL(set_all_allow_sctx);
 
 int commit_kernel_su()
 {
@@ -123,6 +127,7 @@ int commit_su(uid_t to_uid, const char *sctx)
         return commit_common_su(to_uid, sctx);
     }
 }
+KP_EXPORT_SYMBOL(commit_su);
 
 // todo: rcu
 int task_su(pid_t pid, uid_t to_uid, const char *sctx)
@@ -169,6 +174,7 @@ int task_su(pid_t pid, uid_t to_uid, const char *sctx)
 out:
     return rc;
 }
+KP_EXPORT_SYMBOL(task_su);
 
 static int (*avc_denied_backup)(struct selinux_state *state, void *ssid, void *tsid, void *tclass, void *requested,
                                 void *driver, void *xperm, void *flags, struct av_decision *avd) = 0;

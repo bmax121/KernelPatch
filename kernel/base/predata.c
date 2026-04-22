@@ -54,17 +54,20 @@ int auth_superkey(const char *key)
 out:
     return !!rc;
 }
+KP_EXPORT_SYMBOL(auth_superkey);
 
 void reset_superkey(const char *key)
 {
     lib_strlcpy(superkey, key, SUPER_KEY_LEN);
     dsb(ish);
 }
+KP_EXPORT_SYMBOL(reset_superkey);
 
 void enable_auth_root_key(bool enable)
 {
     enable_root_key = enable;
 }
+KP_EXPORT_SYMBOL(enable_auth_root_key);
 
 uint64_t rand_next()
 {
@@ -76,11 +79,13 @@ const char *get_superkey()
 {
     return superkey;
 }
+KP_EXPORT_SYMBOL(get_superkey);
 
 const char *get_build_time()
 {
     return setup_header->compile_time;
 }
+KP_EXPORT_SYMBOL(get_build_time);
 
 int on_each_extra_item(int (*callback)(const patch_extra_item_t *extra, const char *arg, const void *con, void *udata),
                        void *udata)
