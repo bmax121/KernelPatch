@@ -104,6 +104,11 @@ int on_each_extra_item(int (*callback)(const patch_extra_item_t *extra, const ch
     return rc;
 }
 
+int has_preset_superkey()
+{
+    return start_preset.superkey[0] == '\0';
+}
+
 void predata_init()
 {
     superkey = (char *)start_preset.superkey;
