@@ -190,6 +190,9 @@ KP_EXPORT_SYMBOL(su_get_path);
 
 static void handle_before_execve(char **__user u_filename_p, char **__user uargv, void *udata)
 {
+    uid_t uid = current_uid();
+    if (!is_su_allow_uid(uid)) return;
+
     char __user *ufilename = *u_filename_p;
     char filename[SU_PATH_MAX_LEN];
     int flen = compat_strncpy_from_user(filename, ufilename, sizeof(filename));
