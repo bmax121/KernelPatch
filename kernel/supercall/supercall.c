@@ -61,7 +61,7 @@ static long call_test(long arg1, long arg2, long arg3)
 
 static long call_bootlog()
 {
-    print_bootlog();
+    //TODO: log to dmesg
     return 0;
 }
 
@@ -451,7 +451,7 @@ int supercall_install()
 
     hook_err_t err = hook_syscalln(__NR_supercall, 6, before, 0, 0);
     if (err) {
-        log_boot("install supercall hook error: %d\n", err);
+        pr_err("install supercall hook error: %d\n", err);
         rc = err;
         goto out;
     }
