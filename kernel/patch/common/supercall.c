@@ -435,7 +435,13 @@ int supercall_install()
 
     hook_err_t err = hook_syscalln(__NR_supercall, 6, before, 0, 0);
     if (err) {
-        log_boot("install supercall hook error: %d\n", err);
+        log_boot("install supercall 64-bit hook error: %d\n", err);
+        rc = err;
+        goto out;
+    }
+    err = hook_compat_syscalln(92, 6, before, 0, 0); // __NR_truncate == __NR_supercall for 32-bit
+    if (err) {
+        log_boot("install supercall 32-bit hook error: %d\n", err);
         rc = err;
         goto out;
     }
