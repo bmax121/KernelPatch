@@ -247,14 +247,28 @@ static long call_su_set_allow_sctx(char *__user usctx)
     return set_all_allow_sctx(buf);
 }
 
-static long call_kstorage_read(int gid, long did, void *out_data, int offset, int dlen)
+struct data_item {
+    void *data;
+    int dlen;
+    int offset;
+};
+
+static long call_kstorage_read(int gid, long did, struct data_item *out_data_item)
 {
-    return read_kstorage(gid, did, out_data, offset, dlen, true);
+    struct data_item *item = memdup_user(out_data_item, sizeof(*item));
+    if (!item || IS_ERR(item)) return PTR_ERR(item);
+    long rc = read_kstorage(gid, did, item->data, item->offset, item->dlen, true);
+    kvfree(item);
+    return rc;
 }
 
-static long call_kstorage_write(int gid, long did, void *data, int offset, int dlen)
+static long call_kstorage_write(int gid, long did, struct data_item *in_data_item)
 {
-    return write_kstorage(gid, did, data, offset, dlen, true);
+    struct data_item *item = memdup_user(in_data_item, sizeof(*item));
+    if (!item || IS_ERR(item)) return PTR_ERR(item);
+    long rc = write_kstorage(gid, did, item->data, item->offset, item->dlen, true);
+    kvfree(item);
+    return rc;
 }
 
 static long call_list_kstorage_ids(int gid, long *ids, int ids_len)
@@ -311,12 +325,10 @@ static long supercall(int is_key_auth, long cmd, long arg1, long arg2, long arg3
         return call_su_get_allow_sctx((char *__user)arg1, (int)arg2);
     case SUPERCALL_SU_SET_ALLOW_SCTX:
         return call_su_set_allow_sctx((char *__user)arg1);
-
     case SUPERCALL_KSTORAGE_READ:
-        return call_kstorage_read((int)arg1, (long)arg2, (void *)arg3, (int)((long)arg4 >> 32), (long)arg4 << 32 >> 32);
+        return call_kstorage_read((int)arg1, (long)arg2, (struct data_item *)arg3);
     case SUPERCALL_KSTORAGE_WRITE:
-        return call_kstorage_write((int)arg1, (long)arg2, (void *)arg3, (int)((long)arg4 >> 32),
-                                   (long)arg4 << 32 >> 32);
+        return call_kstorage_write((int)arg1, (long)arg2, (struct data_item *)arg3);
     case SUPERCALL_KSTORAGE_LIST_IDS:
         return call_list_kstorage_ids((int)arg1, (long *)arg2, (int)arg3);
     case SUPERCALL_KSTORAGE_REMOVE:
