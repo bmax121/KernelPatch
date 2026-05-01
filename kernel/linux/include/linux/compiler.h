@@ -23,6 +23,7 @@
  * required ordering.
  */
 
+#ifndef READ_ONCE
 #define READ_ONCE(x)                                \
     ({                                              \
         union                                       \
@@ -33,13 +34,16 @@
         __read_once_size(&(x), __u.__c, sizeof(x)); \
         __u.__val;                                  \
     })
+#endif
 
+#ifndef WRITE_ONCE
 #define WRITE_ONCE(x, val)                              \
     ({                                                  \
         typeof(x) __val = (val);                        \
         __write_once_size(&(x), &__val, sizeof(__val)); \
         __val;                                          \
     })
+#endif
 
 /*
  * Prevent the compiler from merging or refetching accesses.  The compiler
