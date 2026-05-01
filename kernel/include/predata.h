@@ -15,6 +15,7 @@ extern setup_header_t *setup_header;
 int auth_superkey(const char *key);
 void reset_superkey(const char *key);
 void enable_auth_root_key(bool enable);
+int has_preset_superkey();
 const char *get_superkey();
 const char *get_build_time();
 uint64_t rand_next();
