@@ -56,11 +56,16 @@ int32_t try_get_symbol_offset_zero(kallsym_t *info, char *img, char *symbol)
 }
 
 // todo
-void select_map_area(kallsym_t *kallsym, char *image_buf, int32_t *map_start, int32_t *max_size)
+void select_map_area(kallsym_t *kallsym, char *image_buf, int32_t *map_start, int32_t *max_size, bool is_gki)
 {
     int32_t addr = 0x200;
     addr = get_symbol_offset_exit(kallsym, image_buf, "tcp_init_sock");
-    
+    if (!is_gki){
+        // For non-GKI kernels, we can directly use the area starting from tcp_init_sock for mapping, as it is less likely to have PAC instructions.
+        *map_start = align_ceil(addr, 16);
+        *max_size = 0x800;
+        return;
+    }
     *map_start = align_floor(addr, 16);
     *max_size = 0x800;
 
