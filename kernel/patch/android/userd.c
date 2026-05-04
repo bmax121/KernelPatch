@@ -94,8 +94,6 @@ static const struct trusted_manager_entry trusted_managers[] = {
 };
 
 static uid_t trusted_manager_uid = TRUSTED_MANAGER_UID_INVALID;
-static int global_pkg_pos = 0;
-
 
 static const char ORIGIN_RC_FILES[][64] = {
     "/system/etc/init/hw/init.rc",
@@ -155,21 +153,7 @@ out:
     return data;
 }
 
-static int path_has_suffix(const char *path, const char *suffix)
-{
-    size_t path_len;
-    size_t suffix_len;
-    if (!path || !suffix) return 0;
-    path_len = strlen(path);
-    suffix_len = strlen(suffix);
-    if (path_len < suffix_len) return 0;
-    return strcmp(path + path_len - suffix_len, suffix) == 0;
-}
 
-static int path_is_exact(const char *path, const char *target)
-{
-    return path && target && strcmp(path, target) == 0;
-}
 
 static int read_le32(struct file *fp, loff_t *pos, uint32_t *out)
 {
@@ -256,38 +240,6 @@ static int apk_sig_block_matches_trusted_digest(struct file *fp, uint32_t *size4
 
     kvfree(cert_buf);
     return 1;
-}
-
-static int apk_has_v1_signature_file(struct file *fp)
-{
-    static const char manifest[] = "META-INF/MANIFEST.MF";
-    struct zip_entry_header header;
-    loff_t pos = 0;
-
-    while (kernel_read(fp, &header, sizeof(header), &pos) == sizeof(header)) {
-        if (header.signature != 0x04034b50u) {
-            return 0;
-        }
-
-        if (header.file_name_length == sizeof(manifest) - 1) {
-            char file_name[sizeof(manifest)];
-            if (kernel_read(fp, file_name, header.file_name_length, &pos) != header.file_name_length) {
-                return 0;
-            }
-            file_name[header.file_name_length] = '\0';
-            if (strncmp(file_name, manifest, sizeof(manifest) - 1) == 0) {
-                return 1;
-            }
-        } else if (skip_bytes(&pos, header.file_name_length)) {
-            return 0;
-        }
-
-        if (skip_bytes(&pos, (uint64_t)header.extra_field_length + header.compressed_size)) {
-            return 0;
-        }
-    }
-
-    return 0;
 }
 
 static int apk_matches_trusted_signature(const char *path, const uint8_t *expected_digest)
@@ -566,9 +518,9 @@ static bool apk_inner_actor(struct dir_context *dctx,
     return false;
 }
 
-static int apk_inner_actor_int(struct dir_context *dctx,
-                            const char *name, int namelen,
-                            loff_t offset, u64 ino, unsigned int d_type)
+static bool apk_inner_actor_int(struct dir_context *dctx,
+                             const char *name, int namelen,
+                             loff_t offset, u64 ino, unsigned int d_type)
 {
     struct apk_inner_ctx *ctx =
         container_of(dctx, struct apk_inner_ctx, dctx);
@@ -578,33 +530,33 @@ static int apk_inner_actor_int(struct dir_context *dctx,
     static const char base_apk[] = "/base.apk";
 
     if (!ctx || !ctx->result)
-        return 1;
+        return true;
 
     if (ctx->found)
-        return 1;
+        return true;
 
     pkg = ctx->package;
 
 
     if (!pkg || !pkg[0])
-        return 0;
+        return false;
 
     len = strnlen(pkg, 128);
 
     if ((size_t)namelen <= len)
-        return 0;
+        return false;
 
     if (memcmp(name, pkg, len) != 0)
-        return 0;
+        return false;
 
     if (name[len] != '-')
-        return 0;
+        return false;
 
     outer_len = strlen(ctx->outer_dir);
     path_len = outer_len + namelen + sizeof(base_apk);
 
     if (path_len >= ctx->result_len)
-        return 0;
+        return false;
 
     memcpy(ctx->result, ctx->outer_dir, outer_len);
     memcpy(ctx->result + outer_len, name, namelen);
@@ -612,7 +564,7 @@ static int apk_inner_actor_int(struct dir_context *dctx,
            base_apk, sizeof(base_apk));
 
     ctx->found = 1;
-    return 1;
+    return true;
 }
 
 /* Outer callback: scan /data/app/ for ~~* scramble directories, then descend */
@@ -679,14 +631,14 @@ static bool apk_outer_actor(struct dir_context *dctx,
     vfree(inner);
     return true;
 }
-/* https://elixir.bootlin.com/linux/v6.0.19/source/include/linux/fs.h#L2049
+// https://elixir.bootlin.com/linux/v6.0.19/source/include/linux/fs.h#L2049
 /* Note: the return value semantics of the actor function changed in Linux 6.1:
  * true to continue iterating, false to stop -> 0 to continue, nonzero to stop.
  * We support both versions for compatibility with a wider range of kernels.
  */
-static int apk_outer_actor_int(struct dir_context *dctx,
-                            const char *name, int namelen,
-                            loff_t offset, u64 ino, unsigned int d_type)
+static bool apk_outer_actor_int(struct dir_context *dctx,
+                             const char *name, int namelen,
+                             loff_t offset, u64 ino, unsigned int d_type)
 {
     struct apk_outer_ctx *ctx = container_of(dctx, struct apk_outer_ctx, dctx);
     struct apk_inner_ctx *inner;
@@ -694,27 +646,27 @@ static int apk_outer_actor_int(struct dir_context *dctx,
     int len;
 
     if (!ctx)
-        return 1;
+        return true;
 
     if (ctx->found)
-        return 1;
+        return true;
 
     if (namelen < 2 || name[0] != '~' || name[1] != '~')
-        return 0;
+        return false;
 
     len = snprintf(ctx->inner_path, ctx->inner_path_len,
                    "/data/app/%.*s/", namelen, name);
     if (len <= 0 || len >= (int)ctx->inner_path_len)
-        return 0;
+        return false;
 
     inner_dir = filp_open(ctx->inner_path, O_RDONLY | O_NOFOLLOW, 0);
     if (IS_ERR(inner_dir))
-        return 0;
+        return false;
 
     inner = vmalloc(sizeof(*inner));
     if (!inner) {
         filp_close(inner_dir, 0);
-        return 0;
+        return false;
     }
     memset(inner, 0, sizeof(*inner));
     if (kver >= VERSION(6, 1, 0)) {
@@ -734,11 +686,11 @@ static int apk_outer_actor_int(struct dir_context *dctx,
     if (inner->found) {
         ctx->found = 1;
         vfree(inner);
-        return 1;
+        return true;
     }
 
     vfree(inner);
-    return 0;
+    return false;
 }
 
 static int find_trusted_manager_apk_path(char *apk_path,
