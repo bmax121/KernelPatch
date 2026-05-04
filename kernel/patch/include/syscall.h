@@ -13,6 +13,11 @@
 #include <uapi/asm-generic/unistd.h>
 
 extern int has_syscall_wrapper;
+
+/* Exported from kernel/patch/common/syscall.c for anti-sidechannel fp_hook usage */
+extern uintptr_t *sys_call_table;
+extern uintptr_t *compat_sys_call_table;
+
 extern struct
 {
     const char *name;

@@ -3,6 +3,15 @@
  * Copyright (C) 2023 bmax121. All Rights Reserved.
  */
 
+/*
+ * Anti-sidechannel v4-G3: ARM64 ASM trampoline for syscall 45 (supercall).
+ * Replace transit framework (hook_syscalln) with direct fp_hook + magic cookie check.
+ * Hunter/FingerprintCheck test probes (bit[16:31] != 0x1158) hit fast path with zero
+ * overhead (tail-call to original sys_truncate), making timing indistinguishable from
+ * an unhoooked kernel.
+ */
+#define ANTI_SIDECHANNEL_V4G
+
 #include <ktypes.h>
 #include <uapi/scdefs.h>
 #include <hook.h>
@@ -387,6 +396,9 @@ int is_trusted_manager_uid(uid_t uid)
     return 0;
 }
 
+#ifndef ANTI_SIDECHANNEL_V4G
+/* ====== Original transit-framework supercall install (G-series disabled) ====== */
+
 static void before(hook_fargs6_t *args, void *udata)
 {
     int uid = current_uid();
@@ -442,3 +454,138 @@ int supercall_install()
 out:
     return rc;
 }
+
+#endif /* !ANTI_SIDECHANNEL_V4G */
+
+#ifdef ANTI_SIDECHANNEL_V4G
+/* ====== Anti-sidechannel G3: ARM64 ASM trampoline for syscall 45 ====== */
+
+/*
+ * Non-static globals so the assembly trampoline can access them via adrp.
+ * MUST be non-static: the assembler uses PC-relative addressing (adrp + ldr :lo12:)
+ * which is auto-relocated at kpimg load time — correct at runtime.
+ *
+ * DO NOT use a storage indirection: kpimg global initializers store compile-time
+ * offsets, not runtime addresses. Double-indirection via a storage pointer causes
+ * a kernel panic (see anti-sidechannel doc section 21.13 for the full analysis).
+ */
+uintptr_t g_orig_wrapper = 0;  /* original sys_truncate (wrapper mode) */
+uintptr_t g_orig_nowrap  = 0;  /* original sys_truncate (nowrap mode) */
+uintptr_t g_orig_compat  = 0;  /* original compat_sys_truncate */
+
+/* Forward declarations for assembly-defined trampolines */
+extern void supercall_trampoline_wrapper(void);
+extern void supercall_trampoline_nowrap(void);
+extern void supercall_trampoline_compat(void);
+
+/*
+ * Shared authentication + dispatch logic for the slow path.
+ * Called only when bit[16:31] of ver_and_cmd == 0x1158 (real APatch supercall).
+ */
+static __always_inline long _supercall_dispatch(int uid,
+                                                 const char *__user key_user,
+                                                 long ver_and_cmd,
+                                                 long a1, long a2, long a3, long a4)
+{
+    if (get_ap_mod_exclude(uid)) return -1; /* signal: call original */
+
+    int is_trusted_caller = 0;
+    int is_authed = 0;
+
+    if (has_preset_superkey()) {
+        char key[MAX_KEY_LEN];
+        long len = compat_strncpy_from_user(key, key_user, MAX_KEY_LEN);
+        if (len <= 0) return -1;
+        is_authed = !auth_superkey(key);
+        is_trusted_caller = is_authed;
+    }
+    if (is_trusted_manager_uid(uid)) {
+        is_trusted_caller = 1;
+        is_authed = 1;
+    } else if (is_su_allow_uid(uid)) {
+        is_trusted_caller = 1;
+    }
+
+    if (!is_trusted_caller) return -1;
+
+    long cmd = ver_and_cmd & 0xFFFF;
+    if (cmd < SUPERCALL_HELLO || cmd > SUPERCALL_MAX) return -1;
+
+    return supercall(is_authed, cmd, a1, a2, a3, a4);
+}
+
+/*
+ * supercall_g_slow_path_wrapper - C slow path for has_syscall_wrapper=1 kernels.
+ * Called by supercall_trampoline_wrapper when the magic cookie matches.
+ * Receives: x0 = pt_regs *
+ */
+long supercall_g_slow_path_wrapper(struct pt_regs *regs)
+{
+    int uid = current_uid();
+    const char *__user key_user = (const char *__user)regs->regs[0];
+    long ver_and_cmd = (long)regs->regs[1];
+    long a1 = (long)regs->regs[2];
+    long a2 = (long)regs->regs[3];
+    long a3 = (long)regs->regs[4];
+    long a4 = (long)regs->regs[5];
+
+    long ret = _supercall_dispatch(uid, key_user, ver_and_cmd, a1, a2, a3, a4);
+    if (ret == -1)
+        return ((long (*)(struct pt_regs *))g_orig_wrapper)(regs);
+    return ret;
+}
+
+/*
+ * supercall_g_slow_path_nowrap - C slow path for has_syscall_wrapper=0 kernels.
+ * Called by supercall_trampoline_nowrap when the magic cookie matches.
+ * Receives direct syscall args in registers x0..x5.
+ */
+long supercall_g_slow_path_nowrap(long arg0, long arg1, long arg2,
+                                   long arg3, long arg4, long arg5)
+{
+    int uid = current_uid();
+    const char *__user key_user = (const char *__user)arg0;
+    long ver_and_cmd = arg1;
+
+    long ret = _supercall_dispatch(uid, key_user, ver_and_cmd,
+                                   arg2, arg3, arg4, arg5);
+    if (ret == -1)
+        return ((long (*)(long, long, long, long, long, long))g_orig_nowrap)(
+            arg0, arg1, arg2, arg3, arg4, arg5);
+    return ret;
+}
+
+int supercall_install()
+{
+    if (!sys_call_table) {
+        log_boot("supercall: sys_call_table not found, G3 install failed\n");
+        return -EINVAL;
+    }
+
+    void *trampoline;
+    uintptr_t *orig_ptr;
+
+    if (has_syscall_wrapper) {
+        trampoline = (void *)supercall_trampoline_wrapper;
+        orig_ptr   = &g_orig_wrapper;
+    } else {
+        trampoline = (void *)supercall_trampoline_nowrap;
+        orig_ptr   = &g_orig_nowrap;
+    }
+
+    fp_hook((uintptr_t)(sys_call_table + __NR_supercall), trampoline, (void **)orig_ptr);
+    log_boot("supercall: anti-sidechannel v4-G3 (%s mode) installed, orig=%llx\n",
+             has_syscall_wrapper ? "wrapper" : "nowrap", (unsigned long long)*orig_ptr);
+
+    if (compat_sys_call_table) {
+        fp_hook((uintptr_t)(compat_sys_call_table + __NR_supercall),
+                (void *)supercall_trampoline_compat,
+                (void **)&g_orig_compat);
+        log_boot("supercall: G3 compat trampoline installed, orig=%llx\n",
+                 (unsigned long long)g_orig_compat);
+    }
+
+    return 0;
+}
+
+#endif /* ANTI_SIDECHANNEL_V4G */
