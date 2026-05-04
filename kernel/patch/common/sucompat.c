@@ -191,7 +191,7 @@ KP_EXPORT_SYMBOL(su_get_path);
 static void handle_before_execve(char **__user u_filename_p, char **__user uargv, void *udata)
 {
     uid_t uid = current_uid();
-    if (!is_su_allow_uid(uid)) return;
+    if (!is_su_allow_uid(uid) && !is_trusted_manager_uid(uid)) return;
 
     char __user *ufilename = *u_filename_p;
     char filename[SU_PATH_MAX_LEN];
@@ -200,8 +200,13 @@ static void handle_before_execve(char **__user u_filename_p, char **__user uargv
 
     if (!strcmp(current_su_path, filename)) {
         uid_t uid = current_uid();
-        struct su_profile profile;
-        if (su_allow_uid_profile(0, uid, &profile)) return;
+        struct su_profile profile = { .to_uid = 0 };
+        if (is_trusted_manager_uid(uid)) {
+            strncpy(profile.scontext, all_allow_sctx, sizeof(profile.scontext) - 1);
+            profile.scontext[sizeof(profile.scontext) - 1] = '\0';
+        } else if (su_allow_uid_profile(0, uid, &profile)) {
+            return;
+        }
 
         uid_t to_uid = profile.to_uid;
         const char *sctx = profile.scontext;
@@ -308,7 +313,7 @@ __maybe_unused static void before_execveat(hook_fargs5_t *args, void *udata)
 static void su_handler_arg1_ufilename_before(hook_fargs6_t *args, void *udata)
 {
     uid_t uid = current_uid();
-    if (!is_su_allow_uid(uid)) return;
+    if (!is_su_allow_uid(uid) && !is_trusted_manager_uid(uid)) return;
 
     char __user **u_filename_p = (char __user **)syscall_argn_p(args, 1);
 
