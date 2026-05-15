@@ -157,6 +157,14 @@ static int get_cand_arr_symbol_offset_zero(kallsym_t *kallsym, char *img_buf, ch
 int fillin_patch_config(kallsym_t *kallsym, char *img_buf, int imglen, patch_config_t *symbol, int32_t target_is_be,
                         bool is_android)
 {
+    symbol->kallsyms_lookup_name = get_symbol_offset_zero(kallsym, img_buf, "kallsyms_lookup_name");
+    if (!symbol->kallsyms_lookup_name) {
+        symbol->kallsyms_lookup_name = find_suffixed_symbol(kallsym, img_buf, "kallsyms_lookup_name");
+    }
+    symbol->printk = get_symbol_offset_zero(kallsym, img_buf, "printk");
+    if (!symbol->printk) symbol->printk = get_symbol_offset_zero(kallsym, img_buf, "_printk");
+    if (!symbol->printk) tools_loge_exit("no symbol printk");
+
     symbol->panic = get_symbol_offset_zero(kallsym, img_buf, "panic");
 
     symbol->rest_init = try_get_symbol_offset_zero(kallsym, img_buf, "rest_init");

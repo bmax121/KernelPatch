@@ -753,7 +753,6 @@ int repack_bootimg(const char *orig_boot_path,
 
     uint32_t header_ver = hdr.unused[0]; 
     if (header_ver > 10){header_ver = 0;extracted_size = hdr.unused[0];}
-    //if (header_ver == 0){tools_loge_exit("we don't support this device any more\n");}
     uint32_t page_size = (header_ver >= 3) ? 4096 : hdr.page_size;
     uint32_t fmt_size =  (header_ver >= 3) ? hdr.kernel_addr : hdr.ramdisk_size;
 

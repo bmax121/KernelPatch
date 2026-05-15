@@ -270,6 +270,7 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
     // apply relocations
     int32_t max_offset = imglen - 8;
     int32_t apply_num = 0;
+    int32_t bad_offset_num = 0;
     for (cand = cand_start; cand < cand_end; cand += 24) {
         uint64_t r_offset = uint_unpack(img + cand, 8, info->is_be);
         uint64_t r_info = uint_unpack(img + cand + 8, 8, info->is_be);
@@ -282,9 +283,8 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
 
         int32_t offset = r_offset - kernel_va;
         if (offset < 0 || offset >= max_offset) {
-            tools_logw("bad rela offset: 0x%" PRIx64 "\n", r_offset);
-            info->try_relo = 0;
-            return -1;
+            bad_offset_num++;
+            continue;
         }
 
         uint32_t r_type = r_info & 0xffffffff;
@@ -299,6 +299,9 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
     }
     if (apply_num) apply_num--;
     tools_logi("apply 0x%08x relocation entries\n", apply_num);
+    if (bad_offset_num) {
+        tools_logw("ignore 0x%08x out-of-range relocation entries\n", bad_offset_num);
+    }
 
     if (apply_num) info->relo_applied = 1;
 
@@ -381,7 +384,13 @@ static int find_approx_offsets(kallsym_t *info, char *img, int32_t imglen)
     int32_t zero_offset_num = 0;
     for (; cand < imglen - KSYM_MIN_NEQ_SYMS * elem_size; cand += elem_size) {
         int64_t offset = int_unpack(img + cand, elem_size, info->is_be);
-        if (offset == prev_offset) { // 0 offset
+        if (!sym_num) {
+            if (!offset) continue;
+            prev_offset = offset;
+            sym_num++;
+            continue;
+        }
+        if (offset == prev_offset) {
             continue;
         } else if (offset > prev_offset) {
             prev_offset = offset;
@@ -430,11 +439,17 @@ static int find_approx_offsets(kallsym_t *info, char *img, int32_t imglen)
 static int32_t find_approx_addresses_or_offset(kallsym_t *info, char *img, int32_t imglen)
 {
     int32_t ret = 0;
-    if (info->version.major > 4 || (info->version.major == 4 && info->version.minor >= 6)) {
-        // may have kallsyms_relative_base
+    if (info->arch == ARM64 && info->is_64) {
+        /*
+         * Vendor arm64 kernels can carry kallsyms_offsets even on older
+         * version strings such as 4.4, so don't gate the relative-base path
+         * purely on the reported kernel version.
+         */
+        tools_logi("try kallsyms_offsets first for arm64\n");
         ret = find_approx_offsets(info, img, imglen);
         if (!ret) return 0;
     }
+    tools_logi("fallback to kallsyms_addresses scan\n");
     ret = find_approx_addresses(info, img, imglen);
     return ret;
 }
@@ -551,37 +566,59 @@ static int is_symbol_name_pos(kallsym_t *info, char *img, int32_t pos, char *sym
     return (int32_t)strlen(symbol) == symidx;
 }
 
+static int verify_names_candidate(kallsym_t *info, char *img, int32_t marker_elem_size, int32_t cand)
+{
+    int32_t pos = cand;
+    int32_t test_marker_num = KSYM_FIND_NAMES_USED_MARKER; // check n * 256 symbols
+
+    for (int32_t i = 0;; i++) {
+        int32_t len = *(uint8_t *)(img + pos++);
+        if (len > 0x7F) len = (len & 0x7F) + (*(uint8_t *)(img + pos++) << 7);
+        if (!len || len >= KSYM_SYMBOL_LEN) return -1;
+        pos += len;
+        if (pos >= info->kallsyms_markers_offset) return -1;
+
+        if (i && (i & 0xFF) == 0xFF) { // every 256 symbols
+            int32_t mark_len = int_unpack(img + info->kallsyms_markers_offset + ((i >> 8) + 1) * marker_elem_size,
+                                          marker_elem_size, info->is_be);
+            if (pos - cand != mark_len) return -1;
+            if (!--test_marker_num) return 0;
+        }
+    }
+}
+
 static int find_names(kallsym_t *info, char *img, int32_t imglen)
 {
     int32_t marker_elem_size = get_markers_elem_size(info);
-    // int32_t cand = info->_approx_addresses_or_offsets_offset;
-    int32_t cand = 0x4000;
-    int32_t test_marker_num = -1;
-    for (; cand < info->kallsyms_markers_offset; cand++) {
-        int32_t pos = cand;
-        test_marker_num = KSYM_FIND_NAMES_USED_MARKER; // check n * 256 symbols
-        for (int32_t i = 0;; i++) {
-            int32_t len = *(uint8_t *)(img + pos++);
-            if (len > 0x7F) len = (len & 0x7F) + (*(uint8_t *)(img + pos++) << 7);
-            if (!len || len >= KSYM_SYMBOL_LEN) break;
-            pos += len;
-            if (pos >= info->kallsyms_markers_offset) break;
 
-            if (i && (i & 0xFF) == 0xFF) { // every 256 symbols
-                int32_t mark_len = int_unpack(img + info->kallsyms_markers_offset + ((i >> 8) + 1) * marker_elem_size,
-                                              marker_elem_size, info->is_be);
-                if (pos - cand != mark_len) break;
-                if (!--test_marker_num) break;
+    if (info->_marker_num > KSYM_FIND_NAMES_USED_MARKER) {
+        int32_t last_marker =
+            (int32_t)int_unpack(img + info->kallsyms_markers_offset + (info->_marker_num - 1) * marker_elem_size,
+                                marker_elem_size, info->is_be);
+        int32_t guess = info->kallsyms_markers_offset - last_marker;
+        int32_t guess_start = guess - 0x10000;
+        int32_t guess_end = guess + 0x1000;
+        if (guess_start < 0x4000) guess_start = 0x4000;
+        if (guess_end > info->kallsyms_markers_offset) guess_end = info->kallsyms_markers_offset;
+        for (int32_t cand = guess_start; cand < guess_end; cand++) {
+            if (!verify_names_candidate(info, img, marker_elem_size, cand)) {
+                info->kallsyms_names_offset = cand;
+                tools_logi("kallsyms_names offset: 0x%08x\n", cand);
+                return 0;
             }
         }
-        if (!test_marker_num) break;
     }
-    if (test_marker_num) {
-        tools_loge("find kallsyms_names error\n");
-        return -1;
+
+    // int32_t cand = info->_approx_addresses_or_offsets_offset;
+    for (int32_t cand = 0x4000; cand < info->kallsyms_markers_offset; cand++) {
+        if (!verify_names_candidate(info, img, marker_elem_size, cand)) {
+            info->kallsyms_names_offset = cand;
+            tools_logi("kallsyms_names offset: 0x%08x\n", cand);
+            return 0;
+        }
     }
-    info->kallsyms_names_offset = cand;
-    tools_logi("kallsyms_names offset: 0x%08x\n", cand);
+    tools_loge("find kallsyms_names error\n");
+    return -1;
 
 #if 0
     // print all symbol for test
@@ -845,6 +882,7 @@ R kallsyms_token_index
 int analyze_kallsym_info(kallsym_t *info, char *img, int32_t imglen, enum arch_type arch, int32_t is_64)
 {
     memset(info, 0, sizeof(kallsym_t));
+    info->arch = arch;
     info->is_64 = is_64;
     info->asm_long_size = 4;
     info->asm_PTR_size = 4;
@@ -861,12 +899,38 @@ int analyze_kallsym_info(kallsym_t *info, char *img, int32_t imglen, enum arch_t
         if ((rc = base_funcs[i](info, img, imglen, NULL))) return rc;
     }
 
+    kallsym_t raw_layout = *info;
+    int raw_layout_ready = 0;
+    if (!find_markers(&raw_layout, img, imglen) && !find_names(&raw_layout, img, imglen)) {
+        raw_layout_ready = 1;
+    }
+
     char *copied_img = (char *)malloc(imglen);
     memcpy(copied_img, img, imglen);
 
     // 1st
     rc = retry_relo(info, copied_img, imglen);
     if (!rc) goto out;
+
+    if (raw_layout_ready) {
+        memcpy(copied_img, img, imglen);
+        *info = raw_layout;
+        rc = try_find_arm64_relo_table(info, copied_img, imglen);
+        if (!rc) {
+            int32_t restore_start = info->kallsyms_names_offset;
+            int32_t restore_end = info->kallsyms_token_index_offset + KSYM_TOKEN_NUMS * 2;
+            if (restore_start < 0) restore_start = 0;
+            if (restore_end > imglen) restore_end = imglen;
+            if (restore_start < restore_end) {
+                memcpy(copied_img + restore_start, img + restore_start, restore_end - restore_start);
+            }
+
+            rc = find_approx_addresses_or_offset(info, copied_img, imglen);
+            if (!rc) rc = find_num_syms(info, copied_img, imglen);
+            if (!rc) rc = correct_addresses_or_offsets(info, copied_img, imglen);
+            if (!rc) goto out;
+        }
+    }
 
     // 2nd
     if (!info->try_relo) {

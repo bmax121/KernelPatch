@@ -595,7 +595,25 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
                    sync_start, sync_size);
     }
 
-    setup->kallsyms_lookup_name_offset = get_symbol_offset_exit(&kallsym, kallsym_kimg, "kallsyms_lookup_name");
+    setup->sprint_symbol_offset = get_symbol_offset_zero(&kallsym, kallsym_kimg, "sprint_symbol");
+    if (!setup->sprint_symbol_offset) {
+        setup->sprint_symbol_offset = find_suffixed_symbol(&kallsym, kallsym_kimg, "sprint_symbol");
+    }
+    setup->sprintf_offset = get_symbol_offset_zero(&kallsym, kallsym_kimg, "sprintf");
+    if (!setup->sprintf_offset) {
+        setup->sprintf_offset = find_suffixed_symbol(&kallsym, kallsym_kimg, "sprintf");
+    }
+    setup->kallsyms_lookup_name_offset = get_symbol_offset_zero(&kallsym, kallsym_kimg, "kallsyms_lookup_name");
+    if (!setup->kallsyms_lookup_name_offset) {
+        setup->kallsyms_lookup_name_offset = find_suffixed_symbol(&kallsym, kallsym_kimg, "kallsyms_lookup_name");
+    }
+    if (setup->sprint_symbol_offset && setup->sprintf_offset) {
+        tools_logi("prefer runtime sprint_symbol fallback for kallsyms_lookup_name\n");
+    } else if (setup->kallsyms_lookup_name_offset) {
+        tools_logi("fallback to direct kallsyms_lookup_name symbol\n");
+    } else {
+        tools_loge_exit("no sprint_symbol/sprintf chain and no kallsyms_lookup_name symbol\n");
+    }
 
     setup->printk_offset = get_symbol_offset_zero(&kallsym, kallsym_kimg, "printk");
     if (!setup->printk_offset) setup->printk_offset = get_symbol_offset_zero(&kallsym, kallsym_kimg, "_printk");
@@ -611,6 +629,8 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
         setup->map_offset = i64swp(setup->map_offset);
         setup->map_max_size = i64swp(setup->map_max_size);
         setup->kallsyms_lookup_name_offset = i64swp(setup->kallsyms_lookup_name_offset);
+        setup->sprint_symbol_offset = i64swp(setup->sprint_symbol_offset);
+        setup->sprintf_offset = i64swp(setup->sprintf_offset);
         setup->paging_init_offset = i64swp(setup->paging_init_offset);
         setup->printk_offset = i64swp(setup->printk_offset);
     }

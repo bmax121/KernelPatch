@@ -91,6 +91,14 @@ start_prepare:
     str x13, [x11, #start_map_offset_offset]
     mov x20, x13
 
+    // start_preset.sprint_symbol_offset = setup_preset.sprint_symbol_offset
+    ldr x13, [x10, #setup_sprint_symbol_offset_offset]
+    str x13, [x11, #start_sprint_symbol_offset_offset]
+
+    // start_preset.sprintf_offset = setup_preset.sprintf_offset
+    ldr x13, [x10, #setup_sprintf_offset_offset]
+    str x13, [x11, #start_sprintf_offset_offset]
+
     // memcpy(&start_preset.setup, &setup_header, KP_HEADER_SIZE);
     add x0, x11, #start_header_offset
     add x1, x12, #0

@@ -241,7 +241,9 @@ typedef struct _setup_preset_t
     uint8_t header_backup[HDR_BACKUP_SIZE];
     uint8_t superkey[SUPER_KEY_LEN];
     uint8_t root_superkey[ROOT_SUPER_KEY_HASH_LEN];
-    uint8_t __[SETUP_PRESERVE_LEN];
+    int64_t sprint_symbol_offset;
+    int64_t sprintf_offset;
+    uint8_t __[SETUP_PRESERVE_LEN - 16];
     patch_config_t patch_config;
     char additional[ADDITIONAL_LEN];
 } setup_preset_t;
@@ -263,6 +265,8 @@ typedef struct _setup_preset_t
 #define setup_header_backup_offset (setup_map_symbol_offset + MAP_SYMBOL_SIZE)
 #define setup_superkey_offset (setup_header_backup_offset + HDR_BACKUP_SIZE)
 #define setup_root_superkey_offset (setup_superkey_offset + SUPER_KEY_LEN)
+#define setup_sprint_symbol_offset_offset (setup_root_superkey_offset + ROOT_SUPER_KEY_HASH_LEN)
+#define setup_sprintf_offset_offset (setup_sprint_symbol_offset_offset + 8)
 #define setup_patch_config_offset (setup_root_superkey_offset + ROOT_SUPER_KEY_HASH_LEN + SETUP_PRESERVE_LEN)
 #define setup_end (setup_patch_config_offset + PATCH_CONFIG_LEN)
 #endif
