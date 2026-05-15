@@ -6,6 +6,7 @@ struct module;
 #define KSYM_NAME_LEN 512
 
 extern int (*kallsyms_on_each_symbol)(int (*fn)(void *, const char *, struct module *, unsigned long), void *data);
+extern int kallsyms_on_each_match_symbol(int (*fn)(void *, unsigned long), const char *name, void *data);
 extern unsigned long (*kallsyms_lookup_name)(const char *name);
 
 #endif

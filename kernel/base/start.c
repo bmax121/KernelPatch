@@ -34,6 +34,11 @@ int (*kallsyms_on_each_symbol)(int (*fn)(void *data, const char *name, struct mo
                                void *data) = 0;
 KP_EXPORT_SYMBOL(kallsyms_on_each_symbol);
 
+typedef int (*kallsyms_on_each_symbol_nomod_t)(int (*fn)(void *, const char *, unsigned long), void *data);
+typedef int (*kallsyms_on_each_match_symbol_t)(int (*fn)(void *, unsigned long), const char *name, void *data);
+
+static kallsyms_on_each_match_symbol_t kernel_kallsyms_on_each_match_symbol = 0;
+
 unsigned long (*kallsyms_lookup_name)(const char *name) = 0;
 KP_EXPORT_SYMBOL(kallsyms_lookup_name);
 
@@ -65,6 +70,62 @@ KP_EXPORT_SYMBOL(kpver);
 
 endian_t endian = little;
 KP_EXPORT_SYMBOL(endian);
+
+struct kallsyms_match_symbol_context
+{
+    int (*fn)(void *, unsigned long);
+    const char *name;
+    void *data;
+};
+
+static int kallsyms_match_symbol_strcmp(const char *s1, const char *s2)
+{
+    const unsigned char *c1 = (const unsigned char *)s1;
+    const unsigned char *c2 = (const unsigned char *)s2;
+    unsigned char ch;
+    int d = 0;
+    while (1) {
+        d = (int)(ch = *c1++) - (int)*c2++;
+        if (d || !ch) break;
+    }
+    return d;
+}
+
+static int kallsyms_on_each_match_symbol_cb(void *data, const char *name, struct module *unused_mod,
+                                            unsigned long addr)
+{
+    struct kallsyms_match_symbol_context *ctx = data;
+
+    (void)unused_mod;
+    if (kallsyms_match_symbol_strcmp(name, ctx->name)) return 0;
+    return ctx->fn(ctx->data, addr);
+}
+
+static int kallsyms_on_each_match_symbol_cb_nomod(void *data, const char *name, unsigned long addr)
+{
+    struct kallsyms_match_symbol_context *ctx = data;
+
+    if (kallsyms_match_symbol_strcmp(name, ctx->name)) return 0;
+    return ctx->fn(ctx->data, addr);
+}
+
+int kallsyms_on_each_match_symbol(int (*fn)(void *, unsigned long), const char *name, void *data)
+{
+    struct kallsyms_match_symbol_context ctx = { .fn = fn, .name = name, .data = data };
+
+    if (unlikely(!fn || !name)) return 0;
+    if (likely(kernel_kallsyms_on_each_match_symbol)) {
+        return kernel_kallsyms_on_each_match_symbol(fn, name, data);
+    }
+    if (unlikely(!kallsyms_on_each_symbol)) return 0;
+    if (kver <= VERSION(6, 1, 0)) {
+        return kallsyms_on_each_symbol(kallsyms_on_each_match_symbol_cb, &ctx);
+    }
+    kallsyms_on_each_symbol_nomod_t kallsyms_on_each_symbol_nomod =
+        (kallsyms_on_each_symbol_nomod_t)kallsyms_on_each_symbol;
+    return kallsyms_on_each_symbol_nomod(kallsyms_on_each_match_symbol_cb_nomod, &ctx);
+}
+KP_EXPORT_SYMBOL(kallsyms_on_each_match_symbol);
 
 uint64_t _kp_extra_start = 0;
 uint64_t _kp_extra_end = 0;
@@ -439,6 +500,8 @@ static void start_init(uint64_t kimage_voff, uint64_t linear_voff)
     log_boot("KernelPatch link base: %llx, runtime base: %llx\n", link_base_addr, runtime_base_addr);
 
     kallsyms_on_each_symbol = (typeof(kallsyms_on_each_symbol))kallsyms_lookup_name("kallsyms_on_each_symbol");
+    kernel_kallsyms_on_each_match_symbol =
+        (typeof(kernel_kallsyms_on_each_match_symbol))kallsyms_lookup_name("kallsyms_on_each_match_symbol");
 
     uint64_t tcr_el1;
     asm volatile("mrs %0, tcr_el1" : "=r"(tcr_el1));
