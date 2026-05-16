@@ -17,7 +17,10 @@
 int32_t get_symbol_offset_zero(kallsym_t *info, char *img, char *symbol);
 int32_t get_symbol_offset_exit(kallsym_t *info, char *img, char *symbol);
 int32_t find_suffixed_symbol(kallsym_t *kallsym, char *img_buf, const char *symbol);
-void select_map_area(kallsym_t *kallsym, char *image_buf, int32_t *map_start, int32_t *max_size, bool is_gki);
+bool is_usable_symbol_offset(int32_t offset, int imglen);
+int32_t get_usable_symbol_offset_try(kallsym_t *kallsym, char *img_buf, int imglen, const char *symbol);
+int32_t select_symbol_lookup_anchor_offset(kallsym_t *kallsym, char *img_buf, int imglen, const char **selected);
+void select_map_area(kallsym_t *kallsym, char *image_buf, int imglen, int32_t *map_start, int32_t *max_size, bool is_gki);
 int fillin_map_symbol(kallsym_t *kallsym, char *img_buf, map_symbol_t *symbol, int32_t target_is_be);
 int fillin_patch_config(kallsym_t *kallsym, char *img_buf, int imglen, patch_config_t *symbol, int32_t target_is_be,
                         bool is_android);

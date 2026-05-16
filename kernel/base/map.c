@@ -4,14 +4,15 @@
  */
 
 #include "setup.h"
-
 #define NUMA_NO_NODE (-1)
 
 typedef uint64_t phys_addr_t;
 typedef int (*memblock_reserve_f)(phys_addr_t base, phys_addr_t size);
 typedef phys_addr_t (*memblock_phys_alloc_try_nid_f)(phys_addr_t size, phys_addr_t align, int nid);
+typedef phys_addr_t (*memblock_find_in_range_f)(phys_addr_t start, phys_addr_t end, phys_addr_t size, phys_addr_t align);
 typedef void *(*memblock_virt_alloc_try_nid_f)(phys_addr_t size, phys_addr_t align, phys_addr_t min_addr,
                                                phys_addr_t max_addr, int nid);
+typedef phys_addr_t (*memblock_start_of_DRAM_f)(void);
 typedef int (*memblock_free_f)(phys_addr_t base, phys_addr_t size);
 typedef int (*memblock_mark_nomap_f)(phys_addr_t base, phys_addr_t size);
 typedef int (*printk_f)(const char *fmt, ...);
@@ -48,6 +49,33 @@ static inline uint64_t phys_to_lm(map_data_t *data, uint64_t phys)
     return phys + data->linear_voffset;
 }
 
+static inline int use_legacy_memblock_fallback(map_data_t *data)
+{
+    return data->map_symbol.memblock_start_of_DRAM_relo != 0;
+}
+
+static inline uint64_t page_offset_from_bits(uint64_t va_bits)
+{
+    return ~((1ull << va_bits) - 1ull);
+}
+
+static uint64_t map_phys_alloc(map_data_t *data, uint64_t size, uint64_t align)
+{
+    if (!use_legacy_memblock_fallback(data)) {
+        return ((memblock_phys_alloc_try_nid_f)data->map_symbol.memblock_phys_alloc_relo)(size, align, NUMA_NO_NODE);
+    }
+
+    if (data->map_symbol.memblock_phys_alloc_relo) {
+        uint64_t start = ((memblock_find_in_range_f)data->map_symbol.memblock_phys_alloc_relo)(0, ~(uint64_t)0, size, align);
+        if (start && size) {
+            ((memblock_reserve_f)data->map_symbol.memblock_reserve_relo)(start, size);
+        }
+        return start;
+    }
+
+    return 0;
+}
+
 static void flush_tlb_all()
 {
     asm volatile("dsb ishst" : : : "memory");
@@ -75,14 +103,14 @@ static __noinline void mem_proc(map_data_t *data)
     data->kimage_voffset = kernel_va - data->kernel_pa;
     data->paging_init_relo += kernel_va;
 
-    uint64_t map_symbol_addr = (uint64_t)&data->map_symbol;
-    for (uint64_t addr = map_symbol_addr; addr < map_symbol_addr + MAP_SYMBOL_SIZE; addr += 8) {
-        if (*(uint64_t *)addr) *(uint64_t *)addr += kernel_va;
-    }
-
 #ifdef MAP_DEBUG
     data->printk_relo += kernel_va;
 #endif
+
+    for (uint64_t *pos = (uint64_t *)&data->map_symbol;
+         pos < (uint64_t *)((uint8_t *)&data->map_symbol + sizeof(data->map_symbol)); pos++) {
+        if (*pos) *pos += kernel_va;
+    }
 
     // pgtable
     uint64_t tcr_el1;
@@ -100,19 +128,24 @@ static __noinline void mem_proc(map_data_t *data)
     data->page_shift = page_shift;
 
     // linear
-    uint64_t detect_phys =
-        ((memblock_phys_alloc_try_nid_f)data->map_symbol.memblock_phys_alloc_relo)(0, 0x10, NUMA_NO_NODE);
-    uint64_t detect_virt = (uint64_t)((memblock_virt_alloc_try_nid_f)data->map_symbol.memblock_virt_alloc_relo)(
-        0, 0x10, detect_phys, detect_phys, NUMA_NO_NODE);
-    data->linear_voffset = detect_virt - detect_phys;
+    if (data->map_symbol.memblock_virt_alloc_relo) {
+        uint64_t detect_phys =
+            ((memblock_phys_alloc_try_nid_f)data->map_symbol.memblock_phys_alloc_relo)(0, 0x10, NUMA_NO_NODE);
+        uint64_t detect_virt = (uint64_t)((memblock_virt_alloc_try_nid_f)data->map_symbol.memblock_virt_alloc_relo)(
+            0, 0x10, detect_phys, detect_phys, NUMA_NO_NODE);
+        data->linear_voffset = detect_virt - detect_phys;
+    } else if (use_legacy_memblock_fallback(data)) {
+        uint64_t dram_start =
+            ((memblock_start_of_DRAM_f)data->map_symbol.memblock_start_of_DRAM_relo)();
+        data->linear_voffset = page_offset_from_bits(va1_bits) - dram_start;
+    } else {
+        data->linear_voffset = 0;
+    }
 }
 
 // todo: 52-bits pa
 static uint64_t __noinline get_or_create_pte(map_data_t *data, uint64_t va, uint64_t pa, uint64_t attr_indx)
 {
-    memblock_phys_alloc_try_nid_f memblock_phys_alloc_try_nid =
-        (memblock_phys_alloc_try_nid_f)data->map_symbol.memblock_phys_alloc_relo;
-
     uint64_t page_shift = data->page_shift;
     uint64_t va_bits = data->va1_bits;
     uint64_t page_level = (va_bits - 4) / (page_shift - 3);
@@ -149,7 +182,12 @@ static uint64_t __noinline get_or_create_pte(map_data_t *data, uint64_t va, uint
             block_flag = 1;
         } else { // invalid, alloc
             if (lv != 3) {
-                pxd_pa = memblock_phys_alloc_try_nid(page_size, page_size, 0);
+                if (use_legacy_memblock_fallback(data)) {
+                    pxd_pa = map_phys_alloc(data, page_size, page_size);
+                } else {
+                    pxd_pa = ((memblock_phys_alloc_try_nid_f)data->map_symbol.memblock_phys_alloc_relo)(
+                        page_size, page_size, NUMA_NO_NODE);
+                }
                 alloc_flag = 1;
             } else {
                 pxd_pa = pa;
@@ -196,8 +234,7 @@ void __noinline _paging_init()
     // reserve old start
     ((memblock_reserve_f)data->map_symbol.memblock_reserve_relo)(old_start_pa, reserve_size);
     // alloc
-    uint64_t start_pa =
-        ((memblock_phys_alloc_try_nid_f)data->map_symbol.memblock_phys_alloc_relo)(all_size, page_size, 0);
+    uint64_t start_pa = map_phys_alloc(data, all_size, page_size);
     // mark all size nomap
     if (data->map_symbol.memblock_mark_nomap_relo)
         ((memblock_mark_nomap_f)(data->map_symbol.memblock_mark_nomap_relo))(start_pa, all_size);

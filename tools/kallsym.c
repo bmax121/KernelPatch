@@ -708,7 +708,11 @@ static int correct_addresses_or_offsets_by_vectors(kallsym_t *info, char *img, i
     }
 
     int32_t search_start = info->_approx_addresses_or_offsets_offset;
-    int32_t search_end = info->_approx_addresses_or_offsets_end - pid_vnr_index * elem_size;
+    int32_t max_shift = info->_approx_addresses_or_offsets_num - info->kallsyms_num_syms;
+    if (max_shift < 0) max_shift = 0;
+    int32_t search_end = search_start + (max_shift + 1) * elem_size;
+    int32_t pid_vnr_limit = info->_approx_addresses_or_offsets_end - pid_vnr_index * elem_size;
+    if (search_end > pid_vnr_limit) search_end = pid_vnr_limit;
 
     int break_flag = 0;
     for (int i = 0; i < base_cand_num; i++) {
@@ -833,6 +837,16 @@ static int correct_addresses_or_offsets(kallsym_t *info, char *img, int32_t imgl
         tools_logw("no linux_banner, CONFIG_KALLSYMS_ALL=n\n");
     }
     if (rc) rc = correct_addresses_or_offsets_by_vectors(info, img, imglen);
+    if (rc) return rc;
+
+    int32_t elem_size = info->has_relative_base ? get_offsets_elem_size(info) : get_addresses_elem_size(info);
+    int32_t start = info->has_relative_base ? info->kallsyms_offsets_offset : info->kallsyms_addresses_offset;
+    int32_t coverage = (info->_approx_addresses_or_offsets_end - start) / elem_size;
+    if (coverage < info->kallsyms_num_syms) {
+        tools_logw("resolved symbol table only covers 0x%08x entries, but names table has 0x%08x entries\n",
+                   coverage, info->kallsyms_num_syms);
+        return -1;
+    }
     return rc;
 }
 
@@ -966,6 +980,20 @@ int32_t get_symbol_index_offset(kallsym_t *info, char *img, int32_t index)
     uint64_t target = uint_unpack(img + pos + index * elem_size, elem_size, info->is_be);
     if (info->has_relative_base) return target;
     return (int32_t)(target - info->kernel_base);
+}
+
+int is_symbol_exists(kallsym_t *info, char *img, const char *symbol)
+{
+    char decomp[KSYM_SYMBOL_LEN] = { '\0' };
+    char type = 0;
+    int32_t pos = info->kallsyms_names_offset;
+
+    for (int32_t i = 0; i < info->kallsyms_num_syms; i++) {
+        memset(decomp, 0, sizeof(decomp));
+        if (decompress_symbol_name(info, img, &pos, &type, decomp)) return 0;
+        if (!strcmp(decomp, symbol)) return 1;
+    }
+    return 0;
 }
 
 int get_symbol_offset_and_size(kallsym_t *info, char *img, char *symbol, int32_t *size)

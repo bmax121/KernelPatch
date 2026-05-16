@@ -20,6 +20,7 @@
 #include "tlsf.h"
 #include "hmem.h"
 #include "setup.h"
+#include "symbol_lookup_scan.h"
 
 #define bits(n, high, low) (((n) << (63u - (high))) >> (63u - (high) + (low)))
 #define align_floor(x, align) ((uint64_t)(x) & ~((uint64_t)(align) - 1))
@@ -36,8 +37,6 @@ KP_EXPORT_SYMBOL(kallsyms_on_each_symbol);
 
 typedef int (*kallsyms_on_each_symbol_nomod_t)(int (*fn)(void *, const char *, unsigned long), void *data);
 typedef int (*kallsyms_on_each_match_symbol_t)(int (*fn)(void *, unsigned long), const char *name, void *data);
-typedef int (*kernel_sprintf_t)(char *buf, const char *fmt, ...);
-
 static kallsyms_on_each_match_symbol_t kernel_kallsyms_on_each_match_symbol = 0;
 
 unsigned long (*kallsyms_lookup_name)(const char *name) = 0;
@@ -79,86 +78,46 @@ struct kallsyms_match_symbol_context
     void *data;
 };
 
-static int kallsyms_match_symbol_strcmp(const char *s1, const char *s2)
-{
-    const unsigned char *c1 = (const unsigned char *)s1;
-    const unsigned char *c2 = (const unsigned char *)s2;
-    unsigned char ch;
-    int d = 0;
-    while (1) {
-        d = (int)(ch = *c1++) - (int)*c2++;
-        if (d || !ch) break;
-    }
-    return d;
-}
-
-static char *kallsyms_match_symbol_strchr(char *s, int c)
-{
-    do {
-        if (*s == (char)c) return s;
-    } while (*s++);
-    return 0;
-}
-
-static int kallsyms_match_symbol_parse_hex(const char *s, unsigned long *value)
-{
-    unsigned long v = 0;
-    int n = 0;
-
-    if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) s += 2;
-    while (1) {
-        char ch = *s++;
-        if (ch >= '0' && ch <= '9') {
-            v = (v << 4) + (unsigned long)(ch - '0');
-        } else if (ch >= 'a' && ch <= 'f') {
-            v = (v << 4) + (unsigned long)(ch - 'a' + 10);
-        } else if (ch >= 'A' && ch <= 'F') {
-            v = (v << 4) + (unsigned long)(ch - 'A' + 10);
-        } else {
-            break;
-        }
-        n++;
-    }
-    *value = v;
-    return n > 0;
-}
-
-static unsigned long resolve_kallsyms_lookup_name_by_sprint_symbol()
+#if 0
+static unsigned long resolve_kallsyms_lookup_name_by_backward_symbol_scan(unsigned long anchor_offset)
 {
     char buf[256];
-    char *s;
     unsigned long addr;
+    unsigned long offset;
     unsigned long size;
-    unsigned long sprint_symbol_addr;
+    unsigned long anchor_addr;
     kernel_sprintf_t kernel_sprintf;
 
-    if (!start_preset.sprint_symbol_offset || !start_preset.sprintf_offset) return 0;
+    if (!anchor_offset || !start_preset.sprintf_offset) return 0;
 
-    sprint_symbol_addr = kernel_va + start_preset.sprint_symbol_offset;
-    if (sprint_symbol_addr < kernel_va + 4) return 0;
+    anchor_addr = kernel_va + anchor_offset;
+    if (anchor_addr < kernel_va + 4) return 0;
 
     kernel_sprintf = (kernel_sprintf_t)(kernel_va + start_preset.sprintf_offset);
-    addr = sprint_symbol_addr - 4;
+    addr = anchor_addr - 4;
 
     for (int i = 0; i < 4096 && addr > kernel_va; i++) {
         kernel_sprintf(buf, "%pSb", (void *)addr);
-        s = kallsyms_match_symbol_strchr(buf, '+');
-        if (!s) break;
-        *s = 0;
-        s++;
-        if (!kallsyms_match_symbol_parse_hex(s, &size) || !size || size > addr - kernel_va) break;
-        if (!kallsyms_match_symbol_strcmp(buf, "kallsyms_lookup_name")) {
-            return addr - size - kernel_va;
+        if (!kp_symbol_scan_parse_info(buf, &offset, &size) || !offset || offset > addr - kernel_va) break;
+        if (!kp_symbol_scan_strcmp(buf, "kallsyms_lookup_name")) {
+            return addr - offset - kernel_va;
         }
-        addr -= size + 4;
+        addr -= offset + 4;
     }
     return 0;
+}
+#endif
+
+static unsigned long resolve_kallsyms_lookup_name_by_symbol_lookup_anchor()
+{
+    return kp_resolve_symbol_by_lookup_anchor(kernel_va, kernel_size, start_preset.sprintf_offset,
+                                              start_preset.symbol_lookup_anchor_offset, "kallsyms_lookup_name");
 }
 
 static void log_kallsyms_lookup_name_unresolved()
 {
     if (printk) {
-        printk("KP failed to resolve kallsyms_lookup_name via sprint_symbol or preset\n");
+        printk("KP failed to resolve kallsyms_lookup_name via symbol scan or preset\n");
     }
 }
 
@@ -168,7 +127,7 @@ static int kallsyms_on_each_match_symbol_cb(void *data, const char *name, struct
     struct kallsyms_match_symbol_context *ctx = data;
 
     (void)unused_mod;
-    if (kallsyms_match_symbol_strcmp(name, ctx->name)) return 0;
+    if (kp_symbol_scan_strcmp(name, ctx->name)) return 0;
     return ctx->fn(ctx->data, addr);
 }
 
@@ -176,7 +135,7 @@ static int kallsyms_on_each_match_symbol_cb_nomod(void *data, const char *name, 
 {
     struct kallsyms_match_symbol_context *ctx = data;
 
-    if (kallsyms_match_symbol_strcmp(name, ctx->name)) return 0;
+    if (kp_symbol_scan_strcmp(name, ctx->name)) return 0;
     return ctx->fn(ctx->data, addr);
 }
 
@@ -537,7 +496,7 @@ static void log_regs()
 static int start_init(uint64_t kimage_voff, uint64_t linear_voff)
 {
     unsigned long kallsym_offset = 0;
-    const char *kallsyms_resolver = "sprint_symbol";
+    const char *kallsyms_resolver = "preset";
 
     kimage_voffset = kimage_voff;
     linear_voffset = linear_voff;
@@ -551,10 +510,20 @@ static int start_init(uint64_t kimage_voff, uint64_t linear_voff)
         printk = (typeof(printk))(kernel_va + start_preset.patch_config.printk);
     }
 
-    kallsym_offset = resolve_kallsyms_lookup_name_by_sprint_symbol();
+#if 0
+    kallsym_offset = resolve_kallsyms_lookup_name_by_backward_symbol_scan(start_preset.symbol_lookup_anchor_offset);
+    if (kallsym_offset) {
+        kallsyms_resolver = "backward_symbol_scan";
+    }
+#endif
+    if (!kallsym_offset) {
+        kallsym_offset = resolve_kallsyms_lookup_name_by_symbol_lookup_anchor();
+        if (kallsym_offset) {
+            kallsyms_resolver = "symbol_lookup_anchor";
+        }
+    }
     if (!kallsym_offset) {
         kallsym_offset = start_preset.kallsyms_lookup_name_offset;
-        kallsyms_resolver = "preset";
     }
     if (!kallsym_offset) {
         log_kallsyms_lookup_name_unresolved();

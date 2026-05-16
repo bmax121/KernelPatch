@@ -20,8 +20,8 @@ typedef struct
     int64_t extra_size;
     uint64_t kernel_pa;
     int64_t map_offset;
-    int64_t sprint_symbol_offset;
     int64_t sprintf_offset;
+    int64_t symbol_lookup_anchor_offset;
     int64_t map_backup_len;
     uint8_t map_backup[MAP_MAX_SIZE];
     uint8_t superkey[SUPER_KEY_LEN];
@@ -37,9 +37,9 @@ typedef struct
 #define start_extra_size_offset (start_start_offset_offset + 8)
 #define start_kernel_pa_offset (start_extra_size_offset + 8)
 #define start_map_offset_offset (start_kernel_pa_offset + 8)
-#define start_sprint_symbol_offset_offset (start_map_offset_offset + 8)
-#define start_sprintf_offset_offset (start_sprint_symbol_offset_offset + 8)
-#define start_map_backup_len_offset (start_sprintf_offset_offset + 8)
+#define start_sprintf_offset_offset (start_map_offset_offset + 8)
+#define start_symbol_lookup_anchor_offset_offset (start_sprintf_offset_offset + 8)
+#define start_map_backup_len_offset (start_symbol_lookup_anchor_offset_offset + 8)
 #define start_map_backup_offset (start_map_backup_len_offset + 8)
 #define start_superkey_offset (start_map_backup_offset + MAP_MAX_SIZE)
 #define start_root_superkey_offset (start_superkey_offset + SUPER_KEY_LEN)

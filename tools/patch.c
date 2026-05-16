@@ -578,13 +578,12 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     setup->extra_size = extra_size;
 
     int map_start, map_max_size;
-    select_map_area(&kallsym, kallsym_kimg, &map_start, &map_max_size, is_gki);
+    select_map_area(&kallsym, kallsym_kimg, pimg.ori_kimg_len, &map_start, &map_max_size, is_gki);
     setup->map_offset = map_start;
     setup->map_max_size = map_max_size;
     tools_logi("map_start: 0x%x, max_size: 0x%x\n", map_start, map_max_size);
 
-    int tcp_init_sock_offset = get_symbol_offset_exit(&kallsym, kallsym_kimg, "tcp_init_sock");
-    int sync_start = tcp_init_sock_offset;
+    int sync_start = map_start;
     int sync_size = map_max_size * 2;
     if (sync_start + sync_size > ori_kimg_len) {
         sync_size = ori_kimg_len - sync_start;
@@ -595,24 +594,19 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
                    sync_start, sync_size);
     }
 
-    setup->sprint_symbol_offset = get_symbol_offset_zero(&kallsym, kallsym_kimg, "sprint_symbol");
-    if (!setup->sprint_symbol_offset) {
-        setup->sprint_symbol_offset = find_suffixed_symbol(&kallsym, kallsym_kimg, "sprint_symbol");
-    }
-    setup->sprintf_offset = get_symbol_offset_zero(&kallsym, kallsym_kimg, "sprintf");
-    if (!setup->sprintf_offset) {
-        setup->sprintf_offset = find_suffixed_symbol(&kallsym, kallsym_kimg, "sprintf");
-    }
-    setup->kallsyms_lookup_name_offset = get_symbol_offset_zero(&kallsym, kallsym_kimg, "kallsyms_lookup_name");
-    if (!setup->kallsyms_lookup_name_offset) {
-        setup->kallsyms_lookup_name_offset = find_suffixed_symbol(&kallsym, kallsym_kimg, "kallsyms_lookup_name");
-    }
-    if (setup->sprint_symbol_offset && setup->sprintf_offset) {
-        tools_logi("prefer runtime sprint_symbol fallback for kallsyms_lookup_name\n");
+    const char *symbol_lookup_anchor_name = 0;
+    setup->sprintf_offset = get_usable_symbol_offset_try(&kallsym, kallsym_kimg, ori_kimg_len, "sprintf");
+    setup->symbol_lookup_anchor_offset =
+        select_symbol_lookup_anchor_offset(&kallsym, kallsym_kimg, ori_kimg_len, &symbol_lookup_anchor_name);
+    setup->kallsyms_lookup_name_offset =
+        get_usable_symbol_offset_try(&kallsym, kallsym_kimg, ori_kimg_len, "kallsyms_lookup_name");
+    if (setup->symbol_lookup_anchor_offset && setup->sprintf_offset) {
+        tools_logi("prefer runtime forward scan anchor for kallsyms_lookup_name: %s, offset: 0x%08lx\n",
+                   symbol_lookup_anchor_name, (unsigned long)setup->symbol_lookup_anchor_offset);
     } else if (setup->kallsyms_lookup_name_offset) {
         tools_logi("fallback to direct kallsyms_lookup_name symbol\n");
     } else {
-        tools_loge_exit("no sprint_symbol/sprintf chain and no kallsyms_lookup_name symbol\n");
+        tools_loge_exit("no usable symbol scan anchor/sprintf chain and no kallsyms_lookup_name symbol\n");
     }
 
     setup->printk_offset = get_symbol_offset_zero(&kallsym, kallsym_kimg, "printk");
@@ -629,8 +623,8 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
         setup->map_offset = i64swp(setup->map_offset);
         setup->map_max_size = i64swp(setup->map_max_size);
         setup->kallsyms_lookup_name_offset = i64swp(setup->kallsyms_lookup_name_offset);
-        setup->sprint_symbol_offset = i64swp(setup->sprint_symbol_offset);
         setup->sprintf_offset = i64swp(setup->sprintf_offset);
+        setup->symbol_lookup_anchor_offset = i64swp(setup->symbol_lookup_anchor_offset);
         setup->paging_init_offset = i64swp(setup->paging_init_offset);
         setup->printk_offset = i64swp(setup->printk_offset);
     }

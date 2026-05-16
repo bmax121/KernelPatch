@@ -27,8 +27,18 @@
 #define CONFIG_DEBUG (1 << 0)
 #define CONFIG_ANDROID (1 << 1)
 
-#define MAP_SYMBOL_NUM (5)
+#define MAP_SYMBOL_NUM (6)
 #define MAP_SYMBOL_SIZE (MAP_SYMBOL_NUM * 8)
+
+#define MAP_SYM_NONE 0
+#define MAP_SYM_RESOLVE 1
+
+#define MAP_SYM_MEMBLOCK_PHYS_ALLOC_TRY_NID 1
+#define MAP_SYM_MEMBLOCK_ALLOC_TRY_NID 2
+#define MAP_SYM_MEMBLOCK_FIND_IN_RANGE 3
+
+#define MAP_SYM_MEMBLOCK_VIRT_ALLOC_TRY_NID 1
+#define MAP_SYM_MEMBLOCK_VIRT_ALLOC_FROM_ALLOC_TRY_NID 2
 
 #define PATCH_CONFIG_LEN (512)
 
@@ -89,6 +99,7 @@ struct map_symbol
             uint64_t memblock_phys_alloc_relo;
             uint64_t memblock_virt_alloc_relo;
             uint64_t memblock_mark_nomap_relo;
+            uint64_t memblock_start_of_DRAM_relo;
         };
         char _cap[MAP_SYMBOL_SIZE];
     };
@@ -241,8 +252,8 @@ typedef struct _setup_preset_t
     uint8_t header_backup[HDR_BACKUP_SIZE];
     uint8_t superkey[SUPER_KEY_LEN];
     uint8_t root_superkey[ROOT_SUPER_KEY_HASH_LEN];
-    int64_t sprint_symbol_offset;
     int64_t sprintf_offset;
+    int64_t symbol_lookup_anchor_offset;
     uint8_t __[SETUP_PRESERVE_LEN - 16];
     patch_config_t patch_config;
     char additional[ADDITIONAL_LEN];
@@ -265,8 +276,8 @@ typedef struct _setup_preset_t
 #define setup_header_backup_offset (setup_map_symbol_offset + MAP_SYMBOL_SIZE)
 #define setup_superkey_offset (setup_header_backup_offset + HDR_BACKUP_SIZE)
 #define setup_root_superkey_offset (setup_superkey_offset + SUPER_KEY_LEN)
-#define setup_sprint_symbol_offset_offset (setup_root_superkey_offset + ROOT_SUPER_KEY_HASH_LEN)
-#define setup_sprintf_offset_offset (setup_sprint_symbol_offset_offset + 8)
+#define setup_sprintf_offset_offset (setup_root_superkey_offset + ROOT_SUPER_KEY_HASH_LEN)
+#define setup_symbol_lookup_anchor_offset_offset (setup_sprintf_offset_offset + 8)
 #define setup_patch_config_offset (setup_root_superkey_offset + ROOT_SUPER_KEY_HASH_LEN + SETUP_PRESERVE_LEN)
 #define setup_end (setup_patch_config_offset + PATCH_CONFIG_LEN)
 #endif
