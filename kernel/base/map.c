@@ -139,7 +139,7 @@ static __noinline void mem_proc(map_data_t *data)
             ((memblock_start_of_DRAM_f)data->map_symbol.memblock_start_of_DRAM_relo)();
         data->linear_voffset = page_offset_from_bits(va1_bits) - dram_start;
     } else {
-        data->linear_voffset = 0;
+        __builtin_trap();
     }
 }
 

@@ -6,6 +6,8 @@
 #ifndef _KP_SYMBOL_LOOKUP_SCAN_H_
 #define _KP_SYMBOL_LOOKUP_SCAN_H_
 
+#include <kallsyms.h>
+
 typedef int (*kp_symbol_scan_sprintf_t)(char *buf, const char *fmt, ...);
 
 static inline int kp_symbol_scan_strcmp(const char *s1, const char *s2)
@@ -78,7 +80,7 @@ static inline unsigned long kp_resolve_symbol_by_lookup_anchor(unsigned long ker
                                                                unsigned long sprintf_offset,
                                                                unsigned long anchor_offset, const char *name)
 {
-    char buf[256];
+    char buf[KSYM_NAME_LEN + 64];
     unsigned long addr;
     unsigned long func_start;
     unsigned long func_end;

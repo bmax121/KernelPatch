@@ -74,7 +74,7 @@ static int get_cand_arr_symbol_offset_try(kallsym_t *kallsym, char *img_buf, con
 
 bool is_usable_symbol_offset(int32_t offset, int imglen)
 {
-    return offset > 0 && offset + 0x1000 <= imglen;
+    return imglen >= 0x1000 && offset > 0 && offset <= imglen - 0x1000;
 }
 
 int32_t get_usable_symbol_offset_try(kallsym_t *kallsym, char *img_buf, int imglen, const char *symbol)
