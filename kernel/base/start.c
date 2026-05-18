@@ -563,9 +563,9 @@ static int start_init(uint64_t kimage_voff, uint64_t linear_voff)
     log_boot("Kernel Version: %x\n", kver);
     log_boot("KernelPatch Version: %x\n", kpver);
     log_boot("KernelPatch Config: %llx\n", setup_header->config_flags);
-    log_boot("KernelPatch Compile Time: %s\n", (uint64_t)setup_header->compile_time);
+    log_boot("KernelPatch Compile Time: %s\n", setup_header->compile_time);
     log_boot("kallsyms_lookup_name offset: %llx (%s)\n", (uint64_t)start_preset.kallsyms_lookup_name_offset,
-             (uint64_t)kallsyms_resolver);
+             kallsyms_resolver);
 
     log_boot("KernelPatch link base: %llx, runtime base: %llx\n", link_base_addr, runtime_base_addr);
 
