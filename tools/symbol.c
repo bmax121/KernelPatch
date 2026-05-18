@@ -252,7 +252,7 @@ int fillin_map_symbol(kallsym_t *kallsym, char *img_buf, map_symbol_t *symbol, i
         tools_loge_exit("no symbol memblock alloc or memblock_find_in_range\n");
     }
     if (use_legacy_memblock_fallback && !symbol->memblock_start_of_DRAM_relo) {
-        tools_loge_exit("no symbol memblock_virt_alloc_try_nid or memblock_start_of_DRAM\n");
+         tools_loge_exit("no symbol memblock_start_of_DRAM for legacy memblock fallback\n");
     }
 
     if (use_legacy_memblock_fallback) {

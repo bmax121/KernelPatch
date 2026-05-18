@@ -572,9 +572,15 @@ static int verify_names_candidate(kallsym_t *info, char *img, int32_t marker_ele
     int32_t test_marker_num = KSYM_FIND_NAMES_USED_MARKER; // check n * 256 symbols
 
     for (int32_t i = 0;; i++) {
-        int32_t len = *(uint8_t *)(img + pos++);
-        if (len > 0x7F) len = (len & 0x7F) + (*(uint8_t *)(img + pos++) << 7);
+        int32_t len;
+         if (pos >= info->kallsyms_markers_offset) return -1;
+         len = *(uint8_t *)(img + pos++);
+         if (len > 0x7F) {
+             if (pos >= info->kallsyms_markers_offset) return -1;
+             len = (len & 0x7F) + (*(uint8_t *)(img + pos++) << 7);
+         }
         if (!len || len >= KSYM_SYMBOL_LEN) return -1;
+        if (pos + len > info->kallsyms_markers_offset) return -1;
         pos += len;
         if (pos >= info->kallsyms_markers_offset) return -1;
 
