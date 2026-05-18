@@ -585,8 +585,15 @@ static int verify_names_candidate(kallsym_t *info, char *img, int32_t marker_ele
         if (pos >= info->kallsyms_markers_offset) return -1;
 
         if (i && (i & 0xFF) == 0xFF) { // every 256 symbols
-            int32_t mark_len = int_unpack(img + info->kallsyms_markers_offset + ((i >> 8) + 1) * marker_elem_size,
-                                          marker_elem_size, info->is_be);
+            int32_t marker_index = (i >> 8) + 1;
+            int32_t marker_offset = marker_index * marker_elem_size;
+            int32_t marker_table_size = info->_marker_num * marker_elem_size;
+
+            if (marker_index >= info->_marker_num) return -1;
+            if (marker_offset < 0 || marker_offset > marker_table_size - marker_elem_size) return -1;
+
+            int32_t mark_len = int_unpack(img + info->kallsyms_markers_offset + marker_offset, marker_elem_size,
+                                          info->is_be);
             if (pos - cand != mark_len) return -1;
             if (!--test_marker_num) return 0;
         }

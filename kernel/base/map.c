@@ -128,7 +128,7 @@ static __noinline void mem_proc(map_data_t *data)
     data->page_shift = page_shift;
 
     // linear
-    if (data->map_symbol.memblock_virt_alloc_relo) {
+    if (data->map_symbol.memblock_virt_alloc_relo && !use_legacy_memblock_fallback(data)) {
         uint64_t detect_phys =
             ((memblock_phys_alloc_try_nid_f)data->map_symbol.memblock_phys_alloc_relo)(0, 0x10, NUMA_NO_NODE);
         uint64_t detect_virt = (uint64_t)((memblock_virt_alloc_try_nid_f)data->map_symbol.memblock_virt_alloc_relo)(
