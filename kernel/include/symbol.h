@@ -26,6 +26,9 @@ extern unsigned long link_base_addr;
 extern unsigned long runtime_base_addr;
 
 unsigned long symbol_lookup_name(const char *name);
+int kp_symbol_count(void);
+int kp_symbol_list(char *out, int size);
+const char *kp_feature_list(void);
 
 static inline unsigned long link2runtime(unsigned long addr)
 {

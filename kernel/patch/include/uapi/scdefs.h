@@ -44,6 +44,17 @@ static inline long hash_key(const char *key)
 #define SUPERCALL_KPM_LIST 0x1031
 #define SUPERCALL_KPM_INFO 0x1032
 
+#define KPM_LOAD_RESULT_MAGIC 0x4b504d52
+#define KPM_LOAD_ERROR_MESSAGE_LEN 160
+
+struct kpm_load_result
+{
+    unsigned int magic;
+    unsigned int size;
+    int code;
+    char message[KPM_LOAD_ERROR_MESSAGE_LEN];
+};
+
 struct kernel_storage
 {
     void *data;

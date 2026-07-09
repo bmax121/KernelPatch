@@ -7,6 +7,7 @@
 #include <userd.h>
 #include <baselib.h>
 #include <log.h>
+#include <predata.h>
 
 int report_user_event(const char *event, const char *args)
 {
@@ -27,5 +28,6 @@ int report_user_event(const char *event, const char *args)
     }
     #endif
     logki("user report event: %s, args: %s\n", safe_event, safe_args);
+    extra_event_init_args(safe_event, safe_args);
     return 0;
 }
