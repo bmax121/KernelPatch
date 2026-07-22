@@ -1372,6 +1372,8 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
         hook_local->data0 = 0;
     }
 
+    if (current_uid() != 0 && !hook_local->data0) return;
+
     static char app_process[] = "/system/bin/app_process";
     static char app_process64[] = "/system/bin/app_process64";
     static int first_app_process_execed = 0;
@@ -1521,12 +1523,12 @@ static void before_openat(hook_fargs4_t *args, void *udata)
     args->local.data3 = 0;
     static int replaced = 0;
 
+    if (replaced) return;
+
     const char __user *filename = (typeof(filename))syscall_argn(args, 1);
     char buf[256];
     long rc = compat_strncpy_from_user(buf, filename, sizeof(buf));
     if (rc <= 0) return;
-
-    if (replaced) return;
 
     int file_count = sizeof(ORIGIN_RC_FILES) / sizeof(ORIGIN_RC_FILES[0]);
     for (int i = 0; i < file_count; i++) {
