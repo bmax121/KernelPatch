@@ -328,16 +328,9 @@ KP_EXPORT_SYMBOL(ret_absolute);
 
 int32_t branch_from_to(uint32_t *tramp_buf, uint64_t src_addr, uint64_t dst_addr)
 {
-#if 0
-    uint32_t len = branch_relative(tramp_buf, src_addr, dst_addr);
+    int32_t len = branch_relative(tramp_buf, src_addr, dst_addr);
     if (len) return len;
-#else
-#if 0
-    return branch_absolute(tramp_buf, dst_addr);
-#else
     return ret_absolute(tramp_buf, dst_addr);
-#endif
-#endif
 }
 
 // transit0
@@ -558,11 +551,11 @@ hook_err_t hook_prepare(hook_t *hook)
     }
     // trampline to replace_addr
     if (hook->origin_insts[0] == ARM64_PACIASP || hook->origin_insts[0] == ARM64_PACIBSP) {
-        hook->tramp_insts_num = branch_from_to(&hook->tramp_insts[1], hook->origin_addr, hook->replace_addr);
+        hook->tramp_insts_num = branch_absolute(&hook->tramp_insts[1], hook->replace_addr);
         hook->tramp_insts[0] = ARM64_BTI_JC;
         hook->tramp_insts_num++;
     } else {
-        hook->tramp_insts_num = branch_from_to(hook->tramp_insts, hook->origin_addr, hook->replace_addr);
+        hook->tramp_insts_num = branch_absolute(hook->tramp_insts, hook->replace_addr);
     }
 
     // relocate
