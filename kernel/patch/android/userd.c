@@ -1525,6 +1525,8 @@ static void before_openat(hook_fargs4_t *args, void *udata)
 
     if (replaced) return;
 
+    if (current_uid() != 0) return;
+
     const char __user *filename = (typeof(filename))syscall_argn(args, 1);
     char buf[256];
     long rc = compat_strncpy_from_user(buf, filename, sizeof(buf));
