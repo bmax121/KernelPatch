@@ -343,7 +343,21 @@ static void after_getname_flags(hook_fargs3_t *args, void *udata)
     const char *name = fn->name;
     if (!name || strcmp(name, su_get_path())) return;
 
-    if (strlen(sh_path) <= strlen(name)) strcpy((char *)name, sh_path);
+    if (strlen(sh_path) <= strlen(name)) {
+        strcpy((char *)name, sh_path);
+        return;
+    }
+
+    if (kfunc(getname_kernel) && kfunc(putname)) {
+        struct filename *nf = kfunc(getname_kernel)(sh_path);
+        if (!IS_ERR_OR_NULL(nf)) {
+            kfunc(putname)(fn);
+            args->ret = (uint64_t)nf;
+            return;
+        }
+    }
+
+    logkfi("uid: %d, cannot redirect su path to %s\n", uid, sh_path);
 }
 
 int set_ap_mod_exclude(uid_t uid, int exclude)
