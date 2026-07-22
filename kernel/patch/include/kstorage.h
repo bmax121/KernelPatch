@@ -12,7 +12,7 @@
 
 struct kstorage
 {
-    struct list_head list;
+    struct hlist_node hnode;
     struct rcu_head rcu;
 
     int gid;
