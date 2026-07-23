@@ -269,7 +269,9 @@ typedef struct _setup_preset_t
     int64_t symbol_lookup_anchor_offset;
     int64_t kconfig_offset;
     int64_t kconfig_size;
-    uint8_t __[SETUP_PRESERVE_LEN - 32];
+    int64_t btf_offset;
+    int64_t btf_size;
+    uint8_t __[SETUP_PRESERVE_LEN - 48];
     patch_config_t patch_config;
     char additional[ADDITIONAL_LEN];
 } setup_preset_t;
@@ -295,6 +297,8 @@ typedef struct _setup_preset_t
 #define setup_symbol_lookup_anchor_offset_offset (setup_sprintf_offset_offset + 8)
 #define setup_kconfig_offset_offset (setup_symbol_lookup_anchor_offset_offset + 8)
 #define setup_kconfig_size_offset (setup_kconfig_offset_offset + 8)
+#define setup_btf_offset_offset (setup_kconfig_size_offset + 8)
+#define setup_btf_size_offset (setup_btf_offset_offset + 8)
 #define setup_patch_config_offset (setup_root_superkey_offset + ROOT_SUPER_KEY_HASH_LEN + SETUP_PRESERVE_LEN)
 #define setup_end (setup_patch_config_offset + PATCH_CONFIG_LEN)
 #endif
