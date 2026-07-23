@@ -559,6 +559,15 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
         tools_logi("ikconfig gzip blob at 0x%zx, size 0x%zx (runtime puff)\n", kcfg_start, kcfg_bytes);
     }
 
+    // locate the kernel's embedded BTF blob (CONFIG_DEBUG_INFO_BTF)
+    size_t btf_start = 0, btf_bytes = 0;
+    int btf_rc = find_btf_blob(kallsym_kimg, pimg.ori_kimg_len, &btf_start, &btf_bytes);
+    if (btf_rc) {
+        tools_logw("kernel BTF blob not found (rc=%d), btf unavailable at runtime\n", btf_rc);
+    } else {
+        tools_logi("btf blob at 0x%zx, size 0x%zx\n", btf_start, btf_bytes);
+    }
+
     // kpimg
     char *kpimg = NULL;
     int kpimg_len = 0;
@@ -833,9 +842,17 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
         setup->kconfig_size = (int64_t)kcfg_bytes;
     }
 
+    // record BTF blob location for runtime parsing
+    if (!btf_rc) {
+        setup->btf_offset = (int64_t)btf_start;
+        setup->btf_size = (int64_t)btf_bytes;
+    }
+
     if ((is_be() ^ kinfo->is_be)) {
         setup->kconfig_offset = i64swp(setup->kconfig_offset);
         setup->kconfig_size = i64swp(setup->kconfig_size);
+        setup->btf_offset = i64swp(setup->btf_offset);
+        setup->btf_size = i64swp(setup->btf_size);
     }
 
     // guard extra
