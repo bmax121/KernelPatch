@@ -159,6 +159,19 @@ static int reloc_insn_imm(enum aarch64_reloc_op op, void *place, u64 val, int ls
     return 0;
 }
 
+#define ADD64_IMM_OPC 0x91000000
+
+static int reloc_got_ldr_to_add(void *place, u64 val)
+{
+    u32 insn = le32_to_cpu(*(u32 *)place);
+    u32 regs = insn & 0x3FF;
+    u32 add = ADD64_IMM_OPC | regs;
+
+    add = aarch64_insn_encode_immediate(AARCH64_INSN_IMM_12, add, val & 0xfff);
+    *(u32 *)place = cpu_to_le32(add);
+    return 0;
+}
+
 int apply_relocate(Elf64_Shdr *sechdrs, const char *strtab, unsigned int symindex, unsigned int relsec,
                    struct module *me)
 {
@@ -313,6 +326,15 @@ int apply_relocate_add(Elf64_Shdr *sechdrs, const char *strtab, unsigned int sym
         case R_AARCH64_JUMP26:
         case R_AARCH64_CALL26:
             ovf = reloc_insn_imm(RELOC_OP_PREL, loc, val, 2, 26, AARCH64_INSN_IMM_26);
+            break;
+
+        case R_AARCH64_ADR_GOT_PAGE:
+            overflow_check = false;
+            ovf = reloc_insn_imm(RELOC_OP_PAGE, loc, val, 12, 21, AARCH64_INSN_IMM_ADR);
+            break;
+        case R_AARCH64_LD64_GOT_LO12_NC:
+            overflow_check = false;
+            ovf = reloc_got_ldr_to_add(loc, val);
             break;
         default:
             pr_err("unsupported RELA relocation: %llu\n", ELF64_R_TYPE(rel[i].r_info));
