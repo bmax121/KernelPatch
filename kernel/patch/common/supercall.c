@@ -109,11 +109,13 @@ static long call_kpm_nums()
 static long call_kpm_list(char *__user names, int len)
 {
     if (len <= 0) return -EINVAL;
-    char buf[4096];
+    char buf[4096] = { 0 };
     int sz = list_modules(buf, sizeof(buf));
+    if (sz < 0) return sz;
     if (sz > len) return -ENOBUFS;
-    sz = compat_copy_to_user(names, buf, len);
-    return sz;
+    int copy_len = sz > 0 ? sz : 1;
+    int rc = compat_copy_to_user(names, buf, copy_len);
+    return rc == copy_len ? sz : -EFAULT;
 }
 
 static long call_kpm_info(const char *__user uname, char *__user out_info, int out_len)

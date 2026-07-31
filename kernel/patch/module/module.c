@@ -619,6 +619,9 @@ int get_module_nums()
 
 int list_modules(char *out_names, int size)
 {
+    if (!out_names || size <= 0) return -EINVAL;
+    out_names[0] = '\0';
+
     rcu_read_lock();
 
     struct module *pos;
