@@ -91,6 +91,8 @@ typedef struct
     int32_t kallsyms_num_syms;
 
     int32_t has_relative_base;
+    int32_t has_absolute_percpu;
+    uint64_t kallsyms_relative_base;
     int32_t kallsyms_addresses_offset;
     int32_t kallsyms_offsets_offset;
     // int32_t kallsyms_relative_base_offset;  // maybe 0

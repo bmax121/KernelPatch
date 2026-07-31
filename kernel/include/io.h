@@ -16,6 +16,49 @@
 /*
  * Generic IO read/write.  These perform native-endian accesses.
  */
+#ifdef CONFIG_X86_64
+
+static inline void __raw_writeb(u8 val, volatile void __iomem *addr)
+{
+    *(volatile u8 *)addr = val;
+}
+
+static inline void __raw_writew(u16 val, volatile void __iomem *addr)
+{
+    *(volatile u16 *)addr = val;
+}
+
+static inline void __raw_writel(u32 val, volatile void __iomem *addr)
+{
+    *(volatile u32 *)addr = val;
+}
+
+static inline void __raw_writeq(u64 val, volatile void __iomem *addr)
+{
+    *(volatile u64 *)addr = val;
+}
+
+static inline u8 __raw_readb(const volatile void __iomem *addr)
+{
+    return *(volatile u8 *)addr;
+}
+
+static inline u16 __raw_readw(const volatile void __iomem *addr)
+{
+    return *(volatile u16 *)addr;
+}
+
+static inline u32 __raw_readl(const volatile void __iomem *addr)
+{
+    return *(volatile u32 *)addr;
+}
+
+static inline u64 __raw_readq(const volatile void __iomem *addr)
+{
+    return *(volatile u64 *)addr;
+}
+
+#else /* ARM64 */
 static inline void __raw_writeb(u8 val, volatile void __iomem *addr)
 {
     asm volatile("strb %w0, [%1]" : : "r"(val), "r"(addr));
@@ -80,6 +123,8 @@ static inline u64 __raw_readq(const volatile void __iomem *addr)
         : "r"(addr));
     return val;
 }
+
+#endif /* CONFIG_X86_64 */
 
 /* IO barriers */
 #define __iormb() rmb()

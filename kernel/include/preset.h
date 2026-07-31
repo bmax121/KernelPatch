@@ -26,6 +26,9 @@
 
 #define CONFIG_DEBUG (1 << 0)
 #define CONFIG_ANDROID (1 << 1)
+#define CONFIG_FLAG_X86_64 (1 << 2)
+
+#define KP_X86_ENTRY_OFFSET 0x800
 
 #define MAP_SYMBOL_NUM (7)
 #define MAP_SYMBOL_SIZE (MAP_SYMBOL_NUM * 8)
@@ -187,6 +190,12 @@ typedef int32_t extra_item_type;
 
 #define EXTRA_EVENT_PRE_SECOND_STAGE "pre-init-second-stage"
 #define EXTRA_EVENT_POST_SECOND_STAGE "post-init-second-stage"
+
+#define EXTRA_EVENT_EARLY_INIT "early-init"
+#define EXTRA_EVENT_INIT "init"
+#define EXTRA_EVENT_LATE_INIT "late-init"
+#define EXTRA_EVENT_POST_FS_DATA "post-fs-data"
+#define EXTRA_EVENT_BOOT_COMPLETED "boot-completed"
 
 #define PATCH_EXTRA_HEADER_VERSION_LEGACY 0U
 #define PATCH_EXTRA_HEADER_VERSION_MAGIC 0x4B500000U

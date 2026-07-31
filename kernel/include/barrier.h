@@ -1,6 +1,31 @@
 #ifndef _KP_BARRIER_H_
 #define _KP_BARRIER_H_
 
+#ifdef CONFIG_X86_64
+
+#define mb()  asm volatile("mfence" ::: "memory")
+#define wmb() asm volatile("sfence" ::: "memory")
+#define rmb() asm volatile("lfence" ::: "memory")
+
+#define smp_mb()  mb()
+#define smp_wmb() wmb()
+#define smp_rmb() rmb()
+
+#define smp_store_release(p, v)   \
+    do {                          \
+        barrier();                \
+        *(p) = (v);               \
+    } while (0)
+
+#define smp_load_acquire(p)       \
+    ({                            \
+        typeof(*(p)) __v = *(p);  \
+        barrier();                \
+        __v;                      \
+    })
+
+#else /* ARM64 */
+
 #define mb() asm volatile("dmb ish" ::: "memory")
 #define wmb() asm volatile("dmb ishst" ::: "memory")
 #define rmb() asm volatile("dmb ishld" ::: "memory")
@@ -73,5 +98,7 @@
         }                                                                               \
         __u.__val;                                                                      \
     })
+
+#endif /* CONFIG_X86_64 */
 
 #endif

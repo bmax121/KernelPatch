@@ -16,6 +16,7 @@ struct load_info
         const char *base;
         unsigned long size;
         const char *name, *version, *license, *author, *description;
+        char error_msg[KPM_LOAD_ERROR_MESSAGE_LEN];
     } info;
     const Elf_Ehdr *hdr;
     unsigned long len;
@@ -41,6 +42,7 @@ struct module
     mod_ctl0call_t *ctl0;
     mod_ctl1call_t *ctl1;
     mod_exitcall_t *exit;
+    mod_eventcall_t *event;
 
     unsigned int size;
     unsigned int text_size;
@@ -57,6 +59,7 @@ long module_control0(const char *name, const char *ctl_args, char *__user out_ms
 long module_control1(const char *name, void *a1, void *a2, void *a3);
 long unload_module(const char *name, void *__user reserved);
 struct module *find_module(const char *name);
+long notify_modules_event(const char *event, const char *args, void *__user reserved);
 
 int get_module_nums();
 int list_modules(char *out_names, int size);

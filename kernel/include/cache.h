@@ -3,6 +3,28 @@
 
 #include <stdint.h>
 
+#ifdef CONFIG_X86_64
+
+static inline void local_flush_icache_all(void)
+{
+    /* x86 has coherent I/D; only a serializing instruction is needed after code mods */
+}
+
+static inline void flush_icache_all(void)
+{
+    asm volatile("wbinvd" ::: "memory");
+}
+
+static inline void __flush_dcache_area(void *addr, size_t len)
+{
+    /* x86 does not require explicit D-cache maintenance for coherency */
+    (void)addr; (void)len;
+}
+
+void flush_icache_range(unsigned long start, unsigned long end);
+
+#else /* ARM64 */
+
 static inline void local_flush_icache_all(void)
 {
     asm volatile("ic iallu");
@@ -115,4 +137,6 @@ void __dma_flush_range(unsigned long start, unsigned long end);
 void __dma_map_area(unsigned long start, unsigned long size, enum dma_data_direction dir);
 void __dma_unmap_area(unsigned long start, unsigned long size, enum dma_data_direction dir);
 
-#endif
+#endif /* CONFIG_X86_64 */
+
+#endif /* _KP_CACHE_H_ */
