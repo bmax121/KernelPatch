@@ -67,19 +67,11 @@ int write_kstorage(int gid, long did, void *data, int offset, int len, bool data
     spinlock_t *lock = &kstorage_glocks[gid];
     struct kstorage *pos = 0, *old = 0;
 
-    rcu_read_lock();
-
-    hlist_for_each_entry_rcu(pos, bucket, hnode)
-    {
-        if (pos->did == did) {
-            old = pos;
-            break;
-        }
-    }
-
+    // Do the potentially-sleeping allocation/copy before entering the RCU
+    // read-side critical section below, since vmalloc()/memdup_user() may
+    // sleep and must never be called with rcu_read_lock() held.
     struct kstorage *new = (struct kstorage *)vmalloc(sizeof(struct kstorage) + len);
     if (!new) {
-        rcu_read_unlock();
         return -ENOMEM;
     }
     new->gid = gid;
@@ -88,7 +80,6 @@ int write_kstorage(int gid, long did, void *data, int offset, int len, bool data
     if (data_is_user) {
         void *drc = memdup_user(data + offset, len);
         if (IS_ERR(drc)) {
-            rcu_read_unlock();
             kvfree(new);
             return PTR_ERR(drc);
         }
@@ -98,6 +89,16 @@ int write_kstorage(int gid, long did, void *data, int offset, int len, bool data
         memcpy(new->data, data + offset, len);
     }
     new->dlen = len;
+
+    rcu_read_lock();
+
+    hlist_for_each_entry_rcu(pos, bucket, hnode)
+    {
+        if (pos->did == did) {
+            old = pos;
+            break;
+        }
+    }
 
     spin_lock(lock);
     if (old) { // update
@@ -200,6 +201,7 @@ int list_kstorage_ids(int gid, long *ids, int idslen, bool data_is_user)
     if (gid < 0 || gid >= KSTRORAGE_MAX_GROUP_NUM) return -ENOENT;
 
     int cnt = 0;
+    int rc = 0;
 
     struct kstorage *pos = 0;
 
@@ -214,7 +216,8 @@ int list_kstorage_ids(int gid, long *ids, int idslen, bool data_is_user)
                 int cplen = compat_copy_to_user(ids + cnt, &pos->did, sizeof(pos->did));
                 if (cplen <= 0) {
                     logkfe("compat_copy_to_user error: %d", cplen);
-                    cnt = cplen;
+                    rc = cplen;
+                    goto out;
                 }
             } else {
                 memcpy(ids + cnt, &pos->did, sizeof(pos->did));
@@ -226,7 +229,7 @@ int list_kstorage_ids(int gid, long *ids, int idslen, bool data_is_user)
 out:
     rcu_read_unlock();
 
-    return cnt;
+    return rc ? rc : cnt;
 }
 KP_EXPORT_SYMBOL(list_kstorage_ids);
 
