@@ -34,7 +34,7 @@ jobs:
           cd kernel
 
           export ANDROID=1
-          make
+          make hdr kpimg
           mv kpimg kpimg-android
           mv kpimg.elf kpimg.elf-android
           make clean
@@ -43,7 +43,6 @@ jobs:
           make
           mv kpimg kpimg-linux
           mv kpimg.elf kpimg.elf-linux
-          make clean
 
           cd ..
           cd kpms
@@ -66,6 +65,7 @@ jobs:
           path: |
             kernel/kpimg.elf-linux
             kernel/kpimg.elf-android
+            kernel/kpimg-x86.elf
           name: kpimg.elf
 
       - name: Release
@@ -76,6 +76,7 @@ jobs:
           artifacts: |
             kernel/kpimg-linux
             kernel/kpimg-android
+            kernel/kpimg-x86
             kpms/demo-hello/demo-hello.kpm
             kpms/demo-inlinehook/demo-inlinehook.kpm
             kpms/demo-syscallhook/demo-syscallhook.kpm

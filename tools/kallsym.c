@@ -234,6 +234,18 @@ static inline int get_offsets_elem_size(kallsym_t *info)
     return info->asm_long_size;
 }
 
+static int32_t decode_relative_symbol_offset(kallsym_t *info, const char *entry)
+{
+    int32_t raw = (int32_t)int_unpack((void *)entry, get_offsets_elem_size(info), info->is_be);
+
+    if (info->arch == X86_64 && info->has_absolute_percpu) {
+        if (raw >= 0) return raw;
+        return -1 - raw;
+    }
+
+    return (uint32_t)raw;
+}
+
 static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
 {
     if (!info->try_relo) return 0;
@@ -399,14 +411,15 @@ static int find_approx_offsets(kallsym_t *info, char *img, int32_t imglen)
 {
     int32_t sym_num = 0;
     int32_t elem_size = info->asm_long_size;
-    int64_t prev_offset = 0;
+    uint64_t prev_offset = 0;
     int32_t cand = 0;
     int32_t MAX_ZERO_OFFSET_NUM = 10;
     int32_t zero_offset_num = 0;
     for (; cand < imglen - KSYM_MIN_NEQ_SYMS * elem_size; cand += elem_size) {
-        int64_t offset = int_unpack(img + cand, elem_size, info->is_be);
+        int64_t raw_offset = int_unpack(img + cand, elem_size, info->is_be);
+        uint64_t offset = raw_offset < 0 ? (1ull << 32) + (uint32_t)(-raw_offset) : (uint32_t)raw_offset;
         if (!sym_num) {
-            if (!offset) continue;
+            if (!raw_offset) continue;
             prev_offset = offset;
             sym_num++;
             continue;
@@ -439,7 +452,8 @@ static int find_approx_offsets(kallsym_t *info, char *img, int32_t imglen)
     // approximate kallsyms_offsets end
     prev_offset = 0;
     for (; cand < imglen; cand += elem_size) {
-        int64_t offset = int_unpack(img + cand, elem_size, info->is_be);
+        int64_t raw_offset = int_unpack(img + cand, elem_size, info->is_be);
+        uint64_t offset = raw_offset < 0 ? (1ull << 32) + (uint32_t)(-raw_offset) : (uint32_t)raw_offset;
         if (offset < prev_offset) break;
         prev_offset = offset;
     }
@@ -460,13 +474,13 @@ static int find_approx_offsets(kallsym_t *info, char *img, int32_t imglen)
 static int32_t find_approx_addresses_or_offset(kallsym_t *info, char *img, int32_t imglen)
 {
     int32_t ret = 0;
-    if (info->arch == ARM64 && info->is_64) {
+    if ((info->arch == ARM64 || info->arch == X86_64) && info->is_64) {
         /*
          * Vendor arm64 kernels can carry kallsyms_offsets even on older
          * version strings such as 4.4, so don't gate the relative-base path
          * purely on the reported kernel version.
          */
-        tools_logi("try kallsyms_offsets first for arm64\n");
+        tools_logi("try kallsyms_offsets first for 64-bit relative-base kernel\n");
         ret = find_approx_offsets(info, img, imglen);
         if (!ret) return 0;
     }
@@ -502,6 +516,21 @@ static int find_num_syms(kallsym_t *info, char *img, int32_t imglen)
     } else {
         tools_logi("kallsyms_num_syms offset: 0x%08x, value: 0x%08x\n", info->kallsyms_num_syms_offset,
                    info->kallsyms_num_syms);
+    }
+
+    if (info->arch == X86_64 && info->has_relative_base) {
+        int32_t begin = info->kallsyms_num_syms_offset - 32;
+        if (begin < 0) begin = 0;
+        for (int32_t pos = info->kallsyms_num_syms_offset - 8; pos >= begin; pos -= 8) {
+            uint64_t value = uint_unpack(img + pos, 8, info->is_be);
+            if ((value & 0xffff000000000000ull) == 0xffff000000000000ull) {
+                info->kallsyms_relative_base = value;
+                info->kernel_base = value;
+                tools_logi("kallsyms_relative_base offset: 0x%08x, value: 0x%llx\n", pos,
+                           (unsigned long long)value);
+                break;
+            }
+        }
     }
     return 0;
 }
@@ -824,6 +853,19 @@ static int correct_addresses_or_offsets_by_banner(kallsym_t *info, char *img, in
 
         int32_t end = pos + 4096 + elem_size;
         for (; pos < end; pos += elem_size) {
+            if (info->arch == X86_64 && info->has_relative_base) {
+                int32_t raw = (int32_t)int_unpack(img + pos + index * elem_size, elem_size, info->is_be);
+                if ((uint32_t)raw == (uint32_t)target_offset) {
+                    info->has_absolute_percpu = 0;
+                    break;
+                }
+                if (raw < 0 && -1 - raw == target_offset) {
+                    info->has_absolute_percpu = 1;
+                    tools_logi("x86 kallsyms uses absolute percpu offsets\n");
+                    break;
+                }
+                continue;
+            }
             uint64_t base = uint_unpack(img + pos, elem_size, info->is_be);
             int32_t offset = uint_unpack(img + pos + index * elem_size, elem_size, info->is_be) - base;
             if (offset == target_offset) break;
@@ -851,9 +893,11 @@ static int correct_addresses_or_offsets_by_banner(kallsym_t *info, char *img, in
         tools_logi("kernel base address: 0x%llx\n", info->kernel_base);
     }
 
-    int32_t pid_vnr_offset = get_symbol_offset(info, img, "pid_vnr");
-    if (arm64_verify_pid_vnr(info, img, pid_vnr_offset)) {
-        tools_logw("pid_vnr verification failed\n");
+    if (info->arch == ARM64) {
+        int32_t pid_vnr_offset = get_symbol_offset(info, img, "pid_vnr");
+        if (arm64_verify_pid_vnr(info, img, pid_vnr_offset)) {
+            tools_logw("pid_vnr verification failed\n");
+        }
     }
 
     return 0;
@@ -1011,8 +1055,8 @@ int32_t get_symbol_index_offset(kallsym_t *info, char *img, int32_t index)
         elem_size = get_addresses_elem_size(info);
         pos = info->kallsyms_addresses_offset;
     }
+    if (info->has_relative_base) return decode_relative_symbol_offset(info, img + pos + index * elem_size);
     uint64_t target = uint_unpack(img + pos + index * elem_size, elem_size, info->is_be);
-    if (info->has_relative_base) return target;
     return (int32_t)(target - info->kernel_base);
 }
 

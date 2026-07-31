@@ -17,6 +17,7 @@ set(SOURCES
     kpm.c
     common.c
     bootimg.c
+    x86_64.c
 )
 
 add_executable(

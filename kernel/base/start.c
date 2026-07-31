@@ -192,6 +192,7 @@ tlsf_t kp_rox_mem = 0;
 #define BOOT_LOG_SIZE 0x2000
 static char boot_log[BOOT_LOG_SIZE] = { 0 };
 static int boot_log_offset = 0;
+static bool boot_log_full = false;
 
 static inline bool hw_dirty()
 {
@@ -208,11 +209,29 @@ const char *get_boot_log()
 void log_boot(const char *fmt, ...)
 {
     va_list va;
+    int avail = (int)sizeof(boot_log) - boot_log_offset;
+
+    if (avail > 1) {
+        va_start(va, fmt);
+        int ret = vsnprintf(boot_log + boot_log_offset, avail, fmt, va);
+        va_end(va);
+        if (ret < 0) return;
+        printk("KP %s", boot_log + boot_log_offset);
+        // vsnprintf returns the length it would have written, so clamp to what actually fit
+        boot_log_offset += ret < avail ? ret : avail - 1;
+        return;
+    }
+
+    // buffer exhausted, keep feeding the kernel log but stop appending
+    if (!boot_log_full) {
+        boot_log_full = true;
+        printk("KP boot log buffer full, later messages only go to the kernel log\n");
+    }
+    char line[192];
     va_start(va, fmt);
-    int ret = vsnprintf(boot_log + boot_log_offset, sizeof(boot_log) - boot_log_offset, fmt, va);
+    vsnprintf(line, sizeof(line), fmt, va);
     va_end(va);
-    printk("KP %s", boot_log + boot_log_offset);
-    boot_log_offset += ret;
+    printk("KP %s", line);
 }
 
 uint64_t *pgtable_entry(uint64_t pgd, uint64_t va)

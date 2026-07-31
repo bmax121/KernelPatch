@@ -20,8 +20,19 @@
 *.kpm
 
 kpimg
+kpimg-x86
 
 *.img
 kernel
 kernel-b
+bzImage.kernel
+bzImage-*
 *.bat
+
+# build/test artifacts: binaries, compressed blobs, logs
+bzImage
+kptools
+*.gz
+*.flat
+*.log
+*.err

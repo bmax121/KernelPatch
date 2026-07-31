@@ -25,6 +25,7 @@
 #include "preset.h"
 #include "symbol.h"
 #include "kpm.h"
+#include "x86_64.h"
 #include "lib/sha/sha256.h"
 
 void read_kernel_file(const char *path, kernel_file_t *kernel_file)
@@ -249,11 +250,13 @@ void print_preset_info(preset_t *preset)
     uint32_t ver_num = (ver.major << 16) + (ver.minor << 8) + ver.patch;
     bool is_android = header->config_flags & CONFIG_ANDROID;
     bool is_debug = header->config_flags & CONFIG_DEBUG;
+    bool is_x86_64 = header->config_flags & CONFIG_FLAG_X86_64;
 
     fprintf(stdout, INFO_KP_IMG_SESSION "\n");
     fprintf(stdout, "version=0x%x\n", ver_num);
     fprintf(stdout, "compile_time=%s\n", header->compile_time);
     fprintf(stdout, "config=%s,%s\n", is_android ? "android" : "linux", is_debug ? "debug" : "release");
+    fprintf(stdout, "arch=%s\n", is_x86_64 ? "x86_64" : "arm64");
     fprintf(stdout, "superkey=%s\n", setup->superkey);
 
     // todo: remove compat version
@@ -505,6 +508,75 @@ static int disable_pi_map(char *img, size_t imglen)
     );
 }
 
+static int patch_update_x86(const char *kimg_path, const char *kpimg_path, const char *out_path,
+                            const char *superkey, bool root_key, const char **additional,
+                            int extra_config_num)
+{
+    if (extra_config_num) {
+        tools_loge("x86 kpimg extras are not supported yet\n");
+        return -1;
+    }
+    if (additional && additional[0]) {
+        tools_loge("x86 kpimg additional properties are not supported yet\n");
+        return -1;
+    }
+
+    x86_bzimage_t image;
+    if (load_x86_bzimage(kimg_path, &image)) {
+        tools_loge("load x86 bzImage failed\n");
+        return -1;
+    }
+
+    char *kpimg = NULL;
+    int kpimg_len = 0;
+    read_file(kpimg_path, &kpimg, &kpimg_len);
+    if (kpimg_len < (int)sizeof(preset_t)) {
+        tools_loge("x86 kpimg is too small\n");
+        free(kpimg);
+        free_x86_bzimage(&image);
+        return -1;
+    }
+
+    preset_t *preset = (preset_t *)kpimg;
+    char magic[MAGIC_LEN] = KP_MAGIC;
+    if (memcmp(preset->header.magic, magic, MAGIC_LEN) ||
+        !(preset->header.config_flags & CONFIG_FLAG_X86_64)) {
+        tools_loge("kpimg is not an x86_64 payload\n");
+        free(kpimg);
+        free_x86_bzimage(&image);
+        return -1;
+    }
+
+    setup_preset_t *setup = &preset->setup;
+    memset(setup, 0, sizeof(*setup));
+    kallsym_t kallsym = { 0 };
+    int kver = 0;
+    if (!find_linux_banner(&kallsym, image.flat, image.flat_size, &kver)) {
+        setup->kernel_version.major = kallsym.version.major;
+        setup->kernel_version.minor = kallsym.version.minor;
+        setup->kernel_version.patch = kallsym.version.patch;
+    }
+
+    if (!root_key) {
+        strncpy((char *)setup->superkey, superkey, SUPER_KEY_LEN - 1);
+    } else if (superkey && superkey[0]) {
+        BYTE digest[SHA256_BLOCK_SIZE];
+        SHA256_CTX ctx;
+        sha256_init(&ctx);
+        sha256_update(&ctx, (const BYTE *)superkey, strnlen(superkey, SUPER_KEY_LEN));
+        sha256_final(&ctx, digest);
+        memcpy(setup->root_superkey, digest, ROOT_SUPER_KEY_HASH_LEN);
+    }
+
+    int rc = inject_x86_kpimg(&image, kpimg, kpimg_len);
+    if (!rc) rc = write_x86_bzimage(&image, out_path);
+    if (!rc) tools_logi("x86 patch done: %s\n", out_path);
+
+    free(kpimg);
+    free_x86_bzimage(&image);
+    return rc;
+}
+
 int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey,
                      bool root_key, const char **additional, extra_config_t *extra_configs, int extra_config_num)
 {
@@ -513,6 +585,18 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     if (!kpimg_path) tools_loge_exit("empty kpimg\n");
     if (!out_path) tools_loge_exit("empty out image path\n");
     if (!superkey && !root_key) tools_loge_exit("empty superkey\n");
+
+    char *probe = NULL;
+    int probe_len = 0;
+    read_file(kimg_path, &probe, &probe_len);
+    bool x86_bzimage = is_x86_bzimage(probe, probe_len);
+    free(probe);
+    if (x86_bzimage) {
+        int rc = patch_update_x86(kimg_path, kpimg_path, out_path, superkey, root_key, additional,
+                                  extra_config_num);
+        set_log_enable(false);
+        return rc;
+    }
 
     patched_kimg_t pimg = { 0 };
     kernel_file_t kernel_file;
@@ -676,9 +760,11 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     uint32_t ver_num = (ver.major << 16) + (ver.minor << 8) + ver.patch;
     bool is_android = header->config_flags & CONFIG_ANDROID;
     bool is_debug = header->config_flags & CONFIG_DEBUG;
+    bool is_x86_64 = header->config_flags & CONFIG_FLAG_X86_64;
     tools_logi("kpimg version: %x\n", ver_num);
     tools_logi("kpimg compile time: %s\n", header->compile_time);
-    tools_logi("kpimg config: %s, %s\n", is_android ? "android" : "linux", is_debug ? "debug" : "release");
+    tools_logi("kpimg config: %s, %s, %s\n", is_android ? "android" : "linux",
+               is_debug ? "debug" : "release", is_x86_64 ? "x86_64" : "arm64");
 
     setup_preset_t *setup = &preset->setup;
     memset(setup, 0, sizeof(preset->setup));
@@ -861,6 +947,25 @@ int unpatch_img(const char *kimg_path, const char *out_path)
     if (!kimg_path) tools_loge_exit("empty kernel image\n");
     if (!out_path) tools_loge_exit("empty out image path\n");
 
+    char *probe = NULL;
+    int probe_len = 0;
+    read_file(kimg_path, &probe, &probe_len);
+    bool x86_bzimage = is_x86_bzimage(probe, probe_len);
+    free(probe);
+    if (x86_bzimage) {
+        set_log_enable(true);
+        x86_bzimage_t image;
+        if (load_x86_bzimage(kimg_path, &image)) {
+            set_log_enable(false);
+            return -1;
+        }
+        int rc = remove_x86_kpimg(&image);
+        if (!rc) rc = write_x86_bzimage(&image, out_path);
+        free_x86_bzimage(&image);
+        set_log_enable(false);
+        return rc;
+    }
+
     kernel_file_t kernel_file;
     read_kernel_file(kimg_path, &kernel_file);
 
@@ -908,6 +1013,30 @@ int dump_kallsym(const char *kimg_path)
 {
     if (!kimg_path) tools_loge_exit("empty kernel image\n");
     set_log_enable(true);
+
+    char *probe = 0;
+    int probe_len = 0;
+    read_file(kimg_path, &probe, &probe_len);
+    bool bzimage = is_x86_bzimage(probe, probe_len);
+    free(probe);
+    if (bzimage) {
+        x86_bzimage_t image;
+        if (load_x86_bzimage(kimg_path, &image)) {
+            fprintf(stderr, "load x86 bzImage error\n");
+            return -1;
+        }
+        kallsym_t kallsym;
+        int rc = analyze_kallsym_info(&kallsym, image.flat, image.flat_size, X86_64, 1);
+        if (rc) {
+            fprintf(stderr, "analyze x86 kallsyms error\n");
+        } else {
+            dump_all_symbols(&kallsym, image.flat);
+        }
+        free_x86_bzimage(&image);
+        set_log_enable(false);
+        return rc;
+    }
+
     // read image files
     kernel_file_t kernel_file;
     read_kernel_file(kimg_path, &kernel_file);
@@ -926,6 +1055,21 @@ int dump_ikconfig(const char *kimg_path)
 {
     if (!kimg_path) tools_loge_exit("empty kernel image\n");
     set_log_enable(true);
+
+    char *probe = 0;
+    int probe_len = 0;
+    read_file(kimg_path, &probe, &probe_len);
+    bool bzimage = is_x86_bzimage(probe, probe_len);
+    free(probe);
+    if (bzimage) {
+        x86_bzimage_t image;
+        if (load_x86_bzimage(kimg_path, &image)) return -1;
+        int rc = dump_all_ikconfig(image.flat, image.flat_size);
+        free_x86_bzimage(&image);
+        set_log_enable(false);
+        return rc;
+    }
+
     // read image files
     kernel_file_t kernel_file;
     read_kernel_file(kimg_path, &kernel_file);

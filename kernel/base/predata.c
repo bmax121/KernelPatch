@@ -71,7 +71,11 @@ out:
 void reset_superkey(const char *key)
 {
     lib_strlcpy(superkey, key, SUPER_KEY_LEN);
+#ifdef CONFIG_X86_64
+    barrier();
+#else
     dsb(ish);
+#endif
 }
 
 void enable_auth_root_key(bool enable)
@@ -369,5 +373,9 @@ void predata_init()
         if (*p) *p += kernel_va;
     }
 
+#ifdef CONFIG_X86_64
+    barrier();
+#else
     dsb(ish);
+#endif
 }

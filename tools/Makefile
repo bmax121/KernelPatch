@@ -7,7 +7,7 @@ ifdef DEBUG
     CFLAGS += -DDEBUG -g
 endif
 
-OBJS := image.o kallsym.o kptools.o order.o insn.o patch.o symbol.o kpm.o common.o bootimg.o
+OBJS := image.o kallsym.o kptools.o order.o insn.o patch.o symbol.o kpm.o common.o bootimg.o x86_64.o
 
 LIB_SRCS := $(wildcard lib/*.c) $(wildcard lib/*/*.c)
 LIB_OBJS := $(LIB_SRCS:.c=.o)
