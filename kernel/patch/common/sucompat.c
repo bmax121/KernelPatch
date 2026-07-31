@@ -35,6 +35,7 @@
 #include <linux/vmalloc.h>
 #include <sucompat.h>
 #include <symbol.h>
+#include <kallsyms.h>
 #include <uapi/linux/limits.h>
 #include <predata.h>
 #include <kstorage.h>
@@ -310,7 +311,7 @@ __maybe_unused static void before_execveat(hook_fargs5_t *args, void *udata)
 // 		int, dfd, const char __user *, filename, unsigned, flags,
 // 		unsigned int, mask,
 // 		struct statx __user *, buffer)
-static void su_handler_arg1_ufilename_before(hook_fargs6_t *args, void *udata)
+__maybe_unused static void su_handler_arg1_ufilename_before(hook_fargs6_t *args, void *udata)
 {
     uid_t uid = current_uid();
     if (!is_su_allow_uid(uid) && !is_trusted_manager_uid(uid)) return;
@@ -329,6 +330,34 @@ static void su_handler_arg1_ufilename_before(hook_fargs6_t *args, void *udata)
             logkfi("su uid: %d, cp stack error: %d\n", uid, uptr);
         }
     }
+}
+
+static void after_getname_flags(hook_fargs3_t *args, void *udata)
+{
+    struct filename *fn = (struct filename *)args->ret;
+    if (IS_ERR_OR_NULL(fn)) return;
+
+    uid_t uid = current_uid();
+    if (!is_su_allow_uid(uid) && !is_trusted_manager_uid(uid)) return;
+
+    const char *name = fn->name;
+    if (!name || strcmp(name, su_get_path())) return;
+
+    if (strlen(sh_path) <= strlen(name)) {
+        strcpy((char *)name, sh_path);
+        return;
+    }
+
+    if (kfunc(getname_kernel) && kfunc(putname)) {
+        struct filename *nf = kfunc(getname_kernel)(sh_path);
+        if (!IS_ERR_OR_NULL(nf)) {
+            kfunc(putname)(fn);
+            args->ret = (uint64_t)nf;
+            return;
+        }
+    }
+
+    logkfi("uid: %d, cannot redirect su path to %s\n", uid, sh_path);
 }
 
 int set_ap_mod_exclude(uid_t uid, int exclude)
@@ -394,23 +423,17 @@ int su_compat_init()
     rc = hook_syscalln(__NR_execve, 3, before_execve, 0, (void *)0);
     log_boot("hook __NR_execve rc: %d\n", rc);
 
-    rc = hook_syscalln(__NR3264_fstatat, 4, su_handler_arg1_ufilename_before, 0, (void *)0);
-    log_boot("hook __NR3264_fstatat rc: %d\n", rc);
-
-    rc = hook_syscalln(__NR_faccessat, 3, su_handler_arg1_ufilename_before, 0, (void *)0);
-    log_boot("hook __NR_faccessat rc: %d\n", rc);
-
     // __NR_execve 11
     rc = hook_compat_syscalln(11, 3, before_execve, 0, (void *)1);
     log_boot("hook 32 __NR_execve rc: %d\n", rc);
 
-    // __NR_fstatat64 327
-    rc = hook_compat_syscalln(327, 4, su_handler_arg1_ufilename_before, 0, (void *)0);
-    log_boot("hook 32 __NR_fstatat64 rc: %d\n", rc);
-
-    //  __NR_faccessat 334
-    rc = hook_compat_syscalln(334, 3, su_handler_arg1_ufilename_before, 0, (void *)0);
-    log_boot("hook 32 __NR_faccessat rc: %d\n", rc);
+    unsigned long getname_flags_addr = kallsyms_lookup_name("getname_flags");
+    if (getname_flags_addr) {
+        rc = hook_wrap3((void *)getname_flags_addr, 0, after_getname_flags, (void *)0);
+        log_boot("hook getname_flags rc: %d\n", rc);
+    } else {
+        log_boot("getname_flags not found\n");
+    }
 
     return 0;
 }
