@@ -203,6 +203,7 @@ int list_kstorage_ids(int gid, long *ids, int idslen, bool data_is_user)
             if (cplen <= 0) {
                 logkfe("compat_copy_to_user error: %d", cplen);
                 cnt = cplen;
+                break;
             }
         } else {
             memcpy(ids + cnt, &pos->did, sizeof(pos->did));
