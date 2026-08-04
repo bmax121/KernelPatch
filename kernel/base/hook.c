@@ -624,7 +624,7 @@ hook_err_t hook(void *func, void *replace, void **backup)
     hook->relo_addr = (uint64_t)hook->relo_insts;
     *backup = (void *)hook->relo_addr;
     logkv("Hook func: %llx, origin: %llx, replace: %llx, relocate: %llx, chain: %llx\n", hook->func_addr,
-          hook->origin_addr, hook->replace_addr, hook->relo_addr, hook);
+          hook->origin_addr, hook->replace_addr, hook->relo_addr, (uint64_t)hook);
     err = hook_prepare(hook);
     if (err) goto out;
     hook_install(hook);
@@ -644,7 +644,7 @@ void unhook(void *func)
     if (!hook) return;
     hook_uninstall(hook);
     hook_mem_free(hook);
-    logkv("Unhook func: %llx\n", func);
+    logkv("Unhook func: %llx\n", (uint64_t)func);
 }
 KP_EXPORT_SYMBOL(unhook);
 
@@ -714,11 +714,11 @@ hook_err_t hook_chain_add(hook_chain_t *chain, void *before, void *after, void *
             }
             dsb(ish);
             chain->states[i] = CHAIN_ITEM_STATE_READY;
-            logkv("Wrap chain add: %llx, %llx, %llx successed\n", chain->hook.func_addr, before, after);
+            logkv("Wrap chain add: %llx, %llx, %llx successed\n", chain->hook.func_addr, (uint64_t)before, (uint64_t)after);
             return HOOK_NO_ERR;
         }
     }
-    logkv("Wrap chain add: %llx, %llx, %llx failed\n", chain->hook.func_addr, before, after);
+    logkv("Wrap chain add: %llx, %llx, %llx failed\n", chain->hook.func_addr, (uint64_t)before, (uint64_t)after);
     return -HOOK_CHAIN_FULL;
 }
 KP_EXPORT_SYMBOL(hook_chain_add);
@@ -738,7 +738,7 @@ void hook_chain_remove(hook_chain_t *chain, void *before, void *after)
                 break;
             }
     }
-    logkv("Wrap chain remove: %llx, %llx, %llx\n", chain->hook.func_addr, before, after);
+    logkv("Wrap chain remove: %llx, %llx, %llx\n", chain->hook.func_addr, (uint64_t)before, (uint64_t)after);
 }
 KP_EXPORT_SYMBOL(hook_chain_remove);
 
@@ -760,7 +760,7 @@ hook_err_t hook_wrap(void *func, int32_t argno, void *before, void *after, void 
     hook->replace_addr = (uint64_t)chain->transit;
     hook->relo_addr = (uint64_t)hook->relo_insts;
     logkv("Wrap func: %llx, origin: %llx, replace: %llx, relocate: %llx, chain: %llx\n", hook->func_addr,
-          hook->origin_addr, hook->replace_addr, hook->relo_addr, chain);
+          hook->origin_addr, hook->replace_addr, hook->relo_addr, (uint64_t)chain);
     hook_err_t err = hook_prepare(hook);
     if (err) goto err;
     err = hook_chain_prepare(chain->transit, argno);
@@ -794,6 +794,6 @@ void hook_unwrap_remove(void *func, void *before, void *after, int remove)
     hook_chain_uninstall(chain);
     // todo: unsafe
     hook_mem_free(chain);
-    logkv("Unwrap func: %llx\n", func);
+    logkv("Unwrap func: %llx\n", (uint64_t)func);
 }
 KP_EXPORT_SYMBOL(hook_unwrap_remove);

@@ -10,7 +10,13 @@
 #include <linux/string.h>
 #include <linux/uaccess.h>
 #include <linux/version.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
 #include <linux/stdarg.h>
+#else
+/* linux/stdarg.h is absent before 5.14; the repo's kernel/include/stdarg.h
+ * (found via -I) provides the same __builtin_va_* wrappers. */
+#include <stdarg.h>
+#endif
 #include "../include/kp_lkm.h"
 #include "../infra/symbol_resolver.h"
 #include "../infra/patch_memory.h"

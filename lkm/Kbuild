@@ -83,6 +83,10 @@ ccflags-y += -Wno-int-conversion -Wno-gcc-compat -Wno-missing-prototypes
 CFLAGS_hook/hook_engine.o += -fno-sanitize=cfi -fno-stack-protector -fno-jump-tables
 CFLAGS_hook/hook_engine.o += -fno-unwind-tables -fno-asynchronous-unwind-tables
 CFLAGS_hook/hook_engine.o += -std=gnu11 -Wno-strict-prototypes
+# Exclude from LTO: hook_engine uses -mbranch-protection=bti (no PAC sign-return-address),
+# but the rest of the module inherits the kernel's -mbranch-protection=standard (with PAC).
+# LTO rejects merging objects with clashing sign-return-address module flags.
+CFLAGS_hook/hook_engine.o += -fno-lto
 # _transit4 runs from a kernel text function's inline hook; x18 there is NOT the
 # module's shadow-call-stack. Disable SCS so the transit never writes x30 through
 # x18 (str x30,[x18]) into garbage -> CPU fault -> watchdog bite on that core.

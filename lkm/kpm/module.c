@@ -13,7 +13,6 @@
 #include "relo.h"
 #include "symbols.h"
 
-#include <linux/align.h>
 #include <linux/err.h>
 #include <linux/errno.h>
 #include <linux/fs.h>
@@ -382,7 +381,7 @@ static int rewrite_section_headers(struct kp_load_info *info)
 
 static int move_module(struct kp_module *mod, struct kp_load_info *info)
 {
-	logki("kpm alloc module size: %llx\n", mod->size);
+	logki("kpm alloc module size: %x\n", mod->size);
 	mod->start = kp_malloc_exec(mod->size);
 	if (!mod->start)
 		return -ENOMEM;
@@ -607,7 +606,7 @@ long kp_load_module(const void *data, int len, const char *args, const char *eve
 		goto out;
 	} else {
 		set_load_error(info, "module init failed");
-		logkfi("[%s] failed with [%s] error: %d, try exit ...\n", mod->info.name,
+		logkfi("[%s] failed with [%s] error: %ld, try exit ...\n", mod->info.name,
 		       args ? args : "", rc);
 		if (mod->exit)
 			kp_call_exit(mod->exit, reserved);
