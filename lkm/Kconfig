@@ -1,0 +1,13 @@
+menu "KernelPatch LKM"
+
+config KP_LKM
+	tristate "KernelPatch LKM support"
+	depends on MODULES && ARM64
+	default n
+	help
+	  KernelPatch as a loadable kernel module (DDK-built .ko) instead of a
+	  patched kernel image. Provides the supercall channel on syscall 45
+	  (truncate) and authenticates by the trusted APatch manager uid.
+	  Build with: CONFIG_KP_LKM=m
+
+endmenu

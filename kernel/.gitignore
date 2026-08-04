@@ -24,7 +24,7 @@ kpimg-x86
 
 *.img
 kernel
-kernel-b
+kernel-*
 bzImage.kernel
 bzImage-*
 *.bat

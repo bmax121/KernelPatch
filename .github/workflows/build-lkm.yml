@@ -1,0 +1,22 @@
+name: Build KernelPatch LKMs (matrix)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'lkm/**'
+  pull_request:
+    paths:
+      - 'lkm/**'
+
+jobs:
+  build-lkm:
+    strategy:
+      matrix:
+        kmi:
+          - android13-5.15
+          - android14-5.15
+    uses: ./.github/workflows/ddk-lkm.yml
+    with:
+      kmi: ${{ matrix.kmi }}
+      ddk_release: '20260313'

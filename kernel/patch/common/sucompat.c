@@ -199,7 +199,28 @@ static void handle_before_execve(char **__user u_filename_p, char **__user uargv
     int flen = compat_strncpy_from_user(filename, ufilename, sizeof(filename));
     if (flen <= 0) return;
 
-    if (!strcmp(current_su_path, filename)) {
+#ifdef ANDROID
+    // Match the configured su path (default /system/bin/kp) and the legacy
+    // /system/bin/su that shells and detectors also exec. execve does not go
+    // through getname_flags, so this before-hook is the only place to redirect
+    // a real exec of /system/bin/su to sh/apd.
+    if (strcmp(filename, current_su_path) && strcmp(filename, legacy_su_path)) {
+        if (!strcmp(SUPERCMD, filename)) {
+            void handle_supercmd(char **__user u_filename_p, char **__user uargv);
+            handle_supercmd(u_filename_p, uargv);
+        }
+        return;
+    }
+#else
+    if (strcmp(filename, current_su_path)) {
+        if (!strcmp(SUPERCMD, filename)) {
+            void handle_supercmd(char **__user u_filename_p, char **__user uargv);
+            handle_supercmd(u_filename_p, uargv);
+        }
+        return;
+    }
+#endif
+    {
         uid_t uid = current_uid();
         struct su_profile profile = { .to_uid = 0 };
         if (is_trusted_manager_uid(uid)) {
@@ -256,10 +277,6 @@ static void handle_before_execve(char **__user u_filename_p, char **__user uargv
             logkfi("call apd uid: %d, to_uid: %d, sctx: %s, cplen: %d, %d\n", uid, to_uid, sctx, cplen, argv_cplen);
         }
 #endif // ANDROID
-    } else if (!strcmp(SUPERCMD, filename)) {
-        void handle_supercmd(char **__user u_filename_p, char **__user uargv);
-        handle_supercmd(u_filename_p, uargv);
-        return;
     }
 }
 
@@ -313,6 +330,7 @@ __maybe_unused static void before_execveat(hook_fargs5_t *args, void *udata)
 // 		struct statx __user *, buffer)
 __maybe_unused static void su_handler_arg1_ufilename_before(hook_fargs6_t *args, void *udata)
 {
+    return;
     uid_t uid = current_uid();
     if (!is_su_allow_uid(uid) && !is_trusted_manager_uid(uid)) return;
 
@@ -322,7 +340,12 @@ __maybe_unused static void su_handler_arg1_ufilename_before(hook_fargs6_t *args,
     int flen = compat_strncpy_from_user(filename, *u_filename_p, sizeof(filename));
     if (flen <= 0) return;
 
-    if (!strcmp(current_su_path, filename)) {
+#ifdef ANDROID
+    if (strcmp(filename, current_su_path) && strcmp(filename, legacy_su_path)) return;
+#else
+    if (strcmp(filename, current_su_path)) return;
+#endif
+    {
         void *uptr = copy_to_user_stack(sh_path, sizeof(sh_path));
         if (uptr && !IS_ERR(uptr)) {
             *u_filename_p = uptr;
@@ -358,6 +381,45 @@ static void after_getname_flags(hook_fargs3_t *args, void *udata)
     }
 
     logkfi("uid: %d, cannot redirect su path to %s\n", uid, sh_path);
+}
+
+// stat-class probes on a real third-party su binary: security_inode_getattr fires
+// because the file genuinely exists. Show it only to granted uids (return 0, same
+// as the virtual su path which getname_flags redirects to sh for them) and hide
+// it from everyone else by failing the getattr (-ENOENT), which makes vfs_getattr
+// report ENOENT and the probe sees no su. struct path is { mnt; dentry; }.
+typedef char *(*su_dentry_path_raw_t)(void *dentry, char *buf, int buflen);
+static su_dentry_path_raw_t su_dentry_path_raw = 0;
+
+static void after_security_inode_getattr(hook_fargs1_t *args, void *udata)
+{
+    if ((long)args->ret < 0) return; // already an error, nothing to do
+
+    uid_t uid = current_uid();
+    bool granted = is_su_allow_uid(uid) || is_trusted_manager_uid(uid);
+
+    void *path = (void *)args->arg0;
+    if (!path) return;
+    void *dentry = *(void **)((char *)path + 8); // path->dentry
+    if (!dentry || !su_dentry_path_raw) return;
+
+    char buf[PATH_MAX];
+    char *p = su_dentry_path_raw(dentry, buf, sizeof(buf));
+    if (!p || !p[0]) return;
+
+#ifdef ANDROID
+    if (strcmp(p, su_get_path()) && strcmp(p, legacy_su_path)) return;
+#else
+    if (strcmp(p, su_get_path())) return;
+#endif
+
+    // Hide the real su file from unprivileged callers; keep it visible to granted ones.
+    if (!granted) {
+        args->ret = (uint64_t)-ENOENT;
+        logkfi("uid: %d, hide real su file: %s\n", uid, p);
+    } else {
+        logkfi("uid: %d, show real su file: %s\n", uid, p);
+    }
 }
 
 int set_ap_mod_exclude(uid_t uid, int exclude)
@@ -427,13 +489,47 @@ int su_compat_init()
     rc = hook_compat_syscalln(11, 3, before_execve, 0, (void *)1);
     log_boot("hook 32 __NR_execve rc: %d\n", rc);
 
-    unsigned long getname_flags_addr = kallsyms_lookup_name("getname_flags");
+    // 64-bit path-syscall probes: fstatat/faccessat. Keep these as a fallback
+    // alongside getname_flags: some vendor kernels (e.g. OPPO) do not route the
+    // 32-bit compat fstatat64/faccessat through getname_flags, so the after-hook
+    // alone never sees the probe and the su path stays visible to which/test -e.
+
+    // rc = hook_syscalln(__NR3264_fstatat, 4, su_handler_arg1_ufilename_before, 0, (void *)0);
+    // log_boot("hook __NR3264_fstatat rc: %d\n", rc);
+
+    // rc = hook_syscalln(__NR_faccessat, 3, su_handler_arg1_ufilename_before, 0, (void *)0);
+    // log_boot("hook __NR_faccessat rc: %d\n", rc);
+
+    // 32-bit compat probes: fstatat64(327) / faccessat(334)
+    // rc = hook_compat_syscalln(327, 4, su_handler_arg1_ufilename_before, 0, (void *)0);
+    // log_boot("hook 32 __NR_fstatat64 rc: %d\n", rc);
+
+    // rc = hook_compat_syscalln(334, 3, su_handler_arg1_ufilename_before, 0, (void *)0);
+    // log_boot("hook 32 __NR_faccessat rc: %d\n", rc);
+
+    // Redirect the su path only for granted uids: after_getname_flags checks
+    // is_su_allow_uid/is_trusted_manager_uid, so a granted app's stat/access on
+    // /system/bin/su or /system/bin/kp lands on the real /system/bin/sh and the
+    // probe reports it present, while unprivileged callers keep the virtual su
+    // path un-redirected and get ENOENT (hidden).
+    //
+    // LTO kernels (e.g. OPPO 6.1) emit getname_flags as a CFI wrapper with zero
+    // callers; the real entry all path syscalls reach is __original_getname_flags.
+    // Prefer it, fall back to getname_flags for non-LTO builds.
+    unsigned long getname_flags_addr = 0;
+    getname_flags_addr = kallsyms_lookup_name("__original_getname_flags");
+    if (!getname_flags_addr) {
+        getname_flags_addr = kallsyms_lookup_name("getname_flags");
+    }else{
+        logkfi("found __original_getname_flags: %llx\n", getname_flags_addr);
+    }
     if (getname_flags_addr) {
         rc = hook_wrap3((void *)getname_flags_addr, 0, after_getname_flags, (void *)0);
         log_boot("hook getname_flags rc: %d\n", rc);
     } else {
         log_boot("getname_flags not found\n");
     }
+
 
     return 0;
 }

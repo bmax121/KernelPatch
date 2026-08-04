@@ -303,7 +303,6 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
     // apply relocations
     int32_t max_offset = imglen - 8;
     int32_t apply_num = 0;
-    int32_t bad_offset_num = 0;
     for (cand = cand_start; cand < cand_end; cand += 24) {
         uint64_t r_offset = uint_unpack(img + cand, 8, info->is_be);
         uint64_t r_info = uint_unpack(img + cand + 8, 8, info->is_be);
@@ -316,8 +315,16 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
 
         int32_t offset = r_offset - kernel_va;
         if (offset < 0 || offset >= max_offset) {
-            bad_offset_num++;
-            continue;
+            /*
+             * Some vendor kernels (e.g. 5.4 qgki) carry a relocation whose target lies
+             * just past the loaded image (init/bss tail). Skipping it and continuing lets
+             * later relocations overwrite the kallsyms_offsets table with pointer values,
+             * which corrupts the monotonic offset sequence and truncates symbol resolution
+             * (memblock_phys_alloc_try_nid & co then cannot be found). Abort so the caller
+             * retries with a pristine image, as before 47a5014.
+             */
+            info->try_relo = 0;
+            return -1;
         }
 
         uint32_t r_type = r_info & 0xffffffff;
@@ -332,9 +339,6 @@ static int try_find_arm64_relo_table(kallsym_t *info, char *img, int32_t imglen)
     }
     if (apply_num) apply_num--;
     tools_logi("apply 0x%08x relocation entries\n", apply_num);
-    if (bad_offset_num) {
-        tools_logw("ignore 0x%08x out-of-range relocation entries\n", bad_offset_num);
-    }
 
     if (apply_num) info->relo_applied = 1;
 
@@ -561,6 +565,26 @@ static int find_markers_internal(kallsym_t *info, char *img, int32_t imglen, int
     }
 
     int32_t marker_end = cand + count * elem_size + elem_size;
+
+    // Validate marker values read forward. Each marker is a byte offset into
+    // kallsyms_names, which ends at markers_offset (== cand), so every value
+    // must be non-negative, strictly less than cand, and the sequence must be
+    // non-decreasing. A wrong elem_size (e.g. reading 4-byte markers as 8-byte
+    // on a vendor 4.19 kernel that uses unsigned int markers) merges adjacent
+    // entries into huge values that still pass the backward decreasing scan
+    // above but are nonsense here; reject so find_markers() falls back to the
+    // other elem_size instead of trusting a false positive.
+    int64_t prev = -1;
+    for (int i = 0; i < count; i++) {
+        int64_t v = int_unpack(img + cand + i * elem_size, elem_size, info->is_be);
+        if (v < 0 || v >= cand || v < prev) {
+            tools_logw("kallsyms_markers elem_size %d rejected at [%d] (val 0x%llx)\n", elem_size, i,
+                       (unsigned long long)v);
+            return -1;
+        }
+        prev = v;
+    }
+
     info->kallsyms_markers_offset = cand;
     info->_marker_num = count;
     info->kallsyms_markers_elem_size = elem_size;

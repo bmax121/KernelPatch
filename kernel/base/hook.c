@@ -365,7 +365,9 @@ uint64_t __attribute__((section(".transit0.text"))) __attribute__((__noinline__)
     }
     return fargs.ret;
 }
+#ifndef KP_HOOK_EXTERNAL_CHAIN_PREPARE
 extern void _transit0_end();
+#endif
 
 // transit4
 typedef uint64_t (*transit4_func_t)(uint64_t, uint64_t, uint64_t, uint64_t);
@@ -399,7 +401,9 @@ _transit4(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3)
     return fargs.ret;
 }
 
+#ifndef KP_HOOK_EXTERNAL_CHAIN_PREPARE
 extern void _transit4_end();
+#endif
 
 // transit8:
 typedef uint64_t (*transit8_func_t)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t);
@@ -439,7 +443,9 @@ _transit8(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t a
     return fargs.ret;
 }
 
+#ifndef KP_HOOK_EXTERNAL_CHAIN_PREPARE
 extern void _transit8_end();
+#endif
 
 // transit12:
 typedef uint64_t (*transit12_func_t)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
@@ -484,7 +490,9 @@ _transit12(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t 
     return fargs.ret;
 }
 
+#ifndef KP_HOOK_EXTERNAL_CHAIN_PREPARE
 extern void _transit12_end();
+#endif
 
 static __noinline hook_err_t relocate_inst(hook_t *hook, uint64_t inst_addr, uint32_t inst)
 {
@@ -640,6 +648,7 @@ void unhook(void *func)
 }
 KP_EXPORT_SYMBOL(unhook);
 
+#ifndef KP_HOOK_EXTERNAL_CHAIN_PREPARE
 static hook_err_t hook_chain_prepare(uint32_t *transit, int32_t argno)
 {
     uint64_t transit_start, transit_end;
@@ -684,6 +693,9 @@ static hook_err_t hook_chain_prepare(uint32_t *transit, int32_t argno)
     }
     return HOOK_NO_ERR;
 }
+#else
+static hook_err_t hook_chain_prepare(uint32_t *transit, int32_t argno);
+#endif
 
 hook_err_t hook_chain_add(hook_chain_t *chain, void *before, void *after, void *udata)
 {

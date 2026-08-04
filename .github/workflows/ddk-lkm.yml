@@ -1,0 +1,43 @@
+name: Build KernelPatch LKM (.ko)
+
+on:
+  workflow_call:
+    inputs:
+      kmi:
+        description: 'KMI version'
+        required: true
+        type: string
+      ddk_release:
+        description: 'DDK release version'
+        required: false
+        default: '20260313'
+        type: string
+
+jobs:
+  build-kp-lkm:
+    name: Build kernelpatch.ko for ${{ inputs.kmi }}
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/ylarod/ddk-min:${{ inputs.kmi }}-${{ inputs.ddk_release }}
+      options: --privileged
+
+    steps:
+    - name: Checkout source code
+      uses: actions/checkout@v7
+
+    - name: Build kernelpatch.ko
+      run: |
+        git config --global --add safe.directory /__w/KernelPatch/KernelPatch
+        cd lkm
+        CONFIG_KP_LKM=m CC=clang make
+        mkdir -p /github/workspace/out
+        cp kernelpatch.ko "/github/workspace/out/${{ inputs.kmi }}_kernelpatch.ko"
+        llvm-strip -d "/github/workspace/out/${{ inputs.kmi }}_kernelpatch.ko"
+        ls -la "/github/workspace/out/${{ inputs.kmi }}_kernelpatch.ko"
+        echo "Size: $(du -h "/github/workspace/out/${{ inputs.kmi }}_kernelpatch.ko" | cut -f1)"
+
+    - name: Upload kernelpatch.ko artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.kmi }}-lkm
+        path: /github/workspace/out/${{ inputs.kmi }}_kernelpatch.ko

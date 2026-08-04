@@ -1,0 +1,95 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# KernelPatch LKM build. Usage (inside the DDK container, KDIR preconfigured):
+#   CONFIG_KP_LKM=m CC=clang make
+# or with the ddk CLI:
+#   ddk build android12-5.10 ODIR=... -e CONFIG_KP_LKM=m
+obj-$(CONFIG_KP_LKM) += kernelpatch.o
+
+kernelpatch-objs := \
+	core/init.o \
+	infra/symbol_resolver.o \
+	infra/patch_memory.o \
+	infra/syscall_table.o \
+	infra/sha256.o \
+	manager/apk_sign.o \
+	manager/manager.o \
+	supercall/supercall.o \
+	supercall/dispatch.o \
+	supercall/su.o \
+	supercall/kstorage.o \
+	supercall/sucompat.o \
+	supercall/sucompat_hook.o \
+	supercall/accctl.o \
+	hook/hook_engine.o \
+	hook/hook_runtime.o \
+	kpm/module.o \
+	kpm/relo.o \
+	kpm/insn.o \
+	kpm/symbols.o \
+	kpm/kpm.o
+
+# Anchor include paths with $(src): for out-of-tree builds $(src) is the
+# module's absolute source dir, for in-tree it is KDIR-relative. We need two:
+# - $(src)/include        -> ktypes.h shim (scdefs.h's dependency)
+# - $(src)/../kernel/patch/include/uapi -> scdefs.h (KP's git-tracked uapi,
+#   the user/uapi copy is a build artifact and absent in CI)
+ifeq ($(filter /%,$(src)),)
+KP_LKM_DIR := $(srctree)/$(src)
+else
+KP_LKM_DIR := $(src)
+endif
+
+ccflags-y += -I$(KP_LKM_DIR)/include -I$(KP_LKM_DIR)/../kernel/patch/include/uapi
+ccflags-y += -I$(KP_LKM_DIR)/../kernel/patch/include -I$(KP_LKM_DIR)/../kernel/include
+
+# Version: the single source is the repo-root version file (../version). Read
+# the three numbers at parse time and pass them in as defines so kp_lkm.h,
+# MODULE_VERSION and the build-time string can never drift from it.
+KP_VERSION_FILE := $(KP_LKM_DIR)/../version
+KP_LKM_MAJOR := $(shell sed -n 's/^[[:space:]]*#define[[:space:]]*MAJOR[[:space:]]*\([0-9][0-9]*\).*/\1/p' $(KP_VERSION_FILE))
+KP_LKM_MINOR := $(shell sed -n 's/^[[:space:]]*#define[[:space:]]*MINOR[[:space:]]*\([0-9][0-9]*\).*/\1/p' $(KP_VERSION_FILE))
+KP_LKM_PATCH := $(shell sed -n 's/^[[:space:]]*#define[[:space:]]*PATCH[[:space:]]*\([0-9][0-9]*\).*/\1/p' $(KP_VERSION_FILE))
+ifeq ($(strip $(KP_LKM_MAJOR)),)
+KP_LKM_MAJOR := 0
+endif
+ifeq ($(strip $(KP_LKM_MINOR)),)
+KP_LKM_MINOR := 13
+endif
+ifeq ($(strip $(KP_LKM_PATCH)),)
+KP_LKM_PATCH := 3
+endif
+ccflags-y += -DKP_LKM_MAJOR=$(KP_LKM_MAJOR) -DKP_LKM_MINOR=$(KP_LKM_MINOR) -DKP_LKM_PATCH=$(KP_LKM_PATCH)
+$(info -- KP version: $(KP_LKM_MAJOR).$(KP_LKM_MINOR).$(KP_LKM_PATCH) from $(KP_VERSION_FILE))
+
+# Android build: picks the Android SU_PATH (/system/bin/kp) and SELinux
+# contexts (u:r:kp:s0 etc.) from user/uapi/scdefs.h. Without this the ko uses
+# the non-Android defaults (/usr/bin/kp, u:r:kernel:s0) and the AP manager
+# can't find the su binary.
+ccflags-y += -DANDROID
+
+# Detect the arm64 dcache flush API. android13-5.10 backported
+# dcache_clean_inval_poc; android12-5.10 still has __flush_dcache_area.
+ifeq ($(CONFIG_ARM64),y)
+KP_NEW_DCACHE_FLUSH := $(shell grep -q __flush_dcache_area $(srctree)/arch/arm64/include/asm/cacheflush.h; echo $$?)
+ccflags-y += -DKP_NEW_DCACHE_FLUSH=$(KP_NEW_DCACHE_FLUSH)
+$(info -- KP_NEW_DCACHE_FLUSH: $(KP_NEW_DCACHE_FLUSH))
+endif
+
+ccflags-y += -Wno-declaration-after-statement -Wno-unused-function -Wno-unused-variable
+ccflags-y += -Wno-int-conversion -Wno-gcc-compat -Wno-missing-prototypes
+
+# The reused hook engine invokes raw KPM callbacks and relocated kernel text;
+# neither participates in the LKM CFI jump table.
+CFLAGS_hook/hook_engine.o += -fno-sanitize=cfi -fno-stack-protector -fno-jump-tables
+CFLAGS_hook/hook_engine.o += -fno-unwind-tables -fno-asynchronous-unwind-tables
+CFLAGS_hook/hook_engine.o += -std=gnu11 -Wno-strict-prototypes
+# _transit4 runs from a kernel text function's inline hook; x18 there is NOT the
+# module's shadow-call-stack. Disable SCS so the transit never writes x30 through
+# x18 (str x30,[x18]) into garbage -> CPU fault -> watchdog bite on that core.
+# Also drop PAC (paciasp/autiasp): the hooked kernel function does not PAC-sign
+# the return address the way this module does, so _transit4's autiasp would
+# fault on return. Keep BTI so the trampoline branch into _transit4 is valid.
+CFLAGS_hook/hook_engine.o += -fno-sanitize=shadow-call-stack
+CFLAGS_hook/hook_engine.o += -mbranch-protection=bti
+
+# Keep a trailing newline so config can be appended.
