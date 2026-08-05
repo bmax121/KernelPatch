@@ -36,4 +36,14 @@ int get_ap_mod_exclude(uid_t uid);
 int set_ap_mod_exclude(uid_t uid, int exclude);
 int list_ap_mod_exclude(uid_t *uids, int len);
 
+/* Register / unregister the fstatat/faccessat path-probe hooks.
+ * Called from the post-fs-data event handler so the hooks are only
+ * present when /data/adb is available. */
+void sucompat_register_path_probe_hooks(void);
+void sucompat_unregister_path_probe_hooks(void);
+
+/* Supercall handler: control a feature by name.
+ * state: 1=enable, 0=disable, -1=query current state. */
+long kp_control_feature_sc(const char __user *uname, int state);
+
 #endif

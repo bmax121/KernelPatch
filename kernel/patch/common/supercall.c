@@ -327,6 +327,9 @@ static long supercall(int is_authed, long cmd, long arg1, long arg2, long arg3, 
     case SUPERCALL_KSTORAGE_REMOVE:
         return call_kstorage_remove((int)arg1, (long)arg2);
 
+    case SUPERCALL_CONTROL_FEATURE:
+        return kp_control_feature_sc((const char __user *)arg1, (int)(long)arg2);
+
 #ifdef ANDROID
     case SUPERCALL_SU_GET_SAFEMODE:
         return call_su_get_safemode();

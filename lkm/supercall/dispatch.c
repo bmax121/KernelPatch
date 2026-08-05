@@ -13,6 +13,26 @@
 #include "../include/kp_lkm.h"
 #include "../kpm/kpm.h"
 
+/*
+ * LKM feature-control stub: the control-feature supercall is a
+ * forward-looking API.  The LKM does not yet have runtime-togglable
+ * features; add real handlers here as features land.
+ */
+#include <linux/string.h>
+#include <linux/uaccess.h>
+
+long kp_control_feature_sc(const char __user *uname, int state)
+{
+	char name[64];
+	long len = strncpy_from_user(name, uname, sizeof(name));
+	if (len <= 0)
+		return -EINVAL;
+
+	/* No LKM-side features are togglable yet. */
+	(void)state;
+	return -ENOENT;
+}
+
 long kp_handle_supercall(long cmd, long a1, long a2, long a3, long a4)
 {
 	/* Debug: log every supercall the manager/root app issues. */
@@ -62,6 +82,8 @@ long kp_handle_supercall(long cmd, long a1, long a2, long a3, long a4)
 		return kp_kpm_list_sc((char __user *)a1, (int)a2);
 	case SUPERCALL_KPM_INFO:
 		return kp_kpm_info_sc((const char __user *)a1, (char __user *)a2, (int)a3);
+		case SUPERCALL_CONTROL_FEATURE:
+		return kp_control_feature_sc((const char __user *)a1, (int)a2);
 
 	default:
 		logkd("unsupported supercall cmd 0x%lx\n", cmd);

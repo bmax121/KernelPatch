@@ -47,11 +47,37 @@ const char default_su_path[] = SU_PATH;
 const char legacy_su_path[] = LEGACY_SU_PATH;
 const char apd_path[] = APD_PATH;
 #endif
-
+const char sucompat_file[] = "/data/adb/ap/sucompat";
 static const char *current_su_path = 0;
 
 static int su_kstorage_gid = -1;
 static int exclude_kstorage_gid = -1;
+static void su_register_path_probe_hooks(void);
+static void su_unregister_path_probe_hooks(void);
+long kp_control_feature_sc(const char __user *uname, int state)
+{
+    char name[64];
+    int len = compat_strncpy_from_user(name, uname, sizeof(name));
+    if (len <= 0)
+        return -EINVAL;
+
+    if (!strcmp(name, "sucompat_extra") || !strcmp(name, "path_probe")) {
+        if (state < 0)
+            /* Query: check if the hooks are currently registered. */
+            return 0;   /* not tracked */
+        if (state)
+            su_register_path_probe_hooks();
+        else
+            su_unregister_path_probe_hooks();
+        logkfi("sucompat_extra %s via supercall\n",
+               state ? "enabled" : "disabled");
+        return 0;
+    }
+
+    /* Unknown feature name. */
+    return -ENOENT;
+}
+KP_EXPORT_SYMBOL(kp_control_feature_sc);
 
 int is_su_allow_uid(uid_t uid)
 {
@@ -330,7 +356,6 @@ __maybe_unused static void before_execveat(hook_fargs5_t *args, void *udata)
 // 		struct statx __user *, buffer)
 __maybe_unused static void su_handler_arg1_ufilename_before(hook_fargs6_t *args, void *udata)
 {
-    return;
     uid_t uid = current_uid();
     if (!is_su_allow_uid(uid) && !is_trusted_manager_uid(uid)) return;
 
@@ -489,24 +514,6 @@ int su_compat_init()
     rc = hook_compat_syscalln(11, 3, before_execve, 0, (void *)1);
     log_boot("hook 32 __NR_execve rc: %d\n", rc);
 
-    // 64-bit path-syscall probes: fstatat/faccessat. Keep these as a fallback
-    // alongside getname_flags: some vendor kernels (e.g. OPPO) do not route the
-    // 32-bit compat fstatat64/faccessat through getname_flags, so the after-hook
-    // alone never sees the probe and the su path stays visible to which/test -e.
-
-    // rc = hook_syscalln(__NR3264_fstatat, 4, su_handler_arg1_ufilename_before, 0, (void *)0);
-    // log_boot("hook __NR3264_fstatat rc: %d\n", rc);
-
-    // rc = hook_syscalln(__NR_faccessat, 3, su_handler_arg1_ufilename_before, 0, (void *)0);
-    // log_boot("hook __NR_faccessat rc: %d\n", rc);
-
-    // 32-bit compat probes: fstatat64(327) / faccessat(334)
-    // rc = hook_compat_syscalln(327, 4, su_handler_arg1_ufilename_before, 0, (void *)0);
-    // log_boot("hook 32 __NR_fstatat64 rc: %d\n", rc);
-
-    // rc = hook_compat_syscalln(334, 3, su_handler_arg1_ufilename_before, 0, (void *)0);
-    // log_boot("hook 32 __NR_faccessat rc: %d\n", rc);
-
     // Redirect the su path only for granted uids: after_getname_flags checks
     // is_su_allow_uid/is_trusted_manager_uid, so a granted app's stat/access on
     // /system/bin/su or /system/bin/kp lands on the real /system/bin/sh and the
@@ -532,4 +539,41 @@ int su_compat_init()
 
 
     return 0;
+}
+
+static void su_register_path_probe_hooks(void)
+{
+    hook_err_t rc;
+
+    rc = hook_syscalln(__NR3264_fstatat, 4, su_handler_arg1_ufilename_before, 0, (void *)0);
+    log_boot("hook __NR3264_fstatat rc: %d\n", rc);
+
+    rc = hook_syscalln(__NR_faccessat, 3, su_handler_arg1_ufilename_before, 0, (void *)0);
+    log_boot("hook __NR_faccessat rc: %d\n", rc);
+
+    /* 32-bit compat probes: fstatat64(327) / faccessat(334) */
+    rc = hook_compat_syscalln(327, 4, su_handler_arg1_ufilename_before, 0, (void *)0);
+    log_boot("hook 32 __NR_fstatat64 rc: %d\n", rc);
+
+    rc = hook_compat_syscalln(334, 3, su_handler_arg1_ufilename_before, 0, (void *)0);
+    log_boot("hook 32 __NR_faccessat rc: %d\n", rc);
+}
+
+static void su_unregister_path_probe_hooks(void)
+{
+    unhook_syscalln(__NR3264_fstatat, su_handler_arg1_ufilename_before, 0);
+    unhook_syscalln(__NR_faccessat, su_handler_arg1_ufilename_before, 0);
+    unhook_compat_syscalln(327, su_handler_arg1_ufilename_before, 0);
+    unhook_compat_syscalln(334, su_handler_arg1_ufilename_before, 0);
+}
+
+void sucompat_init()
+{
+    struct file *file = filp_open(sucompat_file, O_RDONLY, 0);
+    if (IS_ERR(file)) {
+        log_boot("failed to open sucompat file: %ld\n", PTR_ERR(file));
+        return;
+    }
+    filp_close(file, NULL);
+    su_register_path_probe_hooks(); 
 }
