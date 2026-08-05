@@ -53,6 +53,15 @@ int bypass_kcfi()
     // 6.1.0
     // todo: Is there more elegant way?
     unsigned long report_cfi_failure_addr = patch_config->report_cfi_failure;
+    // runtime fallback: the patcher may have missed these symbols (kallsyms
+    // version mismatch / KASLR math); resolve them ourselves so the kCFI guard
+    // is never silently absent -> otherwise every kCFI mismatch on KP memory
+    // panics (random reboots on CFI-enabled kernels)
+    if (!report_cfi_failure_addr && kallsyms_lookup_name) {
+        report_cfi_failure_addr = kallsyms_lookup_name("report_cfi_failure");
+        if (report_cfi_failure_addr)
+            log_boot("report_cfi_failure resolved at runtime: %llx\n", report_cfi_failure_addr);
+    }
     if (report_cfi_failure_addr) {
         hook_err_t err = hook((void *)report_cfi_failure_addr, (void *)replace_report_cfi_failure,
                               (void **)&backup_report_cfi_failure);
@@ -68,6 +77,12 @@ int bypass_kcfi()
     if (!__cfi_slowpath_addr) {
         __cfi_slowpath_addr = patch_config->__cfi_slowpath;
     }
+    if (!__cfi_slowpath_addr && kallsyms_lookup_name) {
+        __cfi_slowpath_addr = kallsyms_lookup_name("__cfi_slowpath_diag");
+        if (!__cfi_slowpath_addr) __cfi_slowpath_addr = kallsyms_lookup_name("__cfi_slowpath");
+        if (__cfi_slowpath_addr)
+            log_boot("__cfi_slowpath_diag resolved at runtime: %llx\n", __cfi_slowpath_addr);
+    }
     if (__cfi_slowpath_addr) {
         hook_err_t err =
             hook((void *)__cfi_slowpath_addr, (void *)replace__cfi_slowpath, (void **)&backup__cfi_slowpath);
@@ -79,8 +94,9 @@ int bypass_kcfi()
     }
 
     if (!report_cfi_failure_addr && !__cfi_slowpath_addr) {
-        // not error
-        log_boot("no symbol for pass kcfi\n");
+        // not error on kernels without CFI (<= 5.4); fatal hazard on CFI kernels
+        log_boot("no symbol for pass kcfi (preset and runtime kallsyms both empty)\n");
+        log_boot("if CONFIG_CFI_CLANG is enabled (Android 13+ GKI common), every kCFI mismatch on KP memory will panic -> random reboots\n");
     }
 
 out:
