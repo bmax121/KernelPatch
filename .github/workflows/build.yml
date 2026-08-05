@@ -327,4 +327,51 @@ jobs:
             tools/build/kptools-mac
           allowUpdates: true
           replacesArtifacts: true
- 
+
+  Build-lkm:
+    strategy:
+      fail-fast: false
+      matrix:
+        kmi:
+          - android12-5.10
+          - android13-5.10
+          - android13-5.15
+          - android14-5.15
+          - android14-6.1
+          - android15-6.6
+          - android16-6.12
+    uses: ./.github/workflows/ddk-lkm.yml
+    with:
+      kmi: ${{ matrix.kmi }}
+      ddk_release: '20260313'
+
+  Release-lkm:
+    needs: Build-lkm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate version
+        id: parse_version
+        run: |
+          MAJOR=$(grep '#define MAJOR' version | awk '{print $3}')
+          MINOR=$(grep '#define MINOR' version | awk '{print $3}')
+          PATCH=$(grep '#define PATCH' version | awk '{print $3}')
+          VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*-lkm'
+          path: lkm-out
+          merge-multiple: true
+      - name: Release LKM
+        uses: ncipollo/release-action@v1.14.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ steps.parse_version.outputs.VERSION }}
+          artifacts: |
+            lkm-out/*kernelpatch.ko
+          allowUpdates: true
+          replacesArtifacts: true
+
