@@ -67,9 +67,8 @@ int write_kstorage(int gid, long did, void *data, int offset, int len, bool data
     spinlock_t *lock = &kstorage_glocks[gid];
     struct kstorage *pos = 0, *old = 0;
 
-    // Do the potentially-sleeping allocation/copy before entering the RCU
-    // read-side critical section below, since vmalloc()/memdup_user() may
-    // sleep and must never be called with rcu_read_lock() held.
+    // vmalloc()/memdup_user() may sleep and must never be called with a
+    // spinlock or RCU read-side lock held, so do the allocation/copy first.
     struct kstorage *new = (struct kstorage *)vmalloc(sizeof(struct kstorage) + len);
     if (!new) {
         return -ENOMEM;
@@ -90,17 +89,18 @@ int write_kstorage(int gid, long did, void *data, int offset, int len, bool data
     }
     new->dlen = len;
 
-    rcu_read_lock();
-
-    hlist_for_each_entry_rcu(pos, bucket, hnode)
+    // find + replace/add must be atomic under the group lock: two writers
+    // racing on the same did could otherwise both find the same old node and
+    // the second hlist_replace_rcu() on an already-replaced node writes to
+    // its poisoned ->pprev (LIST_POISON2) -> kernel Oops.
+    spin_lock(lock);
+    hlist_for_each_entry(pos, bucket, hnode)
     {
         if (pos->did == did) {
             old = pos;
             break;
         }
     }
-
-    spin_lock(lock);
     if (old) { // update
         hlist_replace_rcu(&old->hnode, &new->hnode);
     } else { // add new one
@@ -108,8 +108,6 @@ int write_kstorage(int gid, long did, void *data, int offset, int len, bool data
         group_sizes[gid]++;
     }
     spin_unlock(lock);
-
-    rcu_read_unlock();
 
     if (old) {
         bool async = true;
