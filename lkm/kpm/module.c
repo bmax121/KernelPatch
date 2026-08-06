@@ -19,6 +19,7 @@
 #include <linux/kallsyms.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
+#include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/rculist.h>
 #include <linux/rcupdate.h>
@@ -28,6 +29,7 @@
 #include <linux/uaccess.h>
 #include <linux/vmalloc.h>
 #include <asm/cacheflush.h>
+#include <asm/tlbflush.h>
 
 #include "../include/kp_lkm.h"
 
@@ -35,10 +37,76 @@
 
 #define ARCH_SHF_SMALL 0
 
+/* arm64 PTE permission bits. PXN (bit53) / UXN (bit54) gate execution;
+ * GP (bit50) enables BTI. KPM pages must have them all clear. */
+#ifndef PTE_PXN
+#define KP_LKM_PTE_PXN (1UL << 53)
+#define KP_LKM_PTE_UXN (1UL << 54)
+#define KP_LKM_PTE_GP  (1UL << 50)
+#else
+#define KP_LKM_PTE_PXN PTE_PXN
+#define KP_LKM_PTE_UXN PTE_UXN
+#define KP_LKM_PTE_GP  PTE_GP
+#endif
+
 /* Runtime-resolved kernel symbols (not exported on GKI 5.15). */
 static void *(*kp_module_alloc)(unsigned long size);
 static void (*kp_module_memfree)(void *module_region);
 static void (*kp_flush_icache_all_fn)(void);
+static int (*kp_set_memory_x)(unsigned long addr, int numpages);
+static int (*kp_set_memory_nx)(unsigned long addr, int numpages);
+
+/* init_mm (resolved at runtime, not exported on GKI). */
+static struct mm_struct *kp_kpm_init_mm;
+
+/* Clear the Guarded-Page bit (BTI enable), Privileged-eXecute-Never and
+ * User-eXecute-Never for a range of virtual addresses.  KPM code is bare-metal
+ * compiled without bti c landing pads, but GKI kernels set PTE_GP on module_alloc
+ * pages, and module_alloc may return PXN pages (NX) that set_memory_x() fails to
+ * flip on some builds.  Clearing PXN/UXN makes the image executable and clearing
+ * GP disables BTI so every indirect call (BLR) from KPM code works. */
+static void kp_clear_bti_gp(unsigned long base, unsigned long size)
+{
+	unsigned long addr, end;
+
+	if (!kp_kpm_init_mm)
+		return;
+
+	end = base + size;
+	for (addr = base; addr < end; addr += PAGE_SIZE) {
+		pgd_t *pgd = pgd_offset(kp_kpm_init_mm, addr);
+		p4d_t *p4d;
+		pud_t *pud;
+		pmd_t *pmd;
+		pte_t *pte;
+
+		if (pgd_none(*pgd) || pgd_bad(*pgd))
+			continue;
+		p4d = p4d_offset(pgd, addr);
+		if (p4d_none(*p4d) || p4d_bad(*p4d))
+			continue;
+		pud = pud_offset(p4d, addr);
+		if (pud_none(*pud) || pud_bad(*pud))
+			continue;
+		if (pud_sect(*pud))
+			continue; /* huge page, skip — KPM pages are 4K */
+		pmd = pmd_offset(pud, addr);
+		if (pmd_none(*pmd) || pmd_bad(*pmd))
+			continue;
+		if (pmd_sect(*pmd))
+			continue;
+		pte = pte_offset_kernel(pmd, addr);
+		if (!pte || !pte_present(*pte))
+			continue;
+
+		pteval_t v = pte_val(*pte);
+		if (v & (KP_LKM_PTE_PXN | KP_LKM_PTE_UXN | KP_LKM_PTE_GP)) {
+			v &= ~(KP_LKM_PTE_PXN | KP_LKM_PTE_UXN | KP_LKM_PTE_GP);
+			set_pte(pte, __pte(v));
+			flush_tlb_kernel_range(addr, addr + PAGE_SIZE);
+		}
+	}
+}
 
 /* Runtime-resolved kernel functions and raw KPM callbacks cannot participate
  * in this LKM's CFI jump table. Keep CFI enabled everywhere else and exempt
@@ -76,6 +144,18 @@ __attribute__((no_sanitize("cfi")))
 static long kp_call_exit(mod_exitcall_t *fn, void __user *reserved)
 {
 	return (*fn)(reserved);
+}
+
+__attribute__((no_sanitize("cfi")))
+static int kp_do_set_memory_x(unsigned long addr, int npages)
+{
+	return kp_set_memory_x(addr, npages);
+}
+
+__attribute__((no_sanitize("cfi")))
+static int kp_do_set_memory_nx(unsigned long addr, int npages)
+{
+	return kp_set_memory_nx(addr, npages);
 }
 
 __attribute__((no_sanitize("cfi")))
@@ -516,6 +596,113 @@ static int elf_header_check(struct kp_load_info *info)
 struct kp_module modules = { 0 };
 static spinlock_t module_lock;
 
+/* Set while a KPM's init runs: during that window the module is not yet on
+ * modules.list, but its image must already be shielded from the Qualcomm
+ * find_check_fn() panic / BTI faults (the KPM may iterate kallsyms from init).
+ * Cleared as soon as kp_call_init() returns. */
+static struct kp_module *kp_loading_mod;
+
+/* One PAGE_SIZE module_alloc'd RWX page. The safe kallsyms_on_each_symbol()
+ * stand-in bounces KPM callbacks through an 8-byte bti-c trampoline at
+ * page+8 so the kernel's BLR lands on a guarded landing pad instead of the
+ * bare-metal (non-BTI) KPM code. Bytes page+0..+7 are kept zeroed so the
+ * KCFI inline check's [target-4] read stays inside the mapped page. */
+static void *kp_callback_tramp;
+static unsigned long kp_callback_tramp_size;
+
+typedef int (*kp_kallsyms_on_each_symbol_t)(kp_kallsyms_cb_t fn, void *data);
+static kp_kallsyms_on_each_symbol_t kp_real_kallsyms_on_each_symbol;
+
+static bool kp_kpm_ready; /* modules.list / module_lock / trampoline initialized */
+
+/* Address-in-KPM-range check used by the find_check_fn CFI bypass and by the
+ * safe kallsyms wrapper. Callable from any (including atomic) context. */
+bool kp_kpm_cfi_allowed_addr(unsigned long addr)
+{
+	struct kp_module *pos;
+	unsigned long start, end;
+	bool ok = false;
+
+	if (!READ_ONCE(kp_kpm_ready))
+		return false;
+
+	rcu_read_lock();
+	list_for_each_entry(pos, &modules.list, list) {
+		start = (unsigned long)pos->start;
+		end = start + pos->size;
+		if (addr >= start && addr < end) {
+			ok = true;
+			break;
+		}
+	}
+	rcu_read_unlock();
+	if (ok)
+		return true;
+
+	/* The module being initialized is not linked yet. */
+	{
+		struct kp_module *loading = READ_ONCE(kp_loading_mod);
+		if (loading) {
+			start = (unsigned long)loading->start;
+			end = start + loading->size;
+			if (addr >= start && addr < end)
+				return true;
+		}
+	}
+
+	if (kp_callback_tramp) {
+		start = (unsigned long)kp_callback_tramp;
+		end = start + kp_callback_tramp_size;
+		if (addr >= start && addr < end)
+			return true;
+	}
+	return false;
+}
+
+/* The kernel's own kallsyms_on_each_symbol() is exported to KPMs through a
+ * function-pointer slot in the LKM (see symbols.c). We install this stand-in
+ * instead: for a KPM callback it writes a "bti c; b <fn>" trampoline into the
+ * RWX trampoline page and hands the trampoline address to the real kernel
+ * iterator. find_check_fn() then validates the trampoline page (covered by
+ * kp_kpm_cfi_allowed_addr, noop check fn) and the BLR lands on bti c, which
+ * direct-branches into the non-BTI KPM callback with the call args intact. */
+__attribute__((no_sanitize("cfi")))
+int kp_kpm_safe_kallsyms_on_each_symbol(kp_kallsyms_cb_t fn, void *data)
+{
+	if (!kp_real_kallsyms_on_each_symbol)
+		return -EOPNOTSUPP;
+
+	if (!kp_callback_tramp || !kp_kpm_cfi_allowed_addr((unsigned long)fn))
+		return kp_real_kallsyms_on_each_symbol(fn, data);
+
+	{
+		unsigned long flags;
+		u32 *slot = (u32 *)kp_callback_tramp + 2; /* page+8 */
+		u32 *pad = (u32 *)kp_callback_tramp;
+		long off = (long)((unsigned long)fn - ((unsigned long)slot + 4));
+
+		pr_emerg(KPLKM_TAG ": kallsyms safe: fn=%px tramp=%px off=%ld\n",
+			 (void *)fn, kp_callback_tramp, off);
+
+		spin_lock_irqsave(&module_lock, flags);
+		pad[0] = 0; /* keep [target-4] mapped + zeroed for the KCFI check */
+		pad[1] = 0;
+		slot[0] = 0xd503245f; /* bti c */
+		slot[1] = 0x14000000 | (((unsigned long)off >> 2) & 0x03ffffff); /* b <fn> */
+		dsb(ishst);
+		asm volatile("ic iallu");
+		dsb(ish);
+		isb();
+		spin_unlock_irqrestore(&module_lock, flags);
+	}
+
+	{
+		int r = kp_real_kallsyms_on_each_symbol((kp_kallsyms_cb_t)((char *)kp_callback_tramp + 8), data);
+		pr_emerg(KPLKM_TAG ": kallsyms safe done rc=%d\n", r);
+		return r;
+	}
+}
+
 static struct kp_module *kp_find_module(const char *name)
 {
 	struct kp_module *pos;
@@ -586,18 +773,36 @@ long kp_load_module(const void *data, int len, const char *args, const char *eve
 	}
 	logkfe("KPM [%s] relocations applied\n", info->info.name);
 
+	/* GKI 5.10+ module_alloc returns PAGE_KERNEL (PXN set, non-executable).
+	 * The kernel's own module loader calls set_memory_x() after writing; we
+	 * must do the same, otherwise kp_call_init triggers a permission fault. */
+	if (kp_set_memory_x) {
+		
+		int npages = (mod->size + PAGE_SIZE - 1) >> PAGE_SHIFT;
+		int xret = kp_do_set_memory_x((unsigned long)mod->start, npages);
+		if (xret)
+			logke("KPM [%s] set_memory_x(%px, %d) = %d\n",
+			      info->info.name, mod->start, npages, xret);
+	}
+
+	/* Disable BTI on the KPM pages: the module is bare-metal compiled
+		 * without bti c landing pads, and every BLR from KPM code to the
+		 * LKM / kernel faults on GKI BTI-enabled kernels. */
+		kp_clear_bti_gp((unsigned long)mod->start, mod->size);
 	kp_flush_kpm_icache(mod->start, mod->size);
 	logkfe("KPM [%s] icache flushed\n", info->info.name);
 
 	pr_emerg(KPLKM_TAG ": KPM [%s] entering init=%px image=%px size=%u\n",
 		 mod->info.name, mod->init, mod->start, mod->size);
-	/* dump first 4 instructions of the relocated init to verify the copy */
-	{
-		u32 *ip = (u32 *)mod->init;
-		pr_emerg(KPLKM_TAG ": KPM [%s] init insn: %08x %08x %08x %08x\n",
-			 mod->info.name, ip[0], ip[1], ip[2], ip[3]);
-	}
+
+	WRITE_ONCE(kp_loading_mod, mod);
+	pr_emerg(KPLKM_TAG ": KPM [%s] call init fn=%px (*fn)=%px args=%px args0='%s' event='%s'\n",
+		 mod->info.name, mod->init,
+		 mod->init ? *(mod_initcall_t *)mod->init : 0,
+		 mod->args, mod->args ? mod->args : "(null)",
+		 event ? event : "(null)");
 	rc = kp_call_init(mod->init, mod->args, event, reserved);
+	WRITE_ONCE(kp_loading_mod, NULL);
 	pr_emerg(KPLKM_TAG ": KPM [%s] init returned %ld\n", mod->info.name, rc);
 
 	if (!rc) {
@@ -645,6 +850,11 @@ long kp_unload_module(const char *name, void __user *reserved)
 		kvfree(mod->args);
 	if (mod->ctl_args)
 		kvfree(mod->ctl_args);
+
+	if (kp_set_memory_nx && mod->start) {
+		int npages = (mod->size + PAGE_SIZE - 1) >> PAGE_SHIFT;
+		kp_do_set_memory_nx((unsigned long)mod->start, npages);
+	}
 
 	if (kp_module_memfree && mod->start)
 		kp_free_exec(mod->start);
@@ -880,12 +1090,41 @@ int kp_kpm_init(void)
 	kp_module_alloc = (void *(*)(unsigned long))kallsyms_lookup_name("module_alloc");
 	kp_module_memfree = (void (*)(void *))kallsyms_lookup_name("module_memfree");
 	kp_flush_icache_all_fn = (void (*)(void))kallsyms_lookup_name("flush_icache_all");
+	kp_set_memory_x = (int (*)(unsigned long, int))kallsyms_lookup_name("set_memory_x");
+	kp_set_memory_nx = (int (*)(unsigned long, int))kallsyms_lookup_name("set_memory_nx");
+	kp_kpm_init_mm = (struct mm_struct *)kallsyms_lookup_name("init_mm");
+	logki("kpm runtime: module_alloc=%px set_memory_x=%px init_mm=%px\n",
+	      kp_module_alloc, kp_set_memory_x, kp_kpm_init_mm);
 
 	if (!kp_module_alloc || !kp_module_memfree) {
 		logke("module_alloc/module_memfree not resolvable; KPM loading disabled\n");
 		return -ENOSYS;
 	}
-	logki("kpm loader ready (module_alloc=%px flush_icache_all=%px)\n", kp_module_alloc,
-	      kp_flush_icache_all_fn);
+
+	/* One RWX page to hold the bti-c trampoline for KPM kallsyms callbacks.
+	 * GKI 5.10+ module_alloc returns PAGE_KERNEL (NX), so make it executable
+	 * like the KPM images. */
+	kp_callback_tramp = kp_malloc_exec(PAGE_SIZE);
+	if (kp_callback_tramp) {
+		kp_callback_tramp_size = PAGE_SIZE;
+		if (kp_set_memory_x) {
+			int xret = kp_do_set_memory_x((unsigned long)kp_callback_tramp, 1);
+			if (xret)
+				logke("callback trampoline set_memory_x(%px) = %d\n",
+				      kp_callback_tramp, xret);
+		}
+		/* module_alloc may return PXN/NX; clear PXN/UXN/GP like KPM images */
+		kp_clear_bti_gp((unsigned long)kp_callback_tramp, PAGE_SIZE);
+		memset(kp_callback_tramp, 0, PAGE_SIZE);
+	} else {
+		logkw("callback trampoline alloc failed; KPM kallsyms iteration unshielded\n");
+	}
+
+	kp_real_kallsyms_on_each_symbol =
+		(kp_kallsyms_on_each_symbol_t)kallsyms_lookup_name("kallsyms_on_each_symbol");
+	WRITE_ONCE(kp_kpm_ready, true);
+
+	logki("kpm loader ready (module_alloc=%px flush_icache_all=%px tramp=%px)\n", kp_module_alloc,
+	      kp_flush_icache_all_fn, kp_callback_tramp);
 	return 0;
 }

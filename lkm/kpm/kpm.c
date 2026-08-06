@@ -23,9 +23,6 @@
 
 long kp_kpm_load_sc(const char __user *upath, const char __user *uargs, void __user *reserved)
 {
-	/* KPM loading temporarily disabled */
-	return -1;
-
 	char path[KPM_LOAD_PATH_LEN];
 	char *args;
 	long pathlen = strncpy_from_user(path, upath, sizeof(path));

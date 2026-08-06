@@ -3,8 +3,11 @@
 #include "symbols.h"
 
 #include <linux/cred.h>
+#include <linux/gfp.h>
+#include <linux/kallsyms.h>
 #include <linux/kernel.h>
 #include <linux/mm.h>
+#include <linux/module.h>
 #include <linux/sched.h>
 #include <linux/seccomp.h>
 #include <linux/string.h>
@@ -20,6 +23,10 @@
 #include "../include/kp_lkm.h"
 #include "../infra/symbol_resolver.h"
 #include "../infra/patch_memory.h"
+#include "../infra/syscall_table.h"
+#include "../supercall/sucompat.h"
+#include "../supercall/kstorage.h"
+#include "module.h"
 
 #include <asm/thread_info.h>
 #include <hook.h>
@@ -31,6 +38,11 @@ static int kp_kpm_thread_info_in_task = 1;
 static int kp_kpm_sp_el0_is_current = 1;
 static int kp_kpm_sp_el0_is_thread_info;
 static int kp_kpm_task_in_thread_info_offset = -1;
+/* KP ABI stack-layout facts (arm64 GKI: task->stack + THREAD_SIZE is the end
+ * of stack, pt_regs sits just below it). */
+static int kp_kpm_stack_in_task_offset = offsetof(struct task_struct, stack);
+static int kp_kpm_stack_end_offset = THREAD_SIZE;
+static int kp_kpm_has_syscall_wrapper;
 
 struct kp_kpm_task_struct_offset {
 	s16 pid_offset, tgid_offset, thread_pid_offset, ptracer_cred_offset;
@@ -101,17 +113,6 @@ static int kp_kpm_printk(const char *fmt, ...)
 	return rc;
 }
 
-static int kp_kpm_sprintf(char *buf, const char *fmt, ...)
-{
-	va_list args;
-	int rc;
-
-	va_start(args, fmt);
-	rc = vsprintf(buf, fmt, args);
-	va_end(args);
-	return rc;
-}
-
 static int kp_kpm_copy_to_user(void __user *to, const void *from, int len)
 {
 	return copy_to_user(to, from, len) ? 0 : len;
@@ -133,13 +134,6 @@ static uid_t kp_kpm_current_uid(void)
 	return from_kuid(current_user_ns(), current_uid());
 }
 
-/* KP kfuncs that KPMs may import (kpimg exports these via baselib / hotpatch).
- * kf_strncat mirrors lib_strncat; hotpatch_nosync patches one instruction. */
-static char *kp_kpm_strncat(char *dst, const char *src, size_t n)
-{
-	return strncat(dst, src, n);
-}
-
 static long kp_kpm_hotpatch_nosync(void *addr, uint32_t value)
 {
 	uint32_t insn = value;
@@ -151,6 +145,137 @@ struct kp_kpm_symbol {
 	const char *name;
 	unsigned long addr;
 };
+
+/* KPM headers declare printk/kallsyms_lookup_name/kallsyms_on_each_symbol as
+ * function-pointer *variables* (extern void (*printk)(...)), so KPMs load the
+ * pointer *stored at* the symbol address (adrp + ldr [x,#lo12] + blr).  The
+ * symbols must therefore resolve to the address of a writable slot holding the
+ * function pointer, not to the function's own code address (which would make
+ * the ldr read the function prologue bytes as a pointer). */
+static int (*kp_kpm_printk_fn)(const char *fmt, ...);
+static unsigned long (*kp_kpm_kallsyms_lookup_name_fn)(const char *name);
+static int (*kp_kpm_kallsyms_on_each_symbol_fn)(
+	int (*fn)(void *, const char *, struct module *, unsigned long), void *data);
+
+/* Same for the kf_* kfuncs (lib/string.c etc.): kfunc_def(name) is
+ * (*kf_name), so a KPM referencing e.g. strncat accesses the pointer-variable
+ * symbol kf_strncat and needs a slot, populated from the running kernel. */
+#define KP_KPM_KFUNC_INIT(name) \
+	kf_##name = (typeof(kf_##name))kallsyms_lookup_name(#name)
+#define KP_KPM_KFUNC_ENTRY(name) \
+	{ "kf_" #name, (unsigned long)&kf_##name }
+
+static int (*kf_sprintf)(char *buf, const char *fmt, ...);
+static int (*kf_snprintf)(char *buf, size_t size, const char *fmt, ...);
+static int (*kf_vsnprintf)(char *buf, size_t size, const char *fmt, va_list args);
+static char *(*kf_strcpy)(char *dest, const char *src);
+static char *(*kf_strncpy)(char *dest, const char *src, size_t count);
+static char *(*kf_strncat)(char *dest, const char *src, size_t count);
+static int (*kf_strcmp)(const char *cs, const char *ct);
+static int (*kf_strncmp)(const char *cs, const char *ct, size_t count);
+static size_t (*kf_strlen)(const char *s);
+static size_t (*kf_strnlen)(const char *s, size_t count);
+static char *(*kf_strchr)(const char *s, int c);
+static char *(*kf_strrchr)(const char *s, int c);
+static char *(*kf_strstr)(const char *s1, const char *s2);
+static void *(*kf_memset)(void *s, int c, size_t count);
+static void *(*kf_memcpy)(void *dest, const void *src, size_t count);
+static void *(*kf_memmove)(void *dest, const void *src, size_t count);
+static int (*kf_memcmp)(const void *cs, const void *ct, size_t count);
+static char *(*kf_kstrdup)(const char *s, gfp_t gfp);
+static void *(*kf_kmemdup)(const void *src, size_t len, gfp_t gfp);
+static char *(*kf_kasprintf)(gfp_t gfp, const char *fmt, ...);
+static void *(*kf_memchr)(const void *s, int c, size_t n);
+static char *(*kf_strcat)(char *dest, const char *src);
+
+/* mm_struct offsets (mirrors kpimg's linux/mm_types.h) */
+struct kp_kpm_mm_struct_offset {
+	s16 mmap_base_offset;
+	s16 task_size_offset;
+	s16 pgd_offset;
+	s16 map_count_offset;
+	s16 total_vm_offset;
+	s16 locked_vm_offset;
+	s16 pinned_vm_offset;
+	s16 data_vm_offset;
+	s16 exec_vm_offset;
+	s16 stack_vm_offset;
+	s16 start_code_offset, end_code_offset, start_data_offset, end_data_offset;
+	s16 start_brk_offset, brk_offset, start_stack_offset;
+	s16 arg_start_offset, arg_end_offset, env_start_offset, env_end_offset;
+};
+static struct kp_kpm_mm_struct_offset kp_kpm_mm_struct_offset;
+
+/* Syscall hooks: the LKM patches sys_call_table entries (fp path). */
+static int kp_kpm_has_config_compat;
+
+static uintptr_t kp_kpm_syscalln_name_addr(int nr, int is_compat)
+{
+	if (!is_compat && kp_sys_call_table)
+		return kp_sys_call_table[nr];
+	return 0;
+}
+
+static uintptr_t kp_kpm_syscalln_addr(int nr, int is_compat)
+{
+	if (!is_compat && kp_sys_call_table)
+		return kp_sys_call_table[nr];
+	return kp_kpm_syscalln_name_addr(nr, is_compat);
+}
+
+static int kp_kpm_hook_syscalln(int nr, int narg, void *before, void *after, void *udata)
+{
+	/* Inline-hook the syscall function itself (kpimg's inline_wrap_syscalln).
+	 * fp_hook_wrap lives in fphook.c which the LKM does not compile. */
+	uintptr_t addr = kp_kpm_syscalln_addr(nr, 0);
+	if (!addr)
+		return -ENOENT;
+	return hook_wrap((void *)addr, narg, before, after, udata);
+}
+
+static void kp_kpm_unhook_syscalln(int nr, void *before, void *after)
+{
+	uintptr_t addr = kp_kpm_syscalln_addr(nr, 0);
+	if (addr)
+		hook_unwrap((void *)addr, before, after);
+}
+
+static int kp_kpm_hook_compat_syscalln(int nr, int narg, void *before, void *after, void *udata)
+{
+	(void)nr; (void)narg; (void)before; (void)after; (void)udata;
+	return -ENOSYS; /* no compat table on arm64 GKI */
+}
+
+static void kp_kpm_unhook_compat_syscalln(int nr, void *before, void *after)
+{
+	(void)nr; (void)before; (void)after;
+}
+
+/* task_pt_regs */
+static struct pt_regs *kp_kpm_task_pt_reg(struct task_struct *task)
+{
+	unsigned long stack = (unsigned long)task_stack_page(task);
+	return (struct pt_regs *)(THREAD_SIZE + stack - sizeof(struct pt_regs));
+}
+
+/* SU allowlist / exclude (mirrors kpimg sucompat.c) */
+static int kp_kpm_is_su_allow_uid(uid_t uid)
+{
+	return kp_is_su_allow_uid(uid) ? 1 : 0;
+}
+
+/* Exclude list lives in the sucompat layer (group KSTORAGE_EXCLUDE_LIST_GROUP);
+ * these thin wrappers are what KPMs see through the compatibility symbol
+ * table, so the auto-loaded package_config excludes are visible to them. */
+static int kp_kpm_get_ap_mod_exclude(uid_t uid)
+{
+	return kp_su_get_ap_mod_exclude(uid);
+}
+
+static int kp_kpm_set_ap_mod_exclude(uid_t uid, int exclude)
+{
+	return kp_su_set_ap_mod_exclude(uid, exclude);
+}
 
 static struct kp_kpm_symbol kp_kpm_symbols[] = {
 	{ "compat_copy_to_user", (unsigned long)kp_kpm_copy_to_user },
@@ -165,9 +290,46 @@ static struct kp_kpm_symbol kp_kpm_symbols[] = {
 	{ "task_in_thread_info_offset", (unsigned long)&kp_kpm_task_in_thread_info_offset },
 	{ "task_struct_offset", (unsigned long)&kp_kpm_task_struct_offset },
 	{ "pgtable_entry", (unsigned long)kp_kpm_pgtable_entry },
-	{ "printk", (unsigned long)kp_kpm_printk },
-	{ "kf_sprintf", (unsigned long)kp_kpm_sprintf },
-	{ "kf_strncat", (unsigned long)kp_kpm_strncat },
+	{ "printk", (unsigned long)&kp_kpm_printk_fn },
+	{ "kallsyms_lookup_name", (unsigned long)&kp_kpm_kallsyms_lookup_name_fn },
+	{ "kallsyms_on_each_symbol", (unsigned long)&kp_kpm_kallsyms_on_each_symbol_fn },
+	KP_KPM_KFUNC_ENTRY(sprintf),
+	KP_KPM_KFUNC_ENTRY(snprintf),
+	KP_KPM_KFUNC_ENTRY(vsnprintf),
+	KP_KPM_KFUNC_ENTRY(strcpy),
+	KP_KPM_KFUNC_ENTRY(strncpy),
+	KP_KPM_KFUNC_ENTRY(strncat),
+	KP_KPM_KFUNC_ENTRY(strcmp),
+	KP_KPM_KFUNC_ENTRY(strncmp),
+	KP_KPM_KFUNC_ENTRY(strlen),
+	KP_KPM_KFUNC_ENTRY(strnlen),
+	KP_KPM_KFUNC_ENTRY(strchr),
+	KP_KPM_KFUNC_ENTRY(strrchr),
+	KP_KPM_KFUNC_ENTRY(strstr),
+	KP_KPM_KFUNC_ENTRY(memset),
+	KP_KPM_KFUNC_ENTRY(memcpy),
+	KP_KPM_KFUNC_ENTRY(memmove),
+	KP_KPM_KFUNC_ENTRY(memcmp),
+	KP_KPM_KFUNC_ENTRY(kstrdup),
+	KP_KPM_KFUNC_ENTRY(kmemdup),
+	KP_KPM_KFUNC_ENTRY(kasprintf),
+	KP_KPM_KFUNC_ENTRY(memchr),
+	KP_KPM_KFUNC_ENTRY(strcat),
+	{ "mm_struct_offset", (unsigned long)&kp_kpm_mm_struct_offset },
+	{ "has_config_compat", (unsigned long)&kp_kpm_has_config_compat },
+	{ "has_syscall_wrapper", (unsigned long)&kp_kpm_has_syscall_wrapper },
+	{ "stack_in_task_offset", (unsigned long)&kp_kpm_stack_in_task_offset },
+	{ "stack_end_offset", (unsigned long)&kp_kpm_stack_end_offset },
+	{ "hook_syscalln", (unsigned long)kp_kpm_hook_syscalln },
+	{ "unhook_syscalln", (unsigned long)kp_kpm_unhook_syscalln },
+	{ "hook_compat_syscalln", (unsigned long)kp_kpm_hook_compat_syscalln },
+	{ "unhook_compat_syscalln", (unsigned long)kp_kpm_unhook_compat_syscalln },
+	{ "syscalln_addr", (unsigned long)kp_kpm_syscalln_addr },
+	{ "syscalln_name_addr", (unsigned long)kp_kpm_syscalln_name_addr },
+	{ "_task_pt_reg", (unsigned long)kp_kpm_task_pt_reg },
+	{ "is_su_allow_uid", (unsigned long)kp_kpm_is_su_allow_uid },
+	{ "get_ap_mod_exclude", (unsigned long)kp_kpm_get_ap_mod_exclude },
+	{ "set_ap_mod_exclude", (unsigned long)kp_kpm_set_ap_mod_exclude },
 	{ "hotpatch_nosync", (unsigned long)kp_kpm_hotpatch_nosync },
 	{ "hook_wrap", (unsigned long)hook_wrap },
 	{ "hook_unwrap_remove", (unsigned long)hook_unwrap_remove },
@@ -182,8 +344,75 @@ static struct kp_kpm_symbol kp_kpm_symbols[] = {
 
 int kp_kpm_symbols_init(void)
 {
-	logki("kpm compatibility symbol table ready (%zu symbols)\n",
-	      ARRAY_SIZE(kp_kpm_symbols));
+	kp_kpm_printk_fn = kp_kpm_printk;
+	kp_kpm_kallsyms_lookup_name_fn = kallsyms_lookup_name;
+	/* Route KPM kallsyms iteration through the bti-c trampoline + CFI shield
+	 * so Qualcomm's find_check_fn() panic and the BTI fault on bare-metal
+	 * callbacks are avoided. */
+	kp_kpm_kallsyms_on_each_symbol_fn = kp_kpm_safe_kallsyms_on_each_symbol;
+
+	KP_KPM_KFUNC_INIT(sprintf);
+	KP_KPM_KFUNC_INIT(snprintf);
+	KP_KPM_KFUNC_INIT(vsnprintf);
+	KP_KPM_KFUNC_INIT(strcpy);
+	KP_KPM_KFUNC_INIT(strncpy);
+	KP_KPM_KFUNC_INIT(strncat);
+	KP_KPM_KFUNC_INIT(strcmp);
+	KP_KPM_KFUNC_INIT(strncmp);
+	KP_KPM_KFUNC_INIT(strlen);
+	KP_KPM_KFUNC_INIT(strnlen);
+	KP_KPM_KFUNC_INIT(strchr);
+	KP_KPM_KFUNC_INIT(strrchr);
+	KP_KPM_KFUNC_INIT(strstr);
+	KP_KPM_KFUNC_INIT(memset);
+	KP_KPM_KFUNC_INIT(memcpy);
+	KP_KPM_KFUNC_INIT(memmove);
+	KP_KPM_KFUNC_INIT(memcmp);
+	KP_KPM_KFUNC_INIT(kstrdup);
+	KP_KPM_KFUNC_INIT(kmemdup);
+	KP_KPM_KFUNC_INIT(kasprintf);
+	KP_KPM_KFUNC_INIT(memchr);
+	KP_KPM_KFUNC_INIT(strcat);
+
+	/* mm_struct offsets (5.15 arm64) */
+	kp_kpm_mm_struct_offset.mmap_base_offset = offsetof(struct mm_struct, mmap_base);
+	kp_kpm_mm_struct_offset.task_size_offset = offsetof(struct mm_struct, task_size);
+	kp_kpm_mm_struct_offset.pgd_offset = offsetof(struct mm_struct, pgd);
+	kp_kpm_mm_struct_offset.map_count_offset = offsetof(struct mm_struct, map_count);
+	kp_kpm_mm_struct_offset.total_vm_offset = offsetof(struct mm_struct, total_vm);
+	kp_kpm_mm_struct_offset.locked_vm_offset = offsetof(struct mm_struct, locked_vm);
+	kp_kpm_mm_struct_offset.pinned_vm_offset = offsetof(struct mm_struct, pinned_vm);
+	kp_kpm_mm_struct_offset.data_vm_offset = offsetof(struct mm_struct, data_vm);
+	kp_kpm_mm_struct_offset.exec_vm_offset = offsetof(struct mm_struct, exec_vm);
+	kp_kpm_mm_struct_offset.stack_vm_offset = offsetof(struct mm_struct, stack_vm);
+	kp_kpm_mm_struct_offset.start_code_offset = offsetof(struct mm_struct, start_code);
+	kp_kpm_mm_struct_offset.end_code_offset = offsetof(struct mm_struct, end_code);
+	kp_kpm_mm_struct_offset.start_data_offset = offsetof(struct mm_struct, start_data);
+	kp_kpm_mm_struct_offset.end_data_offset = offsetof(struct mm_struct, end_data);
+	kp_kpm_mm_struct_offset.start_brk_offset = offsetof(struct mm_struct, start_brk);
+	kp_kpm_mm_struct_offset.brk_offset = offsetof(struct mm_struct, brk);
+	kp_kpm_mm_struct_offset.start_stack_offset = offsetof(struct mm_struct, start_stack);
+	kp_kpm_mm_struct_offset.arg_start_offset = offsetof(struct mm_struct, arg_start);
+	kp_kpm_mm_struct_offset.arg_end_offset = offsetof(struct mm_struct, arg_end);
+	kp_kpm_mm_struct_offset.env_start_offset = offsetof(struct mm_struct, env_start);
+	kp_kpm_mm_struct_offset.env_end_offset = offsetof(struct mm_struct, env_end);
+
+	kp_kpm_has_config_compat = 0;
+
+	/* arm64 GKI: syscalls go through __arm64_sys_* wrappers, so the KPM must
+	 * parse syscall args with the wrapper ABI (narg + 1). */
+	kp_kpm_has_syscall_wrapper = 0;
+	if (kallsyms_lookup_name("__arm64_sys_openat"))
+		kp_kpm_has_syscall_wrapper = 1;
+
+	logki("kpm stack facts: stack_in_task=%d stack_end=%d has_syscall_wrapper=%d\n",
+	      kp_kpm_stack_in_task_offset, kp_kpm_stack_end_offset,
+	      kp_kpm_has_syscall_wrapper);
+
+	logki("kpm compatibility symbol table ready (%zu symbols) printk=%px "
+	      "kallsyms_lookup_name=%px kf_strncat=%px kf_strcmp=%px\n",
+	      ARRAY_SIZE(kp_kpm_symbols), kp_kpm_printk_fn, kp_kpm_kallsyms_lookup_name_fn,
+	      kf_strncat, kf_strcmp);
 	return 0;
 }
 

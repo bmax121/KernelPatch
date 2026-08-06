@@ -81,4 +81,24 @@ int kp_get_module_info(const char *name, char *out_info, int size);
 /* Init the module registry list. */
 int kp_kpm_init(void);
 
+/*
+ * CFI / BTI shielding for KPM kallsyms iteration. On Qualcomm-hardened kernels
+ * (cf. find_check_fn in the vendor kallsyms/CFI code) a callback address that
+ * is neither kernel text nor inside a registered module makes the kernel panic
+ * with "CFI failure (target: %pS)". KPM code lives in module_alloc'd memory
+ * that is no registered module, so any kallsyms_on_each_symbol() iteration from
+ * a KPM trips that check; a plain BLR into the bare-metal (non-BTI) callback
+ * would additionally fault under BTI.
+ *
+ * kp_kpm_cfi_allowed_addr() reports whether an address falls inside a loaded /
+ * currently-loading KPM image or the LKM's callback-trampoline page. The safe
+ * kallsyms_on_each_symbol() stand-in (installed into the KPM symbol table) uses
+ * that range check plus a bti-c trampoline to make the kernel call the KPM
+ * callback without tripping either mitigation.
+ */
+struct module;
+typedef int (*kp_kallsyms_cb_t)(void *, const char *, struct module *, unsigned long);
+bool kp_kpm_cfi_allowed_addr(unsigned long addr);
+int kp_kpm_safe_kallsyms_on_each_symbol(kp_kallsyms_cb_t fn, void *data);
+
 #endif /* _KP_LKM_KPM_MODULE_H_ */

@@ -25,10 +25,6 @@
 
 #include "../include/kp_lkm.h"
 
-/* Resolved at init from kallsyms (not exported to modules on GKI). */
-typedef void (*kp_aarch64_insn_patch_text_t)(void *addr, u32 insn);
-static kp_aarch64_insn_patch_text_t kp_insn_patch_text;
-
 /* Detect the dcache flush API: android13-5.10 backported dcache_clean_inval_poc,
  * android12-5.10 still has __flush_dcache_area. Kbuild sets KP_NEW_DCACHE_FLUSH. */
 #ifndef KP_NEW_DCACHE_FLUSH
@@ -119,48 +115,32 @@ static int kp_patch_data(void *dst, const void *src, size_t len)
 
 int kp_patch_memory_init(void)
 {
-	/* aarch64_insn_patch_text() is not exported to modules on GKI, resolve it
-	 * by name. It runs under stop_machine (safe text update: every CPU is
-	 * parked, so no one executes the half-patched instruction), which is what
-	 * an inline KPM hook on a hot kernel function needs. Called from a KPM load
-	 * (syscall context) this is still safe: stop_machine completes quickly here
-	 * because a KPM load is a rare, user-triggered operation, whereas the
-	 * nosync variant let another CPU run the stale instruction and died on the
-	 * big cores (watchdog bite). */
-	kp_insn_patch_text = (kp_aarch64_insn_patch_text_t)kp_resolve_symbol("aarch64_insn_patch_text");
-	if (!kp_insn_patch_text) {
-		logke("failed to resolve aarch64_insn_patch_text\n");
-		return -ENOENT;
-	}
+	/* aarch64_insn_patch_text() used to be resolved here for text patching,
+	 * but its stop_machine/struct-layout mismatch panics on some GKI builds.
+	 * Text and data are now both patched through the fixmap poke
+	 * (kp_patch_data) + manual cache flush, so no kernel helper is needed. */
 	kp_patch_init_mm = (struct mm_struct *)kp_resolve_symbol("init_mm");
 	if (!kp_patch_init_mm)
 		logkw("failed to resolve init_mm; data (sys_call_table) patch disabled\n");
-	logki("aarch64_insn_patch_text resolved\n");
+	logki("patch memory ready (fixmap poke; aarch64_insn_patch_text not used)\n");
 	return 0;
 }
 
-/* CFI-enabled kernels type-check indirect calls; this function pointer to a
- * kernel text-patch helper was resolved by name and has no LKM-side CFI entry,
- * so the indirect call must skip CFI or the kernel panics (__cfi_check_fail). */
+/* Patch dst with src bytes, then make the change visible to the I-cache.
+ * Uses the fixmap poke (kp_patch_data) for both text and data instead of
+ * aarch64_insn_patch_text: that kernel helper runs under stop_machine and its
+ * struct aarch64_insn_data layout does not match every GKI build, which has
+ * produced "aarch64_insn_patch_text_cb: insn_cnt garbage" panics at ko load.
+ * The fixmap path writes via a physical alias and flushes caches itself; the
+ * hooked targets (report_cfi_failure / __cfi_slowpath_diag) are cold functions
+ * not executing at hook time, so the missing stop_machine is acceptable. */
 __attribute__((no_sanitize("cfi")))
 int kp_patch_text(void *dst, const void *src, size_t len, int flags)
 {
-	/* Text (KPM inline hook): aarch64_insn_patch_text runs under stop_machine,
-	 * safe on a hot kernel function. Data (sys_call_table pointer): fixmap poke
-	 * only; aarch64_insn_patch_text on a rodata data word faults in its callback.
-	 * Callers pass FLUSH_ICACHE for text, FLUSH_DCACHE for data. */
-	if (flags & KP_PATCH_TEXT_FLUSH_ICACHE) {
-		const u32 *in = src;
-		unsigned int n = len / sizeof(*in);
-		for (unsigned int i = 0; i < n; i++) {
-			u32 insn;
-			if (copy_from_kernel_nofault(&insn, &in[i], sizeof(insn)))
-				return -EFAULT;
-			kp_insn_patch_text((u8 *)dst + i * sizeof(u32), insn);
-		}
-		return 0;
-	}
-	return kp_patch_data(dst, src, len);
+	int ret = kp_patch_data(dst, src, len);
+	if (!ret && (flags & KP_PATCH_TEXT_FLUSH_ICACHE))
+		kp_flush_icache((unsigned long)dst, (unsigned long)dst + len);
+	return ret;
 }
 
 #endif /* __aarch64__ */

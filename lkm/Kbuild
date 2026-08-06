@@ -11,6 +11,7 @@ kernelpatch-objs := \
 	infra/patch_memory.o \
 	infra/syscall_table.o \
 	infra/sha256.o \
+	infra/secpass.o \
 	manager/apk_sign.o \
 	manager/manager.o \
 	supercall/supercall.o \
@@ -87,6 +88,9 @@ CFLAGS_hook/hook_engine.o += -std=gnu11 -Wno-strict-prototypes
 # but the rest of the module inherits the kernel's -mbranch-protection=standard (with PAC).
 # LTO rejects merging objects with clashing sign-return-address module flags.
 CFLAGS_hook/hook_engine.o += -fno-lto
+# secpass calls kernel function pointers through backup variables; exempt from
+# CFI so the backup calls don't recurse into the CFI slowpath.
+CFLAGS_infra/secpass.o += -fno-sanitize=cfi
 # _transit4 runs from a kernel text function's inline hook; x18 there is NOT the
 # module's shadow-call-stack. Disable SCS so the transit never writes x30 through
 # x18 (str x30,[x18]) into garbage -> CPU fault -> watchdog bite on that core.

@@ -29,8 +29,16 @@ int kp_su_allow_uids(uid_t *out_uids, int out_num);
 
 int kp_su_allow_uid_profile(uid_t uid, struct su_profile *out_profile);
 
+/* APatch module exclude flag (kstorage group KSTORAGE_EXCLUDE_LIST_GROUP). */
+int kp_su_set_ap_mod_exclude(uid_t uid, int exclude);
+int kp_su_get_ap_mod_exclude(uid_t uid);
+
 /* Get/set the su binary path (default "/system/bin/kp"). */
 const char *kp_su_get_path(void);
 int kp_su_reset_path(const char *path);
+
+/* Auto-load APatch config (/data/adb/ap/su_path + package_config) at module
+ * init. Returns number of allow entries loaded, or negative error. */
+int kp_su_load_config(void);
 
 #endif /* _KP_LKM_SUCOMPAT_H_ */

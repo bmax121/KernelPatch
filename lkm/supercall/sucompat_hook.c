@@ -14,6 +14,7 @@
 #include <linux/cred.h>
 #include <linux/err.h>
 #include <linux/fs.h>
+#include <linux/kallsyms.h>
 #include <linux/ptrace.h>
 #include <linux/sched.h>
 #include <linux/string.h>
@@ -24,11 +25,15 @@
 #include "../include/kp_lkm.h"
 #include "../infra/syscall_table.h"
 #include "../manager/manager.h"
+#include <hook.h>
 
 #define KP_EXECVE_NR __NR_execve /* 221 on arm64 */
 #define KP_SH_PATH SH_PATH       /* /system/bin/sh */
 
 static kp_syscall_fn_t kp_orig_execve;
+/* Resolved getname_flags address, kept so the inline hook can be removed on
+ * module exit (otherwise rmmod leaves a branch into freed module memory). */
+static unsigned long kp_getname_flags_addr;
 
 /* Parse the -Z <sctx> option from a SUPERCMD argv: "truncate <key> -Z <sctx>".
  * Returns a static buffer (KP's profile.scontext) or NULL if absent. */
@@ -154,10 +159,71 @@ passthrough:
 	return -ENOSYS;
 }
 
-/* Default SELinux context for a granted su: the allowlist profile's scontext,
- * falling back to the magisk domain (KP initializes all_allow_sctx to
- * ALL_ALLOW_SCONTEXT_MAGISK). The kernel/u:r:kernel:s0 domain cannot exec
- * /system/bin/sh, so an explicit domain is required for the root shell. */
+/* ---- getname_flags path-probe redirect -------------------------------- */
+
+static void kp_after_getname_flags(hook_fargs4_t *args, void *udata)
+{
+	struct filename *fn = (struct filename *)args->ret;
+	const char *sh_path = SH_PATH;
+	const char *su_path;
+	size_t sh_len, su_len;
+
+	if (IS_ERR_OR_NULL(fn))
+		return;
+
+	{
+		uid_t uid = from_kuid(current_user_ns(), current_uid());
+		if (!kp_is_su_allow_uid(uid) && !kp_is_manager_uid(uid))
+			return;
+	}
+
+	su_path = kp_su_get_path();
+	if (!fn->name || strcmp(fn->name, su_path))
+		return;
+
+	sh_len = strlen(sh_path);
+	su_len = strlen(su_path);
+
+	if (sh_len <= su_len) {
+		/* New name fits in existing buffer. */
+		strscpy((char *)fn->name, sh_path, su_len + 1);
+		return;
+	}
+
+	/* sh_path is longer: allocate a fresh filename object. */
+	{
+		typeof(&getname_kernel) kp_getname;
+		typeof(&putname) kp_putname;
+
+		kp_getname = (typeof(kp_getname))kallsyms_lookup_name("getname_kernel");
+		kp_putname = (typeof(kp_putname))kallsyms_lookup_name("putname");
+		if (kp_getname && kp_putname) {
+			struct filename *nf = kp_getname(sh_path);
+			if (!IS_ERR_OR_NULL(nf)) {
+				kp_putname(fn);
+				args->ret = (unsigned long)nf;
+			}
+		}
+	}
+}
+
+static int kp_hook_getname_flags(void)
+{
+	unsigned long addr;
+
+	addr = kallsyms_lookup_name("__original_getname_flags");
+	if (!addr)
+		addr = kallsyms_lookup_name("getname_flags");
+	if (!addr) {
+		logki("sucompat: getname_flags not found, path-probe unavailable\n");
+		return -ENOENT;
+	}
+	logki("sucompat: getname_flags at %px\n", (void *)addr);
+	kp_getname_flags_addr = addr;
+	return hook_wrap3((void *)addr, 0, kp_after_getname_flags, 0);
+}
+
+/* Default SELinux context */
 static const char *kp_default_sctx(uid_t uid)
 {
 	static char sctx[SUPERCALL_SCONTEXT_LEN];
@@ -238,6 +304,12 @@ int kp_sucompat_hook_init(void)
 	if (rc)
 		return rc;
 	logki("sucompat: execve hook installed (su path %s -> %s)\n", kp_su_get_path(), KP_SH_PATH);
+
+	rc = kp_hook_getname_flags();
+	if (rc)
+		logkfd("sucompat: getname_flags hook failed: %d\n", rc);
+	else
+		logki("sucompat: getname_flags hook installed\n");
 	return 0;
 }
 
@@ -245,4 +317,10 @@ void kp_sucompat_hook_exit(void)
 {
 	kp_syscall_unhook(KP_EXECVE_NR, kp_orig_execve);
 	kp_orig_execve = NULL;
+	if (kp_getname_flags_addr) {
+		/* Installed as hook_wrap3(addr, 0, kp_after_getname_flags, 0); pass the
+		 * same (before, after) pair to unwrap so the chain item matches. */
+		hook_unwrap((void *)kp_getname_flags_addr, 0, kp_after_getname_flags);
+		kp_getname_flags_addr = 0;
+	}
 }
