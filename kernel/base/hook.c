@@ -589,13 +589,21 @@ hook_err_t hook_prepare(hook_t *hook)
 }
 KP_EXPORT_SYMBOL(hook_prepare);
 
-void hook_install(hook_t *hook)
+hook_err_t hook_install(hook_t *hook)
 {
     void *addrs[TRAMPOLINE_MAX_NUM];
     for (int32_t i = 0; i < hook->tramp_insts_num; ++i) {
         addrs[i] = (uint32_t *)hook->origin_addr + i;
     }
-    hotpatch(addrs, hook->tramp_insts, hook->tramp_insts_num);
+    // never swallow hotpatch failures: a silent write failure leaves the hook
+    // (and its purpose, e.g. the kCFI guard) installed only in name, which
+    // shows up as random panics/reboots on CFI-enabled kernels
+    int rc = hotpatch(addrs, hook->tramp_insts, hook->tramp_insts_num);
+    if (rc) {
+        logkfe("hook_install hotpatch failed: %d\n", rc);
+        return -HOOK_HOTPATCH_FAIL;
+    }
+    return HOOK_NO_ERR;
 }
 KP_EXPORT_SYMBOL(hook_install);
 
@@ -605,7 +613,8 @@ void hook_uninstall(hook_t *hook)
     for (int32_t i = 0; i < hook->tramp_insts_num; ++i) {
         addrs[i] = (uint32_t *)hook->origin_addr + i;
     }
-    hotpatch(addrs, hook->origin_insts, hook->tramp_insts_num);
+    int rc = hotpatch(addrs, hook->origin_insts, hook->tramp_insts_num);
+    if (rc) logkfe("hook_uninstall hotpatch failed: %d\n", rc);
 }
 KP_EXPORT_SYMBOL(hook_uninstall);
 
@@ -627,7 +636,8 @@ hook_err_t hook(void *func, void *replace, void **backup)
           hook->origin_addr, hook->replace_addr, hook->relo_addr, (uint64_t)hook);
     err = hook_prepare(hook);
     if (err) goto out;
-    hook_install(hook);
+    err = hook_install(hook);
+    if (err) goto out;
     logkv("Hook func: %llx succsseed\n", hook->func_addr);
     return HOOK_NO_ERR;
 out:
@@ -767,7 +777,8 @@ hook_err_t hook_wrap(void *func, int32_t argno, void *before, void *after, void 
     if (err) goto err;
     err = hook_chain_add(chain, before, after, udata);
     if (err) goto err;
-    hook_chain_install(chain);
+    err = hook_chain_install(chain);
+    if (err) goto err;
     logkv("Wrap func: %llx succsseed\n", hook->func_addr);
     return HOOK_NO_ERR;
 err:

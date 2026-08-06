@@ -20,6 +20,7 @@ typedef enum
     HOOK_BAD_RELO = 4092,
     HOOK_TRANSIT_NO_MEM = 4091,
     HOOK_CHAIN_FULL = 4090,
+    HOOK_HOTPATCH_FAIL = 4089,
 } hook_err_t;
 
 enum hook_type
@@ -244,7 +245,7 @@ int32_t branch_absolute(uint32_t *buf, uint64_t addr);
 int32_t ret_absolute(uint32_t *buf, uint64_t addr);
 
 hook_err_t hook_prepare(hook_t *hook);
-void hook_install(hook_t *hook);
+hook_err_t hook_install(hook_t *hook);
 void hook_uninstall(hook_t *hook);
 
 /**
@@ -379,9 +380,9 @@ static inline void *fp_get_origin_func(void *hook_args)
     return (void *)chain->hook.origin_fp;
 }
 
-static inline void hook_chain_install(hook_chain_t *chain)
+static inline hook_err_t hook_chain_install(hook_chain_t *chain)
 {
-    hook_install(&chain->hook);
+    return hook_install(&chain->hook);
 }
 
 static inline void hook_chain_uninstall(hook_chain_t *chain)
