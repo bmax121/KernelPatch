@@ -18,8 +18,16 @@
 
 #include "../include/kp_lkm.h"
 
+/* kallsyms_on_each_symbol() dropped the struct module * param from its
+ * callback in 6.4; the callback and this fn-pointer type must match the
+ * running kernel (kCFI type-hash at the indirect call). */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0)
+typedef int (*kp_kallsyms_on_each_symbol_t)(int (*fn)(void *, const char *, unsigned long),
+					    void *data);
+#else
 typedef int (*kp_kallsyms_on_each_symbol_t)(int (*fn)(void *, const char *, struct module *, unsigned long),
 					    void *data);
+#endif
 
 /* Only meaningful for the name-lookup path below; kallsyms_lookup_name is
  * exported on GKI 5.10 so we call it directly. */
@@ -37,11 +45,17 @@ struct kp_variant_ctx {
 	unsigned long variant;
 };
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0)
+static int kp_variant_cb(void *data, const char *name, unsigned long addr)
+#else
 static int kp_variant_cb(void *data, const char *name, struct module *m, unsigned long addr)
+#endif
 {
 	struct kp_variant_ctx *ctx = data;
 	size_t nlen;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 4, 0)
 	(void)m;
+#endif
 
 	if (!name || !addr)
 		return 0;

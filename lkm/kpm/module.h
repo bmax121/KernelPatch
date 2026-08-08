@@ -14,6 +14,7 @@
 #include <linux/elf.h>
 #include <linux/list.h>
 #include <linux/types.h>
+#include <linux/version.h>
 #include <scdefs.h>
 
 #include <kpmodule.h>
@@ -97,7 +98,14 @@ int kp_kpm_init(void);
  * callback without tripping either mitigation.
  */
 struct module;
+/* kallsyms_on_each_symbol() dropped the struct module * parameter from its
+ * callback in 6.4 (3-arg since). Match the running kernel so the resolved
+ * function pointer passes the kCFI type-hash check. */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0)
+typedef int (*kp_kallsyms_cb_t)(void *, const char *, unsigned long);
+#else
 typedef int (*kp_kallsyms_cb_t)(void *, const char *, struct module *, unsigned long);
+#endif
 bool kp_kpm_cfi_allowed_addr(unsigned long addr);
 int kp_kpm_safe_kallsyms_on_each_symbol(kp_kallsyms_cb_t fn, void *data);
 

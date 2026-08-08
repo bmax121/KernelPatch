@@ -52,6 +52,14 @@
 /* Runtime-resolved kernel symbols (not exported on GKI 5.15). */
 static void *(*kp_module_alloc)(unsigned long size);
 static void (*kp_module_memfree)(void *module_region);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+#include <linux/execmem.h>
+static void *(*kp_execmem_alloc)(enum execmem_type type, size_t size);
+static void (*kp_execmem_free)(void *ptr);
+#else
+static void *(*kp_execmem_alloc)(int type, size_t size);
+static void (*kp_execmem_free)(void *ptr);
+#endif
 static void (*kp_flush_icache_all_fn)(void);
 static int (*kp_set_memory_x)(unsigned long addr, int numpages);
 static int (*kp_set_memory_nx)(unsigned long addr, int numpages);
@@ -110,17 +118,28 @@ static void kp_clear_bti_gp(unsigned long base, unsigned long size)
 
 /* Runtime-resolved kernel functions and raw KPM callbacks cannot participate
  * in this LKM's CFI jump table. Keep CFI enabled everywhere else and exempt
- * only these indirect-call boundaries. */
-__attribute__((no_sanitize("cfi")))
+ * only these indirect-call boundaries. noinline: if inlined into a
+ * CFI-instrumented caller, the kCFI type-hash load of [fnptr - 4] dereferences
+ * NULL when the allocator is absent (6.10+ has no module_alloc). */
+__attribute__((no_sanitize("cfi"), __noinline__))
 static void *kp_malloc_exec(unsigned long size)
 {
-	return kp_module_alloc(size);
+	if (kp_module_alloc)
+		return kp_module_alloc(size);
+	if (kp_execmem_alloc)
+		return kp_execmem_alloc(0 /* EXECMEM_MODULE_TEXT */, size);
+	return vmalloc(size);
 }
 
-__attribute__((no_sanitize("cfi")))
+__attribute__((no_sanitize("cfi"), __noinline__))
 static void kp_free_exec(void *region)
 {
-	kp_module_memfree(region);
+	if (kp_module_memfree)
+		kp_module_memfree(region);
+	else if (kp_execmem_free)
+		kp_execmem_free(region);
+	else
+		vfree(region);
 }
 
 __attribute__((no_sanitize("cfi")))
@@ -721,7 +740,7 @@ long kp_load_module(const void *data, int len, const char *args, const char *eve
 	struct kp_load_info *info = &load_info;
 	long rc = 0;
 
-	if (!kp_module_alloc || !kp_module_memfree) {
+	if (!kp_module_alloc && !kp_execmem_alloc) {
 		set_load_error(info, "executable memory allocator unavailable");
 		rc = -ENOSYS;
 		goto out;
@@ -1083,21 +1102,23 @@ int kp_kpm_init(void)
 	spin_lock_init(&module_lock);
 	kp_kpm_symbols_init();
 
-	/* module_alloc/module_memfree are not exported to modules on GKI, but
-	 * they exist in kallsyms (kernel/module.c, non-static). Resolve them at
-	 * runtime; module_alloc gives PAGE_KERNEL_EXEC memory in the module
-	 * region, which is what a freshly-relocated KPM needs. */
+	/* module_alloc exists up to ~6.8; 6.10+ replaced it with execmem_alloc
+	 * (EXECMEM_MODULE_TEXT). None are exported to modules, but all are in
+	 * kallsyms. kp_malloc_exec falls back module_alloc -> execmem_alloc ->
+	 * vmalloc. */
 	kp_module_alloc = (void *(*)(unsigned long))kallsyms_lookup_name("module_alloc");
 	kp_module_memfree = (void (*)(void *))kallsyms_lookup_name("module_memfree");
+	kp_execmem_alloc = (void *)kallsyms_lookup_name("execmem_alloc");
+	kp_execmem_free = (void *)kallsyms_lookup_name("execmem_free");
 	kp_flush_icache_all_fn = (void (*)(void))kallsyms_lookup_name("flush_icache_all");
 	kp_set_memory_x = (int (*)(unsigned long, int))kallsyms_lookup_name("set_memory_x");
 	kp_set_memory_nx = (int (*)(unsigned long, int))kallsyms_lookup_name("set_memory_nx");
 	kp_kpm_init_mm = (struct mm_struct *)kallsyms_lookup_name("init_mm");
-	logki("kpm runtime: module_alloc=%px set_memory_x=%px init_mm=%px\n",
-	      kp_module_alloc, kp_set_memory_x, kp_kpm_init_mm);
+	logki("kpm runtime: module_alloc=%px execmem_alloc=%px set_memory_x=%px init_mm=%px\n",
+	      kp_module_alloc, kp_execmem_alloc, kp_set_memory_x, kp_kpm_init_mm);
 
-	if (!kp_module_alloc || !kp_module_memfree) {
-		logke("module_alloc/module_memfree not resolvable; KPM loading disabled\n");
+	if (!kp_module_alloc && !kp_execmem_alloc) {
+		logke("no module/execmem allocator; KPM loading disabled\n");
 		return -ENOSYS;
 	}
 

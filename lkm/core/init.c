@@ -90,7 +90,10 @@ int __init kernelpatch_init(void)
 
 	rc = kp_hook_runtime_init();
 	if (rc)
-		logkw("KPM hook runtime unavailable: %d\n", rc);
+		/* No executable-memory path for hook trampolines (set_memory_x and
+		 * execmem_alloc both missing). Continuing would call a NULL allocator
+		 * and crash the kernel; fail the load cleanly instead. */
+		return rc;
 
 	rc = kp_bypass_kcfi();
 	if (rc)

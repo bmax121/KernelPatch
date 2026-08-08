@@ -154,8 +154,16 @@ struct kp_kpm_symbol {
  * the ldr read the function prologue bytes as a pointer). */
 static int (*kp_kpm_printk_fn)(const char *fmt, ...);
 static unsigned long (*kp_kpm_kallsyms_lookup_name_fn)(const char *name);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0)
+/* 6.4+ dropped the struct module * param from kallsyms_on_each_symbol's
+ * callback; match the running kernel so the resolved pointer's kCFI type
+ * hash lines up with kp_kpm_safe_kallsyms_on_each_symbol(). */
+static int (*kp_kpm_kallsyms_on_each_symbol_fn)(
+	int (*fn)(void *, const char *, unsigned long), void *data);
+#else
 static int (*kp_kpm_kallsyms_on_each_symbol_fn)(
 	int (*fn)(void *, const char *, struct module *, unsigned long), void *data);
+#endif
 
 /* Same for the kf_* kfuncs (lib/string.c etc.): kfunc_def(name) is
  * (*kf_name), so a KPM referencing e.g. strncat accesses the pointer-variable

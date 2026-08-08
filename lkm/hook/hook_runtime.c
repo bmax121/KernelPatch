@@ -6,6 +6,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/types.h>
+#include <linux/vmalloc.h>
 #include <asm/cacheflush.h>
 
 #include "../include/kp_lkm.h"
@@ -27,26 +28,56 @@ struct kp_hook_mem {
 
 static LIST_HEAD(kp_hook_mems);
 static DEFINE_MUTEX(kp_hook_lock);
+/* Executable-memory allocators. module_alloc exists through 6.10 (__weak in
+ * 6.6); 6.11+ replaced it with execmem_alloc() (EXECMEM_MODULE_TEXT).
+ * vmalloc is the universal last resort (still needs set_memory_x to be
+ * executable on arm64). On 6.11+ the execmem typedef must use the kernel's
+ * enum execmem_type so the kCFI type-hash at the indirect call matches. */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+#include <linux/execmem.h>
+static void *(*kp_hook_execmem_alloc)(enum execmem_type type, size_t size);
+static void (*kp_hook_execmem_free)(void *ptr);
+#else
+static void *(*kp_hook_execmem_alloc)(int type, size_t size);
+static void (*kp_hook_execmem_free)(void *ptr);
+#endif
 static void *(*kp_hook_module_alloc)(unsigned long size);
 static void (*kp_hook_module_memfree)(void *region);
 static void (*kp_hook_flush_icache_all)(void);
 static int (*kp_hook_set_memory_x)(unsigned long addr, int numpages);
 
-__attribute__((no_sanitize("cfi")))
+/* noinline: these are raw resolved function pointers; if inlined into a
+ * CFI-instrumented caller, the compiler emits a kCFI type-hash load of
+ * [fnptr - 4] that dereferences NULL when the allocator is absent (6.10+ has
+ * no module_alloc) and panics. no_sanitize keeps the indirect calls unchecked. */
+__attribute__((no_sanitize("cfi"), __noinline__))
 static void *kp_hook_exec_alloc(unsigned long size)
 {
-	void *p = kp_hook_module_alloc(size);
-	/* GKI module_alloc returns PAGE_KERNEL (PXN set, NX). Hook trampolines
-	 * live here and must be executable. */
+	void *p = NULL;
+	unsigned long pages = (size + PAGE_SIZE - 1) >> PAGE_SHIFT;
+
+	if (kp_hook_module_alloc)
+		p = kp_hook_module_alloc(size);
+	else if (kp_hook_execmem_alloc)
+		p = kp_hook_execmem_alloc(0 /* EXECMEM_MODULE_TEXT */, size);
+	else
+		p = vmalloc(size);
+	/* GKI module_alloc returns PAGE_KERNEL (PXN set, NX); vmalloc too. Hook
+	 * trampolines live here and must be executable. */
 	if (p && kp_hook_set_memory_x)
-		kp_hook_set_memory_x((unsigned long)p, (size + PAGE_SIZE - 1) >> PAGE_SHIFT);
+		kp_hook_set_memory_x((unsigned long)p, pages);
 	return p;
 }
 
-__attribute__((no_sanitize("cfi")))
+__attribute__((no_sanitize("cfi"), __noinline__))
 static void kp_hook_exec_free(void *region)
 {
-	kp_hook_module_memfree(region);
+	if (kp_hook_module_memfree)
+		kp_hook_module_memfree(region);
+	else if (kp_hook_execmem_free)
+		kp_hook_execmem_free(region);
+	else
+		vfree(region);
 }
 
 __attribute__((no_sanitize("cfi")))
@@ -60,11 +91,18 @@ int kp_hook_runtime_init(void)
 {
 	kp_hook_module_alloc = (void *)kp_resolve_symbol("module_alloc");
 	kp_hook_module_memfree = (void *)kp_resolve_symbol("module_memfree");
+	kp_hook_execmem_alloc = (void *)kp_resolve_symbol("execmem_alloc");
+	kp_hook_execmem_free = (void *)kp_resolve_symbol("execmem_free");
 	kp_hook_flush_icache_all = (void *)kp_resolve_symbol("flush_icache_all");
 	kp_hook_set_memory_x = (int (*)(unsigned long, int))kp_resolve_symbol("set_memory_x");
-	if (!kp_hook_module_alloc || !kp_hook_module_memfree)
+	if (!kp_hook_module_alloc)
+		logkw("module_alloc not found; using execmem_alloc/vmalloc for hook memory\n");
+	if (!kp_hook_set_memory_x && !kp_hook_execmem_alloc) {
+		logke("no executable-memory path (set_memory_x/execmem_alloc missing)\n");
 		return -ENOSYS;
-	logki("KPM hook runtime ready (set_memory_x=%px)\n", kp_hook_set_memory_x);
+	}
+	logki("KPM hook runtime ready (module_alloc=%px execmem_alloc=%px set_memory_x=%px)\n",
+	      kp_hook_module_alloc, kp_hook_execmem_alloc, kp_hook_set_memory_x);
 	return 0;
 }
 
