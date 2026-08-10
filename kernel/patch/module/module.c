@@ -448,7 +448,6 @@ static int elf_header_check(struct load_info *info)
 }
 
 struct module modules = { 0 };
-static spinlock_t module_lock;
 static DEFINE_MUTEX(module_ctl_lock);
 
 long load_module(const void *data, int len, const char *args, const char *event, void *__user reserved)
@@ -773,5 +772,4 @@ int get_module_info(const char *name, char *out_info, int size)
 void module_init()
 {
     INIT_LIST_HEAD(&modules.list);
-    spin_lock_init(&module_lock);
 }
