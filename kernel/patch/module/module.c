@@ -530,18 +530,19 @@ long unload_module(const char *name, void *__user reserved)
     rcu_read_lock();
     long rc = 0;
 
+    mutex_lock(&module_ctl_lock);
+
     struct module *mod = find_module(name);
     if (!mod) {
         rc = -ENOENT;
         goto out;
     }
+
     list_del(&mod->list);
     rc = (*mod->exit)(reserved);
 
-    mutex_lock(&module_ctl_lock);
     if (mod->args) kvfree(mod->args);
     if (mod->ctl_args) kvfree(mod->ctl_args);
-    mutex_unlock(&module_ctl_lock);
 
     kp_free_exec(mod->start);
     kvfree(mod);
@@ -549,6 +550,7 @@ long unload_module(const char *name, void *__user reserved)
     logkfi("name: %s, rc: %d\n", name, rc);
 
 out:
+    mutex_unlock(&module_ctl_lock);
     rcu_read_unlock();
     return rc;
 }
@@ -612,6 +614,7 @@ long module_control0(const char *name, const char *ctl_args, char *__user out_ms
     logkfi("name %s, args: %s\n", name, ctl_args);
 
     long rc = 0;
+    mutex_lock(&module_ctl_lock);
     rcu_read_lock();
 
     struct module *mod = find_module(name);
@@ -626,13 +629,10 @@ long module_control0(const char *name, const char *ctl_args, char *__user out_ms
         goto out;
     }
 
-    mutex_lock(&module_ctl_lock);
-
     if (mod->ctl_args) kvfree(mod->ctl_args);
 
     mod->ctl_args = vmalloc(args_len + 1);
     if (!mod->ctl_args) {
-        mutex_unlock(&module_ctl_lock);
         rc = -ENOMEM;
         goto out;
     }
@@ -641,11 +641,10 @@ long module_control0(const char *name, const char *ctl_args, char *__user out_ms
 
     rc = (*mod->ctl0)(mod->ctl_args, out_msg, outlen);
 
-    mutex_unlock(&module_ctl_lock);
-
     logkfi("name: %s, rc: %d\n", name, rc);
 out:
     rcu_read_unlock();
+    mutex_unlock(&module_ctl_lock);
     return rc;
 }
 
