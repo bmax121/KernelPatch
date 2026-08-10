@@ -460,18 +460,20 @@ long load_module(const void *data, int len, const char *args, const char *event,
     if ((rc = elf_header_check(info))) goto out;
     if ((rc = setup_load_info(info))) goto out;
 
+    mutex_lock(&module_ctl_lock);
+
     if (find_module(info->info.name)) {
         logkfd("%s exist\n", info->info.name);
         set_load_error(info, "module already exists");
         rc = -EEXIST;
-        goto out;
+        goto unlock;
     }
 
     struct module *mod = (struct module *)vmalloc(sizeof(struct module));
     if (!mod) {
         set_load_error(info, "allocate module state failed");
         rc = -ENOMEM;
-        goto out;
+        goto unlock;
     }
     memset(mod, 0, sizeof(struct module));
 
@@ -505,7 +507,7 @@ long load_module(const void *data, int len, const char *args, const char *event,
     if (!rc) {
         logkfi("[%s] succeed with [%s] \n", mod->info.name, args);
         list_add_tail(&mod->list, &modules.list);
-        goto out;
+        goto unlock;
     } else {
         set_load_error(info, "module init failed");
         logkfi("[%s] failed with [%s] error: %d, try exit ...\n", mod->info.name, args, rc);
@@ -517,6 +519,8 @@ free:
     kp_free_exec(mod->start);
 free1:
     kvfree(mod);
+unlock:
+    mutex_unlock(&module_ctl_lock);
 out:
     set_kpm_load_result(reserved, rc, rc ? load_error(info, "load module failed") : "module loaded");
     return rc;
