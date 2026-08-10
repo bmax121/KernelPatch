@@ -527,10 +527,10 @@ long unload_module(const char *name, void *__user reserved)
     if (!name) return -EINVAL;
     logkfe("name: %s\n", name);
 
-    rcu_read_lock();
     long rc = 0;
 
     mutex_lock(&module_ctl_lock);
+    rcu_read_lock();
 
     struct module *mod = find_module(name);
     if (!mod) {
@@ -550,8 +550,8 @@ long unload_module(const char *name, void *__user reserved)
     logkfi("name: %s, rc: %d\n", name, rc);
 
 out:
-    mutex_unlock(&module_ctl_lock);
     rcu_read_unlock();
+    mutex_unlock(&module_ctl_lock);
     return rc;
 }
 
