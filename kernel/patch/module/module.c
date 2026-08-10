@@ -530,7 +530,6 @@ long unload_module(const char *name, void *__user reserved)
     long rc = 0;
 
     mutex_lock(&module_ctl_lock);
-    rcu_read_lock();
 
     struct module *mod = find_module(name);
     if (!mod) {
@@ -550,7 +549,6 @@ long unload_module(const char *name, void *__user reserved)
     logkfi("name: %s, rc: %d\n", name, rc);
 
 out:
-    rcu_read_unlock();
     mutex_unlock(&module_ctl_lock);
     return rc;
 }
@@ -615,7 +613,6 @@ long module_control0(const char *name, const char *ctl_args, char *__user out_ms
 
     long rc = 0;
     mutex_lock(&module_ctl_lock);
-    rcu_read_lock();
 
     struct module *mod = find_module(name);
     if (!mod) {
@@ -643,7 +640,6 @@ long module_control0(const char *name, const char *ctl_args, char *__user out_ms
 
     logkfi("name: %s, rc: %d\n", name, rc);
 out:
-    rcu_read_unlock();
     mutex_unlock(&module_ctl_lock);
     return rc;
 }
