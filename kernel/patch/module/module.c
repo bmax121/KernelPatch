@@ -19,6 +19,7 @@
 #include <linux/list.h>
 #include <linux/kernel.h>
 #include <linux/spinlock.h>
+#include <linux/mutex.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <linux/rcupdate.h>
@@ -448,6 +449,7 @@ static int elf_header_check(struct load_info *info)
 
 struct module modules = { 0 };
 static spinlock_t module_lock;
+static DEFINE_MUTEX(module_ctl_lock);
 
 long load_module(const void *data, int len, const char *args, const char *event, void *__user reserved)
 {
@@ -520,7 +522,6 @@ out:
     return rc;
 }
 
-// todo: lock
 long unload_module(const char *name, void *__user reserved)
 {
     if (!name) return -EINVAL;
@@ -537,8 +538,10 @@ long unload_module(const char *name, void *__user reserved)
     list_del(&mod->list);
     rc = (*mod->exit)(reserved);
 
+    mutex_lock(&module_ctl_lock);
     if (mod->args) kvfree(mod->args);
     if (mod->ctl_args) kvfree(mod->ctl_args);
+    mutex_unlock(&module_ctl_lock);
 
     kp_free_exec(mod->start);
     kvfree(mod);
@@ -623,10 +626,13 @@ long module_control0(const char *name, const char *ctl_args, char *__user out_ms
         goto out;
     }
 
+    mutex_lock(&module_ctl_lock);
+
     if (mod->ctl_args) kvfree(mod->ctl_args);
 
     mod->ctl_args = vmalloc(args_len + 1);
     if (!mod->ctl_args) {
+        mutex_unlock(&module_ctl_lock);
         rc = -ENOMEM;
         goto out;
     }
@@ -634,6 +640,8 @@ long module_control0(const char *name, const char *ctl_args, char *__user out_ms
     strcpy(mod->ctl_args, ctl_args);
 
     rc = (*mod->ctl0)(mod->ctl_args, out_msg, outlen);
+
+    mutex_unlock(&module_ctl_lock);
 
     logkfi("name: %s, rc: %d\n", name, rc);
 out:
