@@ -46,8 +46,11 @@ int selinux_sepolicy_sid_to_context(u32 sid, char **scontext, u32 *scontext_len)
 int selinux_sepolicy_context_str_to_sid(const char *scontext, u32 *out_sid, gfp_t gfp);
 void selinux_sepolicy_compute_av_user(u32 ssid, u32 tsid, u16 tclass, struct av_decision *avd);
 
-/* Sequence value the fake /sys/fs/selinux/status page uses, so access-query
- * responses can report the same seqno. */
+/* Sequence value the fake /sys/fs/selinux/status page uses (>= 6.7), and the
+ * access-query response's seqno.  A clean device exposes sequence=4/policyload=1
+ * in the status page but latest_granting=1 in the access response -- the two are
+ * different counters, so they must NOT be equal (detectors compare both). */
 u32 selinux_sepolicy_clean_seq(void);
+#define KP_AVD_CLEAN_SEQNO 1
 
 #endif

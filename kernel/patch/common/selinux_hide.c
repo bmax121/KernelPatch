@@ -206,22 +206,19 @@ static ssize_t my_write_context(struct file *file, char *buf, size_t size)
     length = kp_avc_has_perm(csid, KP_SECINITSID_SECURITY, KP_SECCLASS_SECURITY, KP_SECURITY__CHECK_CONTEXT, NULL);
     if (length) goto out;
 
-    if (use_backup) {
-        /* Answer against the clean snapshot when it can; never let a backup
-         * failure break the node -- fall back to the live policy. */
+    /* The backup answers authoritatively when ready: contexts a clean policy
+     * lacks (e.g. magisk/ksu) must NOT fall back to the live policy, or the
+     * hide is undone. */
+    if (use_backup)
         length = selinux_sepolicy_context_to_sid(buf, size, &sid, KP_GFP_KERNEL);
-        if (length) length = security_context_to_sid(buf, size, &sid, KP_GFP_KERNEL);
-    } else {
+    else
         length = security_context_to_sid(buf, size, &sid, KP_GFP_KERNEL);
-    }
     if (length) goto out;
 
-    if (use_backup) {
+    if (use_backup)
         length = selinux_sepolicy_sid_to_context(sid, &canon, &len);
-        if (length) length = security_sid_to_context(sid, &canon, &len);
-    } else {
+    else
         length = security_sid_to_context(sid, &canon, &len);
-    }
     if (length) goto out;
 
     length = -ERANGE;
@@ -276,20 +273,16 @@ static ssize_t my_write_access(struct file *file, char *buf, size_t size)
     length = -EINVAL;
     if (sscanf(tmp, "%s %s %hu", scon, tcon, &tclass) != 3) goto out;
 
-    if (use_backup) {
+    if (use_backup)
         length = selinux_sepolicy_context_str_to_sid(scon, &ssid, KP_GFP_KERNEL);
-        if (length) length = security_context_str_to_sid(scon, &ssid, KP_GFP_KERNEL);
-    } else {
+    else
         length = security_context_str_to_sid(scon, &ssid, KP_GFP_KERNEL);
-    }
     if (length) goto out;
 
-    if (use_backup) {
+    if (use_backup)
         length = selinux_sepolicy_context_str_to_sid(tcon, &tsid, KP_GFP_KERNEL);
-        if (length) length = security_context_str_to_sid(tcon, &tsid, KP_GFP_KERNEL);
-    } else {
+    else
         length = security_context_str_to_sid(tcon, &tsid, KP_GFP_KERNEL);
-    }
     if (length) goto out;
 
     if (use_backup)

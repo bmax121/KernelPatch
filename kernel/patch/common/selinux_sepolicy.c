@@ -461,6 +461,8 @@ static bool selinux_sepolicy_supported(void)
 
 static struct policydb *kp_backup_policydb(void);
 static void *kp_backup_sidtab(void);
+static int kp_policydb_off(void);
+int selinux_sepolicy_snapshot(void);
 static int kp_context_to_sid_with_policy(const char *scontext, u32 scontext_len, u32 *out_sid, u32 def_sid,
                                          gfp_t gfp);
 static int kp_sid_to_context_with_policy(u32 sid, char **scontext, u32 *scontext_len);
@@ -494,6 +496,16 @@ static void kp_capture_committed_policy(void *load_state)
             }
         }
     }
+}
+
+/* selinux_complete_init() runs once the initial (stock) policy is loaded and
+ * selinux is fully initialized -- before a root solution reloads the policy with
+ * its own rules.  Snapshot there for a pre-root backup.  (security_read_policy
+ * is unavailable at the first commit because selinux is not yet initialized.) */
+static void after_selinux_complete_init(hook_fargs0_t *a, void *u)
+{
+    int rc = selinux_sepolicy_snapshot();
+    log_boot("selinux_sepolicy: complete_init snapshot rc=%d\n", rc);
 }
 
 /* < 6.4: void selinux_policy_commit(struct selinux_state *state, struct selinux_load_state *load_state) */
@@ -607,10 +619,6 @@ static int kp_snapshot_with_policy(void)
         log_boot("selinux_sepolicy: security_read_policy/policydb_read not resolved\n");
         return -ENOENT;
     }
-    if (g_policydb_offset < 0) {
-        log_boot("selinux_sepolicy: policydb offset unknown, backup unavailable\n");
-        return -EAGAIN;
-    }
 
     rc = security_read_policy(&data, &len);
     if (rc || !data || !len) {
@@ -619,7 +627,7 @@ static int kp_snapshot_with_policy(void)
         return rc ? rc : -EINVAL;
     }
 
-    pdb = (struct policydb *)(g_backup_policy_buf + g_policydb_offset);
+    pdb = (struct policydb *)(g_backup_policy_buf + kp_policydb_off());
     fp.data = data;
     fp.len = len;
     rc = kp_policydb_read(pdb, &fp);
@@ -659,10 +667,17 @@ bool selinux_sepolicy_backup_ready(void)
 
 /* ---- 6.4+ query helpers against the backup policy ---- */
 
+static int kp_policydb_off(void)
+{
+    /* offsetof(struct selinux_policy, policydb); learned from the live policy,
+     * falls back to the standard { sidtab*, policydb } layout. */
+    return (g_policydb_offset >= 0) ? g_policydb_offset : KP_POLICY_POLICYDB_OFFSET;
+}
+
 static struct policydb *kp_backup_policydb(void)
 {
-    if (is_bad_address(g_backup_policy) || g_policydb_offset < 0) return NULL;
-    return (struct policydb *)((char *)g_backup_policy + g_policydb_offset);
+    if (is_bad_address(g_backup_policy)) return NULL;
+    return (struct policydb *)((char *)g_backup_policy + kp_policydb_off());
 }
 
 static void *kp_backup_sidtab(void)
@@ -733,7 +748,7 @@ static void kp_compute_av_user_with_policy(u32 ssid, u32 tsid, u16 tclass, struc
     avd->allowed = 0;
     avd->auditallow = 0;
     avd->auditdeny = 0xffffffff;
-    avd->seqno = selinux_sepolicy_clean_seq();
+    avd->seqno = KP_AVD_CLEAN_SEQNO;
     avd->flags = 0;
 
     se = kp_sidtab_search_core(sidtab, ssid, 0);
@@ -786,6 +801,7 @@ void selinux_sepolicy_compute_av_user(u32 ssid, u32 tsid, u16 tclass, struct av_
     if (selinux_sepolicy_use_fake_state()) {
         ((selinux_compat_kf_security_compute_av_user_t)kfunc(security_compute_av_user))(
             (struct selinux_state *)g_fake_state_buf, ssid, tsid, tclass, avd);
+        avd->seqno = KP_AVD_CLEAN_SEQNO; /* clean latest_granting */
         return;
     }
     kp_compute_av_user_with_policy(ssid, tsid, tclass, avd);
@@ -838,6 +854,12 @@ int selinux_sepolicy_init(void)
     if (addr) {
         hook_wrap6((void *)addr, before_context_struct_compute_av, NULL, NULL);
         log_boot("selinux_sepolicy: hooked context_struct_compute_av @ %llx\n", addr);
+    }
+    addr = kallsyms_lookup_name("selinux_complete_init");
+    if (!addr) addr = lookup_name_with_suffix("selinux_complete_init");
+    if (addr) {
+        hook_wrap0((void *)addr, after_selinux_complete_init, NULL, NULL);
+        log_boot("selinux_sepolicy: hooked selinux_complete_init @ %llx\n", addr);
     }
 
     log_boot("selinux_sepolicy: read=%llx str2ctx=%llx sidtab2sid=%llx search=%llx\n",
