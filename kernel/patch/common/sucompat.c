@@ -34,11 +34,13 @@
 #include <kconfig.h>
 #include <linux/vmalloc.h>
 #include <sucompat.h>
+#include <userd.h>
 #include <symbol.h>
 #include <kallsyms.h>
 #include <uapi/linux/limits.h>
 #include <predata.h>
 #include <kstorage.h>
+#include <selinux_hide.h>
 
 const char sh_path[] = SH_PATH;
 const char default_su_path[] = SU_PATH;
@@ -46,6 +48,7 @@ const char default_su_path[] = SU_PATH;
 #ifdef ANDROID
 const char legacy_su_path[] = LEGACY_SU_PATH;
 const char apd_path[] = APD_PATH;
+extern int android_is_safe_mode;
 #endif
 const char sucompat_file[] = "/data/adb/ap/sucompat";
 static const char *current_su_path = 0;
@@ -60,6 +63,10 @@ long kp_control_feature_sc(const char __user *uname, int state)
     int len = compat_strncpy_from_user(name, uname, sizeof(name));
     if (len <= 0)
         return -EINVAL;
+
+    if (!strcmp(name, "selinux_hide")) {
+        return selinux_hide_control(state);
+    }
 
     if (!strcmp(name, "sucompat_extra") || !strcmp(name, "path_probe")) {
         if (state < 0)
@@ -543,6 +550,9 @@ int su_compat_init()
 
 static void su_register_path_probe_hooks(void)
 {
+    #ifdef ANDROID
+        if (unlikely(android_is_safe_mode)) return;
+    #endif
     hook_err_t rc;
 
     rc = hook_syscalln(__NR3264_fstatat, 4, su_handler_arg1_ufilename_before, 0, (void *)0);

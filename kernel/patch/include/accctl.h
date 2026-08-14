@@ -32,7 +32,8 @@ int task_su(pid_t pid, uid_t to_uid, const char *sctx);
  */
 static inline void set_priv_sel_allow(struct task_struct *task, bool val)
 {
-    struct task_ext *ext = get_task_ext(task);
+    struct task_ext *ext = kf_task_ext_ensure(task);
+    if (!ext) return;
     ext->priv_sel_allow = val;
     dsb(ish);
 }

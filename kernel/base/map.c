@@ -86,9 +86,25 @@ static void flush_icache_all(void)
     asm volatile("isb" : : : "memory");
 }
 
+// The map region is copied to a different kernel address at boot, so it must be
+// self-contained: no `bl` may leave the region. GCC 14 lowers the 0xa0-byte
+// struct copy `*data = *get_data()` to a memcpy() call; that bl targets the
+// kpimg's own memcpy (fixed kpimg offset) and misrelocates once the map code is
+// copied into the kernel, jumping into unrelated kernel text (e.g. tcp_done).
+// Copy explicitly with a volatile byte loop so no memcpy call is emitted.
+static __noinline void copy_map_data(map_data_t *dst)
+{
+    const map_data_t *src = get_data();
+    volatile unsigned char *d = (volatile unsigned char *)dst;
+    const volatile unsigned char *s = (const volatile unsigned char *)src;
+    for (unsigned int i = 0; i < sizeof(map_data_t); i++) {
+        d[i] = s[i];
+    }
+}
+
 static __noinline void mem_proc(map_data_t *data)
 {
-	*data = *get_data();
+    copy_map_data(data);
     uint64_t kernel_va = get_kva();
 
     // relocation

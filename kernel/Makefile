@@ -23,7 +23,7 @@ X86_CC ?= gcc
 X86_LD ?= ld
 X86_OBJCOPY ?= objcopy
 
-CFLAGS += -Wall -fno-builtin -std=gnu11 -nostdinc -mgeneral-regs-only
+CFLAGS += -Wall -fno-builtin -std=gnu11 -nostdinc -mgeneral-regs-only -ffixed-x18
 CFLAGS += -g
 
 # kpimg-x86 links at 0 and runs from wherever it was injected, and the linker

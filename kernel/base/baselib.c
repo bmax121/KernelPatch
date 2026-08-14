@@ -49,6 +49,11 @@ void *lib_memcpy(void *dst, const void *src, size_t n)
     return dst;
 }
 
+// GCC 14 (and clang) lower large struct copies to a plain memcpy() call in some
+// code (e.g. map.c). The kpimg is a freestanding image with -fno-builtin, so the
+// symbol would otherwise be undefined at link time.
+void *memcpy(void *dst, const void *src, size_t n) { return lib_memcpy(dst, src, n); }
+
 void *lib_memmove(void *dst, const void *src, size_t n)
 {
     const char *p = (const char *)src;

@@ -36,3 +36,10 @@ kptools
 *.flat
 *.log
 *.err
+
+# ad-hoc qemu/gdb debug helpers
+gdb_*.cmd
+*.sh
+*.py
+__pycache__/
+*.cpio

@@ -9,6 +9,7 @@
 #include <log.h>
 #include <predata.h>
 #include <sucompat.h>
+#include <selinux_hide.h>
 
 int report_user_event(const char *event, const char *args)
 {
@@ -16,10 +17,16 @@ int report_user_event(const char *event, const char *args)
     const char *safe_args = args ? args : "";
 
     #ifdef ANDROID
-    if (lib_strcmp(safe_event, "post-fs-data") == 0) {
+    if (lib_strcmp(safe_event, "post-fs-data") == 0 && lib_strcmp(safe_args, "before") == 0) {
         log_boot("post-fs-data: loading ap package config ...\n");
         load_ap_package_config();
         sucompat_init();
+        // selinux_hide is driven by the post-fs-data before/after events in
+        // place of the SELinux policy-load phase 
+  
+    }
+    if (lib_strcmp(safe_event, "post-fs-data") == 0){
+        selinux_hide_post_fs_data(safe_args);
     }
     if (lib_strcmp(safe_event, "boot-completed") == 0) {
 

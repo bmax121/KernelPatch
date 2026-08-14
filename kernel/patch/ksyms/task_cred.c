@@ -536,6 +536,18 @@ int resolve_current()
         }
     }
 
+    // Some newer kernels (e.g. android16 6.12.69) no longer place STACK_END_MAGIC
+    // at task->stack, so the scan above finds nothing and thread_size stays 0.
+    // A zero thread_size makes current_thread_info_sp() == 0 and the code below
+    // dereferences NULL -> data abort during early boot. Fall back to the ARM64
+    // default (16KB, CONFIG_THREAD_INFO_IN_TASK) which matches what the scan
+    // yields on older kernels.
+    if (!thread_size) {
+        thread_size = 0x4000;
+        stack_end_offset = 0;
+        thread_info_in_task = 1;
+    }
+
     log_boot("    thread_size: %x\n", thread_size);
     log_boot("    stack_end_offset: %x\n", stack_end_offset);
     log_boot("    thread_info_in_task: %x\n", thread_info_in_task);

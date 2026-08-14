@@ -73,9 +73,17 @@ static inline unsigned long *get_current_stack()
     return get_stack(current);
 }
 
+/*
+ * task_ext is no longer stored in the task's kernel stack: writing it there
+ * (task->stack+8) corrupts a later task's ->stack on this kernel. It lives in
+ * a per-task slot table instead, looked up by the task pointer.
+ */
+struct task_ext *kf_get_task_ext(const struct task_struct *task);
+struct task_ext *kf_task_ext_ensure(struct task_struct *task);
+
 static inline struct task_ext *get_task_ext(const struct task_struct *task)
 {
-    return (struct task_ext *)(end_of_stack(task) + 1);
+    return kf_get_task_ext(task);
 }
 
 static inline struct task_ext *get_current_task_ext()
