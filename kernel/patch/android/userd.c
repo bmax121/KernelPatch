@@ -56,7 +56,7 @@
 #define AP_PACKAGE_CONFIG_PATH "/data/adb/ap/package_config"
 #define ANDROID_PACKAGES_LIST_PATH "/data/system/packages.list"
 #define ANDROID_PACKAGES_LIST_TMP_PATH "/data/system/packages.list.tmp"
-#define ANDROID_PACKAGES_XML_PATH "/data/system/packages.xml"
+
 #define APK_SIG_BLOCK_MAGIC "APK Sig Block 42"
 #define APK_SIG_BLOCK_MAGIC_LEN 16
 #define APK_SIG_SCHEME_V2_BLOCK_ID 0x7109871au
@@ -172,19 +172,36 @@ static int is_packages_list_tmp_dentry_path(const char *path)
     return path_has_suffix(path, "/system/packages.list.tmp");
 }
 
-static int read_le32(struct file *fp, loff_t *pos, uint32_t *out)
+/* bounds-checked read: fails if [*pos, *pos+size) would fall outside [*pos, end) */
+static int read_exact(struct file *fp, void *buf, size_t size, loff_t *pos, loff_t end)
 {
-    return kernel_read(fp, out, sizeof(*out), pos) == sizeof(*out) ? 0 : -EIO;
+    if (*pos < 0 || *pos > end || size > (size_t)(end - *pos)) return -EINVAL;
+    return kernel_read(fp, buf, size, pos) == (ssize_t)size ? 0 : -EIO;
 }
 
-static int read_le64(struct file *fp, loff_t *pos, uint64_t *out)
+static int read_le32_bounded(struct file *fp, loff_t *pos, loff_t end, uint32_t *out)
 {
-    return kernel_read(fp, out, sizeof(*out), pos) == sizeof(*out) ? 0 : -EIO;
+    return read_exact(fp, out, sizeof(*out), pos, end);
 }
 
-static int skip_bytes(loff_t *pos, uint64_t len)
+static int read_le64_bounded(struct file *fp, loff_t *pos, loff_t end, uint64_t *out)
 {
-    *pos += (loff_t)len;
+    return read_exact(fp, out, sizeof(*out), pos, end);
+}
+
+static int read_le16_bounded(struct file *fp, loff_t *pos, loff_t end, uint16_t *out)
+{
+    return read_exact(fp, out, sizeof(*out), pos, end);
+}
+
+/* reads a u32 length prefix at *pos and returns the end of the length-prefixed
+ * field, bounded by container_end so a forged length can't escape its parent */
+static int read_length_prefixed_end(struct file *fp, loff_t *pos, loff_t container_end, loff_t *value_end)
+{
+    uint32_t length;
+    if (read_le32_bounded(fp, pos, container_end, &length)) return -EINVAL;
+    if ((uint64_t)length > (uint64_t)(container_end - *pos)) return -EINVAL;
+    *value_end = *pos + (loff_t)length;
     return 0;
 }
 
@@ -202,55 +219,43 @@ static int cert_der_matches_trusted_digest(const uint8_t *cert_der, size_t cert_
     return lib_memcmp(digest, expected_digest, TRUSTED_MANAGER_DIGEST_LEN) == 0 ? 0 : -EPERM;
 }
 
-struct zip_entry_header
+static int apk_sig_block_matches_trusted_digest(struct file *fp, loff_t *pos, loff_t block_end,
+                                                const uint8_t *expected_digest)
 {
-    uint32_t signature;
-    uint16_t version;
-    uint16_t flags;
-    uint16_t compression;
-    uint16_t mod_time;
-    uint16_t mod_date;
-    uint32_t crc32;
-    uint32_t compressed_size;
-    uint32_t uncompressed_size;
-    uint16_t file_name_length;
-    uint16_t extra_field_length;
-} __attribute__((packed));
-
-static int apk_sig_block_matches_trusted_digest(struct file *fp, uint32_t *size4, loff_t *pos, uint32_t *offset, const uint8_t *expected_digest)
-{
+    loff_t signers_end, signer_end, signed_data_end, digests_end, certificates_end;
+    uint32_t cert_len;
     uint8_t *cert_buf;
 
-    if (read_le32(fp, pos, size4)) return 0; // signer-sequence length
-    if (read_le32(fp, pos, size4)) return 0; // signer length
-    if (read_le32(fp, pos, size4)) return 0; // signed data length
-    *offset += sizeof(*size4) * 3;
-
-    if (read_le32(fp, pos, size4)) return 0; // digests-sequence length
-    if (skip_bytes(pos, *size4)) return 0;
-    *offset += sizeof(*size4) + *size4;
-
-    if (read_le32(fp, pos, size4)) return 0; // certificates length
-    if (read_le32(fp, pos, size4)) return 0; // certificate length
-    *offset += sizeof(*size4) * 2;
-
-    if (*size4 == 0 || *size4 > APK_CERT_MAX_LENGTH) {
-        log_boot("trusted manager apk cert length invalid: %u\n", *size4);
+    // v2 block: signers sequence -> first signer -> signed data -> digests
+    if (read_length_prefixed_end(fp, pos, block_end, &signers_end) ||
+        read_length_prefixed_end(fp, pos, signers_end, &signer_end) ||
+        read_length_prefixed_end(fp, pos, signer_end, &signed_data_end) ||
+        read_length_prefixed_end(fp, pos, signed_data_end, &digests_end)) {
         return 0;
     }
 
-    *offset += *size4;
-    cert_buf = vmalloc(*size4);
+    *pos = digests_end;
+    if (read_length_prefixed_end(fp, pos, signed_data_end, &certificates_end) ||
+        read_le32_bounded(fp, pos, certificates_end, &cert_len)) {
+        return 0;
+    }
+
+    if (cert_len == 0 || cert_len > APK_CERT_MAX_LENGTH || (uint64_t)cert_len > (uint64_t)(certificates_end - *pos)) {
+        log_boot("trusted manager apk cert length invalid: %u\n", cert_len);
+        return 0;
+    }
+
+    cert_buf = vmalloc(cert_len);
     if (!cert_buf) {
         return 0;
     }
 
-    if (kernel_read(fp, cert_buf, *size4, pos) != *size4) {
+    if (read_exact(fp, cert_buf, cert_len, pos, certificates_end)) {
         kvfree(cert_buf);
         return 0;
     }
 
-    if (!cert_der_matches_trusted_digest(cert_buf, *size4, expected_digest)) {
+    if (!cert_der_matches_trusted_digest(cert_buf, cert_len, expected_digest)) {
         kvfree(cert_buf);
         return 2;
     }
@@ -259,35 +264,46 @@ static int apk_sig_block_matches_trusted_digest(struct file *fp, uint32_t *size4
     return 1;
 }
 
-static int apk_has_v1_signature_file(struct file *fp)
+/* v1 (JAR) signing leaves META-INF/ RSA, DSA, or EC signature block entries
+ * in the ZIP central directory; detect them without parsing the PKCS7 payload. */
+static int apk_has_v1_signature(struct file *fp, loff_t cd_start, loff_t cd_end)
 {
-    static const char manifest[] = "META-INF/MANIFEST.MF";
-    struct zip_entry_header header;
-    loff_t pos = 0;
+    loff_t pos = cd_start;
 
-    while (kernel_read(fp, &header, sizeof(header), &pos) == sizeof(header)) {
-        if (header.signature != 0x04034b50u) {
-            return 0;
+    while (pos < cd_end) {
+        uint32_t sig;
+        uint16_t name_len, extra_len, comment_len;
+        char name[72];
+        loff_t entry_start = pos;
+        loff_t name_pos;
+
+        if (read_le32_bounded(fp, &pos, cd_end, &sig) || sig != 0x02014b50u) {
+            break;
         }
 
-        if (header.file_name_length == sizeof(manifest) - 1) {
-            char file_name[sizeof(manifest)];
-            if (kernel_read(fp, file_name, header.file_name_length, &pos) != header.file_name_length) {
-                return 0;
+        pos = entry_start + 28;
+        if (read_le16_bounded(fp, &pos, cd_end, &name_len) ||
+            read_le16_bounded(fp, &pos, cd_end, &extra_len) ||
+            read_le16_bounded(fp, &pos, cd_end, &comment_len)) {
+            break;
+        }
+        if (entry_start + 46 + name_len + extra_len + comment_len > cd_end) {
+            break;
+        }
+
+        if (name_len > 0 && name_len < sizeof(name)) {
+            name_pos = entry_start + 46;
+            if (!read_exact(fp, name, name_len, &name_pos, cd_end)) {
+                name[name_len] = '\0';
+                if (!strncmp(name, "META-INF/", 9) &&
+                    (path_has_suffix(name, ".RSA") || path_has_suffix(name, ".DSA") || path_has_suffix(name, ".EC"))) {
+                    return 1;
+                }
             }
-            file_name[header.file_name_length] = '\0';
-            if (strncmp(file_name, manifest, sizeof(manifest) - 1) == 0) {
-                return 1;
-            }
-        } else if (skip_bytes(&pos, header.file_name_length)) {
-            return 0;
         }
 
-        if (skip_bytes(&pos, (uint64_t)header.extra_field_length + header.compressed_size)) {
-            return 0;
-        }
+        pos = entry_start + 46 + name_len + extra_len + comment_len;
     }
-
     return 0;
 }
 
@@ -297,13 +313,21 @@ static int apk_matches_trusted_signature(const char *path, const uint8_t *expect
     int rc = 0;
     int v2_blocks = 0;
     int v2_valid = 0;
-    int v3_present = 0;
-    int v31_present = 0;
+    int v3_blocks = 0;
+    int v3_valid = 0;
+    int v31_blocks = 0;
+    int v31_valid = 0;
     uint8_t magic[APK_SIG_BLOCK_MAGIC_LEN + 1] = { 0 };
-    uint32_t size4;
-    uint64_t size8;
+    uint32_t cd_offset = 0;
+    uint32_t cd_size = 0;
+    uint32_t zip64_locator_magic;
+    uint32_t eocd_sig;
     uint64_t size_of_block;
+    uint64_t size_of_block_at_head;
     loff_t pos;
+    loff_t file_size;
+    loff_t eocd_offset = -1;
+    loff_t pairs_end;
     struct file *fp;
 
     if (!path || !path[0]) return 0;
@@ -316,97 +340,146 @@ static int apk_matches_trusted_signature(const char *path, const uint8_t *expect
         return 0;
     }
 
+    file_size = vfs_llseek(fp, 0, SEEK_END);
+    if (file_size < 0) {
+        goto out;
+    }
+
+    // https://en.wikipedia.org/wiki/Zip_(file_format)#End_of_central_directory_record_(EOCD)
     for (i = 0; i <= 0xffff; i++) {
         unsigned short n = 0;
-        pos = vfs_llseek(fp, -i - 2, SEEK_END);
-        if (pos < 0) {
-            continue;
-        }
-        if (kernel_read(fp, &n, sizeof(n), &pos) != sizeof(n)) {
+        pos = file_size - i - 2;
+        if (read_exact(fp, &n, sizeof(n), &pos, file_size)) {
             continue;
         }
         if (n == i) {
             pos -= 22;
-            if (!read_le32(fp, &pos, &size4) && size4 == 0x06054b50u) {
+            if (!read_le32_bounded(fp, &pos, file_size, &eocd_sig) && eocd_sig == 0x06054b50u) {
+                eocd_offset = pos - sizeof(eocd_sig);
                 break;
             }
         }
     }
 
-    if (i > 0xffff) {
+    if (i > 0xffff || eocd_offset < 0) {
         goto out;
     }
 
-    pos += 12;
-    if (read_le32(fp, &pos, &size4)) {
-        goto out;
+    // ZIP64 keeps the real central-directory offset in a separate locator;
+    // reject it so the (32-bit) offsets read below can't be spoofed
+    if (eocd_offset >= 20) {
+        pos = eocd_offset - 20;
+        if (read_le32_bounded(fp, &pos, file_size, &zip64_locator_magic)) {
+            goto out;
+        }
+        if (zip64_locator_magic == 0x07064b50u) {
+            goto out;
+        }
     }
-    pos = (loff_t)size4 - 0x18;
 
-    if (read_le64(fp, &pos, &size8)) {
+    pos = eocd_offset + 12;
+    if (read_le32_bounded(fp, &pos, file_size, &cd_size)) {
         goto out;
     }
-    if (kernel_read(fp, magic, APK_SIG_BLOCK_MAGIC_LEN, &pos) != APK_SIG_BLOCK_MAGIC_LEN) {
+    if (read_le32_bounded(fp, &pos, file_size, &cd_offset)) {
+        goto out;
+    }
+    if ((uint64_t)cd_offset > (uint64_t)eocd_offset || (uint64_t)cd_size != (uint64_t)eocd_offset - cd_offset) {
+        goto out;
+    }
+    if (cd_offset < 0x20) {
+        goto out;
+    }
+
+    pairs_end = (loff_t)cd_offset - 0x18;
+    pos = pairs_end;
+
+    if (read_le64_bounded(fp, &pos, (loff_t)cd_offset, &size_of_block)) {
+        goto out;
+    }
+    if (read_exact(fp, magic, APK_SIG_BLOCK_MAGIC_LEN, &pos, (loff_t)cd_offset)) {
         goto out;
     }
     if (strncmp((char *)magic, APK_SIG_BLOCK_MAGIC, APK_SIG_BLOCK_MAGIC_LEN) != 0) {
         goto out;
     }
 
-    pos = (loff_t)size4 - (loff_t)(size8 + 0x8);
-    if (read_le64(fp, &pos, &size_of_block)) {
-        goto out;
-    }
-    if (size_of_block != size8) {
+    if (size_of_block < 0x18 || size_of_block > (uint64_t)cd_offset - 0x8) {
         goto out;
     }
 
-    for (i = 0; i < 16; i++) {
+    pos = (loff_t)cd_offset - (loff_t)size_of_block - 0x8;
+    if (read_le64_bounded(fp, &pos, pairs_end, &size_of_block_at_head)) {
+        goto out;
+    }
+    if (size_of_block_at_head != size_of_block) {
+        goto out;
+    }
+
+    // scan every length-prefixed pair up to pairs_end; malformed lengths fail
+    // the bounds check below instead of relying on an iteration cap
+    while (pos < pairs_end) {
         uint32_t id;
-        uint32_t offset = sizeof(id);
-        if (read_le64(fp, &pos, &size8)) {
+        uint64_t size_of_pair;
+        loff_t pair_end;
+
+        if (read_le64_bounded(fp, &pos, pairs_end, &size_of_pair)) {
             goto out;
         }
-        if (size8 == size_of_block) {
-            break;
+        if (size_of_pair < sizeof(id) || size_of_pair > (uint64_t)(pairs_end - pos)) {
+            goto out;
         }
-        if (read_le32(fp, &pos, &id)) {
+        pair_end = pos + (loff_t)size_of_pair;
+        if (read_le32_bounded(fp, &pos, pair_end, &id)) {
             goto out;
         }
 
         if (id == APK_SIG_SCHEME_V2_BLOCK_ID) {
             int match;
             v2_blocks++;
-            match = apk_sig_block_matches_trusted_digest(fp, &size4, &pos, &offset, expected_digest);
+            match = apk_sig_block_matches_trusted_digest(fp, &pos, pair_end, expected_digest);
             if (match == 2) {
                 v2_valid = 1;
             }
         } else if (id == APK_SIG_SCHEME_V3_BLOCK_ID) {
-            v3_present = 1;
+            int match;
+            v3_blocks++;
+            // v3's "signed data" starts with digests then certificates, same
+            // layout as v2, so the same bounded parser applies here.
+            match = apk_sig_block_matches_trusted_digest(fp, &pos, pair_end, expected_digest);
+            if (match == 2) {
+                v3_valid = 1;
+            }
         } else if (id == APK_SIG_SCHEME_V31_BLOCK_ID) {
-            v31_present = 1;
+            int match;
+            v31_blocks++;
+            match = apk_sig_block_matches_trusted_digest(fp, &pos, pair_end, expected_digest);
+            if (match == 2) {
+                v31_valid = 1;
+            }
         }
 
-        if (size8 < offset) {
-            log_boot("trusted manager apk sig block size invalid: %llu offset: %u\n", size8, offset);
-            goto out;
-        }
-        if (skip_bytes(&pos, size8 - offset)) {
-            log_boot("trusted manager apk sig block skip failed\n");
-            goto out;
-        }
+        pos = pair_end;
     }
 
-    if (!v2_valid) {
-        log_boot("trusted manager apk sig block invalid: v2_blocks=%d v2_valid=%d v3_present=%d v31_present=%d\n",
-                 v2_blocks, v2_valid, v3_present, v31_present);
+
+    // only a lone, valid v2 signature is trusted; v1/v3/v3.1 verification
+    // parsing above is kept for diagnostics but does not grant trust
+    if (apk_has_v1_signature(fp, (loff_t)cd_offset, eocd_offset)) {
+        log_boot("trusted manager apk unexpected v1 (JAR) signature scheme\n");
         goto out;
     }
 
-    // if (apk_has_v1_signature_file(fp)) {
-    //     log_boot("trusted manager apk has v1 signature file, which is not allowed\n");
-    //     goto out;
-    // }
+    if (v3_blocks || v31_blocks) {
+        log_boot("trusted manager apk unexpected v3/v3.1 signature scheme alongside v2\n");
+        goto out;
+    }
+
+    if (!v2_valid) {
+        log_boot("trusted manager apk sig invalid: v2=%d/%d v3=%d/%d v31=%d/%d\n",
+                 v2_valid, v2_blocks, v3_valid, v3_blocks, v31_valid, v31_blocks);
+        goto out;
+    }
 
     rc = 1;
 
@@ -900,71 +973,7 @@ out_free:
     return rc;
 }
 
-static int find_apk_from_packages_xml(const char *pkg,
-                                      char *apk_path,
-                                      size_t apk_path_len)
-{
-    
-    loff_t len = 0;
-    char *data;
-    char *p;
-    int rc = -ENOENT;
 
-    data = (char *)kernel_read_file(ANDROID_PACKAGES_XML_PATH, &len);
-    if (!data || len <= 0) {
-        log_boot("read %s failed\n", ANDROID_PACKAGES_XML_PATH);
-        return -ENOENT;
-    }
-
-    log_boot("%s size: %lld bytes\n", ANDROID_PACKAGES_XML_PATH, len);
-
-    p = data;
-
-    while ((p = strstr(p, pkg))) {
-        char *start = p;
-        while (start > data && *start != '<')
-            start--;
-
-        if (strncmp(start, "<package", 8) != 0) {
-            p += strlen(pkg);
-            continue;
-        }
-        char *cp = strstr(start, "codePath=\"");
-        if (!cp) {
-            p += strlen(pkg);
-            continue;
-        }
-
-        cp += strlen("codePath=\"");
-
-        char *end = strchr(cp, '"');
-        if (!end) {
-            p += strlen(pkg);
-            continue;
-        }
-
-        size_t l = end - cp;
-
-        if (l + strlen("/base.apk") >= apk_path_len) {
-            rc = -ENOSPC;
-            goto out;
-        }
-
-        memcpy(apk_path, cp, l);
-        memcpy(apk_path + l, "/base.apk", strlen("/base.apk") + 1);
-
-        log_boot("apk found (xml): %s\n", apk_path);
-
-        rc = 0;
-        goto out;
-    }
-
-    log_boot("apk not found in %s for %s\n", ANDROID_PACKAGES_XML_PATH, pkg);
-
-out:
-    kvfree(data);
-    return rc;
-}
 
 static int refresh_trusted_manager_uid_from_packages_list(uid_t *trusted_uid_out, int use_tmp)
 {
@@ -993,16 +1002,8 @@ static int refresh_trusted_manager_uid_from_packages_list(uid_t *trusted_uid_out
             log_boot("no apk via iterate for %s rc=%d, fallback to xml\n",
              trusted_managers[i].package, rc);
 
-            rc = find_apk_from_packages_xml(
-                    trusted_managers[i].package,
-                    apk_path,
-                    PATH_MAX);
 
-            if (rc) {
-                log_boot("no apk for %s via xml rc=%d\n",
-                        trusted_managers[i].package, rc);
-                continue;
-            }
+            continue;
         }
 
         if (!apk_matches_trusted_signature(
