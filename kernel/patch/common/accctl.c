@@ -85,8 +85,6 @@ int commit_common_su(uid_t to_uid, const char *sctx)
     int ext_ok = ext && task_ext_valid(ext);
     logkfi("commit_common_su: task=%llx ext=%llx ok=%d pid=%d\n", (uint64_t)task, (uint64_t)ext, ext_ok,
            ext_ok ? ext->pid : -1);
-    kp_debug_write("commit_common_su: task=%llx ext=%llx ok=%d pid=%d\n", (uint64_t)task, (uint64_t)ext, ext_ok,
-                   ext_ok ? ext->pid : -1);
     if (unlikely(!ext_ok)) {
         logkfe("task_ext ensure failed, pid(maybe dirty): %d\n", ext ? ext->pid : -1);
         rc = -ENOMEM;
