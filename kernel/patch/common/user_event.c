@@ -18,17 +18,12 @@ int report_user_event(const char *event, const char *args)
 
     #ifdef ANDROID
     if (lib_strcmp(safe_event, "post-fs-data") == 0 && lib_strcmp(safe_args, "before") == 0) {
-        // trusted-manager refresh happens here, on the post-fs-data "before"
-        // event, NOT in the first app_process execve hook (which stalls the
-        // zygote with the /data/app APK scan on boot).
-        int trust_rc = refresh_trusted_manager_state();
-        log_boot("post-fs-data before: trusted manager refresh rc=%d\n", trust_rc);
         log_boot("post-fs-data: loading ap package config ...\n");
         load_ap_package_config();
         sucompat_init();
         // selinux_hide is driven by the post-fs-data before/after events in
-        // place of the SELinux policy-load phase
-
+        // place of the SELinux policy-load phase 
+  
     }
     if (lib_strcmp(safe_event, "post-fs-data") == 0){
         selinux_hide_post_fs_data(safe_args);

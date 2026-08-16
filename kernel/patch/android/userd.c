@@ -1355,11 +1355,7 @@ static void post_init_second_stage()
 
 static void on_first_app_process()
 {
-    /* The trusted-manager APK scan must NOT run here: it iterates /data/app and
-     * verifies APK signatures, and doing it synchronously inside the first
-     * app_process (zygote) execve stalls the framework on boot (regression from
-     * "Change the trigger position").  The refresh is driven by the post-fs-data
-     * "before" event in report_user_event() instead. */
+    refresh_trusted_manager_state();
 }
 
 static void handle_before_execve(hook_local_t *hook_local, char **__user u_filename_p, char **__user uargv,
