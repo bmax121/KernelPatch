@@ -54,7 +54,7 @@ void module_init();
 void syscall_init();
 int kstorage_init();
 int su_compat_init();
-int selinux_hide_init();
+// int selinux_hide_init();
 
 #ifdef ANDROID
 int android_user_init();
@@ -90,8 +90,8 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
     rc = su_compat_init();
     log_boot("su_compat_init done: %d\n", rc);
 
-    rc = selinux_hide_init();
-    log_boot("selinux_hide_init done: %d\n", rc);
+    // rc = selinux_hide_init();
+    // log_boot("selinux_hide_init done: %d\n", rc);
 
     rc = resolve_pt_regs();
     log_boot("resolve_pt_regs done: %d\n", rc);

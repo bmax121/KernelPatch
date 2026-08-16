@@ -492,6 +492,7 @@ int selinux_hide_post_fs_data(const char *args)
         if (!IS_ERR(filp)) {
             filp_close(filp, 0);
             log_boot("selinux_hide: %s exists, enabling\n", KP_SELINUX_HIDE_FILE);
+            selinux_hide_init();
             int rc = selinux_hide_enable();
             log_boot("selinux_hide: enable rc: %d\n", rc);
         }
@@ -609,6 +610,7 @@ unsigned long lookup_name_with_suffix(const char *base)
 int selinux_hide_init(void)
 {
     log_boot("selinux_hide: kernel %x, supported: %d\n", kver, selinux_hide_is_supported());
+
     if (!selinux_hide_is_supported()) return -EOPNOTSUPP;
 
     selinux_sepolicy_init();
