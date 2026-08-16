@@ -5,6 +5,7 @@
 
 #include <hotpatch.h>
 #include <cache.h>
+#include <common.h>
 #include <ksyms.h>
 #include <symbol.h>
 #include <pgtable.h>
@@ -21,6 +22,27 @@ static uintptr_t *alias_entry = 0;
 static uintptr_t alias_pte = 0;
 
 int kfunc_def(aarch64_insn_patch_text_nosync)(void *addr, uint32_t insn) = 0;
+int kfunc_def(aarch64_insn_patch_text)(void *addrs[], uint32_t insns[], int cnt) = 0;
+
+/*
+ * Text-patching backend selection, decided at runtime by kver.
+ *
+ * The hotpatch framework (stop_machine + the alias/aarch64_insn_patch_text_nosync
+ * trick) broke boot on 4.4/4.14: the alias path feeds a vmalloc alias address to
+ * the kernel's aarch64_insn_patch_text_nosync, whose patch_map() resolves it via
+ * virt_to_page() and writes to a bogus physical page.  Those kernels used to boot
+ * through the kernel's own aarch64_insn_patch_text(), which is what the legacy
+ * backend restores below.
+ *
+ * Legacy (4.14 and below): prefer the kernel's aarch64_insn_patch_text() (fixmap +
+ * stop_machine, the path KP used before the hotpatch migration); fall back to a
+ * direct page-table write only if it cannot be resolved.  5.0+ keep the hotpatch
+ * framework.
+ */
+static bool hotpatch_use_legacy(void)
+{
+    return kver < VERSION(4, 15, 0);
+}
 
 static void modify_entry_kernel(uintptr_t va, uintptr_t *entry, uintptr_t value)
 {
@@ -45,7 +67,7 @@ int hotpatch_nosync(void *addr, uint32_t value)
 {
     uintptr_t tp = (uintptr_t)addr;
     if (tp & 0x3) return -EINVAL;
-    if (kfunc(aarch64_insn_patch_text_nosync) && alias_pte) {
+    if (!hotpatch_use_legacy() && kfunc(aarch64_insn_patch_text_nosync) && alias_pte) {
         // todo: fixmap
         uintptr_t phys = pgtable_phys_kernel(tp);
         if (!phys) return -EFAULT;
@@ -112,6 +134,18 @@ int hotpatch(void *addrs[], uint32_t values[], int cnt)
         .index = ATOMIC_INIT(0),
     };
     if (cnt <= 0) return -EINVAL;
+    if (hotpatch_use_legacy()) {
+        /* Legacy: use the kernel's own aarch64_insn_patch_text() when available —
+         * this is the path fp_hook/hook_install used before the hotpatch
+         * migration and the one that boots 4.x.  fall back to a direct write
+         * only if it cannot be resolved. */
+        if (kfunc(aarch64_insn_patch_text)) return kfunc(aarch64_insn_patch_text)(addrs, values, cnt);
+        for (int i = 0; i < cnt; ++i) {
+            int rc = hotpatch_nosync(addrs[i], values[i]);
+            if (rc) return rc;
+        }
+        return 0;
+    }
     if (!kfunc(stop_machine) || is_interrupt_masked() || !cpu_online_mask || !kvar(nr_cpu_ids) ||
         num_online_cpus() == 1) {
         atomic_dec_return(&patch.index);
@@ -124,6 +158,7 @@ KP_EXPORT_SYMBOL(hotpatch);
 static void _arch_arm64_text_patching_init(const char *name, unsigned long addr)
 {
     kfunc_match(aarch64_insn_patch_text_nosync, name, addr);
+    kfunc_match(aarch64_insn_patch_text, name, addr);
 }
 
 static int _hotpatch_symbol_init(void *data, const char *name, struct module *m, unsigned long addr)
@@ -145,12 +180,15 @@ void hotpatch_symbol_init()
 
 int hotpatch_init()
 {
+    if (hotpatch_use_legacy()) {
+        log_boot("hotpatch backend: legacy aarch64_insn_patch_text (kernel %d.%d)\n", kver >> 16, (kver >> 8) & 0xff);
+        return 0;
+    }
     alias_page = vmalloc(page_size);
     if (alias_page) {
         alias_entry = pgtable_entry_kernel((uintptr_t)alias_page);
         if (alias_entry) alias_pte = *alias_entry;
     }
-    log_boot("alias_page: %llx\n", alias_page);
-    log_boot("alias_pte: %llx\n", alias_pte);
+    log_boot("hotpatch backend: framework (alias_page: %llx, alias_pte: %llx)\n", alias_page, alias_pte);
     return 0;
 }
