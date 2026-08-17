@@ -41,7 +41,7 @@ int kfunc_def(aarch64_insn_patch_text)(void *addrs[], uint32_t insns[], int cnt)
  */
 static bool hotpatch_use_legacy(void)
 {
-    return kver < VERSION(4, 15, 0);
+    return kver < VERSION(4, 10, 0);
 }
 
 static void modify_entry_kernel(uintptr_t va, uintptr_t *entry, uintptr_t value)
