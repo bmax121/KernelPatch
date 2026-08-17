@@ -74,6 +74,7 @@ extern int android_is_safe_mode;
 /* ---- state ---- */
 
 static bool selinux_hide_enabled;
+static bool selinux_hide_approved; /* /data/adb/ap/selinux_hide seen at "before" */
 
 typedef void (*security_cred_getsecid_fn)(const struct cred *c, u32 *secid);
 static security_cred_getsecid_fn kp_security_cred_getsecid;
@@ -156,33 +157,6 @@ static void init_fake_status(void)
     logkfi("selinux_hide: fake status page ready (%x)\n", kver);
 }
 
-/* Caller's SID via the LSM cred->getsecid hook; 0 means "could not determine". */
-static u32 kp_current_sid(void)
-{
-    const struct cred *cred;
-
-    if (!kp_security_cred_getsecid || task_struct_offset.cred_offset < 0) return 0;
-    cred = *(const struct cred **)((uintptr_t)current + task_struct_offset.cred_offset);
-    if (!cred) return 0;
-    u32 sid = 0;
-    kp_security_cred_getsecid(cred, &sid);
-    return sid;
-}
-
-/* avc_has_perm with the 4.17..6.3 state-prepended signature handled. */
-static int kp_avc_has_perm(u32 ssid, u32 tsid, u16 tclass, u32 requested, struct common_audit_data *auditdata)
-{
-    if (!kfunc(avc_has_perm) || !selinux_has_selinux_state()) return -ENOSYS;
-
-    if (selinux_need_call_compat()) {
-        typedef int (*avc_has_perm_compat_t)(struct selinux_state *, u32, u32, u16, u32,
-                                             struct common_audit_data *);
-        return ((avc_has_perm_compat_t)kfunc(avc_has_perm))(kvar(selinux_state), ssid, tsid, tclass, requested,
-                                                            auditdata);
-    }
-    return kfunc(avc_has_perm)(ssid, tsid, tclass, requested, auditdata);
-}
-
 /* ---- /sys/fs/selinux/context handler ---- */
 
 static ssize_t my_write_context(struct file *file, char *buf, size_t size)
@@ -190,148 +164,141 @@ static ssize_t my_write_context(struct file *file, char *buf, size_t size)
     if (likely(current_uid() < 10000)) {
         return orig_context_write(file, buf, size);
     }
-    if (!kfunc(security_context_to_sid) || !kfunc(security_sid_to_context) || !kfunc(avc_has_perm) ||
-        !selinux_has_selinux_state()) {
-        return orig_context_write(file, buf, size);
+    /* Answer against the clean snapshot: run the original handler under the
+     * clean-eval scope so its internal security_context_to_sid ->
+     * string_to_context_struct uses the redirected clean policydb (the
+     * selinux_magisk_access_filter KPM mechanism). */
+    if (selinux_sepolicy_clean_eval_enter() == 0) {
+        ssize_t ret = orig_context_write(file, buf, size);
+        selinux_sepolicy_clean_eval_leave();
+        return ret;
     }
-
-    char *canon = NULL;
-    u32 sid, len;
-    ssize_t length;
-    u32 csid = kp_current_sid();
-    bool use_backup = selinux_sepolicy_backup_ready();
-
-    if (!csid) return orig_context_write(file, buf, size); /* cannot gate -> stock */
-
-    length = kp_avc_has_perm(csid, KP_SECINITSID_SECURITY, KP_SECCLASS_SECURITY, KP_SECURITY__CHECK_CONTEXT, NULL);
-    if (length) goto out;
-
-    /* The backup answers authoritatively when ready: contexts a clean policy
-     * lacks (e.g. magisk/ksu) must NOT fall back to the live policy, or the
-     * hide is undone. */
-    if (use_backup)
-        length = selinux_sepolicy_context_to_sid(buf, size, &sid, KP_GFP_KERNEL);
-    else
-        length = security_context_to_sid(buf, size, &sid, KP_GFP_KERNEL);
-    if (length) goto out;
-
-    if (use_backup)
-        length = selinux_sepolicy_sid_to_context(sid, &canon, &len);
-    else
-        length = security_sid_to_context(sid, &canon, &len);
-    if (length) goto out;
-
-    length = -ERANGE;
-    if (len > KP_SIMPLE_TRANSACTION_LIMIT) {
-        logkfw("SELinux: %s:  context size (%u) exceeds payload max\n", __func__, len);
-        goto out;
-    }
-
-    lib_memcpy(buf, canon, len);
-    length = len;
-out:
-    kfree(canon);
-    return length;
+    return orig_context_write(file, buf, size);
 }
 
 /* ---- /sys/fs/selinux/access handler ---- */
 
+/* Patch the seqno (5th whitespace token, "%u") in an /access response so
+ * detectors don't see live policy reloads.  Ported from the
+ * selinux_magisk_access_filter KPM. */
+static ssize_t kp_patch_response_seqno(char *buf, ssize_t ret, u32 new_seqno)
+{
+    char *p = buf, *end = buf + ret, *tok_start;
+    char new_str[12];
+    int ns_len, tok, i;
+    ssize_t diff;
+
+    if (ret <= 0 || !buf) return ret;
+    for (tok = 0; tok < 4; tok++) {
+        while (p < end && *p == ' ') p++;
+        while (p < end && *p != ' ') p++;
+    }
+    while (p < end && *p == ' ') p++;
+    tok_start = p;
+    while (p < end && *p != ' ' && *p != '\0' && *p != '\n') p++;
+    if (tok_start >= p) return ret;
+
+    {
+        u32 v = new_seqno;
+        char tmp[12];
+        if (v == 0) {
+            new_str[0] = '0';
+            ns_len = 1;
+        } else {
+            i = 0;
+            while (v > 0) {
+                tmp[i++] = '0' + (v % 10);
+                v /= 10;
+            }
+            for (ns_len = 0; ns_len < i; ns_len++)
+                new_str[ns_len] = tmp[i - 1 - ns_len];
+        }
+    }
+
+    diff = (ssize_t)ns_len - (ssize_t)(p - tok_start);
+    if (diff != 0) {
+        char *dst = tok_start + ns_len, *src = p;
+        size_t move = (size_t)(end - src);
+        int j;
+        if (diff < 0) {
+            for (j = 0; j < (int)move; j++) dst[j] = src[j];
+        } else {
+            for (j = (int)move - 1; j >= 0; j--) dst[j] = src[j];
+        }
+        ret += diff;
+    }
+    for (i = 0; i < ns_len; i++)
+        tok_start[i] = new_str[i];
+    return ret;
+}
+
+/* DirtySepolicy reads avd.seqno via SELinux.access("u:r:untrusted_app:s0",
+ * "u:r:untrusted_app:s0", 0); answer with the clean seqno=1 exactly. */
+static bool kp_avd_seqno_probe(const char *scon, const char *tcon, u16 tclass)
+{
+    return !lib_strcmp(scon, "u:r:untrusted_app:s0") &&
+           !lib_strcmp(tcon, "u:r:untrusted_app:s0") && tclass == 0;
+}
+
 static ssize_t my_write_access(struct file *file, char *buf, size_t size)
 {
+    ssize_t ret;
+
     if (likely(current_uid() < 10000)) {
         return orig_access_write(file, buf, size);
     }
-    if (!kfunc(security_context_str_to_sid) || !kfunc(security_compute_av_user) || !kfunc(avc_has_perm) ||
-        !selinux_has_selinux_state()) {
-        return orig_access_write(file, buf, size);
+
+    /* DirtySepolicy avd.seqno probe -> clean response "0 0 0 0 1 0". */
+    {
+        char tmp[96];
+        char scon[64], tcon[64];
+        u16 tclass = 0;
+        size_t tn = size < sizeof(tmp) - 1 ? size : sizeof(tmp) - 1;
+
+        lib_memcpy(tmp, buf, tn);
+        tmp[tn] = '\0';
+        if (sscanf(tmp, "%63s %63s %hu", scon, tcon, &tclass) == 3 &&
+            kp_avd_seqno_probe(scon, tcon, tclass)) {
+            static const char clean_resp[] = "0 0 0 0 1 0";
+            size_t rl = sizeof(clean_resp) - 1;
+            if (size >= rl) {
+                lib_memcpy(buf, clean_resp, rl);
+                if (size > rl) buf[rl] = '\0';
+            }
+            return (ssize_t)rl;
+        }
     }
 
-    char *scon = NULL, *tcon = NULL, *tmp = NULL;
-    u32 ssid, tsid;
-    u16 tclass;
-    struct av_decision avd;
-    ssize_t length;
-    u32 csid = kp_current_sid();
-    bool use_backup = selinux_sepolicy_backup_ready();
-
-    if (!csid) return orig_access_write(file, buf, size); /* cannot gate -> stock */
-
-    length = kp_avc_has_perm(csid, KP_SECINITSID_SECURITY, KP_SECCLASS_SECURITY, KP_SECURITY__COMPUTE_AV, NULL);
-    if (length) goto out;
-
-    length = -ENOMEM;
-    scon = kp_vmalloc(size + 1);
-    if (!scon) goto out;
-    tcon = kp_vmalloc(size + 1);
-    if (!tcon) goto out;
-    tmp = kp_vmalloc(size + 1);
-    if (!tmp) goto out;
-
-    lib_memcpy(tmp, buf, size);
-    tmp[size] = '\0';
-
-    length = -EINVAL;
-    if (sscanf(tmp, "%s %s %hu", scon, tcon, &tclass) != 3) goto out;
-
-    if (use_backup)
-        length = selinux_sepolicy_context_str_to_sid(scon, &ssid, KP_GFP_KERNEL);
-    else
-        length = security_context_str_to_sid(scon, &ssid, KP_GFP_KERNEL);
-    if (length) goto out;
-
-    if (use_backup)
-        length = selinux_sepolicy_context_str_to_sid(tcon, &tsid, KP_GFP_KERNEL);
-    else
-        length = security_context_str_to_sid(tcon, &tsid, KP_GFP_KERNEL);
-    if (length) goto out;
-
-    if (use_backup)
-        selinux_sepolicy_compute_av_user(ssid, tsid, tclass, &avd);
-    else
-        security_compute_av_user(ssid, tsid, tclass, &avd);
-
-    length = scnprintf(buf, KP_SIMPLE_TRANSACTION_LIMIT, "%x %x %x %x %u %x", avd.allowed, 0xffffffff,
-                       avd.auditallow, avd.auditdeny, avd.seqno, avd.flags);
-out:
-    kp_vfree(tmp);
-    kp_vfree(tcon);
-    kp_vfree(scon);
-    return length;
+    /* Answer against the clean snapshot: run the original handler under the
+     * clean-eval scope so its internal compute_av uses the redirected clean
+     * policydb. */
+    if (selinux_sepolicy_clean_eval_enter() == 0) {
+        ret = orig_access_write(file, buf, size);
+        selinux_sepolicy_clean_eval_leave();
+    } else {
+        ret = orig_access_write(file, buf, size);
+    }
+    if (ret > 0)
+        ret = kp_patch_response_seqno(buf, ret, KP_AVD_CLEAN_SEQNO);
+    return ret;
 }
 
 /* ---- setprocattr handler ---- */
 
 static int my_setprocattr(const char *name, void *value, size_t size)
 {
-    int error;
-    u32 mysid;
-    char *str = value;
-    bool use_backup = selinux_sepolicy_backup_ready();
-
     if (likely(current_uid() < 10000)) goto call_orig;
     if (lib_strcmp(name, "current")) goto call_orig;
     if (!kfunc(avc_has_perm) || !selinux_has_selinux_state()) goto call_orig;
 
-    mysid = kp_current_sid();
-    if (!mysid) goto call_orig;
-
-    error = kp_avc_has_perm(mysid, mysid, KP_SECCLASS_PROCESS, KP_PROCESS__SETCURRENT, NULL);
-    if (error) goto call_orig; /* let the stock handler decide (it does the same check) */
-
-    /* Advisory pre-validation against the clean snapshot: only ever adds
-     * acceptance; never reject here -- the stock handler re-checks against the
-     * live policy, and rejecting (e.g. for a forked app's context) breaks boot. */
-    if (use_backup && size && str[0] && str[0] != '\n') {
-        char *copy = kp_vmalloc(size + 1);
-        if (copy) {
-            u32 n = size;
-            u32 vsid = 0;
-            lib_memcpy(copy, str, size);
-            copy[size] = '\0';
-            if (copy[n - 1] == '\n') copy[n - 1] = '\0';
-            selinux_sepolicy_context_to_sid(copy, n, &vsid, KP_GFP_KERNEL);
-            kp_vfree(copy);
-        }
+    /* Run the original handler under the clean-eval scope so its internal
+     * security_context_to_sid uses the redirected clean policydb: a root
+     * context (magisk/ksu/...) that the clean policy lacks is then rejected.
+     * (selinux_magisk_access_filter KPM mechanism.) */
+    if (selinux_sepolicy_clean_eval_enter() == 0) {
+        int rc = orig_setprocattr(name, value, size);
+        selinux_sepolicy_clean_eval_leave();
+        return rc;
     }
 call_orig:
     return orig_setprocattr(name, value, size);
@@ -477,27 +444,36 @@ long selinux_hide_control(int state)
 
 int selinux_hide_post_fs_data(const char *args)
 {
-    /* "before" installs the hooks (before a post-fs-data policy reload); a bare
-     * "post-fs-data" event (no args) from older managers is treated the same. */
+    /* "before" resolves ss/ symbols and snapshots the clean boot policy (the
+     * live policy is still untouched here); a bare "post-fs-data" event (no
+     * args) from older managers is treated the same.  Hooks are installed at
+     * "after", once apd/Magisk have finished their policy reloads. */
     if (lib_strcmp(args, "before") == 0 || args[0] == '\0') {
         log_boot("selinux_hide: post-fs-data before\n");
-
-        /* The live policy is still the untouched boot policy here: deep-copy it
-         * so the context/access/setprocattr hooks answer against the clean policy
-         * even after apd/Magisk reloads it. */
-        int src = selinux_sepolicy_snapshot();
-        log_boot("selinux_sepolicy: snapshot rc=%d\n", src);
 
         struct file *filp = filp_open(KP_SELINUX_HIDE_FILE, KP_O_RDONLY, 0);
         if (!IS_ERR(filp)) {
             filp_close(filp, 0);
-            log_boot("selinux_hide: %s exists, enabling\n", KP_SELINUX_HIDE_FILE);
+            log_boot("selinux_hide: %s exists\n", KP_SELINUX_HIDE_FILE);
+
+            /* Resolve ss/ symbols FIRST: the snapshot below needs the resolved
+             * kp_policydb_read/kp_policydb_load_isids. */
             selinux_hide_init();
-            int rc = selinux_hide_enable();
-            log_boot("selinux_hide: enable rc: %d\n", rc);
+
+            /* The live policy is still the untouched boot policy here: deep-copy
+             * it so the context/access/setprocattr hooks answer against the clean
+             * policy even after apd/Magisk reloads it. */
+            int src = selinux_sepolicy_snapshot();
+            log_boot("selinux_sepolicy: snapshot rc=%d\n", src);
+
+            selinux_hide_approved = true;
         }
     } else if (lib_strcmp(args, "after") == 0) {
         log_boot("selinux_hide: post-fs-data after\n");
+        if (selinux_hide_approved) {
+            int rc = selinux_hide_enable();
+            log_boot("selinux_hide: enable rc: %d\n", rc);
+        }
     }
     return 0;
 }

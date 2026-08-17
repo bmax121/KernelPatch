@@ -53,4 +53,11 @@ void selinux_sepolicy_compute_av_user(u32 ssid, u32 tsid, u16 tclass, struct av_
 u32 selinux_sepolicy_clean_seq(void);
 #define KP_AVD_CLEAN_SEQNO 1
 
+/* Clean-eval scope (selinux_magisk_access_filter KPM mechanism): while entered,
+ * the kernel's context_struct_compute_av()/string_to_context_struct() get their
+ * policydb argument redirected to the clean snapshot, so the caller's own
+ * context/access query computes against the pre-root policy. */
+int selinux_sepolicy_clean_eval_enter(void);
+void selinux_sepolicy_clean_eval_leave(void);
+
 #endif

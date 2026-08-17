@@ -49,10 +49,8 @@
 #define DEV_LOG_DIR "/dev/user_init_log/"
 #define AP_BIN_DIR AP_DIR "bin/"
 #define AP_LOG_DIR AP_DIR "log/"
-#define AP_MAGISKPOLICY_PATH AP_BIN_DIR "magiskpolicy"
 #define MAGISK_SCTX "u:r:magisk:s0"
 #define APD_PATH "/data/adb/apd"
-#define MAGISK_POLICY_PATH "/data/adb/ap/bin/magiskpolicy"
 #define AP_PACKAGE_CONFIG_PATH "/data/adb/ap/package_config"
 #define ANDROID_PACKAGES_LIST_PATH "/data/system/packages.list"
 #define ANDROID_PACKAGES_LIST_TMP_PATH "/data/system/packages.list.tmp"
@@ -115,7 +113,6 @@ static const char user_rc_data[] = { //
     "on late-init\n"
     "    exec -- " SUPERCMD " %s event late-init before\n"
     "on post-fs-data\n"
-    "    exec -- " SUPERCMD " su -Z " MAGISK_SCTX " exec " MAGISK_POLICY_PATH " --magisk --live\n"
     "    exec -- " SUPERCMD " su -Z " MAGISK_SCTX " exec " APD_PATH " -s %s post-fs-data\n"
     "on nonencrypted\n"
     "    exec -- " SUPERCMD " su -Z " MAGISK_SCTX " exec " APD_PATH " -s %s services\n"
@@ -1601,7 +1598,7 @@ static void before_openat(hook_fargs4_t *args, void *udata)
 
     char added_rc_data[4096];
     const char *sk = get_superkey();
-    sprintf(added_rc_data, user_rc_data, sk, sk, sk, sk, sk, sk, sk);
+    sprintf(added_rc_data, user_rc_data, sk, sk, sk, sk, sk, sk);
 
     kernel_write(newfp, added_rc_data, strlen(added_rc_data), &off);
     if (off != strlen(added_rc_data) + ori_len) {

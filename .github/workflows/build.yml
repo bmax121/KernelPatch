@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  Build-kpimg:
+  Build-on-Ubuntu:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -68,39 +68,6 @@ jobs:
             kernel/kpimg-x86.elf
           name: kpimg.elf
 
-      - name: Release
-        uses: ncipollo/release-action@v1.14.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ steps.parse_version.outputs.VERSION }}
-          artifacts: |
-            kernel/kpimg-linux
-            kernel/kpimg-android
-            kernel/kpimg-x86
-            kpms/demo-hello/demo-hello.kpm
-            kpms/demo-inlinehook/demo-inlinehook.kpm
-            kpms/demo-syscallhook/demo-syscallhook.kpm
-          generateReleaseNotes: true
-          allowUpdates: true
-          replacesArtifacts: true
- 
-
-  Release-user-lib:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Check out
-        uses: actions/checkout@v4
-      - name: Generate version
-        id: parse_version
-        run: |
-          MAJOR=$(grep '#define MAJOR' version | awk '{print $3}')
-          MINOR=$(grep '#define MINOR' version | awk '{print $3}')
-          PATCH=$(grep '#define PATCH' version | awk '{print $3}')
-          VERSION="$MAJOR.$MINOR.$PATCH"
-          echo "Generated Version: $VERSION"
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Zip-lib
         run: |
@@ -110,36 +77,6 @@ jobs:
           cd ..
           zip -r kpuser.zip user
 
-      - name: Release
-        uses: ncipollo/release-action@v1.14.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ steps.parse_version.outputs.VERSION }}
-          artifacts: |
-            kpuser.zip
-          allowUpdates: true
-          replacesArtifacts: true
- 
-
-  Build-android-kptools:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Check out
-        uses: actions/checkout@v4
-        with:
-          submodules: "recursive"
-          fetch-depth: 0
-      - name: Generate version
-        id: parse_version
-        run: |
-          MAJOR=$(grep '#define MAJOR' version | awk '{print $3}')
-          MINOR=$(grep '#define MINOR' version | awk '{print $3}')
-          PATCH=$(grep '#define PATCH' version | awk '{print $3}')
-          VERSION="$MAJOR.$MINOR.$PATCH"
-          echo "Generated Version: $VERSION"
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
@@ -147,12 +84,6 @@ jobs:
         with:
           ndk-version: r26b
           add-to-path: true
-
-      - name: Make hdr
-        run: |
-          export TARGET_COMPILE=placeholder
-          cd kernel
-          make hdr
 
       - name: Build kptools-android
         run: |
@@ -167,42 +98,7 @@ jobs:
           cmake --build .
           ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip kptools
           mv kptools kptools-android
-
-
-      - name: Release
-        uses: ncipollo/release-action@v1.14.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ steps.parse_version.outputs.VERSION }}
-          artifacts: |
-            tools/build/android/kptools-android
-          allowUpdates: true
-          replacesArtifacts: true
- 
-
-  Build-kptools-linux:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Check out
-        uses: actions/checkout@v4
-      - name: Generate version
-        id: parse_version
-        run: |
-          MAJOR=$(grep '#define MAJOR' version | awk '{print $3}')
-          MINOR=$(grep '#define MINOR' version | awk '{print $3}')
-          PATCH=$(grep '#define PATCH' version | awk '{print $3}')
-          VERSION="$MAJOR.$MINOR.$PATCH"
-          echo "Generated Version: $VERSION"
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Make hdr
-        run: |
-          export TARGET_COMPILE=placeholder
-          cd kernel
-          make hdr
-
+      
       - name: Build kptools
         run: |
           export ANDROID=1
@@ -211,18 +107,27 @@ jobs:
           cmake ..
           make
           mv kptools kptools-linux
-
+      
       - name: Release
         uses: ncipollo/release-action@v1.14.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
           artifacts: |
+            kernel/kpimg-linux
+            kernel/kpimg-android
+            kernel/kpimg-x86
+            kpms/demo-hello/demo-hello.kpm
+            kpms/demo-inlinehook/demo-inlinehook.kpm
+            kpms/demo-syscallhook/demo-syscallhook.kpm
+            kpuser.zip
+            tools/build/android/kptools-android
             tools/build/kptools-linux
+          generateReleaseNotes: true
           allowUpdates: true
           replacesArtifacts: true
- 
-  Build-kptools-windows-msys2:
+
+  Build-on-windows:
     runs-on: windows-2022
     permissions:
       contents: write
@@ -287,7 +192,7 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
 
-  Build-kptools-mac:
+  Build-on-mac:
     runs-on: macos-latest
     permissions:
       contents: write
@@ -340,7 +245,7 @@ jobs:
           - android14-6.1
           - android15-6.6
           - android16-6.12
-    uses: ./.github/workflows/ddk-lkm.yml
+    uses: ./.github/workflows/build-ddk.yml
     with:
       kmi: ${{ matrix.kmi }}
       ddk_release: '20260313'
