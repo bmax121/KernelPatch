@@ -41,7 +41,7 @@ int kfunc_def(aarch64_insn_patch_text)(void *addrs[], uint32_t insns[], int cnt)
  */
 static bool hotpatch_use_legacy(void)
 {
-    return kver < VERSION(4, 10, 0);
+    return kver < VERSION(4, 15, 0);
 }
 
 static void modify_entry_kernel(uintptr_t va, uintptr_t *entry, uintptr_t value)
@@ -134,7 +134,7 @@ int hotpatch(void *addrs[], uint32_t values[], int cnt)
         .index = ATOMIC_INIT(0),
     };
     if (cnt <= 0) return -EINVAL;
-    if (hotpatch_use_legacy()) {
+    if (kver < VERSION(4, 6, 0)) {
         /* Legacy: use the kernel's own aarch64_insn_patch_text() when available —
          * this is the path fp_hook/hook_install used before the hotpatch
          * migration and the one that boots 4.x.  fall back to a direct write
@@ -180,8 +180,8 @@ void hotpatch_symbol_init()
 
 int hotpatch_init()
 {
-    if (hotpatch_use_legacy()) {
-        log_boot("hotpatch backend: legacy aarch64_insn_patch_text (kernel %d.%d)\n", kver >> 16, (kver >> 8) & 0xff);
+    if (kver < VERSION(4, 6, 0)) {
+        log_boot("hotpatch backend: legacy aarch64_insn_patch_text");
         return 0;
     }
     alias_page = vmalloc(page_size);
