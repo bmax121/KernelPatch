@@ -560,26 +560,10 @@ unsigned long lookup_name_with_suffix(const char *base)
     addr = kallsyms_lookup_name(base);
     if (addr) return addr;
 
-    /* LLVM LTO mangles static functions to <name>.<n> (or <name>.llvm.<hash>). */
-    char name[96];
-    size_t i;
-    for (u32 n = 0; n < 256; n++) {
-        for (i = 0; i < sizeof(name) - 1 && base[i]; i++) name[i] = base[i];
-        if (i >= sizeof(name) - 2) return 0;
-        name[i++] = '.';
-        name[i] = '\0';
-        /* append decimal n */
-        char buf[12];
-        char *p = buf + sizeof(buf);
-        u32 v = n;
-        do { *--p = (char)('0' + (v % 10)); v /= 10; } while (v);
-        while (p < buf + sizeof(buf) && i < sizeof(name) - 1) name[i++] = *p++;
-        name[i] = '\0';
-
-        addr = kallsyms_lookup_name(name);
-        if (addr) return addr;
-    }
-
+    /* LLVM LTO mangles static functions to <name>.<n> / <name>.llvm.<hash> /
+     * <name>$... .  One kallsyms_on_each_symbol walk covers every form, so there
+     * is no need to probe <base>.<0..255> first (kallsyms_on_each_symbol is
+     * KernelPatch core infra, always resolved before the builtin features run). */
     return lookup_suffix_by_symbol_walk(base);
 }
 

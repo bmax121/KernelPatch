@@ -37,8 +37,9 @@ long selinux_hide_control(int state);
 /* Whether the feature is currently active. */
 int selinux_hide_is_enabled(void);
 
-/* Resolve a (possibly LTO-mangled) static symbol: try the exact name, then
- * <base>.<n> suffixes, then a kallsyms_on_each_symbol walk. */
+/* Resolve a (possibly LTO-mangled) static symbol: try the exact name, then a
+ * kallsyms_on_each_symbol walk covering <name>.<n> / <name>.llvm.<hash> /
+ * <name>$... suffixes. */
 unsigned long lookup_name_with_suffix(const char *base);
 
 #endif

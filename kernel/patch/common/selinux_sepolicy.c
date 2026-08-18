@@ -509,13 +509,15 @@ static void after_selinux_complete_init(hook_fargs0_t *a, void *u)
     log_boot("selinux_sepolicy: complete_init snapshot rc=%d\n", rc);
 }
 
-/* < 6.4: void selinux_policy_commit(struct selinux_state *state, struct selinux_load_state *load_state) */
-static void after_selinux_policy_commit_2arg(hook_fargs2_t *a, void *u)
-{
-    kp_capture_committed_policy((void *)a->arg1);
-}
-
-/* >= 6.4: void selinux_policy_commit(struct selinux_load_state *load_state) */
+/* >= 6.4: void selinux_policy_commit(struct selinux_load_state *load_state)
+ *
+ * The < 6.4 forms are intentionally NOT hooked:
+ *   5.0..5.11  void selinux_policy_commit(state, struct selinux_policy *newpolicy)
+ *   5.12..6.3  void selinux_policy_commit(state, struct selinux_load_state *load_state)
+ * The < 6.4 backup uses the direct policydb_read route (kp_snapshot_direct_policydb)
+ * and needs no policy/state offset.  On 5.0..5.11 arg1 is the policy pointer
+ * itself, so treating it as a load_state and reading *(void **)arg1 yields
+ * newpolicy->sidtab and poisons the learned offsets. */
 static void after_selinux_policy_commit_1arg(hook_fargs1_t *a, void *u)
 {
     kp_capture_committed_policy((void *)a->arg0);
@@ -614,9 +616,14 @@ static void before_string_to_context_struct(hook_fargs5_t *a, void *u)
     }
 }
 
-/* Deep copy the clean policy via policydb_read + policydb_load_isids
- *  and build a fake state pointing at it. */
-static int kp_snapshot_fake_state(void)
+/* < 6.4 direct-policydb snapshot (the selinux_magisk_access_filter KPM blob
+ * route).  The clean-eval redirect only needs a parsed policydb pointer to swap
+ * into context_struct_compute_av()/string_to_context_struct() arg0; it needs no
+ * fake selinux_state and no state->policy offset.  Serialize the (still stock)
+ * live policy with security_read_policy() and deserialize with policydb_read()
+ * into our own buffer at the standard (struct selinux_policy){ struct sidtab *;
+ * struct policydb; ... } slot so kp_backup_policydb() resolves it. */
+static int kp_snapshot_direct_policydb(void)
 {
     struct policy_file fp;
     struct policydb *pdb;
@@ -624,16 +631,14 @@ static int kp_snapshot_fake_state(void)
     size_t len = 0;
     int rc;
 
-    if (g_state_policy_offset < 0) {
-        log_boot("selinux_sepolicy: state->policy offset unknown, backup unavailable\n");
-        return -EAGAIN;
-    }
-    if (!kvar(selinux_state)) {
-        log_boot("selinux_sepolicy: selinux_state not resolved\n");
+    if (!kfunc(security_read_policy) || !kp_policydb_read) {
+        log_boot("selinux_sepolicy: security_read_policy/policydb_read not resolved\n");
         return -ENOENT;
     }
-    if (!kfunc(security_read_policy) || !kp_policydb_read || !kp_policydb_load_isids) {
-        log_boot("selinux_sepolicy: required symbols missing\n");
+    /* < 6.4 security_read_policy() is stateful; the security.h inline wrapper
+     * prepends kvar(selinux_state) via selinux_adapt_kfunc_call(). */
+    if (selinux_sepolicy_use_fake_state() && !kvar(selinux_state)) {
+        log_boot("selinux_sepolicy: selinux_state not resolved\n");
         return -ENOENT;
     }
 
@@ -644,35 +649,24 @@ static int kp_snapshot_fake_state(void)
         return rc ? rc : -EINVAL;
     }
 
-    /* The kernel's security_* helpers read policy->policydb at the kernel's own
-     * offset, so place the parsed policydb in the wrapper at the learned offset
-     * (fall back to the standard sidtab*,policydb layout for old kernels). */
-    pdb = (struct policydb *)(g_backup_policy_buf +
-                              (g_policydb_offset >= 0 ? g_policydb_offset : KP_POLICY_POLICYDB_OFFSET));
+    /* Zero first: policydb_read requires a zero-initialized target. */
+    lib_memset(g_backup_policy_buf, 0, KP_BACKUP_POLICY_SIZE);
+    pdb = (struct policydb *)(g_backup_policy_buf + KP_POLICY_POLICYDB_OFFSET);
     fp.data = data;
     fp.len = len;
     rc = kp_policydb_read(pdb, &fp);
     if (kfunc(kvfree)) kfunc(kvfree)(data);
     if (rc) {
         log_boot("selinux_sepolicy: policydb_read failed rc=%d\n", rc);
-        return rc;
-    }
-
-    rc = kp_policydb_load_isids(pdb, (void *)g_backup_sidtab_buf);
-    if (rc) {
-        log_boot("selinux_sepolicy: policydb_load_isids failed rc=%d\n", rc);
         if (kp_policydb_destroy) kp_policydb_destroy(pdb);
         return rc;
     }
 
-    *(void **)g_backup_policy_buf = g_backup_sidtab_buf; /* policy->sidtab @0 */
+    *(void **)g_backup_policy_buf = NULL; /* policy->sidtab: unused by the redirect */
     g_backup_policy = g_backup_policy_buf;
-
-    lib_memcpy(g_fake_state_buf, kvar(selinux_state), sizeof(g_fake_state_buf));
-    *(void **)(g_fake_state_buf + g_state_policy_offset) = g_backup_policy;
-
     g_backup_ready = true;
-    log_boot("selinux_sepolicy: backup ready via fake_state (policyvers %u, len %zu)\n", pdb->policyvers, pdb->len);
+    log_boot("selinux_sepolicy: backup ready via direct policydb (vers %u, len %zu)\n",
+             pdb->policyvers, pdb->len);
     return 0;
 }
 
@@ -738,7 +732,7 @@ int selinux_sepolicy_snapshot(void)
 {
     if (!selinux_sepolicy_supported()) return -EOPNOTSUPP;
     if (g_backup_ready) return 0;
-    if (selinux_sepolicy_use_fake_state()) return kp_snapshot_fake_state();
+    if (selinux_sepolicy_use_fake_state()) return kp_snapshot_direct_policydb();
     return kp_snapshot_with_policy();
 }
 
@@ -923,15 +917,14 @@ int selinux_sepolicy_init(void)
     kp_sidtab_search_core = (sidtab_search_core_fn)lookup_name_with_suffix("sidtab_search_core");
     kp_context_struct_compute_av = (context_struct_compute_av_fn)lookup_name_with_suffix("context_struct_compute_av");
 
-    /* Learn offsetof(struct selinux_policy, policydb) and (fake_state path) the
-     * state->policy field offset from the live policy. */
+    /* Learn offsetof(struct selinux_policy, policydb) from the live policy.
+     * Only the >= 6.4 (1-arg) form is hooked.  The < 6.4 snapshot is the direct
+     * policydb_read route and must not read selinux_policy_commit()'s ABI (on
+     * 5.0..5.11 the 2nd arg is the policy itself, on 5.12..6.3 a load_state). */
     addr = kallsyms_lookup_name("selinux_policy_commit");
     if (!addr) addr = lookup_name_with_suffix("selinux_policy_commit");
-    if (addr) {
-        if (selinux_sepolicy_use_fake_state())
-            hook_wrap2((void *)addr, after_selinux_policy_commit_2arg, NULL, NULL);
-        else
-            hook_wrap1((void *)addr, after_selinux_policy_commit_1arg, NULL, NULL);
+    if (addr && !selinux_sepolicy_use_fake_state()) {
+        hook_wrap1((void *)addr, after_selinux_policy_commit_1arg, NULL, NULL);
         log_boot("selinux_sepolicy: hooked selinux_policy_commit @ %llx\n", addr);
     }
     addr = kallsyms_lookup_name("context_struct_compute_av");
