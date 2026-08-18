@@ -37,6 +37,8 @@ struct module
     } info;
 
     char *args, *ctl_args;
+    char load_event[32];
+    char load_source[16];
 
     mod_initcall_t *init;
     mod_ctl0call_t *ctl0;
@@ -54,7 +56,10 @@ struct module
 };
 
 long load_module(const void *data, int len, const char *args, const char *event, void *__user reserved);
+long load_module_ex(const void *data, int len, const char *args, const char *event, const char *source,
+                    void *__user reserved);
 long load_module_path(const char *path, const char *args, void *__user reserved);
+long load_module_path_event(const char *path, const char *args, const char *event, void *__user reserved);
 long module_control0(const char *name, const char *ctl_args, char *__user out_msg, int outlen);
 long module_control1(const char *name, void *a1, void *a2, void *a3);
 long unload_module(const char *name, void *__user reserved);

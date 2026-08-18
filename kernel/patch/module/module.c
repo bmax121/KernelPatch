@@ -449,7 +449,8 @@ static int elf_header_check(struct load_info *info)
 struct module modules = { 0 };
 static spinlock_t module_lock;
 
-long load_module(const void *data, int len, const char *args, const char *event, void *__user reserved)
+long load_module_ex(const void *data, int len, const char *args, const char *event, const char *source,
+                    void *__user reserved)
 {
     struct load_info load_info = { .len = len, .hdr = data };
     struct load_info *info = &load_info;
@@ -472,6 +473,8 @@ long load_module(const void *data, int len, const char *args, const char *event,
         goto out;
     }
     memset(mod, 0, sizeof(struct module));
+    snprintf(mod->load_event, sizeof(mod->load_event), "%s", event ? event : "");
+    snprintf(mod->load_source, sizeof(mod->load_source), "%s", source ? source : "embedded");
 
     if (args) {
         mod->args = vmalloc(strlen(args) + 1);
@@ -550,7 +553,12 @@ out:
     return rc;
 }
 
-long load_module_path(const char *path, const char *args, void *__user reserved)
+long load_module(const void *data, int len, const char *args, const char *event, void *__user reserved)
+{
+    return load_module_ex(data, len, args, event, "embedded", reserved);
+}
+
+long load_module_path_event(const char *path, const char *args, const char *event, void *__user reserved)
 {
     long rc = 0;
     logkfd("%s\n", path);
@@ -591,13 +599,18 @@ long load_module_path(const char *path, const char *args, void *__user reserved)
         goto free;
     }
 
-    rc = load_module(data, len, args, "load-file", reserved);
+    rc = load_module_ex(data, len, args, event ? event : "load-file", "file", reserved);
 free:
     kvfree(data);
 close:
     if (filp) filp_close(filp, 0);
 out:
     return rc;
+}
+
+long load_module_path(const char *path, const char *args, void *__user reserved)
+{
+    return load_module_path_event(path, args, "load-file", reserved);
 }
 
 long module_control0(const char *name, const char *ctl_args, char *__user out_msg, int outlen)
@@ -746,7 +759,7 @@ int get_module_info(const char *name, char *out_info, int size)
     struct module *mod = find_module(name);
     if (!mod) return -ENOENT;
 
-    int sz = snprintf(out_info, size - 1,
+    int sz = snprintf(out_info, size,
                       "name=%s\n"
                       "version=%s\n"
                       "license=%s\n"
@@ -754,9 +767,18 @@ int get_module_info(const char *name, char *out_info, int size)
                       "description=%s\n"
                       "args=%s\n",
                       mod->info.name, mod->info.version, mod->info.license, mod->info.author, mod->info.description,
-                      mod->args);
+                      mod->args ? mod->args : "");
 
-    if (sz > 0) out_info[sz - 1] = '\0';
+    if (sz < 0) sz = 0;
+    if (sz < size) {
+        int tail = snprintf(out_info + sz, size - sz,
+                            "load_event=%s\n"
+                            "load_source=%s\n",
+                            mod->load_event, mod->load_source);
+        if (tail > 0) sz += tail;
+    }
+
+    out_info[size - 1] = '\0';
     logkfd("%s", out_info);
 
     rcu_read_unlock();

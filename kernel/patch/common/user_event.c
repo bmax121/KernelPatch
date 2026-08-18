@@ -10,6 +10,9 @@
 #include <predata.h>
 #include <sucompat.h>
 #include <selinux_hide.h>
+#ifdef ANDROID
+extern int android_is_safe_mode;
+#endif
 
 int report_user_event(const char *event, const char *args)
 {
@@ -21,6 +24,11 @@ int report_user_event(const char *event, const char *args)
         log_boot("post-fs-data: loading ap package config ...\n");
         load_ap_package_config();
         sucompat_init();
+        if (android_is_safe_mode) {
+            log_boot("post-fs-data: safe mode, skip ap KPM loading\n");
+        } else {
+            load_ap_kpm_modules();
+        }
         // selinux_hide is driven by the post-fs-data before/after events in
         // place of the SELinux policy-load phase
 

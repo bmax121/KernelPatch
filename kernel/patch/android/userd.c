@@ -41,6 +41,7 @@
 #include <linux/errno.h>
 #include <log.h>
 #include <common.h>
+#include <module.h>
 
 #define REPLACE_RC_FILE "/dev/user_init.rc"
 
@@ -54,6 +55,11 @@
 #define AP_PACKAGE_CONFIG_PATH "/data/adb/ap/package_config"
 #define ANDROID_PACKAGES_LIST_PATH "/data/system/packages.list"
 #define ANDROID_PACKAGES_LIST_TMP_PATH "/data/system/packages.list.tmp"
+#define AP_KPM_DIR AP_DIR "kpm/"
+#define AP_KPM_NAME_LEN 128
+#define AP_KPM_MAX_MODULES 256
+
+extern int android_is_safe_mode;
 
 #define APK_SIG_BLOCK_MAGIC "APK Sig Block 42"
 #define APK_SIG_BLOCK_MAGIC_LEN 16
@@ -1348,6 +1354,131 @@ next_line:
     return loaded_count;
 }
 KP_EXPORT_SYMBOL(load_ap_package_config);
+
+/*
+ * Scan /data/adb/ap/kpm without opening children from the readdir callback.
+ * Some Android kernels hold the directory inode lock while iterate_dir() is
+ * running, so child opens are deliberately deferred until after the scan.
+ * The expected layout is kpm/<module_id>/<module_id>.kpm, with an optional
+ * kpm/<module_id>/disable marker.
+ */
+struct ap_kpm_scan_ctx {
+    struct dir_context dctx;
+    char *names;
+    int count;
+};
+
+struct ap_kpm_scan_ctx_int {
+    struct dir_context_int dctx;
+    char *names;
+    int count;
+};
+
+static int ap_kpm_valid_name(const char *name, int namelen)
+{
+    if (!name || namelen <= 0 || namelen >= AP_KPM_NAME_LEN) return 0;
+    if ((namelen == 1 && name[0] == '.') || (namelen == 2 && name[0] == '.' && name[1] == '.')) return 0;
+    for (int i = 0; i < namelen; i++) {
+        if (name[i] == '/' || name[i] == '\\') return 0;
+    }
+    return 1;
+}
+
+static bool ap_kpm_scan_actor(struct dir_context *dctx, const char *name, int namelen,
+                              loff_t offset, u64 ino, unsigned int d_type)
+{
+    struct ap_kpm_scan_ctx *ctx = container_of(dctx, struct ap_kpm_scan_ctx, dctx);
+    if (!ctx || ctx->count >= AP_KPM_MAX_MODULES || !ap_kpm_valid_name(name, namelen)) return true;
+    char *slot = ctx->names + ctx->count * AP_KPM_NAME_LEN;
+    memcpy(slot, name, namelen);
+    slot[namelen] = '\0';
+    ctx->count++;
+    return true;
+}
+
+static int ap_kpm_scan_actor_int(struct dir_context_int *dctx, const char *name, int namelen,
+                                 loff_t offset, u64 ino, unsigned int d_type)
+{
+    struct ap_kpm_scan_ctx_int *ctx = container_of(dctx, struct ap_kpm_scan_ctx_int, dctx);
+    if (!ctx || ctx->count >= AP_KPM_MAX_MODULES || !ap_kpm_valid_name(name, namelen)) return 0;
+    char *slot = ctx->names + ctx->count * AP_KPM_NAME_LEN;
+    memcpy(slot, name, namelen);
+    slot[namelen] = '\0';
+    ctx->count++;
+    return 0;
+}
+
+int load_ap_kpm_modules(void)
+{
+    struct file *dir;
+    char *names;
+    int count = 0, loaded = 0, skipped = 0;
+    int rc;
+
+    if (android_is_safe_mode) return 0;
+    names = vmalloc((size_t)AP_KPM_MAX_MODULES * AP_KPM_NAME_LEN);
+    if (!names) return -ENOMEM;
+    memset(names, 0, (size_t)AP_KPM_MAX_MODULES * AP_KPM_NAME_LEN);
+
+    set_priv_sel_allow(current, true);
+    dir = filp_open(AP_KPM_DIR, O_RDONLY | O_NOFOLLOW, 0);
+    if (!dir || IS_ERR(dir)) {
+        rc = dir ? PTR_ERR(dir) : -ENOENT;
+        set_priv_sel_allow(current, false);
+        kvfree(names);
+        if (rc != -ENOENT) log_boot("open AP KPM directory failed: %d\n", rc);
+        return rc == -ENOENT ? 0 : rc;
+    }
+
+    if (kver >= VERSION(6, 1, 0)) {
+        struct ap_kpm_scan_ctx ctx = { .names = names };
+        ctx.dctx.actor = ap_kpm_scan_actor;
+        ctx.dctx.pos = 0;
+        iterate_dir(dir, &ctx.dctx);
+        count = ctx.count;
+    } else {
+        struct ap_kpm_scan_ctx_int ctx = { .names = names };
+        ctx.dctx.actor = ap_kpm_scan_actor_int;
+        ctx.dctx.pos = 0;
+        iterate_dir_int(dir, &ctx.dctx);
+        count = ctx.count;
+    }
+    filp_close(dir, 0);
+    set_priv_sel_allow(current, false);
+
+    for (int i = 0; i < count; i++) {
+        char *id = names + i * AP_KPM_NAME_LEN;
+        char path[AP_KPM_NAME_LEN * 2 + sizeof(AP_KPM_DIR) + 8];
+        char disable[AP_KPM_NAME_LEN + sizeof(AP_KPM_DIR) + 16];
+        int path_len = snprintf(path, sizeof(path), AP_KPM_DIR "%s/%s.kpm", id, id);
+        int disable_len = snprintf(disable, sizeof(disable), AP_KPM_DIR "%s/disable", id);
+        struct file *marker;
+
+        if (path_len <= 0 || path_len >= sizeof(path) || disable_len <= 0 || disable_len >= sizeof(disable)) {
+            skipped++;
+            continue;
+        }
+        set_priv_sel_allow(current, true);
+        marker = filp_open(disable, O_RDONLY | O_NOFOLLOW, 0);
+        if (marker && !IS_ERR(marker)) {
+            filp_close(marker, 0);
+            set_priv_sel_allow(current, false);
+            log_boot("skip disabled AP KPM: %s\n", id);
+            skipped++;
+            continue;
+        }
+        set_priv_sel_allow(current, false);
+
+        rc = load_module_path_event(path, 0, EXTRA_EVENT_POST_FS_DATA, 0);
+        log_boot("load AP KPM: %s, event: %s, rc: %d\n", path, EXTRA_EVENT_POST_FS_DATA, rc);
+        if (!rc) loaded++;
+    }
+
+    kvfree(names);
+    log_boot("AP KPM loading done: loaded=%d skipped=%d total=%d\n", loaded, skipped, count);
+    return loaded;
+}
+KP_EXPORT_SYMBOL(load_ap_kpm_modules);
 
 static void pre_user_exec_init()
 {
