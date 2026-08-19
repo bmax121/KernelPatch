@@ -517,9 +517,20 @@ int su_compat_init()
     rc = hook_syscalln(__NR_execve, 3, before_execve, 0, (void *)0);
     log_boot("hook __NR_execve rc: %d\n", rc);
 
+    /* Android init may execute commands through execveat().  Keep the
+     * SUPERCMD/su redirection on both entry points; otherwise /system/bin/
+     * truncate is executed literally and every apd bootstrap command exits
+     * with status 1. */
+    rc = hook_syscalln(__NR_execveat, 5, before_execveat, 0, (void *)0);
+    log_boot("hook __NR_execveat rc: %d\n", rc);
+
     // __NR_execve 11
     rc = hook_compat_syscalln(11, 3, before_execve, 0, (void *)1);
     log_boot("hook 32 __NR_execve rc: %d\n", rc);
+
+    // __NR_execveat 387 on arm64 compat
+    rc = hook_compat_syscalln(387, 5, before_execveat, 0, (void *)1);
+    log_boot("hook 32 __NR_execveat rc: %d\n", rc);
 
     // Redirect the su path only for granted uids: after_getname_flags checks
     // is_su_allow_uid/is_trusted_manager_uid, so a granted app's stat/access on
