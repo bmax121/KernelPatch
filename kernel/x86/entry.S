@@ -22,7 +22,6 @@ kpimg_x86_entry:
     pushq %r14
     pushq %r15
 
-    subq $8, %rsp
     movw $0x3F8, %dx
     movb $'K', %al
     outb %al, %dx
@@ -35,7 +34,6 @@ kpimg_x86_entry:
     movb $'\r', %al
     outb %al, %dx
     call kpimg_x86_start
-    addq $8, %rsp
 
     popq %r15
     popq %r14

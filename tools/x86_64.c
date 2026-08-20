@@ -370,6 +370,32 @@ static int flat_offset_to_va(const x86_bzimage_t *image, uint64_t flat_offset, u
     return -1;
 }
 
+static const char *flat_offset_section_name(const x86_bzimage_t *image, uint64_t flat_offset)
+{
+    Elf64_Ehdr *ehdr = (Elf64_Ehdr *)image->elf;
+    uint64_t va;
+
+    if (flat_offset_to_va(image, flat_offset, &va) || !ehdr->e_shoff ||
+        ehdr->e_shentsize != sizeof(Elf64_Shdr) || ehdr->e_shstrndx >= ehdr->e_shnum ||
+        ehdr->e_shoff > image->elf_size ||
+        (size_t)ehdr->e_shnum * sizeof(Elf64_Shdr) > image->elf_size - ehdr->e_shoff)
+        return "<unknown>";
+
+    Elf64_Shdr *shdr = (Elf64_Shdr *)(image->elf + ehdr->e_shoff);
+    Elf64_Shdr *strtab = &shdr[ehdr->e_shstrndx];
+    if (strtab->sh_offset > image->elf_size || strtab->sh_size > image->elf_size - strtab->sh_offset)
+        return "<unknown>";
+    const char *names = image->elf + strtab->sh_offset;
+
+    for (int i = 0; i < ehdr->e_shnum; i++) {
+        if (!(shdr[i].sh_flags & SHF_ALLOC) || !shdr[i].sh_size || va < shdr[i].sh_addr ||
+            va - shdr[i].sh_addr >= shdr[i].sh_size || shdr[i].sh_name >= strtab->sh_size)
+            continue;
+        return names + shdr[i].sh_name;
+    }
+    return "<gap>";
+}
+
 static bool flat_range_ok(const x86_bzimage_t *image, uint64_t offset, uint64_t size)
 {
     return offset <= image->flat_size && size <= image->flat_size - offset;
@@ -479,6 +505,22 @@ int inject_x86_kpimg(x86_bzimage_t *image, void *kpimg, size_t kpimg_size)
     setup->paging_init_offset = trampoline_flat_offset;
     memcpy(setup->header_backup, call_site, HDR_BACKUP_SIZE);
 
+    /* Populate the architecture-neutral bootstrap symbols used by the first
+       x86 runtime stage. They remain flat-image offsets, matching arm64's
+       kernel-relative preset convention. Missing optional symbols are zero. */
+    int32_t kallsyms_lookup_name_offset =
+        get_symbol_offset(&kallsym, image->flat, "kallsyms_lookup_name");
+    int32_t printk_offset = get_symbol_offset(&kallsym, image->flat, "printk");
+    if (printk_offset < 0) printk_offset = get_symbol_offset(&kallsym, image->flat, "_printk");
+    if (kallsyms_lookup_name_offset >= 0) {
+        setup->kallsyms_lookup_name_offset = kallsyms_lookup_name_offset;
+        setup->patch_config.kallsyms_lookup_name = kallsyms_lookup_name_offset;
+    }
+    if (printk_offset >= 0) {
+        setup->printk_offset = printk_offset;
+        setup->patch_config.printk = printk_offset;
+    }
+
     uint8_t *trampoline = (uint8_t *)image->flat + trampoline_flat_offset;
     trampoline[0] = 0x50; /* push rax */
     trampoline[1] = 0x48;
@@ -494,10 +536,13 @@ int inject_x86_kpimg(x86_bzimage_t *image, void *kpimg, size_t kpimg_size)
     /* Written last so that every setup_preset_t field above lands in the image. */
     memcpy(image->flat + payload_flat_offset, kpimg, runtime_size);
 
-    tools_logi("x86 kpimg injected: segment %d, start_kernel 0x%llx, trampoline 0x%llx, payload 0x%llx+0x%zx, "
-               "entry 0x%llx\n",
-               payload_segment_index, (unsigned long long)call_site_va, (unsigned long long)trampoline_phys,
-               (unsigned long long)payload_phys, runtime_size, (unsigned long long)payload_entry);
+    tools_logi("x86 kpimg injected: segment %d, section %s, start_kernel 0x%llx, trampoline 0x%llx, payload 0x%llx+0x%zx, "
+               "entry 0x%llx, kallsyms_lookup_name 0x%llx, printk 0x%llx\n",
+               payload_segment_index, flat_offset_section_name(image, payload_flat_offset),
+               (unsigned long long)call_site_va, (unsigned long long)trampoline_phys,
+               (unsigned long long)payload_phys, runtime_size, (unsigned long long)payload_entry,
+               (unsigned long long)setup->kallsyms_lookup_name_offset,
+               (unsigned long long)setup->printk_offset);
     return 0;
 }
 

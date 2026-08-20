@@ -28,7 +28,7 @@
 #define CONFIG_ANDROID (1 << 1)
 #define CONFIG_FLAG_X86_64 (1 << 2)
 
-#define KP_X86_ENTRY_OFFSET 0x800
+#define KP_X86_ENTRY_OFFSET 0x600
 
 #define MAP_SYMBOL_NUM (7)
 #define MAP_SYMBOL_SIZE (MAP_SYMBOL_NUM * 8)

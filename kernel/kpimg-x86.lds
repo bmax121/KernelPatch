@@ -13,9 +13,9 @@ SECTIONS
         . = _setup_start + 64;
         KEEP(x86/setup.x86.o(.setup.preset))
         _setup_payload_end = .;
-        . = _setup_start + 2K;
+        . = _setup_start + 0x600;
     }
-    ASSERT(_setup_payload_end <= _setup_start + 2K, "x86 setup data exceeds 2 KiB")
+    ASSERT(_setup_payload_end <= _setup_start + 0x600, "x86 setup data overlaps entry")
 
     .entry.text : {
         _x86_entry_start = .;
@@ -25,7 +25,7 @@ SECTIONS
         *(.rodata .rodata.*)
         _x86_entry_end = .;
     }
-    ASSERT(kpimg_x86_entry == 2K, "x86 entry offset must remain 0x800")
+    ASSERT(kpimg_x86_entry == 0x600, "unexpected x86 entry offset")
 
     . = ALIGN(4K);
     _kp_text_start = .;
