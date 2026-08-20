@@ -44,6 +44,40 @@ int find_ikconfig_blob(char *img, int32_t imglen, size_t *start, size_t *size)
     return 0;
 }
 
+// BTF blob (CONFIG_DEBUG_INFO_BTF) located by header magic, validated to reject
+// false positives. Does not rely on __start_BTF/__stop_BTF symbols.
+int find_btf_blob(char *img, int32_t imglen, size_t *start, size_t *size)
+{
+    const uint8_t magic[4] = { 0x9f, 0xeb, 0x01, 0x00 }; // magic 0xeb9f (LE) + version 1
+    size_t off = 0;
+    while (off + 24 <= (size_t)imglen) {
+        char *p = memmem(img + off, imglen - off, magic, sizeof(magic));
+        if (!p) break;
+        size_t o = p - img;
+
+        const uint8_t *h = (const uint8_t *)p;
+        uint32_t hdr_len = h[4] | (h[5] << 8) | (h[6] << 16) | ((uint32_t)h[7] << 24);
+        uint32_t type_off = h[8] | (h[9] << 8) | (h[10] << 16) | ((uint32_t)h[11] << 24);
+        uint32_t type_len = h[12] | (h[13] << 8) | (h[14] << 16) | ((uint32_t)h[15] << 24);
+        uint32_t str_off = h[16] | (h[17] << 8) | (h[18] << 16) | ((uint32_t)h[19] << 24);
+        uint32_t str_len = h[20] | (h[21] << 8) | (h[22] << 16) | ((uint32_t)h[23] << 24);
+
+        // offsets are relative to the end of the header
+        uint64_t str_end = (uint64_t)hdr_len + str_off + str_len;
+        int ok = hdr_len >= 24 && type_off == 0 && type_len > 0 && str_len > 0 &&
+                 (uint64_t)type_off + type_len <= str_off && o + str_end <= (size_t)imglen &&
+                 p[hdr_len + str_off] == '\0'; // BTF string section starts with a NUL
+
+        if (ok) {
+            *start = o;
+            *size = (size_t)str_end;
+            return 0;
+        }
+        off = o + sizeof(magic);
+    }
+    return 1;
+}
+
 int find_linux_banner(kallsym_t *info, char *img, int32_t imglen, void *opt)
 {
     /*

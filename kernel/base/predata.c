@@ -9,6 +9,7 @@
 #include <sha256.h>
 #include <symbol.h>
 #include <kconfig.h>
+#include <kbtf.h>
 #include <kpmalloc.h>
 
 #include "start.h"
@@ -218,6 +219,297 @@ int kp_kconfig_size(void)
     return kernel_config_size;
 }
 KP_EXPORT_SYMBOL(kp_kconfig_size);
+
+#define BTF_MAGIC 0xeb9f
+#define BTF_MAX_DEPTH 32 // matches the kernel's MAX_RESOLVE_DEPTH
+#define BTF_KIND_INT 1
+#define BTF_KIND_PTR 2
+#define BTF_KIND_ARRAY 3
+#define BTF_KIND_STRUCT 4
+#define BTF_KIND_UNION 5
+#define BTF_KIND_ENUM 6
+#define BTF_KIND_FUNC_PROTO 13
+#define BTF_KIND_VAR 14
+#define BTF_KIND_DATASEC 15
+#define BTF_KIND_DECL_TAG 17
+#define BTF_KIND_ENUM64 19
+
+#define BTF_INFO_KIND(info) (((info) >> 24) & 0x1f)
+#define BTF_INFO_VLEN(info) ((info) & 0xffff)
+#define BTF_INFO_KFLAG(info) ((info) >> 31)
+#define BTF_MEMBER_BIT_OFFSET(val) ((val) & 0xffffff)
+
+struct btf_header
+{
+    uint16_t magic;
+    uint8_t version;
+    uint8_t flags;
+    uint32_t hdr_len;
+    uint32_t type_off;
+    uint32_t type_len;
+    uint32_t str_off;
+    uint32_t str_len;
+};
+
+struct btf_type
+{
+    uint32_t name_off;
+    uint32_t info;
+    union
+    {
+        uint32_t size;
+        uint32_t type;
+    };
+};
+
+struct btf_member
+{
+    uint32_t name_off;
+    uint32_t type;
+    uint32_t offset;
+};
+
+static const uint8_t *btf_base = 0;
+static const struct btf_header *btf_hdr = 0;
+static const char *btf_types = 0;
+static const char *btf_strs = 0;
+static int btf_scan_done = 0;
+
+static void ensure_btf_loaded(void)
+{
+    if (btf_base || btf_scan_done) return;
+    btf_scan_done = 1;
+
+    int64_t off = start_preset.btf_offset;
+    int64_t size = start_preset.btf_size;
+    if (!off || !size) return;
+    if (off < 0 || size < (int64_t)sizeof(struct btf_header) || off > kernel_size || size > kernel_size - off) {
+        log_boot("btf: bad preset range, off=%lld, size=%lld\n", off, size);
+        return;
+    }
+
+    const struct btf_header *h = (const struct btf_header *)(kernel_va + off);
+    if (h->magic != BTF_MAGIC || h->version != 1 || h->flags != 0 || h->hdr_len < sizeof(struct btf_header)) {
+        log_boot("btf: bad header magic=%x ver=%d\n", h->magic, h->version);
+        return;
+    }
+    // sections are relative to the end of the header; type then str, no overlap,
+    // str section must end exactly at the blob end and be NUL-bounded.
+    uint64_t body = (uint64_t)size - h->hdr_len;
+    if ((uint64_t)h->type_off + h->type_len > h->str_off || (uint64_t)h->str_off + h->str_len != body || !h->str_len) {
+        log_boot("btf: bad section layout\n");
+        return;
+    }
+    const char *strs = (const char *)h + h->hdr_len + h->str_off;
+    if (strs[0] != '\0' || strs[h->str_len - 1] != '\0') {
+        log_boot("btf: string section not NUL-bounded\n");
+        return;
+    }
+
+    btf_base = (const uint8_t *)h;
+    btf_hdr = h;
+    btf_types = (const char *)btf_base + h->hdr_len + h->type_off;
+    btf_strs = strs;
+    log_boot("btf loaded, types: %d, strs: %d\n", h->type_len, h->str_len);
+}
+
+int kp_btf_available(void)
+{
+    ensure_btf_loaded();
+    return btf_base ? 1 : 0;
+}
+KP_EXPORT_SYMBOL(kp_btf_available);
+
+static const char *btf_name(uint32_t name_off)
+{
+    if (!btf_strs || name_off >= btf_hdr->str_len) return "";
+    return btf_strs + name_off;
+}
+
+// On-disk size of one btf_type record (fixed header + kind trailer), or 0 if
+// the record (or its trailer) would run past the end of the type section.
+static unsigned long btf_rec_size(const struct btf_type *t, const char *end)
+{
+    if ((const char *)(t + 1) > end) return 0;
+    uint32_t info = t->info;
+    uint64_t vlen = BTF_INFO_VLEN(info); // <= 0xffff, widen to avoid overflow
+    uint64_t extra = 0;
+    switch (BTF_INFO_KIND(info)) {
+    case BTF_KIND_INT:
+    case BTF_KIND_DECL_TAG:
+    case BTF_KIND_VAR:
+        extra = 4;
+        break;
+    case BTF_KIND_ARRAY:
+        extra = 12;
+        break;
+    case BTF_KIND_STRUCT:
+    case BTF_KIND_UNION:
+    case BTF_KIND_ENUM64:
+    case BTF_KIND_DATASEC:
+        extra = vlen * 12;
+        break;
+    case BTF_KIND_ENUM:
+    case BTF_KIND_FUNC_PROTO:
+        extra = vlen * 8;
+        break;
+    default:
+        extra = 0;
+        break;
+    }
+    uint64_t total = sizeof(struct btf_type) + extra;
+    if ((const char *)t + total > end) return 0;
+    return (unsigned long)total;
+}
+
+static const struct btf_type *btf_type_by_name(const char *name, int want_kind)
+{
+    ensure_btf_loaded();
+    if (!btf_base) return 0;
+    const char *end = btf_types + btf_hdr->type_len;
+    const struct btf_type *t = (const struct btf_type *)btf_types;
+    unsigned long sz;
+    while ((sz = btf_rec_size(t, end))) {
+        int kind = BTF_INFO_KIND(t->info);
+        if ((want_kind < 0 || kind == want_kind || (want_kind == BTF_KIND_STRUCT && kind == BTF_KIND_UNION)) &&
+            t->name_off && !lib_strcmp(btf_name(t->name_off), name)) {
+            return t;
+        }
+        t = (const struct btf_type *)((const char *)t + sz);
+    }
+    return 0;
+}
+
+long kp_btf_type_size(const char *name)
+{
+    const struct btf_type *t = btf_type_by_name(name, -1);
+    if (!t) return -1;
+    int kind = BTF_INFO_KIND(t->info);
+    if (kind == BTF_KIND_STRUCT || kind == BTF_KIND_UNION || kind == BTF_KIND_INT) return t->size;
+    return -1;
+}
+KP_EXPORT_SYMBOL(kp_btf_type_size);
+
+static const struct btf_type *btf_type_by_id(uint32_t id)
+{
+    if (!btf_base || !id) return 0;
+    const char *end = btf_types + btf_hdr->type_len;
+    const struct btf_type *t = (const struct btf_type *)btf_types;
+    unsigned long sz;
+    for (uint32_t i = 1; (sz = btf_rec_size(t, end)); i++) {
+        if (i == id) return t;
+        t = (const struct btf_type *)((const char *)t + sz);
+    }
+    return 0;
+}
+
+// Resolve typedef/const/volatile/restrict wrappers down to the underlying type.
+static const struct btf_type *btf_skip_mods(const struct btf_type *t, int depth)
+{
+    while (t && depth-- > 0) {
+        int kind = BTF_INFO_KIND(t->info);
+        if (kind != 8 /*typedef*/ && kind != 10 /*const*/ && kind != 11 /*volatile*/ && kind != 12 /*restrict*/)
+            break;
+        t = btf_type_by_id(t->type);
+    }
+    return t;
+}
+
+// Recursive member search: descends into anonymous struct/union members, adding
+// their byte offset. Returns byte offset within the top struct, or -1.
+static long btf_member_offset_rec(const struct btf_type *t, const char *member, int depth)
+{
+    if (!t || depth <= 0) return -1;
+    int kind = BTF_INFO_KIND(t->info);
+    if (kind != BTF_KIND_STRUCT && kind != BTF_KIND_UNION) return -1;
+
+    uint32_t vlen = BTF_INFO_VLEN(t->info);
+    int kflag = BTF_INFO_KFLAG(t->info);
+    const struct btf_member *m = (const struct btf_member *)(t + 1);
+    for (uint32_t i = 0; i < vlen; i++) {
+        uint32_t bitoff = kflag ? BTF_MEMBER_BIT_OFFSET(m[i].offset) : m[i].offset;
+        if (m[i].name_off && !lib_strcmp(btf_name(m[i].name_off), member)) {
+            return bitoff >> 3;
+        }
+        if (!m[i].name_off) { // anonymous struct/union -> recurse
+            const struct btf_type *sub = btf_skip_mods(btf_type_by_id(m[i].type), BTF_MAX_DEPTH);
+            long r = btf_member_offset_rec(sub, member, depth - 1);
+            if (r >= 0) return (long)(bitoff >> 3) + r;
+        }
+    }
+    return -1;
+}
+
+long kp_btf_member_offset(const char *struct_name, const char *member)
+{
+    const struct btf_type *t = btf_type_by_name(struct_name, BTF_KIND_STRUCT);
+    return btf_member_offset_rec(t, member, BTF_MAX_DEPTH);
+}
+KP_EXPORT_SYMBOL(kp_btf_member_offset);
+
+const void *kp_btf_raw(long *size_out)
+{
+    ensure_btf_loaded();
+    if (size_out) *size_out = btf_base ? start_preset.btf_size : 0;
+    return btf_base;
+}
+KP_EXPORT_SYMBOL(kp_btf_raw);
+
+// Low-level primitives so a KPM can walk the type graph itself with its own
+// depth/cycle handling, for cases the bounded helpers above do not cover.
+
+int kp_btf_find_type(const char *name)
+{
+    ensure_btf_loaded();
+    if (!btf_base) return -1;
+    const char *end = btf_types + btf_hdr->type_len;
+    const struct btf_type *t = (const struct btf_type *)btf_types;
+    unsigned long sz;
+    for (int id = 1; (sz = btf_rec_size(t, end)); id++) {
+        if (t->name_off && !lib_strcmp(btf_name(t->name_off), name)) return id;
+        t = (const struct btf_type *)((const char *)t + sz);
+    }
+    return -1;
+}
+KP_EXPORT_SYMBOL(kp_btf_find_type);
+
+int kp_btf_type_info(int type_id, const char **name_out, int *kind_out, long *size_out)
+{
+    const struct btf_type *t = btf_type_by_id((uint32_t)type_id);
+    if (!t) return -1;
+    if (name_out) *name_out = btf_name(t->name_off);
+    if (kind_out) *kind_out = BTF_INFO_KIND(t->info);
+    if (size_out) *size_out = t->size;
+    return BTF_INFO_VLEN(t->info); // member/param count for struct/union/enum/func_proto
+}
+KP_EXPORT_SYMBOL(kp_btf_type_info);
+
+int kp_btf_member(int type_id, int idx, const char **name_out, int *type_id_out, long *bit_offset_out)
+{
+    const struct btf_type *t = btf_type_by_id((uint32_t)type_id);
+    if (!t) return -1;
+    int kind = BTF_INFO_KIND(t->info);
+    if (kind != BTF_KIND_STRUCT && kind != BTF_KIND_UNION) return -1;
+    if (idx < 0 || (uint32_t)idx >= BTF_INFO_VLEN(t->info)) return -1;
+    const struct btf_member *m = (const struct btf_member *)(t + 1) + idx;
+    uint32_t off = BTF_INFO_KFLAG(t->info) ? BTF_MEMBER_BIT_OFFSET(m->offset) : m->offset;
+    if (name_out) *name_out = btf_name(m->name_off);
+    if (type_id_out) *type_id_out = m->type;
+    if (bit_offset_out) *bit_offset_out = off;
+    return 0;
+}
+KP_EXPORT_SYMBOL(kp_btf_member);
+
+// Skip one typedef/const/volatile/restrict wrapper; returns the underlying id.
+int kp_btf_skip_mod(int type_id)
+{
+    const struct btf_type *t = btf_type_by_id((uint32_t)type_id);
+    if (!t) return -1;
+    int kind = BTF_INFO_KIND(t->info);
+    if (kind == 8 || kind == 9 || kind == 10 || kind == 11 || kind == 18) return (int)t->type;
+    return type_id;
+}
+KP_EXPORT_SYMBOL(kp_btf_skip_mod);
 
 static int find_ikconfig_deflate(const uint8_t *gz, int64_t gz_len, const uint8_t **deflate_start,
                                  unsigned long *deflate_len, unsigned long *out_len)

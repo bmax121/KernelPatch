@@ -10,6 +10,7 @@
 #include <linux/sched/task.h>
 #include <linux/vmalloc.h>
 #include <baselib.h>
+#include <kbtf.h>
 #include <linux/pid.h>
 #include <asm/current.h>
 #include <linux/security.h>
@@ -643,6 +644,42 @@ int resolve_mm_struct_offset()
     return 0;
 }
 
+static void btf_set(int16_t *dst, const char *s, const char *m)
+{
+    long o = kp_btf_member_offset(s, m);
+    if (o >= 0 && o <= 0x7fff) *dst = (int16_t)o;
+}
+
+// Override the offset tables with authoritative BTF values when the kernel
+// embeds BTF (GKI 5.10+). Runs after the heuristic resolvers, so it is a no-op
+// on kernels without BTF and never changes their behavior there.
+static void resolve_struct_btf(void)
+{
+    if (!kp_btf_available()) return;
+    log_boot("struct offsets: overriding with BTF\n");
+
+    btf_set(&task_struct_offset.pid_offset, "task_struct", "pid");
+    btf_set(&task_struct_offset.tgid_offset, "task_struct", "tgid");
+    btf_set(&task_struct_offset.real_cred_offset, "task_struct", "real_cred");
+    btf_set(&task_struct_offset.cred_offset, "task_struct", "cred");
+    btf_set(&task_struct_offset.comm_offset, "task_struct", "comm");
+    btf_set(&task_struct_offset.fs_offset, "task_struct", "fs");
+    btf_set(&task_struct_offset.files_offset, "task_struct", "files");
+    btf_set(&task_struct_offset.seccomp_offset, "task_struct", "seccomp");
+    btf_set(&task_struct_offset.security_offset, "task_struct", "security");
+    btf_set(&task_struct_offset.mm_offset, "task_struct", "mm");
+    btf_set(&task_struct_offset.active_mm_offset, "task_struct", "active_mm");
+
+    btf_set(&cred_offset.uid_offset, "cred", "uid");
+    btf_set(&cred_offset.gid_offset, "cred", "gid");
+    btf_set(&cred_offset.suid_offset, "cred", "suid");
+    btf_set(&cred_offset.sgid_offset, "cred", "sgid");
+    btf_set(&cred_offset.euid_offset, "cred", "euid");
+    btf_set(&cred_offset.egid_offset, "cred", "egid");
+
+    btf_set(&mm_struct_offset.pgd_offset, "mm_struct", "pgd");
+}
+
 int resolve_struct()
 {
     full_cap = CAP_FULL_SET;
@@ -656,6 +693,8 @@ int resolve_struct()
     if ((err = resolve_cred_offset())) goto out;
 
     resolve_mm_struct_offset();
+
+    resolve_struct_btf();
 
 out:
     return err;
