@@ -409,7 +409,7 @@ static void _linux_mm_vmalloc_sym_match(const char *name, unsigned long addr)
     // kfunc_match(vmap_pfn, name, addr);
     // kfunc_match(vunmap, name, addr);
     // kfunc_match(remap_vmalloc_range_partial, name, addr);
-    kfunc_match(remap_vmalloc_range, name, addr);
+    // kfunc_match(remap_vmalloc_range, name, addr);
 
     // kfunc_match(get_vm_area, name, addr);
     // kfunc_match(get_vm_area_caller, name, addr);
@@ -515,7 +515,7 @@ static void _linux_security_selinux_avc_sym_match(const char *name, unsigned lon
     kfunc_match(slow_avc_audit, name, addr);
 
     // kfunc_match(avc_has_perm_noaudit, name, addr);
-    kfunc_match(avc_has_perm, name, addr);
+    // kfunc_match(avc_has_perm, name, addr);
     // kfunc_match(avc_has_perm_flags, name, addr);
     // kfunc_match(avc_has_extended_perms, name, addr);
     // kfunc_match(avc_lookup, name, addr);
@@ -598,24 +598,24 @@ static void _linux_security_selinux_sym_match(const char *name, unsigned long ad
     kvar_match(selinux_state, name, addr);
     // kvar_match(secclass_map, name, addr);
     // kfunc_match(security_mls_enabled, name, addr);
-    kfunc_match(security_load_policy, name, addr);
+    // kfunc_match(security_load_policy, name, addr);
     // kfunc_match(selinux_policy_commit, name, addr);
     // kfunc_match(selinux_policy_cancel, name, addr);
-    kfunc_match(security_read_policy, name, addr);
+    // kfunc_match(security_read_policy, name, addr);
     // kfunc_match(security_read_state_kernel, name, addr);
     // kfunc_match(security_policycap_supported, name, addr);
     // kfunc_match(security_compute_av, name, addr);
     // kfunc_match(security_compute_xperms_decision, name, addr);
-    kfunc_match(security_compute_av_user, name, addr);
+    // kfunc_match(security_compute_av_user, name, addr);
     // kfunc_match(security_transition_sid, name, addr);
     // kfunc_match(security_transition_sid_user, name, addr);
     // kfunc_match(security_member_sid, name, addr);
     // kfunc_match(security_change_sid, name, addr);
-    kfunc_match(security_sid_to_context, name, addr);
+    // kfunc_match(security_sid_to_context, name, addr);
     // kfunc_match(security_sid_to_context_force, name, addr);
     // kfunc_match(security_sid_to_context_inval, name, addr);
-    kfunc_match(security_context_to_sid, name, addr);
-    kfunc_match(security_context_str_to_sid, name, addr);
+    // kfunc_match(security_context_to_sid, name, addr);
+    // kfunc_match(security_context_str_to_sid, name, addr);
     // kfunc_match(security_context_to_sid_default, name, addr);
     // kfunc_match(security_context_to_sid_force, name, addr);
     // kfunc_match(security_get_user_sids, name, addr);

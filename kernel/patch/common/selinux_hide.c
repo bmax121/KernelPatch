@@ -66,7 +66,8 @@ extern int android_is_safe_mode;
 #define KP_SECURITY__COMPUTE_AV (1U << 0)
 #define KP_SECURITY__CHECK_CONTEXT (1U << 3)
 #define KP_PROCESS__SETCURRENT (1U << 24)
-
+#define SEL_WRITE_OP_CONTEXT 5
+#define SEL_WRITE_OP_ACCESS 6
 /* struct selinux_kernel_status (20 bytes) */
 #define KP_SELINUX_KERNEL_STATUS_VERSION 1
 #define KP_SELINUX_STATUS_SIZE 20
@@ -79,7 +80,7 @@ static bool selinux_hide_approved; /* /data/adb/ap/selinux_hide seen at "before"
 typedef void (*security_cred_getsecid_fn)(const struct cred *c, u32 *secid);
 static security_cred_getsecid_fn kp_security_cred_getsecid;
 
-typedef ssize_t (*sel_write_op_fn)(struct file *, char *, size_t);
+typedef ssize_t (*sel_write_op_fn)(struct file *file, char *buf, size_t size);
 typedef int (*sel_mmap_status_fn)(struct file *, struct vm_area_struct *);
 typedef ssize_t (*sel_read_status_fn)(struct file *, char __user *, size_t, loff_t *);
 typedef int (*selinux_setprocattr_fn)(const char *, void *, size_t);
@@ -96,11 +97,14 @@ static selinux_setprocattr_fn orig_setprocattr;
 static sel_read_status_fn orig_sel_read_handle_status;
 static sel_mmap_status_fn orig_sel_mmap_handle_status;
 
+
 static unsigned char fake_status_bytes[KP_SELINUX_STATUS_SIZE];
 static void *fake_status_vaddr; /* vmalloc'd page mapped for uid >= 10000 */
 
 static unsigned long g_hooked[8];
 static int g_hooked_cnt;
+
+
 
 static bool selinux_hide_is_supported(void)
 {
@@ -367,16 +371,32 @@ static void kp_uninstall_hooks(void)
 static int selinux_hide_install_hooks(void)
 {
     int rc;
-
+    sel_write_op_fn *write_op;
     fill_fake_status_bytes();
     init_fake_status();
-
-    rc = kp_install_hook(sel_write_context_addr, (void *)my_write_context, (void **)&orig_context_write,
+    if (sel_write_context_addr && sel_write_access_addr && selinux_setprocattr_addr){
+        log_boot("selinux_hide: using direct kallsyms_lookup_name\n");
+        rc = kp_install_hook(sel_write_context_addr, (void *)my_write_context, (void **)&orig_context_write,
                          "sel_write_context");
-    if (rc) goto err;
-    rc = kp_install_hook(sel_write_access_addr, (void *)my_write_access, (void **)&orig_access_write,
-                         "sel_write_access");
-    if (rc) goto err;
+        if (rc) goto err;
+        rc = kp_install_hook(sel_write_access_addr, (void *)my_write_access, (void **)&orig_access_write,
+                            "sel_write_access");
+        if (rc) goto err;
+
+    }else{
+        log_boot("selinux_hide: using fp_hook to hook write_op\n");
+        write_op = lookup_name_with_suffix("write_op");
+        if (!write_op) {
+            rc = -ENOENT;
+            log_boot("selinux_hide: write_op not found\n");
+            goto err;
+        }
+        fp_hook((uintptr_t)&write_op[SEL_WRITE_OP_CONTEXT],
+                (void *)my_write_context, (void **)&orig_context_write);
+        fp_hook((uintptr_t)&write_op[SEL_WRITE_OP_ACCESS],
+                (void *)my_write_access, (void **)&orig_access_write);
+    }
+
     rc = kp_install_hook(selinux_setprocattr_addr, (void *)my_setprocattr, (void **)&orig_setprocattr,
                          "selinux_setprocattr");
     if (rc) goto err;
@@ -478,93 +498,17 @@ int selinux_hide_post_fs_data(const char *args)
     return 0;
 }
 
-/* ---- symbol lookup helpers (LTO kernels mangle static symbol names) ---- */
-
-struct suffix_lookup
-{
-    const char *base;
-    unsigned long addr;
-};
-
-static bool suffix_contains_cfi(const char *suffix)
-{
-    size_t i;
-
-    for (i = 0; suffix[i]; i++) {
-        if (suffix[i] == 'c' && suffix[i + 1] == 'f' && suffix[i + 2] == 'i' &&
-            (i == 0 || suffix[i - 1] == '.' || suffix[i - 1] == '$') &&
-            (!suffix[i + 3] || suffix[i + 3] == '.' || suffix[i + 3] == '$'))
-            return true;
-    }
-    return false;
-}
-
-static bool symbol_has_compiler_suffix(const char *name, const char *base)
-{
-    size_t i;
-
-    for (i = 0; base[i]; i++) {
-        if (name[i] != base[i]) return false;
-    }
-    if (!(name[i] == '.' || name[i] == '$') || !name[i + 1]) return false;
-    if (suffix_contains_cfi(name + i + 1)) return false; /* skip .cfi_jt stubs */
-    return true;
-}
-
-static int lookup_suffix_cb(void *data, const char *name, struct module *module, unsigned long addr)
-{
-    struct suffix_lookup *lookup = data;
-
-    (void)module;
-    if (!lookup || lookup->addr || !addr) return 0;
-    if (!symbol_has_compiler_suffix(name, lookup->base)) return 0;
-    lookup->addr = addr;
-    return 1;
-}
-
-static int lookup_suffix_cb_nomod(void *data, const char *name, unsigned long addr)
-{
-    struct suffix_lookup *lookup = data;
-
-    if (!lookup || lookup->addr || !addr) return 0;
-    if (!symbol_has_compiler_suffix(name, lookup->base)) return 0;
-    lookup->addr = addr;
-    return 1;
-}
-
-static unsigned long lookup_suffix_by_symbol_walk(const char *base)
-{
-    struct suffix_lookup lookup;
-
-    if (!kallsyms_on_each_symbol) return 0;
-
-    lookup.base = base;
-    lookup.addr = 0;
-
-    if (kver <= VERSION(6, 1, 0)) {
-        kallsyms_on_each_symbol(lookup_suffix_cb, &lookup);
-    } else {
-        typedef int (*kallsyms_on_each_symbol_nomod_t)(int (*fn)(void *, const char *, unsigned long), void *data);
-        kallsyms_on_each_symbol_nomod_t on_each_symbol =
-            (kallsyms_on_each_symbol_nomod_t)kallsyms_on_each_symbol;
-        on_each_symbol(lookup_suffix_cb_nomod, &lookup);
-    }
-
-    return lookup.addr;
-}
 
 unsigned long lookup_name_with_suffix(const char *base)
 {
-    unsigned long addr;
-
-    addr = kallsyms_lookup_name(base);
-    if (addr) return addr;
-
+    
     /* LLVM LTO mangles static functions to <name>.<n> / <name>.llvm.<hash> /
      * <name>$... .  One kallsyms_on_each_symbol walk covers every form, so there
      * is no need to probe <base>.<0..255> first (kallsyms_on_each_symbol is
      * KernelPatch core infra, always resolved before the builtin features run). */
-    return lookup_suffix_by_symbol_walk(base);
+    unsigned long addr = kallsyms_lookup_name_by_suffix(base);
+    if (addr) return addr;
+    return 0;
 }
 
 int selinux_hide_init(void)
@@ -573,20 +517,33 @@ int selinux_hide_init(void)
 
     if (!selinux_hide_is_supported()) return -EOPNOTSUPP;
 
+    /* These symbols are only used by selinux_hide.  Resolve them lazily here
+     * instead of adding them to the global misc ksym initialization pass. */
+    kfunc(remap_vmalloc_range) =
+        (typeof(kfunc(remap_vmalloc_range)))lookup_name_with_suffix("remap_vmalloc_range");
+    kfunc(avc_has_perm) = (typeof(kfunc(avc_has_perm)))lookup_name_with_suffix("avc_has_perm");
+    kfunc(security_load_policy) =
+        (typeof(kfunc(security_load_policy)))lookup_name_with_suffix("security_load_policy");
+    kfunc(security_read_policy) =
+        (typeof(kfunc(security_read_policy)))lookup_name_with_suffix("security_read_policy");
+    kfunc(security_compute_av_user) =
+        (typeof(kfunc(security_compute_av_user)))lookup_name_with_suffix("security_compute_av_user");
+    kfunc(security_sid_to_context) =
+        (typeof(kfunc(security_sid_to_context)))lookup_name_with_suffix("security_sid_to_context");
+    kfunc(security_context_to_sid) =
+        (typeof(kfunc(security_context_to_sid)))lookup_name_with_suffix("security_context_to_sid");
+    kfunc(security_context_str_to_sid) =
+        (typeof(kfunc(security_context_str_to_sid)))lookup_name_with_suffix("security_context_str_to_sid");
+
     selinux_sepolicy_init();
 
     kp_security_cred_getsecid = (security_cred_getsecid_fn)kallsyms_lookup_name("security_cred_getsecid");
 
-    sel_write_context_addr = kallsyms_lookup_name("sel_write_context");
-    if (!sel_write_context_addr) sel_write_context_addr = lookup_name_with_suffix("sel_write_context");
-    sel_write_access_addr = kallsyms_lookup_name("sel_write_access");
-    if (!sel_write_access_addr) sel_write_access_addr = lookup_name_with_suffix("sel_write_access");
-    sel_read_handle_status_addr = kallsyms_lookup_name("sel_read_handle_status");
-    if (!sel_read_handle_status_addr) sel_read_handle_status_addr = lookup_name_with_suffix("sel_read_handle_status");
-    sel_mmap_handle_status_addr = kallsyms_lookup_name("sel_mmap_handle_status");
-    if (!sel_mmap_handle_status_addr) sel_mmap_handle_status_addr = lookup_name_with_suffix("sel_mmap_handle_status");
-    selinux_setprocattr_addr = kallsyms_lookup_name("selinux_setprocattr");
-    if (!selinux_setprocattr_addr) selinux_setprocattr_addr = lookup_name_with_suffix("selinux_setprocattr");
+    sel_write_context_addr = lookup_name_with_suffix("sel_write_context");
+    sel_write_access_addr = lookup_name_with_suffix("sel_write_access");
+    sel_read_handle_status_addr = lookup_name_with_suffix("sel_read_handle_status");
+    sel_mmap_handle_status_addr = lookup_name_with_suffix("sel_mmap_handle_status");
+    selinux_setprocattr_addr = lookup_name_with_suffix("selinux_setprocattr");
 
     log_boot("selinux_hide: sel_write_context: %llx, sel_write_access: %llx, selinux_setprocattr: %llx\n",
              sel_write_context_addr, sel_write_access_addr, selinux_setprocattr_addr);

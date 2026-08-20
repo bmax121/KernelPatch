@@ -41,5 +41,5 @@ int selinux_hide_is_enabled(void);
  * kallsyms_on_each_symbol walk covering <name>.<n> / <name>.llvm.<hash> /
  * <name>$... suffixes. */
 unsigned long lookup_name_with_suffix(const char *base);
-
+unsigned long kallsyms_lookup_name_by_suffix(const char *name);
 #endif

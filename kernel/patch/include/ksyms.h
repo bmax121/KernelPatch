@@ -52,3 +52,6 @@ int _ksym_local_strcmp(const char *s1, const char *s2);
 #define kfunc_not_found() logke("kfunc: %s not found\n", __func__);
 
 #endif
+
+
+unsigned long kallsyms_lookup_name_by_suffix(const char *name);

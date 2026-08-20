@@ -499,15 +499,7 @@ static void kp_capture_committed_policy(void *load_state)
     }
 }
 
-/* selinux_complete_init() runs once the initial (stock) policy is loaded and
- * selinux is fully initialized -- before a root solution reloads the policy with
- * its own rules.  Snapshot there for a pre-root backup.  (security_read_policy
- * is unavailable at the first commit because selinux is not yet initialized.) */
-static void after_selinux_complete_init(hook_fargs0_t *a, void *u)
-{
-    int rc = selinux_sepolicy_snapshot();
-    log_boot("selinux_sepolicy: complete_init snapshot rc=%d\n", rc);
-}
+
 
 /* >= 6.4: void selinux_policy_commit(struct selinux_load_state *load_state)
  *
@@ -921,30 +913,22 @@ int selinux_sepolicy_init(void)
      * Only the >= 6.4 (1-arg) form is hooked.  The < 6.4 snapshot is the direct
      * policydb_read route and must not read selinux_policy_commit()'s ABI (on
      * 5.0..5.11 the 2nd arg is the policy itself, on 5.12..6.3 a load_state). */
-    addr = kallsyms_lookup_name("selinux_policy_commit");
-    if (!addr) addr = lookup_name_with_suffix("selinux_policy_commit");
+    addr = lookup_name_with_suffix("selinux_policy_commit");
     if (addr && !selinux_sepolicy_use_fake_state()) {
         hook_wrap1((void *)addr, after_selinux_policy_commit_1arg, NULL, NULL);
         log_boot("selinux_sepolicy: hooked selinux_policy_commit @ %llx\n", addr);
     }
-    addr = kallsyms_lookup_name("context_struct_compute_av");
-    if (!addr) addr = lookup_name_with_suffix("context_struct_compute_av");
+    addr = lookup_name_with_suffix("context_struct_compute_av");
     if (addr) {
         hook_wrap6((void *)addr, before_context_struct_compute_av, NULL, NULL);
         log_boot("selinux_sepolicy: hooked context_struct_compute_av @ %llx\n", addr);
     }
-    addr = kallsyms_lookup_name("string_to_context_struct");
-    if (!addr) addr = lookup_name_with_suffix("string_to_context_struct");
+    addr = lookup_name_with_suffix("string_to_context_struct");
     if (addr) {
         hook_wrap5((void *)addr, before_string_to_context_struct, NULL, NULL);
         log_boot("selinux_sepolicy: hooked string_to_context_struct @ %llx\n", addr);
     }
-    addr = kallsyms_lookup_name("selinux_complete_init");
-    if (!addr) addr = lookup_name_with_suffix("selinux_complete_init");
-    if (addr) {
-        hook_wrap0((void *)addr, after_selinux_complete_init, NULL, NULL);
-        log_boot("selinux_sepolicy: hooked selinux_complete_init @ %llx\n", addr);
-    }
+
 
     log_boot("selinux_sepolicy: read=%llx str2ctx=%llx sidtab2sid=%llx search=%llx\n",
              (unsigned long)kfunc(security_read_policy), (unsigned long)kp_string_to_context_struct,

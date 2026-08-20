@@ -47,6 +47,12 @@ KP_EXPORT_SYMBOL(printk);
 
 int (*vsnprintf)(char *buf, size_t size, const char *fmt, va_list args);
 
+struct suffix_lookup
+{
+    const char *base;
+    unsigned long addr;
+};
+
 static struct vm_struct
 {
     struct vm_struct *next;
@@ -156,6 +162,78 @@ int kallsyms_on_each_match_symbol(int (*fn)(void *, unsigned long), const char *
     return kallsyms_on_each_symbol_nomod(kallsyms_on_each_match_symbol_cb_nomod, &ctx);
 }
 KP_EXPORT_SYMBOL(kallsyms_on_each_match_symbol);
+
+static bool suffix_contains_cfi(const char *suffix)
+{
+    size_t i;
+
+    for (i = 0; suffix[i]; i++) {
+        if (suffix[i] == 'c' && suffix[i + 1] == 'f' && suffix[i + 2] == 'i' &&
+            (i == 0 || suffix[i - 1] == '.' || suffix[i - 1] == '$') &&
+            (!suffix[i + 3] || suffix[i + 3] == '.' || suffix[i + 3] == '$'))
+            return true;
+    }
+    return false;
+}
+
+static bool symbol_has_compiler_suffix(const char *name, const char *base)
+{
+    size_t i;
+
+    for (i = 0; base[i]; i++) {
+        if (name[i] != base[i]) return false;
+    }
+    if (!(name[i] == '.' || name[i] == '$') || !name[i + 1]) return false;
+    if (suffix_contains_cfi(name + i + 1)) return false; /* skip .cfi_jt stubs */
+    return true;
+}
+
+static int lookup_suffix_cb(void *data, const char *name, struct module *module, unsigned long addr)
+{
+    struct suffix_lookup *lookup = data;
+
+    (void)module;
+    if (!lookup || lookup->addr || !addr) return 0;
+    if (!symbol_has_compiler_suffix(name, lookup->base)) return 0;
+    lookup->addr = addr;
+    return 1;
+}
+
+static int lookup_suffix_cb_nomod(void *data, const char *name, unsigned long addr)
+{
+    struct suffix_lookup *lookup = data;
+
+    if (!lookup || lookup->addr || !addr) return 0;
+    if (!symbol_has_compiler_suffix(name, lookup->base)) return 0;
+    lookup->addr = addr;
+    return 1;
+}
+
+unsigned long kallsyms_lookup_name_by_suffix(const char *name){
+
+
+    unsigned long addr = kallsyms_lookup_name(name);
+    log_boot("kallsyms_lookup_name_by_suffix: name=%s addr=%llx\n", name, addr);
+    if (addr) return addr;
+    if (!kallsyms_on_each_symbol) return 0;
+    struct suffix_lookup lookup;
+
+    lookup.base = name;
+    lookup.addr = 0;
+
+    if (kver <= VERSION(6, 1, 0)) {
+        kallsyms_on_each_symbol(lookup_suffix_cb, &lookup);
+    } else {
+        typedef int (*kallsyms_on_each_symbol_nomod_t)(int (*fn)(void *, const char *, unsigned long), void *data);
+        kallsyms_on_each_symbol_nomod_t on_each_symbol =
+            (kallsyms_on_each_symbol_nomod_t)kallsyms_on_each_symbol;
+        on_each_symbol(lookup_suffix_cb_nomod, &lookup);
+    }
+
+    return lookup.addr;
+
+}
+KP_EXPORT_SYMBOL(kallsyms_lookup_name_by_suffix);
 
 uint64_t _kp_extra_start = 0;
 uint64_t _kp_extra_end = 0;
