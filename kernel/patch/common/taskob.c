@@ -23,6 +23,7 @@
 #include <linux/spinlock.h>
 #include <stdarg.h>
 #include <asm/atomic.h>
+#include <baselib.h>
 
 extern void kp_debug_write(const char *fmt, ...);
 
@@ -55,6 +56,15 @@ static spinlock_t task_ext_lock;
  * task system-wide) can skip the 1024-entry scan when the su lineage is empty,
  * which is the common case */
 static atomic_t task_ext_active_count = ATOMIC_INIT(0);
+
+static inline void task_ext_reset(struct task_ext *ext)
+{
+    /* sizeof(struct task_ext) is not necessarily a multiple of uintptr_t.
+     * The old 8-byte loop wrote past the object when its size was 20 bytes. */
+    lib_memset(ext, 0, sizeof(*ext));
+    ext->size = task_ext_size;
+    ext->_magic = TASK_EXT_MAGIC;
+}
 
 /*
  * Linear scan, no open-addressing probing: task_ext_free leaves holes, and a
@@ -123,11 +133,7 @@ struct task_ext *kf_task_ext_ensure(struct task_struct *task)
     if (task_ext_valid(ext)) return ext;
     ext = task_ext_create(task);
     if (!ext) return NULL;
-    for (uintptr_t i = (uintptr_t)ext; i < (uintptr_t)ext + sizeof(struct task_ext); i += 8) {
-        *(uintptr_t *)i = 0;
-    }
-    ext->size = task_ext_size;
-    ext->_magic = TASK_EXT_MAGIC;
+    task_ext_reset(ext);
     ext->pid = __task_pid_nr_ns(task, PIDTYPE_PID, 0);
     ext->tgid = __task_pid_nr_ns(task, PIDTYPE_TGID, 0);
     dsb(ish);
@@ -165,11 +171,7 @@ static inline void prepare_init_ext(struct task_struct *task)
         logkfe("task_ext_create(init) FAILED\n");
         return;
     }
-    for (uintptr_t i = (uintptr_t)ext; i < (uintptr_t)ext + sizeof(struct task_ext); i += 8) {
-        *(uintptr_t *)i = 0;
-    }
-    ext->size = task_ext_size;
-    ext->_magic = TASK_EXT_MAGIC;
+    task_ext_reset(ext);
     dsb(ish);
 }
 
@@ -189,11 +191,7 @@ static void prepare_task_ext(struct task_struct *new, struct task_struct *old)
         logkfe("task_ext slot table full, skip\n");
         return;
     }
-    for (uintptr_t i = (uintptr_t)new_ext; i < (uintptr_t)new_ext + sizeof(struct task_ext); i += 8) {
-        *(uintptr_t *)i = 0;
-    }
-    new_ext->size = task_ext_size;
-    new_ext->_magic = TASK_EXT_MAGIC;
+    task_ext_reset(new_ext);
 
     new_ext->pid = __task_pid_nr_ns(new, PIDTYPE_PID, 0);
     new_ext->tgid = __task_pid_nr_ns(new, PIDTYPE_TGID, 0);

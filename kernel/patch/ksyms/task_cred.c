@@ -536,16 +536,38 @@ int resolve_current()
         }
     }
 
-    // Some newer kernels (e.g. android16 6.12.69) no longer place STACK_END_MAGIC
-    // at task->stack, so the scan above finds nothing and thread_size stays 0.
-    // A zero thread_size makes current_thread_info_sp() == 0 and the code below
-    // dereferences NULL -> data abort during early boot. Fall back to the ARM64
-    // default (16KB, CONFIG_THREAD_INFO_IN_TASK) which matches what the scan
-    // yields on older kernels.
+    /* Newer GKI kernels may compile set_task_stack_end_magic() to an empty
+     * function when the scheduler stack-end check is disabled.  In that case
+     * the init stack contains no STACK_END_MAGIC even though its layout is
+     * otherwise unchanged.  The init_thread_union symbol is the exact base of
+     * the boot task's stack, so use it to select the smallest candidate that
+     * contains the current SP.  For a downward-growing arm64 stack this is the
+     * real THREAD_SIZE: a smaller candidate aligns SP above the stack base.
+     *
+     * Only take this path when sp_el0 identified current as task_struct.  If
+     * sp_el0 is thread_info, an absent magic also means we cannot safely infer
+     * the end_of_stack offset used by old !THREAD_INFO_IN_TASK kernels. */
+    if (!thread_size && init_thread_union_addr && sp_el0_is_current) {
+        for (int i = 0; i < sizeof(thread_shift_cand) / sizeof(thread_shift_cand[0]); i++) {
+            int tsz = 1 << thread_shift_cand[i];
+            uint64_t sp_low = sp & ~(tsz - 1);
+            if (sp_low != init_thread_union_addr) continue;
+
+            thread_size = tsz;
+            stack_end_offset = 0;
+            thread_info_in_task = 1;
+            log_boot("    stack size inferred from init_thread_union: %x\n", thread_size);
+            break;
+        }
+    }
+
+    /* Keep the historical arm64 default as a last-resort compatibility path
+     * for kernels that hide init_thread_union from kallsyms. */
     if (!thread_size) {
         thread_size = 0x4000;
         stack_end_offset = 0;
         thread_info_in_task = 1;
+        log_boot("    stack size fallback to arm64 default: %x\n", thread_size);
     }
 
     log_boot("    thread_size: %x\n", thread_size);
