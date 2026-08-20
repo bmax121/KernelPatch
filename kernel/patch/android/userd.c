@@ -133,6 +133,44 @@ static const char user_rc_data[] = { //
     ""
 };
 
+/* Expand every %s in an rc template with the same string.  This deliberately
+ * supports only %s and %%: user_rc_data is a template, not a general printf
+ * format string, and keeping the parser small makes the output bound explicit. */
+static int expand_rc_template(char *dst, size_t dst_size, const char *template, const char *value)
+{
+    size_t out = 0;
+    size_t value_len;
+
+    if (!dst || !dst_size || !template || !value) return -EINVAL;
+    value_len = strlen(value);
+
+    while (*template) {
+        const char *src = template;
+        size_t len = 1;
+
+        if (*template == '%') {
+            if (template[1] == 's') {
+                src = value;
+                len = value_len;
+                template += 2;
+            } else if (template[1] == '%') {
+                template += 2;
+            } else {
+                return -EINVAL;
+            }
+        } else {
+            template++;
+        }
+
+        if (len >= dst_size - out) return -E2BIG;
+        memcpy(dst + out, src, len);
+        out += len;
+    }
+
+    dst[out] = '\0';
+    return (int)out;
+}
+
 static const void *kernel_read_file(const char *path, loff_t *len)
 {
     set_priv_sel_allow(current, true);
@@ -1729,10 +1767,14 @@ static void before_openat(hook_fargs4_t *args, void *udata)
 
     char added_rc_data[4096];
     const char *sk = get_superkey();
-    sprintf(added_rc_data, user_rc_data, sk, sk, sk, sk, sk, sk, sk);
+    int added_rc_len = expand_rc_template(added_rc_data, sizeof(added_rc_data), user_rc_data, sk);
+    if (added_rc_len < 0) {
+        log_boot("expand rc template error: %d\n", added_rc_len);
+        goto free;
+    }
 
-    kernel_write(newfp, added_rc_data, strlen(added_rc_data), &off);
-    if (off != strlen(added_rc_data) + ori_len) {
+    kernel_write(newfp, added_rc_data, added_rc_len, &off);
+    if (off != added_rc_len + ori_len) {
         log_boot("write replace rc error: %x\n", off);
         goto free;
     }
