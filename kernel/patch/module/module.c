@@ -19,6 +19,7 @@
 #include <linux/list.h>
 #include <linux/kernel.h>
 #include <linux/spinlock.h>
+#include <linux/mutex.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <linux/rcupdate.h>
@@ -447,7 +448,7 @@ static int elf_header_check(struct load_info *info)
 }
 
 struct module modules = { 0 };
-static spinlock_t module_lock;
+static DEFINE_MUTEX(module_ctl_lock);
 
 long load_module_ex(const void *data, int len, const char *args, const char *event, const char *source,
                     void *__user reserved)
@@ -459,18 +460,20 @@ long load_module_ex(const void *data, int len, const char *args, const char *eve
     if ((rc = elf_header_check(info))) goto out;
     if ((rc = setup_load_info(info))) goto out;
 
+    mutex_lock(&module_ctl_lock);
+
     if (find_module(info->info.name)) {
         logkfd("%s exist\n", info->info.name);
         set_load_error(info, "module already exists");
         rc = -EEXIST;
-        goto out;
+        goto unlock;
     }
 
     struct module *mod = (struct module *)vmalloc(sizeof(struct module));
     if (!mod) {
         set_load_error(info, "allocate module state failed");
         rc = -ENOMEM;
-        goto out;
+        goto unlock;
     }
     memset(mod, 0, sizeof(struct module));
     snprintf(mod->load_event, sizeof(mod->load_event), "%s", event ? event : "");
@@ -506,7 +509,7 @@ long load_module_ex(const void *data, int len, const char *args, const char *eve
     if (!rc) {
         logkfi("[%s] succeed with [%s] \n", mod->info.name, args);
         list_add_tail(&mod->list, &modules.list);
-        goto out;
+        goto unlock;
     } else {
         set_load_error(info, "module init failed");
         logkfi("[%s] failed with [%s] error: %d, try exit ...\n", mod->info.name, args, rc);
@@ -518,25 +521,28 @@ free:
     kp_free_exec(mod->start);
 free1:
     kvfree(mod);
+unlock:
+    mutex_unlock(&module_ctl_lock);
 out:
     set_kpm_load_result(reserved, rc, rc ? load_error(info, "load module failed") : "module loaded");
     return rc;
 }
 
-// todo: lock
 long unload_module(const char *name, void *__user reserved)
 {
     if (!name) return -EINVAL;
     logkfe("name: %s\n", name);
 
-    rcu_read_lock();
     long rc = 0;
+
+    mutex_lock(&module_ctl_lock);
 
     struct module *mod = find_module(name);
     if (!mod) {
         rc = -ENOENT;
         goto out;
     }
+
     list_del(&mod->list);
     rc = (*mod->exit)(reserved);
 
@@ -549,7 +555,7 @@ long unload_module(const char *name, void *__user reserved)
     logkfi("name: %s, rc: %d\n", name, rc);
 
 out:
-    rcu_read_unlock();
+    mutex_unlock(&module_ctl_lock);
     return rc;
 }
 
@@ -622,7 +628,7 @@ long module_control0(const char *name, const char *ctl_args, char *__user out_ms
     logkfi("name %s, args: %s\n", name, ctl_args);
 
     long rc = 0;
-    rcu_read_lock();
+    mutex_lock(&module_ctl_lock);
 
     struct module *mod = find_module(name);
     if (!mod) {
@@ -650,7 +656,7 @@ long module_control0(const char *name, const char *ctl_args, char *__user out_ms
 
     logkfi("name: %s, rc: %d\n", name, rc);
 out:
-    rcu_read_unlock();
+    mutex_unlock(&module_ctl_lock);
     return rc;
 }
 
@@ -788,5 +794,4 @@ int get_module_info(const char *name, char *out_info, int size)
 void module_init()
 {
     INIT_LIST_HEAD(&modules.list);
-    spin_lock_init(&module_lock);
 }
