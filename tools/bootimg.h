@@ -5,6 +5,8 @@
 
 #include <stdint.h>
 
+#include "patch.h"
+
 #define ALIGN(x, a) (((x) + (a) - 1) & ~((a) - 1))
 #define PAGE_SIZE_DEFAULT 4096
 
@@ -83,10 +85,18 @@ struct avb_footer {
     /* 0x30 */ uint8_t  padding[24];        /*  */
 } __attribute__((packed));
 
-int repack_bootimg(const char *orig_boot_path, 
-                        const char *new_kernel_path, 
+int repack_bootimg(const char *orig_boot_path,
+                        const char *new_kernel_path,
                         const char *out_boot_path);
+int repack_bootimg_mem(const char *orig_boot_path,
+                       const uint8_t *new_kernel, uint32_t new_kernel_size,
+                       const char *out_boot_path);
 int extract_kernel(const char *bootimg_path);
+
+int is_bootimg(const char *path);
+int patch_bootimg(const char *bootimg_path, const char *kpimg_path, const char *out_boot_path,
+                  const char *superkey, bool root_key, const char **additional,
+                  extra_config_t *extra_configs, int extra_config_num);
 
 int detect_compress_method(compress_head data);
 int compress_raw_deflate(const uint8_t *in_data, int in_len, uint8_t **out_data, int *out_len);

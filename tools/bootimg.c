@@ -196,6 +196,57 @@ int decompress_gzip(const uint8_t *in_data, size_t in_size, const char *out_path
     return 0;
 }
 
+static int decompress_gzip_to_mem(const uint8_t *in_data, size_t in_size, uint8_t **out_data, uint32_t *out_size)
+{
+    z_stream strm = { 0 };
+    strm.next_in = (Bytef *)in_data;
+    strm.avail_in = in_size;
+
+    if (inflateInit2(&strm, 16 + MAX_WBITS) != Z_OK) return -1;
+
+    size_t cap = 64 * 1024 * 1024;
+    uint8_t *out = malloc(cap);
+    if (!out) {
+        inflateEnd(&strm);
+        return -1;
+    }
+    size_t out_off = 0;
+
+    uint8_t out_buf[40960]; // 40KB buffer
+    int ret;
+    do {
+        strm.next_out = out_buf;
+        strm.avail_out = sizeof(out_buf);
+        ret = inflate(&strm, Z_NO_FLUSH);
+        if (ret < 0 && ret != Z_STREAM_END) {
+            tools_logi("Error: Gzip inflate failed (err: %d)\n", ret);
+            free(out);
+            inflateEnd(&strm);
+            return -2;
+        }
+        size_t have = sizeof(out_buf) - strm.avail_out;
+        if (out_off + have > cap) {
+            size_t new_cap = cap * 2;
+            while (new_cap < out_off + have) new_cap *= 2;
+            uint8_t *tmp = realloc(out, new_cap);
+            if (!tmp) {
+                free(out);
+                inflateEnd(&strm);
+                return -1;
+            }
+            out = tmp;
+            cap = new_cap;
+        }
+        memcpy(out + out_off, out_buf, have);
+        out_off += have;
+    } while (ret != Z_STREAM_END);
+
+    inflateEnd(&strm);
+    *out_data = out;
+    *out_size = (uint32_t)out_off;
+    return 0;
+}
+
 static int parse_lz4_header(const compress_head *head, LZ4F_preferences_t *prefs) {
     uint32_t magic = (head->magic[0] << 0) | (head->magic[1] << 8) | 
                      (head->magic[2] << 16) | (head->magic[3] << 24);
@@ -430,32 +481,35 @@ int decompress_lzma(const uint8_t *src, size_t srcSize, uint8_t **dst, uint32_t 
     return 0;
 }
 
-int auto_depress(const uint8_t *data, size_t size, const char *out_path) {
+int auto_depress_to_mem(const uint8_t *data, size_t size, uint8_t **out_data, uint32_t *out_size, int *method_out)
+{
     if (size < 4) return -1;
+    *out_data = NULL;
+    *out_size = 0;
+
     compress_head k_head;
     memcpy(&k_head, data, sizeof(k_head));
     int method = detect_compress_method(k_head);
+    if (method_out) *method_out = method;
     tools_logi("Auto-detect compression method: %d\n", method);
-    
+
     if (method == 1) { //Gzip
         tools_logi("Detected GZIP compressed kernel.\n");
-        if (decompress_gzip(data, size, out_path) == 0) {
-            tools_logi(" Decompressed to %s\n", out_path);
+        if (decompress_gzip_to_mem(data, size, out_data, out_size) == 0) {
+            tools_logi(" Decompressed: %u bytes\n", *out_size);
             return 0;
-        } else {
-            tools_logi(" Gzip decompression failed.\n");
-            return -1;
         }
+        tools_logi(" Gzip decompression failed.\n");
+        return -1;
     }
-    
- 
-    if (method == 2) { 
+
+    if (method == 2) {
         tools_logi(" Detected LZ4 Frame. Decompressing with lz4frame...\n");
         LZ4F_decompressionContext_t dctx;
         LZ4F_createDecompressionContext(&dctx, LZ4F_VERSION);
 
         size_t dstCapacity = 64 * 1024 * 1024;
-        void* dst = malloc(dstCapacity);
+        void *dst = malloc(dstCapacity);
         if (!dst) return -1;
 
         size_t consumedSize = size;
@@ -468,30 +522,27 @@ int auto_depress(const uint8_t *data, size_t size, const char *out_path) {
             free(dst);
             LZ4F_freeDecompressionContext(dctx);
             return -1;
-        } else {
-            tools_logi("Decompressed: %zu bytes\n", producedSize);
-            write_data_to_file(out_path, (uint8_t*)dst, (uint32_t)producedSize);
-            free(dst);
-            LZ4F_freeDecompressionContext(dctx);
-            return 0;
         }
+        tools_logi("Decompressed: %zu bytes\n", producedSize);
+        *out_data = dst;
+        *out_size = (uint32_t)producedSize;
+        LZ4F_freeDecompressionContext(dctx);
+        return 0;
     }
-    
+
     if (method == 3) {
         tools_logi("Probing LZ4 Legacy (block-based)...\n");
 
         const uint8_t *p   = (const uint8_t *)data;
         const uint8_t *end = p + size;
 
-
         if (size < 4)
             goto not_lz4;
-
 
         if (*(uint32_t *)p != LZ4_MAGIC)
             goto not_lz4;
 
-        p += 4;  
+        p += 4;
 
         size_t out_cap = 64 * 1024 * 1024;
         uint8_t *out = malloc(out_cap);
@@ -511,7 +562,7 @@ int auto_depress(const uint8_t *data, size_t size, const char *out_path) {
             uint32_t block_size;
 
             if (p + 4 > end)
-                break; 
+                break;
 
             memcpy(&block_size, p, 4);
             p += 4;
@@ -556,15 +607,13 @@ int auto_depress(const uint8_t *data, size_t size, const char *out_path) {
             p += block_size;
         }
 
-
         if (!decoded_any)
             goto fail;
 
         tools_logi("LZ4 block decompressed: %zu bytes\n", out_off);
-        write_data_to_file(out_path, out, (uint32_t)out_off);
-
+        *out_data = out;
+        *out_size = (uint32_t)out_off;
         free(block_out);
-        free(out);
         return 0;
 
     fail:
@@ -572,42 +621,17 @@ int auto_depress(const uint8_t *data, size_t size, const char *out_path) {
         free(out);
 
     not_lz4:
-        
         tools_logi("Not LZ4 block format, fallback.\n");
     }
 
     // till now no kernel use this
-    // if (method == 4) { 
-    //     tools_logi("Detected ZSTD compressed kernel. Decompressing...\n");
-    //     unsigned long long const rSize = ZSTD_getFrameContentSize(data, size);
-    //     if (rSize == ZSTD_CONTENTSIZE_ERROR || rSize == ZSTD_CONTENTSIZE_UNKNOWN) {
-    //         tools_loge("Not a valid Zstd frame or size unknown.\n");
-    //         return -1;
-    //     }
-
-    //     uint8_t *dst = malloc((size_t)rSize);
-    //     if (!dst) return -1;
-
-    //     size_t const dSize = ZSTD_decompress(dst, (size_t)rSize, data, size);
-
-    //     if (ZSTD_isError(dSize)) {
-    //         tools_loge(" Zstd Decompression failed: %s\n", ZSTD_getErrorName(dSize));
-    //         free(dst);
-    //         return -1;
-    //     } else {
-    //         tools_logi(" Decompressed: %zu bytes\n", dSize);
-    //         write_data_to_file(out_path, dst, (uint32_t)dSize);
-    //         free(dst);
-    //         return 0;
-    //     }
-    // }
+    // if (method == 4) { ... }
 
     if (method == 5) { // BZIP2
         tools_logi("Detected BZIP2. Decompressing...\n");
 
-
-        unsigned int dstCapacity = 64 * 1024 * 1024; 
-        void* dst = malloc(dstCapacity);
+        unsigned int dstCapacity = 64 * 1024 * 1024;
+        void *dst = malloc(dstCapacity);
         if (!dst) {
             tools_loge("Failed to allocate memory for BZIP2 decompression.\n");
             return -1;
@@ -616,7 +640,7 @@ int auto_depress(const uint8_t *data, size_t size, const char *out_path) {
         unsigned int producedSize = dstCapacity;
         unsigned int consumedSize = (unsigned int)size;
 
-        int ret = BZ2_bzBuffToBuffDecompress((char*)dst, &producedSize, (char*)data, consumedSize, 0, 0);
+        int ret = BZ2_bzBuffToBuffDecompress((char *)dst, &producedSize, (char *)data, consumedSize, 0, 0);
 
         if (ret != BZ_OK) {
             tools_loge(" BZIP2 Decompression failed with error code: %d\n", ret);
@@ -625,52 +649,61 @@ int auto_depress(const uint8_t *data, size_t size, const char *out_path) {
         }
 
         tools_logi(" BZIP2 Decompressed: %u bytes\n", producedSize);
-        write_data_to_file(out_path, (uint8_t*)dst, producedSize);
-        free(dst);
+        *out_data = dst;
+        *out_size = producedSize;
         return 0;
     }
 
     if (method == 6) { // XZ
         tools_logi(" Detected XZ format. Decompressing...\n");
-        
+
         uint8_t *xz_dst = NULL;
         uint32_t xz_size = 0;
 
         if (decompress_xz(data, size, &xz_dst, &xz_size) == 0) {
             tools_logi("XZ Decompressed: %u bytes\n", xz_size);
-            write_data_to_file(out_path, xz_dst, xz_size);
-            free(xz_dst); 
+            *out_data = xz_dst;
+            *out_size = xz_size;
             return 0;
-        } else {
-            tools_loge(" XZ Decompression failed.\n");
-            return -1;
         }
+        tools_loge(" XZ Decompression failed.\n");
+        return -1;
     }
 
     if (method == 7) { // LZMA Legacy
         tools_logi("Detected Legacy LZMA format. Decompressing...\n");
-        
+
         uint8_t *lzma_dst = NULL;
         uint32_t lzma_size = 0;
 
         if (decompress_lzma(data, size, &lzma_dst, &lzma_size) == 0) {
             tools_logi(" LZMA Decompressed: %u bytes\n", lzma_size);
-            write_data_to_file(out_path, lzma_dst, lzma_size);
-            free(lzma_dst);
+            *out_data = lzma_dst;
+            *out_size = lzma_size;
             return 0;
-        } else {
-            tools_loge(" LZMA Decompression failed.\n");
-            return -1;
         }
+        tools_loge(" LZMA Decompression failed.\n");
+        return -1;
     }
 
+    // raw kernel (or unknown format): hand back an owned copy
     tools_logi("Treating as Raw Kernel (or unknown format).\n");
-    if (write_data_to_file(out_path, data, size) == 0) {
-        tools_logi(" Saved raw kernel to %s\n", out_path);
-        return 0;
-    }
+    uint8_t *raw = malloc(size);
+    if (!raw) return -1;
+    memcpy(raw, data, size);
+    *out_data = raw;
+    *out_size = (uint32_t)size;
+    return 0;
+}
 
-    return -1;
+int auto_depress(const uint8_t *data, size_t size, const char *out_path) {
+    uint8_t *out = NULL;
+    uint32_t out_size = 0;
+    int rc = auto_depress_to_mem(data, size, &out, &out_size, NULL);
+    if (rc) return rc;
+    write_data_to_file(out_path, out, out_size);
+    free(out);
+    return 0;
 }
 
 int extract_kernel(const char *bootimg_path) {
@@ -750,9 +783,9 @@ int detect_compress_method(compress_head data) {
     return 0; // Raw Kernel
 }
 
-int repack_bootimg(const char *orig_boot_path, 
-                   const char *new_kernel_path, 
-                   const char *out_boot_path) {
+int repack_bootimg_mem(const char *orig_boot_path,
+                       const uint8_t *new_kernel, uint32_t new_kernel_size,
+                       const char *out_boot_path) {
     tools_logi(" Starting automatic repack...\n");
 
     FILE *f_orig = fopen(orig_boot_path, "rb");
@@ -778,7 +811,7 @@ int repack_bootimg(const char *orig_boot_path,
     fseek(f_orig, total_size-sizeof(avb), SEEK_SET);
     fread(&avb, sizeof(avb), 1, f_orig);
 
-    uint32_t header_ver = hdr.unused[0]; 
+    uint32_t header_ver = hdr.unused[0];
     if (header_ver > 10){header_ver = 0;extracted_size = hdr.unused[0];}
     uint32_t page_size = (header_ver >= 3) ? 4096 : hdr.page_size;
     uint32_t fmt_size =  (header_ver >= 3) ? hdr.kernel_addr : hdr.ramdisk_size;
@@ -806,35 +839,28 @@ int repack_bootimg(const char *orig_boot_path,
             tools_logi("Detected DTB appended to kernel. Size: %u\n", dtb_size);
         }
     }
-    free(old_k_full); 
+    free(old_k_full);
 
-
-    FILE *f_new_k = fopen(new_kernel_path, "rb");
-    if (!f_new_k) { fclose(f_orig); if(extracted_dtb) free(extracted_dtb); return -3; }
-    fseek(f_new_k, 0, SEEK_END);
-    uint32_t raw_k_size = ftell(f_new_k);
-    fseek(f_new_k, 0, SEEK_SET);
-    uint8_t *raw_k_buf = malloc(raw_k_size);
-    fread(raw_k_buf, 1, raw_k_size, f_new_k);
-    fclose(f_new_k);
+    uint8_t *raw_k_buf = (uint8_t *)new_kernel;
+    uint32_t raw_k_size = new_kernel_size;
 
     uint8_t *final_k_buf = raw_k_buf;
     uint32_t final_k_size = raw_k_size;
     uint8_t *compressed_buf = NULL;
 
-    if (method == 1) { 
+    if (method == 1) {
         tools_logi("Compressing new kernel with GZIP...\n");
         if (compress_gzip(raw_k_buf, raw_k_size, &compressed_buf, &final_k_size) == 0) {
             final_k_buf = compressed_buf;
         }
     }
-    if (method == 2) { 
+    if (method == 2) {
         tools_logi("Compressing new kernel with LZ4...\n");
         if (compress_lz4(raw_k_buf, raw_k_size, &compressed_buf, &final_k_size, k_head) == 0) {
             final_k_buf = compressed_buf;
         }
     }
-    if (method == 3) { 
+    if (method == 3) {
         tools_logi("Compressing new kernel with LZ4 Legacy...\n");
         if (compress_lz4_le(raw_k_buf, raw_k_size, &compressed_buf, &final_k_size, k_head) == 0) {
             final_k_buf = compressed_buf;
@@ -849,7 +875,7 @@ int repack_bootimg(const char *orig_boot_path,
         tools_logi(" Compressing new kernel with BZIP2 (Level 9)...\n");
 
         unsigned int max_out_size = (unsigned int)(raw_k_size * 1.01) + 600;
-        uint8_t *compressed_buf = (uint8_t *)malloc(max_out_size);
+        compressed_buf = (uint8_t *)malloc(max_out_size);
         if (!compressed_buf) return -1;
 
         unsigned int final_size = max_out_size;
@@ -864,16 +890,15 @@ int repack_bootimg(const char *orig_boot_path,
         } else {
             tools_loge("BZIP2 compression failed: %d\n", ret);
             free(compressed_buf);
+            compressed_buf = NULL;
             return -1;
         }
     }
-    if (method == 6 || method == 7) { 
+    if (method == 6 || method == 7) {
         tools_logi(" Original was XZ/LZMA. Repacking as GZIP for compatibility...\n");
-        uint8_t *compressed_buf = NULL;
-        uint32_t final_k_size = 0;
         if (compress_gzip(raw_k_buf, raw_k_size, &compressed_buf, &final_k_size) == 0) {
             final_k_buf = compressed_buf;
-            method = 1; 
+            method = 1;
             tools_logi("Repacked as GZIP. New Size: %u bytes\n", final_k_size);
         } else {
             tools_loge("GZIP compression failed during XZ-to-GZIP conversion.\n");
@@ -890,10 +915,12 @@ int repack_bootimg(const char *orig_boot_path,
     uint8_t *rest_buf = NULL;
     uint32_t rest_buf_offset  = 0;
     if (rest_data_size > 0) {
-        rest_buf_tmp = malloc(rest_data_size);
+        // calloc so the last sizeof(avb) bytes (not read from file, they hold the
+        // separate AVB footer) are deterministic instead of heap garbage
+        rest_buf_tmp = calloc(1, rest_data_size);
         fseek(f_orig, rest_data_offset, SEEK_SET);
         fread(rest_buf_tmp, 1, rest_data_size-sizeof(avb), f_orig);
-        for (int32_t i = (int32_t)rest_data_size - 1; i >= 0; i--) {
+        for (int32_t i = (int32_t)(rest_data_size - sizeof(avb)) - 1; i >= 0; i--) {
             if (rest_buf_tmp[i] != 0) {
                 rest_buf_offset = (uint32_t)(i + 1);
                 break;
@@ -901,7 +928,7 @@ int repack_bootimg(const char *orig_boot_path,
         }
         if (rest_buf_offset > rest_data_size / 3 * 2){
             tools_logi("warning: overload size of rest data, kptools may crash,Rest data size: %u bytes, Actual used size: %u bytes\n", rest_data_size, rest_buf_offset);
-            
+
             rest_buf = rest_buf_tmp;
             rest_data_size = rest_buf_offset + sizeof(avb);
 
@@ -953,7 +980,7 @@ int repack_bootimg(const char *orig_boot_path,
                 sha256_update(&ctx, (const BYTE *)rest_buf + checksum_aligned, hdr.dtb_size);
                 sha256_update(&ctx, (const BYTE *)&hdr.dtb_size, 4);
             }
-            
+
             sha256_final(&ctx, buf);
             memcpy(hdr.id, buf, 32);
         }else{
@@ -963,8 +990,8 @@ int repack_bootimg(const char *orig_boot_path,
             sha1_update(&ctx, (const BYTE *)&hdr.kernel_size, 4);
             sha1_update(&ctx, (const BYTE *)rest_buf, fmt_size);
             sha1_update(&ctx, (const BYTE *)&fmt_size, sizeof(fmt_size));
-            
-            
+
+
             sha1_update(&ctx, (const BYTE *)rest_buf + checksum_aligned, hdr.second_size);
             sha1_update(&ctx, (const BYTE *)&hdr.second_size, 4);
             if (hdr.second_size > 0){
@@ -985,13 +1012,13 @@ int repack_bootimg(const char *orig_boot_path,
                 sha1_update(&ctx, (const BYTE *)&hdr.recovery_dtbo_size, 4);
                 checksum_aligned += ALIGN(hdr.recovery_dtbo_size , page_size);
             }
-            
+
             if (header_ver == 2){
                 tools_logi("dtb_size=%d,dtb_addr=%lu\n",hdr.dtb_size,hdr.dtb_addr);
                 sha1_update(&ctx, (const BYTE *)rest_buf + checksum_aligned, hdr.dtb_size);
                 sha1_update(&ctx, (const BYTE *)&hdr.dtb_size, 4);
             }
-            
+
             sha1_final(&ctx, buf);
             memcpy(hdr.id, buf, 20);
         }
@@ -1063,37 +1090,148 @@ int repack_bootimg(const char *orig_boot_path,
             avb.data_size2 = XXH_swap32(avb_size);
         }
         if (rest_data_size > total_size - page_size - new_k_total_aligned){
-            total_size = ALIGN(page_size + new_k_total_aligned + rest_data_size, page_size); // when rest data is larger than original, we need to expand the total size to fit it
-            fwrite(rest_buf, 1, total_size - page_size - new_k_total_aligned -sizeof(avb), f_out);
-            fwrite(&avb, sizeof(avb), 1, f_out);
-        }else{
-            fwrite(rest_buf, 1, rest_data_size, f_out);
+            // when rest data is larger than original, we need to expand the total size to fit it
+            total_size = ALIGN(page_size + new_k_total_aligned + rest_data_size, page_size);
         }
+        // write exactly the rest data; any slack up to total_size is zero-padded below
+        fwrite(rest_buf, 1, rest_data_size, f_out);
     }
-    
+
 
 
     long current_pos = ftell(f_out);
 
     //  Padding
     //tools_logi("current_post=%d,total_size=%d\n",current_pos,total_size);
-    if (current_pos < total_size - sizeof(avb)) {
+    if (current_pos <= total_size - sizeof(avb)) {
         uint32_t padding = total_size - current_pos - sizeof(avb);
-        uint8_t *zero_pad = calloc(1, padding);
-        fwrite(zero_pad, 1, padding, f_out);
-        free(zero_pad);
+        if (padding > 0) {
+            uint8_t *zero_pad = calloc(1, padding);
+            fwrite(zero_pad, 1, padding, f_out);
+            free(zero_pad);
+        }
         fwrite(&avb, sizeof(avb), 1, f_out);
     }
 
     fclose(f_out);
     if (compressed_buf) free(compressed_buf);
     if (extracted_dtb) free(extracted_dtb);
-    free(raw_k_buf);
     if (rest_buf) free(rest_buf);
 
     tools_logi("Repack completed: %s\n", out_boot_path);
     return 0;
 }
+
+int repack_bootimg(const char *orig_boot_path,
+                   const char *new_kernel_path,
+                   const char *out_boot_path) {
+    FILE *f_new_k = fopen(new_kernel_path, "rb");
+    if (!f_new_k) {
+        tools_loge("Cannot open new kernel %s\n", new_kernel_path);
+        return -3;
+    }
+    fseek(f_new_k, 0, SEEK_END);
+    long raw_k_size = ftell(f_new_k);
+    fseek(f_new_k, 0, SEEK_SET);
+    uint8_t *raw_k_buf = malloc(raw_k_size);
+    if (!raw_k_buf) {
+        fclose(f_new_k);
+        return -3;
+    }
+    fread(raw_k_buf, 1, raw_k_size, f_new_k);
+    fclose(f_new_k);
+
+    int rc = repack_bootimg_mem(orig_boot_path, raw_k_buf, (uint32_t)raw_k_size, out_boot_path);
+    free(raw_k_buf);
+    return rc;
+}
+
+int is_bootimg(const char *path)
+{
+    FILE *fp = fopen(path, "rb");
+    if (!fp) return 0;
+    char magic[8];
+    size_t n = fread(magic, 1, sizeof(magic), fp);
+    fclose(fp);
+    return n == sizeof(magic) && !memcmp(magic, "ANDROID!", 8);
+}
+
+int patch_bootimg(const char *bootimg_path, const char *kpimg_path, const char *out_boot_path,
+                  const char *superkey, bool root_key, const char **additional,
+                  extra_config_t *extra_configs, int extra_config_num)
+{
+    set_log_enable(true);
+    tools_logi("patch boot image: %s\n", bootimg_path);
+
+    if (!kpimg_path) tools_loge_exit("empty kpimg\n");
+    if (!out_boot_path) tools_loge_exit("empty out image path\n");
+    if (!superkey && !root_key) tools_loge_exit("empty superkey\n");
+
+    // read the compressed kernel segment from the boot image
+    FILE *fp = fopen(bootimg_path, "rb");
+    if (!fp) {
+        tools_loge("Cannot open %s\n", bootimg_path);
+        return -1;
+    }
+
+    struct boot_img_hdr hdr;
+    fread(&hdr, sizeof(hdr), 1, fp);
+
+    if (memcmp(hdr.magic, "ANDROID!", 8) != 0) {
+        tools_loge("Invalid boot image magic.\n");
+        fclose(fp);
+        return -2;
+    }
+
+    uint32_t page_size = hdr.page_size;
+    uint32_t kernel_offset = page_size; // Kernel starts after the first page
+    if (hdr.unused[0] >= 3) {
+        kernel_offset = 4096;
+    }
+    if (hdr.unused[0] > 10) {
+        kernel_offset = page_size;
+    }
+
+    tools_logi("Kernel size: %u, Header Version: %u, Offset: %u\n", hdr.kernel_size, hdr.unused[0], kernel_offset);
+
+    uint8_t *compressed = malloc(hdr.kernel_size);
+    if (!compressed) {
+        fclose(fp);
+        return -3;
+    }
+    fseek(fp, kernel_offset, SEEK_SET);
+    fread(compressed, 1, hdr.kernel_size, fp);
+    fclose(fp);
+
+    // decompress the kernel into memory
+    uint8_t *raw = NULL;
+    uint32_t raw_size = 0;
+    int rc = auto_depress_to_mem(compressed, hdr.kernel_size, &raw, &raw_size, NULL);
+    free(compressed);
+    if (rc) {
+        tools_loge("decompress kernel failed\n");
+        return -4;
+    }
+
+    // patch the kernel in memory (patch_update_img_buf owns nothing of the input)
+    char *patched = NULL;
+    int patched_len = 0;
+    rc = patch_update_img_buf((const char *)raw, (int)raw_size, kpimg_path, superkey, root_key,
+                              additional, extra_configs, extra_config_num, &patched, &patched_len);
+    free(raw);
+    if (rc) {
+        tools_loge("patch kernel failed\n");
+        return -5;
+    }
+
+    // recompress with the original method and write the new boot image
+    rc = repack_bootimg_mem(bootimg_path, (const uint8_t *)patched, (uint32_t)patched_len, out_boot_path);
+
+    free(patched);
+    set_log_enable(false);
+    return rc;
+}
+
 int cacluate_sha1(const char *file) {
     FILE *fp = fopen(file, "rb");
     if (!fp) {

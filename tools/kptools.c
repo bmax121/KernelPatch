@@ -41,6 +41,8 @@ void print_usage(char **argv)
         "  -v, --version                    Print version number. Print kpimg version if -k specified.\n"
 
         "  -p, --patch                      Patch or Update patch of kernel image(-i) with specified kpimg(-k) and superkey(-s).\n"
+        "                                   If -i is an Android boot image (ANDROID! magic), the kernel is extracted,\n"
+        "                                   patched and the boot image is repacked automatically in one step.\n"
         "  -u, --unpatch                    Unpatch patched kernel image(-i).\n"
         "  -r, --reset-skey                 Reset superkey of patched image(-i).\n"
         "  -d, --dump                       Dump kallsyms infomations of kernel image(-i).\n"
@@ -230,8 +232,15 @@ int main(int argc, char *argv[])
             fprintf(stdout, "%x\n", version);
     } else if (cmd == 'p') {
         if (!superkey) root_skey = true;
-        ret = patch_update_img(kimg_path, kpimg_path, out_path, superkey, root_skey, additional, extra_configs,
-                               extra_config_num);
+        set_log_enable(true);
+        if (kimg_path && is_bootimg(kimg_path)) {
+            tools_logi("detected Android boot image, patching kernel in place\n");
+            ret = patch_bootimg(kimg_path, kpimg_path, out_path, superkey, root_skey, additional, extra_configs,
+                                extra_config_num);
+        } else {
+            ret = patch_update_img(kimg_path, kpimg_path, out_path, superkey, root_skey, additional, extra_configs,
+                                   extra_config_num);
+        }
     } else if (cmd == 'd') {
         ret = dump_kallsym(kimg_path);
     } else if (cmd == 'f') {

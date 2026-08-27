@@ -577,31 +577,22 @@ static int patch_update_x86(const char *kimg_path, const char *kpimg_path, const
     return rc;
 }
 
-int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey,
-                     bool root_key, const char **additional, extra_config_t *extra_configs, int extra_config_num)
+int patch_update_img_buf(const char *kimg, int kimg_len, const char *kpimg_path, const char *superkey,
+                         bool root_key, const char **additional, extra_config_t *extra_configs,
+                         int extra_config_num, char **out_kimg, int *out_kimg_len)
 {
-    set_log_enable(true);
-
     if (!kpimg_path) tools_loge_exit("empty kpimg\n");
-    if (!out_path) tools_loge_exit("empty out image path\n");
     if (!superkey && !root_key) tools_loge_exit("empty superkey\n");
-
-    char *probe = NULL;
-    int probe_len = 0;
-    read_file(kimg_path, &probe, &probe_len);
-    bool x86_bzimage = is_x86_bzimage(probe, probe_len);
-    free(probe);
-    if (x86_bzimage) {
-        int rc = patch_update_x86(kimg_path, kpimg_path, out_path, superkey, root_key, additional,
-                                  extra_config_num);
-        set_log_enable(false);
-        return rc;
-    }
+    if (!out_kimg || !out_kimg_len) tools_loge_exit("empty out kernel buffer\n");
+    *out_kimg = NULL;
+    *out_kimg_len = 0;
 
     patched_kimg_t pimg = { 0 };
-    kernel_file_t kernel_file;
-    read_kernel_file(kimg_path, &kernel_file);
-    if (kernel_file.is_uncompressed_img) tools_logw("kernel image with UNCOMPRESSED_IMG header\n");
+    kernel_file_t kernel_file = { 0 };
+    kernel_file.kfile = (char *)kimg;
+    kernel_file.kimg = (char *)kimg;
+    kernel_file.kfile_len = kimg_len;
+    kernel_file.kimg_len = kimg_len;
 
     int rc = parse_image_patch_info(kernel_file.kimg, kernel_file.kimg_len, &pimg);
     if (rc) tools_loge_exit("parse kernel image error\n");
@@ -626,10 +617,10 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
         }else{
             tools_logi("disabled PI_MAP for kernel version > 6.12.23\n");
         }
-        
-        
+
+
     }
-    
+
     if (analyze_kallsym_info(&kallsym, kallsym_kimg, pimg.ori_kimg_len, ARM64, 1)) {
         tools_loge_exit("analyze_kallsym_info error\n");
     }
@@ -794,7 +785,7 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     }
     if (sync_size > 0) {
         memcpy(out_kernel_file.kimg + sync_start, kallsym_kimg + sync_start, sync_size);
-        tools_logi("Synced NOP modifications from kallsym_kimg to output file (offset: 0x%x, size: 0x%x)\n", 
+        tools_logi("Synced NOP modifications from kallsym_kimg to output file (offset: 0x%x, size: 0x%x)\n",
                    sync_start, sync_size);
     }
 
@@ -928,18 +919,67 @@ int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *
     patch_extra_item_t empty_item = { 0 };
     extra_append(out_kernel_file.kimg, (void *)&empty_item, sizeof(empty_item), &current_offset);
 
-    write_kernel_file(&out_kernel_file, out_path);
+    // transfer ownership of the patched kernel buffer to the caller
+    *out_kimg = out_kernel_file.kfile;
+    *out_kimg_len = out_kernel_file.kfile_len;
+    out_kernel_file.kfile = NULL;
 
     // free
     free(kallsym_kimg);
     free(kpimg);
     free_kernel_file(&out_kernel_file);
+
+    return 0;
+}
+
+int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey,
+                     bool root_key, const char **additional, extra_config_t *extra_configs, int extra_config_num)
+{
+    set_log_enable(true);
+
+    if (!kpimg_path) tools_loge_exit("empty kpimg\n");
+    if (!out_path) tools_loge_exit("empty out image path\n");
+    if (!superkey && !root_key) tools_loge_exit("empty superkey\n");
+
+    char *probe = NULL;
+    int probe_len = 0;
+    read_file(kimg_path, &probe, &probe_len);
+    bool x86_bzimage = is_x86_bzimage(probe, probe_len);
+    free(probe);
+    if (x86_bzimage) {
+        int rc = patch_update_x86(kimg_path, kpimg_path, out_path, superkey, root_key, additional,
+                                  extra_config_num);
+        set_log_enable(false);
+        return rc;
+    }
+
+    kernel_file_t kernel_file;
+    read_kernel_file(kimg_path, &kernel_file);
+    if (kernel_file.is_uncompressed_img) tools_logw("kernel image with UNCOMPRESSED_IMG header\n");
+
+    char *out_kimg = NULL;
+    int out_kimg_len = 0;
+    int rc = patch_update_img_buf(kernel_file.kimg, kernel_file.kimg_len, kpimg_path, superkey, root_key,
+                                  additional, extra_configs, extra_config_num, &out_kimg, &out_kimg_len);
+
+    if (!rc) {
+        if (kernel_file.is_uncompressed_img) {
+            kernel_file_t out_file = { 0 };
+            new_kernel_file(&out_file, &kernel_file, out_kimg_len, false);
+            memcpy(out_file.kimg, out_kimg, out_kimg_len);
+            write_kernel_file(&out_file, out_path);
+            free_kernel_file(&out_file);
+        } else {
+            write_file(out_path, out_kimg, out_kimg_len, false);
+        }
+        tools_logi("patch done: %s\n", out_path);
+    }
+
+    if (out_kimg) free(out_kimg);
     free_kernel_file(&kernel_file);
 
-    tools_logi("patch done: %s\n", out_path);
-
     set_log_enable(false);
-    return 0;
+    return rc;
 }
 
 int unpatch_img(const char *kimg_path, const char *out_path)

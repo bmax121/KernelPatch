@@ -70,6 +70,9 @@ int extra_str_type(const char *extra_str);
 const char *extra_type_str(extra_item_type extra_type);
 int patch_update_img(const char *kimg_path, const char *kpimg_path, const char *out_path, const char *superkey,
                      bool root_skey, const char **additional, extra_config_t *extra_configs, int extra_config_num);
+int patch_update_img_buf(const char *kimg, int kimg_len, const char *kpimg_path, const char *superkey,
+                         bool root_skey, const char **additional, extra_config_t *extra_configs,
+                         int extra_config_num, char **out_kimg, int *out_kimg_len);
 int unpatch_img(const char *kimg_path, const char *out_path);
 int reset_key(const char *kimg_path, const char *out_path, const char *key);
 int dump_kallsym(const char *kimg_path);
