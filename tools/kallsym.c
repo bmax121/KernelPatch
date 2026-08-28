@@ -725,28 +725,44 @@ static int find_names(kallsym_t *info, char *img, int32_t imglen)
     return 0;
 }
 
-static int arm64_verify_pid_vnr(kallsym_t *info, char *img, int32_t offset)
+static int arm64_verify_pid_vnr_window(kallsym_t *info, char *img, int32_t imglen, int32_t offset, int back, int fwd,
+                                       int generic_sp)
 {
-    for (int i = 0; i < 6; i++) {
+    for (int i = -back; i < fwd; i++) {
         int32_t insn_offset = offset + i * 4;
+        if (insn_offset < 0 || insn_offset + 4 > imglen) continue;
         uint32_t insn = uint_unpack(img + insn_offset, 4, 0);
         enum aarch64_insn_encoding_class enc = aarch64_get_insn_class(insn);
         if (enc == AARCH64_INSN_CLS_BR_SYS) {
             if (aarch64_insn_extract_system_reg(insn) == AARCH64_INSN_SPCLREG_SP_EL0) {
-                tools_logi("pid_vnr verfied sp_el0, insn: 0x%x\n", insn);
+                tools_logi("pid_vnr verfied sp_el0, insn: 0x%x (off %+d)\n", insn, i);
                 info->current_type = SP_EL0;
                 return 0;
             }
-        } else if (enc == AARCH64_INSN_CLS_DP_IMM) {
-            u32 rn = aarch64_insn_decode_register(AARCH64_INSN_REGTYPE_RN, insn);
-            if (rn == AARCH64_INSN_REG_SP) {
-                tools_logi("pid_vnr verfied sp, insn: 0x%x\n", insn);
-                info->current_type = SP;
-                return 0;
+        }
+        if (generic_sp && i >= 0) {
+            if (enc == AARCH64_INSN_CLS_DP_IMM) {
+                u32 rn = aarch64_insn_decode_register(AARCH64_INSN_REGTYPE_RN, insn);
+                if (rn == AARCH64_INSN_REG_SP) {
+                    tools_logi("pid_vnr verfied sp, insn: 0x%x\n", insn);
+                    info->current_type = SP;
+                    return 0;
+                }
             }
         }
     }
     return -1;
+}
+
+static int arm64_verify_pid_vnr(kallsym_t *info, char *img, int32_t imglen, int32_t offset, int wide)
+{
+    // strict pass: 'current' loaded in the first instructions of the entry
+    if (!wide) return arm64_verify_pid_vnr_window(info, img, imglen, offset, 0, 6, 1);
+    // wide pass: LTO/ICF folded kernels may point the kallsyms entry into
+    // the middle of the surviving function, so 'current' (mrs sp_el0) can
+    // sit right before the entry or further in; only the sp_el0 system
+    // register read is a strong enough signal to scan a wider window with
+    return arm64_verify_pid_vnr_window(info, img, imglen, offset, 4, 12, 0);
 }
 
 static int correct_addresses_or_offsets_by_vectors(kallsym_t *info, char *img, int32_t imglen)
@@ -802,6 +818,10 @@ static int correct_addresses_or_offsets_by_vectors(kallsym_t *info, char *img, i
     if (search_end > pid_vnr_limit) search_end = pid_vnr_limit;
 
     int break_flag = 0;
+    // pass 0 verifies pid_vnr strictly within its first instructions; pass 1
+    // widens the window for LTO/ICF folded kernels whose pid_vnr entry is
+    // mid-function, only matching the strong sp_el0 system register read
+    for (int pass = 0; pass < 2 && !break_flag; pass++) {
     for (int i = 0; i < base_cand_num; i++) {
         uint64_t base = base_cand[i];
 
@@ -812,7 +832,7 @@ static int correct_addresses_or_offsets_by_vectors(kallsym_t *info, char *img, i
             if (vector_next_offset - vector_offset >= 0x600 && (vector_offset & ((1 << 11) - 1)) == 0) {
                 int32_t pid_vnr_offset =
                     uint_unpack(img + pos + pid_vnr_index * elem_size, elem_size, info->is_be) - base;
-                if (!arm64_verify_pid_vnr(info, img, pid_vnr_offset)) {
+                if (!arm64_verify_pid_vnr(info, img, imglen, pid_vnr_offset, pass)) {
                     tools_logi("vectors index: %d, offset: 0x%08x\n", vector_index, vector_offset);
                     tools_logi("pid_vnr offset: 0x%08x\n", pid_vnr_offset);
                     info->kernel_base = base;
@@ -823,6 +843,7 @@ static int correct_addresses_or_offsets_by_vectors(kallsym_t *info, char *img, i
         }
 
         if (break_flag) break;
+    }
     }
 
     if (pos >= search_end) {
@@ -919,7 +940,7 @@ static int correct_addresses_or_offsets_by_banner(kallsym_t *info, char *img, in
 
     if (info->arch == ARM64) {
         int32_t pid_vnr_offset = get_symbol_offset(info, img, "pid_vnr");
-        if (arm64_verify_pid_vnr(info, img, pid_vnr_offset)) {
+        if (arm64_verify_pid_vnr(info, img, imglen, pid_vnr_offset, 0)) {
             tools_logw("pid_vnr verification failed\n");
         }
     }
