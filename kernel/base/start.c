@@ -511,7 +511,11 @@ static void prot_myself()
     }
 }
 
-static void restore_map()
+// The map area lives inside a sacrificed kernel function (the map anchor).
+// _paging_init executes from that very region and only returns to the kernel
+// after start() completes, so this must NOT run while it is still executing;
+// it is deferred to the rest_init hook (see patch.c before_rest_init).
+void restore_map()
 {
     uint64_t start = kernel_va + start_preset.map_offset;
     uint64_t end = start + start_preset.map_backup_len;
@@ -701,10 +705,15 @@ int patch();
 int __attribute__((section(".start.text"))) __noinline start(uint64_t kimage_voff, uint64_t linear_voff)
 {
     int rc = 0;
+    // raw stash for post-mortem debugging: no vsnprintf available yet here
+    ((uint64_t *)boot_log)[0] = 0x4b50565354415254ull; // "KPVSTART" marker
+    ((uint64_t *)boot_log)[1] = kimage_voff;
+    ((uint64_t *)boot_log)[2] = linear_voff;
     rc = start_init(kimage_voff, linear_voff);
     if (rc) return rc;
     prot_myself();
-    restore_map();
+    // restore_map() is deferred to the rest_init hook: the map area that
+    // _paging_init is executing from must stay intact until it has returned
     log_regs();
     predata_init();
     symbol_init();

@@ -227,8 +227,11 @@ void select_map_area(kallsym_t *kallsym, char *image_buf, int imglen, int32_t *m
 int fillin_map_symbol(kallsym_t *kallsym, char *img_buf, map_symbol_t *symbol, int32_t target_is_be)
 {
     memset(symbol, 0, sizeof(*symbol));
-
-    symbol->memblock_reserve_relo = get_symbol_offset_exit(kallsym, img_buf, "memblock_reserve");
+    symbol->memblock_reserve_relo = try_get_symbol_offset_zero(kallsym, img_buf, "memblock_reserve");
+    if (!symbol->memblock_reserve_relo) {
+        symbol->memblock_reserve_relo = get_symbol_offset_exit(kallsym, img_buf, "__memblock_reserve");
+    }
+    
     symbol->memblock_free_relo = get_symbol_offset_exit(kallsym, img_buf, "memblock_free");
 
     symbol->memblock_mark_nomap_relo = get_symbol_offset_zero(kallsym, img_buf, "memblock_mark_nomap");

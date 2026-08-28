@@ -38,7 +38,7 @@ SECTIONS
         . = ALIGN(16);
         _map_end = .;
     }
-    ASSERT(SIZEOF(.setup.map) < 0xa00, "Size too large of .setup.map!")
+    ASSERT(SIZEOF(.setup.map) < 0x1000, "Size too large of .setup.map!")
 
     . = ALIGN(64K);
     _kp_start = .;

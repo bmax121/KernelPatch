@@ -209,6 +209,262 @@ static uint64_t __noinline get_or_create_pte(map_data_t *data, uint64_t va, uint
 }
 
 // todo: bti
+// 6.15+ keeps kernel text read-only and creates the linear map inside
+// paging_init(), so while the hook runs there is no usable linear map and
+// the memblock probe in mem_proc() yields an incoherent phys_to_virt pair.
+// swapper_pg_dir lives in the kernel image, so the top-level table is
+// reachable and writable through the image mapping: borrow its unused
+// entries to alias arbitrary physical pages through the top table itself.
+// The chain re-enters the top table at every intermediate level and ends
+// with a page descriptor: for 39-bit VA (3 levels) slots s -> j1 -> j2 map
+// top -> next -> leaf, for 48-bit VA (4 levels) one more slot joins the
+// chain. This needs no linear map and works on both old and new kernels.
+
+#define SCRATCH_MAX_SLOTS 5
+
+typedef struct
+{
+    uint64_t pgd_va;
+    uint64_t pgd_pa;
+    uint64_t window;
+    uint64_t slots[SCRATCH_MAX_SLOTS]; // [0] = top entry, last = leaf entry
+    int nslots;                        // top entry + intermediate entries + leaf
+    uint64_t top_shift;
+    uint64_t pxd_bits;
+    uint64_t page_shift;
+    uint64_t va1_bits;
+} scratch_t;
+
+#define SCRATCH_DESC_TABLE (0x3ull)
+#define SCRATCH_DESC_PAGE (0x703ull) // V|AF|SH inner|AttrIndx 0|EL1 RW (no contiguous)
+
+static int scratch_prep(map_data_t *data, scratch_t *sc)
+{
+    uint64_t pxd_bits = data->page_shift - 3;
+    uint64_t page_level = (data->va1_bits - 4) / pxd_bits;
+    // chain length == number of walk levels: 39-bit VA (3 levels) slots
+    // s -> j1 -> j2 map top -> next -> leaf; 42/48-bit (4 levels) add one.
+    // The last level of a walk only accepts page descriptors, so the chain
+    // must not be deeper than the walk itself.
+    int nslots = (int)page_level;
+    if (page_level < 3 || nslots > SCRATCH_MAX_SLOTS) return -1;
+    uint64_t ttbr1;
+    asm volatile("mrs %0, ttbr1_el1" : "=r"(ttbr1));
+    uint64_t page_size = 1 << data->page_shift;
+    uint64_t pgd_pa = ttbr1 & ~(page_size - 1);
+    // the top-level table must live inside the kernel image (.bss) for the
+    // image mapping below to reach it
+    if (pgd_pa < data->kernel_pa || pgd_pa >= data->kernel_pa + 0x8000000) return -1;
+    uint64_t pgd_va = pgd_pa + data->kimage_voffset;
+    uint64_t top_shift = 12 + pxd_bits * (page_level - 1);
+    // when the walk starts at level 1 (va1_bits <= 39 for 4K pages) every
+    // entry of the top table is a TTBR1 kernel entry; only 4-level walks
+    // (start level 0) have a user-half that TTBR1 never translates
+    uint64_t half = data->va1_bits <= 39 ? 0 : (1 << (data->va1_bits - 1 - top_shift));
+    uint64_t n = 1 << (data->va1_bits - top_shift);
+    int nf = 0;
+    for (uint64_t i = half; i < n && nf < nslots; i++) {
+        if (((*(uint64_t *)(pgd_va + i * 8)) & 0x3) == 0) {
+            sc->slots[nf++] = i;
+        }
+    }
+    if (nf < nslots) return -1;
+    sc->nslots = nslots;
+    sc->pgd_va = pgd_va;
+    sc->pgd_pa = pgd_pa;
+    sc->top_shift = top_shift;
+    sc->pxd_bits = pxd_bits;
+    sc->page_shift = data->page_shift;
+    sc->va1_bits = data->va1_bits;
+    sc->window = ((sc->slots[0] << top_shift) | ~((1ull << data->va1_bits) - 1)) & 0xFFFFFFFFFFFFFFFFull;
+    return 0;
+}
+
+static void scratch_activate(map_data_t *data, scratch_t *sc)
+{
+    uint64_t ttbr1;
+    asm volatile("mrs %0, ttbr1_el1" : "=r"(ttbr1));
+    uint64_t pgd_pa = ttbr1 & ~((1ull << sc->page_shift) - 1);
+    sc->pgd_va = pgd_pa + data->kimage_voffset;
+    // every intermediate slot re-enters the top table itself
+    for (int k = 0; k < sc->nslots - 1; k++) {
+        *(uint64_t *)(sc->pgd_va + sc->slots[k] * 8) = pgd_pa | SCRATCH_DESC_TABLE;
+    }
+    flush_tlb_all();
+}
+
+// returns the VA through which the first page of `pa` can be accessed
+static uint64_t scratch_map_page(map_data_t *data, scratch_t *sc, uint64_t pa)
+{
+    int last = sc->nslots - 1;
+    *(uint64_t *)(sc->pgd_va + sc->slots[last] * 8) = (pa & ~((1ull << sc->page_shift) - 1)) | SCRATCH_DESC_PAGE;
+    flush_tlb_all();
+    // the leaf slot sits k levels below the top entry
+    uint64_t va = sc->window;
+    for (int k = 1; k < sc->nslots; k++) {
+        va += sc->slots[k] << (sc->top_shift - k * sc->pxd_bits);
+    }
+    return va;
+}
+
+static void scratch_unmap_page(map_data_t *data, scratch_t *sc)
+{
+    int last = sc->nslots - 1;
+    *(uint64_t *)(sc->pgd_va + sc->slots[last] * 8) = 0;
+    flush_tlb_all();
+}
+
+static void scratch_teardown(map_data_t *data, scratch_t *sc)
+{
+    for (int k = 0; k < sc->nslots; k++) {
+        *(uint64_t *)(sc->pgd_va + sc->slots[k] * 8) = 0;
+    }
+    flush_tlb_all();
+}
+
+#define SCAN_CAND_MAX 16
+
+static void scan_add_cand(uint64_t *cvals, uint64_t *ccnts, int *cn, uint64_t v)
+{
+    for (int i = 0; i < *cn; i++) {
+        if (cvals[i] == v) {
+            ccnts[i]++;
+            return;
+        }
+    }
+    if (*cn < SCAN_CAND_MAX) {
+        cvals[*cn] = v;
+        ccnts[*cn] = 1;
+        (*cn)++;
+    }
+}
+
+// scan one table page: leaf entries vote (va - oa); tables recurse
+static void scan_level(map_data_t *data, scratch_t *sc, uint64_t table_pa, uint64_t base_va, uint64_t shift,
+                       int depth, uint64_t *cvals, uint64_t *ccnts, int *cn)
+{
+    if (depth < 0 || shift < sc->page_shift) return;
+    if (table_pa == sc->pgd_pa) return; // never treat the top table as a lower level
+    uint64_t view = scratch_map_page(data, sc, table_pa);
+    uint64_t n = 1 << (sc->page_shift - 3);
+    uint64_t pxd_bits = sc->page_shift - 3;
+    uint64_t child_pa[8];
+    uint64_t child_va[8];
+    int tn = 0;
+    for (uint64_t k = 0; k < n; k++) {
+        uint64_t d = *(uint64_t *)(view + k * 8);
+        uint64_t bits = d & 0x3;
+        if (bits == 0) continue;
+        uint64_t va = base_va + (k << shift);
+        if (bits == 0x1) { // leaf
+            uint64_t oa = d & (((1ull << (48 - shift)) - 1) << shift);
+            // skip the kernel image's own mapping: its offset differs from
+            // the linear offset on kernels where the scan is relevant
+            if (va - oa != data->kimage_voffset) scan_add_cand(cvals, ccnts, cn, va - oa);
+        } else if (tn < 8) { // table
+            child_pa[tn] = d & (((1ull << (48 - sc->page_shift)) - 1) << sc->page_shift);
+            child_va[tn] = va;
+            tn++;
+        }
+    }
+    scratch_unmap_page(data, sc);
+    for (int i = 0; i < tn; i++) {
+        scan_level(data, sc, child_pa[i], child_va[i], shift - pxd_bits, depth - 1, cvals, ccnts, cn);
+    }
+}
+
+// recover linear_voffset from the real page tables; returns 0 if the scan
+// is inconclusive (caller keeps the memblock-probed value then). votes
+// equal to kimage_voffset are skipped: they belong to the image's own
+// mapping, whose offset differs from the linear offset on older kernels
+static uint64_t scan_linear_voffset(map_data_t *data, scratch_t *sc)
+{
+    uint64_t cvals[SCAN_CAND_MAX];
+    uint64_t ccnts[SCAN_CAND_MAX];
+    int cn = 0;
+    uint64_t pxd_bits = sc->page_shift - 3;
+    uint64_t top_shift = sc->top_shift;
+    uint64_t n_top = 1 << (data->va1_bits - top_shift);
+    uint64_t high_mask = ~((1ull << data->va1_bits) - 1);
+    uint64_t pgd = sc->pgd_va;
+    // 39-bit style walks start at level 1: the whole top table is kernel
+    // space and the linear map typically lives in its first entries, so the
+    // scan must cover all of it; 4-level walks keep the user-half skipped
+    uint64_t half = data->va1_bits <= 39 ? 0 : (1 << (data->va1_bits - 1 - top_shift));
+    for (uint64_t i = half; i < n_top; i++) {
+        // never descend into our own scratch alias entries
+        int mine = 0;
+        for (int k = 0; k < sc->nslots; k++) mine |= (i == sc->slots[k]);
+        if (mine) continue;
+        uint64_t d = *(uint64_t *)(pgd + i * 8);
+        uint64_t bits = d & 0x3;
+        if (bits == 0) continue;
+        uint64_t base_va = ((i << top_shift) | high_mask) & 0xFFFFFFFFFFFFFFFFull;
+        if (bits == 0x1) { // top-level leaf (1GB block)
+            uint64_t oa = d & (((1ull << (48 - top_shift)) - 1) << top_shift);
+            if (base_va - oa != data->kimage_voffset) scan_add_cand(cvals, ccnts, &cn, base_va - oa);
+        } else {
+            uint64_t t_pa = d & (((1ull << (48 - sc->page_shift)) - 1) << sc->page_shift);
+            scan_level(data, sc, t_pa, base_va, top_shift - pxd_bits, 2, cvals, ccnts, &cn);
+        }
+    }
+    uint64_t best = 0, best_cnt = 0;
+    for (int i = 0; i < cn; i++) {
+        if (ccnts[i] > best_cnt) {
+            best_cnt = ccnts[i];
+            best = cvals[i];
+        }
+    }
+    return best_cnt >= 2 ? best : 0;
+}
+
+// kernels >= 6.15 (early paging rework) have no usable linear map inside the
+// paging_init hook: only the kernel image and fixmap are mapped, and the
+// linear map is built later by setup_arch. provide KP's own linear window
+// instead: identity-map the first GBs of RAM with 1GB block entries in a
+// run of consecutive free top-level slots and return the window's VA base
+// to be used as linear_voffset
+static uint64_t install_kp_linear(map_data_t *data, scratch_t *sc)
+{
+    uint64_t pxd_bits = data->page_shift - 3;
+    uint64_t page_level = (data->va1_bits - 4) / pxd_bits;
+    if (page_level < 2) return 0; // no block-capable top level
+    // blocks are only legal from level 1 down; for 4K pages the top level is
+    // level 1 exactly when va1_bits <= 39 (walk starts below level 0)
+    if (data->va1_bits > 39) return 0;
+    uint64_t top_shift = 12 + pxd_bits * (page_level - 1);
+    uint64_t pgd = sc->pgd_va;
+    // with a level-1 start (va1_bits <= 39) every top entry is kernel space;
+    // skip the real linear map's low entries by scanning from index 2
+    uint64_t half = data->va1_bits <= 39 ? 2 : (1 << (data->va1_bits - 1 - top_shift));
+    uint64_t n_top = 1 << (data->va1_bits - top_shift);
+    uint64_t high_mask = ~((1ull << data->va1_bits) - 1);
+
+    uint64_t run = 0;
+    // the identity window must start at the RAM base, not at PA 0
+    uint64_t ram_base = data->kernel_pa & ~((1ull << 30) - 1);
+    for (uint64_t i = half; i < n_top; i++) {
+        if ((*(uint64_t *)(pgd + i * 8) & 0x3) == 0) {
+            // extend the consecutive free run, capped at 4GB of coverage
+            while (i + run < n_top && run < 4 && (*(uint64_t *)(pgd + (i + run) * 8) & 0x3) == 0) run++;
+            if (run < 2) { // too small to be useful, keep looking
+                i += run;
+                run = 0;
+                continue;
+            }
+            uint64_t base = ((i << top_shift) | high_mask) & 0xFFFFFFFFFFFFFFFFull;
+            // V | 1GB block | AF | SH inner | AttrIndx 0 | EL1 RW
+            for (uint64_t k = 0; k < run; k++) {
+                *(uint64_t *)(pgd + (i + k) * 8) = (((ram_base >> 30) + k) << 30) | 0x701ull;
+            }
+            flush_tlb_all();
+            // linear_voffset so that pa + lv lands inside the window run
+            return base - ram_base;
+        }
+    }
+    return 0;
+}
+
 void __noinline _paging_init()
 {
 	map_data_t buf;
@@ -241,9 +497,48 @@ void __noinline _paging_init()
 
     // paging_init
     uint64_t paging_init_va = data->paging_init_relo;
-    *(uint32_t *)(paging_init_va) = data->paging_init_backup;
+    scratch_t sc;
+    // The scratch/scan/identity-window paths are only needed (and only safe)
+    // on post-6.14 kernels whose early-paging rework moved the linear map
+    // creation into paging_init and made text read-only; those run with
+    // narrow (39/42-bit) kernel VA configs. Legacy 48-bit kernels keep the
+    // original direct paths: their linear map already exists and the
+    // memblock probe above is reliable.
+    int new_era = data->va1_bits != 0 && data->va1_bits <= 42;
+    int have_scratch = new_era && scratch_prep(data, &sc) == 0;
+    if (have_scratch) {
+        scratch_activate(data, &sc);
+        // kernel >= 6.15 maps kernel text read-only, so restore the hooked
+        // instruction through a temporary alias instead of touching its PTE
+        uint64_t page_size = 1 << data->page_shift;
+        uint64_t insn_page = (paging_init_va - data->kimage_voffset) & ~(page_size - 1);
+        uint64_t insn_view = scratch_map_page(data, &sc, insn_page);
+        *(uint32_t *)(insn_view + (paging_init_va & (page_size - 1))) = data->paging_init_backup;
+        scratch_unmap_page(data, &sc);
+        scratch_teardown(data, &sc);
+    } else {
+        *(uint32_t *)(paging_init_va) = data->paging_init_backup;
+    }
     flush_icache_all();
     ((paging_init_f)(paging_init_va))();
+    // can't write data below
+
+    if (have_scratch) {
+        // re-prep on the post-paging_init tables (TTBR1 may have changed)
+        have_scratch = scratch_prep(data, &sc) == 0;
+    }
+    if (have_scratch) {
+        // the linear map only exists from here on (paging_init created it);
+        // re-derive linear_voffset from the real page tables if possible
+        scratch_activate(data, &sc);
+        uint64_t lv = scan_linear_voffset(data, &sc);
+        scratch_teardown(data, &sc);
+        if (!lv) {
+            // no kernel linear map reachable from here: provide our own
+            lv = install_kp_linear(data, &sc);
+        }
+        if (lv) data->linear_voffset = lv;
+    }
     // can't write data below
 
     // AttrIndx[2:0] encoding
