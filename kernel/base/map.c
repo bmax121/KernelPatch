@@ -498,13 +498,25 @@ void __noinline _paging_init()
     // paging_init
     uint64_t paging_init_va = data->paging_init_relo;
     scratch_t sc;
-    // The scratch/scan/identity-window paths are only needed (and only safe)
-    // on post-6.14 kernels whose early-paging rework moved the linear map
-    // creation into paging_init and made text read-only; those run with
-    // narrow (39/42-bit) kernel VA configs. Legacy 48-bit kernels keep the
-    // original direct paths: their linear map already exists and the
-    // memblock probe above is reliable.
-    int new_era = data->va1_bits != 0 && data->va1_bits <= 42;
+    // The scratch/scan/identity-window paths are used from GKI 1.0 (5.4)
+    // onwards, where they are verified to work (5.4 is 39-bit VA and the
+    // linear map is created inside paging_init just the same). Pre-GKI 1.0
+    // kernels (4.19 and older) keep the legacy direct paths that they were
+    // verified with on device. Gate on the kernel version, NOT on va1_bits:
+    // 4.19/5.4 both run 39-bit VAs. The stored version is the raw
+    // setup_preset kernel version bytes:
+    // [_ pad][patch][minor][major] little-endian.
+    // The scratch/scan/identity-window paths are used from GKI 1.0 (5.4)
+    // onwards. Pre-GKI 1.0 kernels (4.19/4.9 and older) hang on the scratch
+    // path regardless of the restore timing (bisected on 4.9.337), so they
+    // keep the legacy direct paths that they were verified with on device.
+    // Gate on the kernel version, NOT on va1_bits: 4.19/5.4 both run 39-bit
+    // VAs. The stored version is the raw setup_preset kernel version bytes:
+    // [_ pad][patch][minor][major] little-endian.
+    uint32_t kv = data->kernel_version;
+    uint32_t kmajor = (kv >> 24) & 0xFF;
+    uint32_t kminor = (kv >> 16) & 0xFF;
+    int new_era = kmajor > 5 || (kmajor == 5 && kminor >= 4);
     int have_scratch = new_era && scratch_prep(data, &sc) == 0;
     if (have_scratch) {
         scratch_activate(data, &sc);

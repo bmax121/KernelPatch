@@ -193,6 +193,10 @@ map_prepare:
     // map_data.kernel_pa = kernel_pa;
     str x19, [x9, #map_kernel_pa_offset]
 
+    // map_data.kernel_version = setup_preset.kernel_version
+    ldr w11, [x10, #setup_kernel_version_offset]
+    str w11, [x9, #map_kernel_version_offset]
+
     // map_data.map_offset = setup_preset.map_offset;
     ldr x11, [x10, #setup_map_offset_offset]
     str x11, [x9, #map_map_offset_offset]

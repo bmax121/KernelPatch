@@ -61,16 +61,11 @@ int android_user_init();
 int android_sepolicy_flags_fix();
 #endif
 
-void restore_map();
 
 static void before_rest_init(hook_fargs4_t *args, void *udata)
 {
     int rc = 0;
     log_boot("entering init ...\n");
-
-    // the map anchor area is only safe to restore once _paging_init (which
-    // executes from it) has returned to the kernel
-    restore_map();
 
     if ((rc = hotpatch_init())) goto out;
     log_boot("hotpatch_init done: %d\n", rc);
