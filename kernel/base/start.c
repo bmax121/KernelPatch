@@ -725,17 +725,23 @@ int __attribute__((section(".start.text"))) __noinline start(uint64_t kimage_vof
     predata_init();
     symbol_init();
     rc = patch();
-    // >= GKI 1.0 kernels take the scratch path: their _paging_init epilogue
-    // lives in the restored map anchor and must never execute, so return to
-    // the kernel's paging_init caller directly, restoring _paging_init's
-    // callee-saved registers from its frame ([our x29] = its x29 (P); its
-    // saved x19-x28 at P+16..P+88; the kernel's return address at P+8; the
-    // caller's sp at P+0x280 = frame 0x290 with x29 = sp + 0x10). Legacy
-    // kernels (< 5.4) return through the normal epilogue below, which
-    // executes restored anchor bytes - verified working on 4.19/4.9
-    // devices (the restored instructions at the epilogue offset are benign
-    // there).
-    if (kver >= VERSION(5, 4, 0)) {
+    // Return to the kernel's paging_init caller directly, restoring
+    // _paging_init's callee-saved registers from its frame: [our x29] = its
+    // x29 (P); its saved x19-x28 at P+16..P+88; the caller's frame pointer
+    // at [P]; the kernel's return address at P+8; the caller's sp at
+    // P+0x280 (frame 0x290 with x29 = sp + 0x10 — the same layout on the
+    // scratch and legacy _paging_init paths, since it is the same compiled
+    // function entered via blr in both cases).  x29 must be restored from
+    // [P], exactly like _paging_init's own epilogue (ldp x29, x30,
+    // [sp, #16]) — returning with x29 = P instead of the caller's FP hangs
+    // the 4.9 device kernel in setup_arch's post-paging_init code.  This
+    // bypasses _paging_init's epilogue, which lives in the RESTORED map
+    // anchor: with the map section (~0xf10, scratch machinery included)
+    // larger than the carved hole, the epilogue position can land
+    // mid-function inside e.g. do_tcp_getsockopt, and executing those
+    // restored native bytes kills 5.10 GKI before the console is up
+    // (verified in QEMU).  The historical 4.9 tail-return boot loop was
+    // confounded with the scratch path running on 4.x.
     __asm__ volatile(
         "ldr x10, [x29]\n"
         "ldp x19, x20, [x10, #16]\n"
@@ -743,13 +749,11 @@ int __attribute__((section(".start.text"))) __noinline start(uint64_t kimage_vof
         "ldp x23, x24, [x10, #48]\n"
         "ldp x25, x26, [x10, #64]\n"
         "ldp x27, x28, [x10, #80]\n"
-        "mov x29, x10\n"
+        "ldr x29, [x10]\n"
         "ldr x30, [x10, #8]\n"
         "add sp, x10, #0x280\n"
         "ret\n"
         : : : "x10", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26",
               "x27", "x28", "x29", "x30", "memory");
     __builtin_unreachable();
-    }
-    return rc;
 }

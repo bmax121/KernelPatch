@@ -498,25 +498,21 @@ void __noinline _paging_init()
     // paging_init
     uint64_t paging_init_va = data->paging_init_relo;
     scratch_t sc;
-    // The scratch/scan/identity-window paths are used from GKI 1.0 (5.4)
-    // onwards, where they are verified to work (5.4 is 39-bit VA and the
-    // linear map is created inside paging_init just the same). Pre-GKI 1.0
-    // kernels (4.19 and older) keep the legacy direct paths that they were
-    // verified with on device. Gate on the kernel version, NOT on va1_bits:
-    // 4.19/5.4 both run 39-bit VAs. The stored version is the raw
-    // setup_preset kernel version bytes:
-    // [_ pad][patch][minor][major] little-endian.
-    // The scratch/scan/identity-window paths are used from GKI 1.0 (5.4)
-    // onwards. Pre-GKI 1.0 kernels (4.19/4.9 and older) hang on the scratch
-    // path regardless of the restore timing (bisected on 4.9.337), so they
-    // keep the legacy direct paths that they were verified with on device.
-    // Gate on the kernel version, NOT on va1_bits: 4.19/5.4 both run 39-bit
-    // VAs. The stored version is the raw setup_preset kernel version bytes:
-    // [_ pad][patch][minor][major] little-endian.
+    // The scratch/scan/identity-window paths are needed on 6.x kernels only:
+    // 6.15+ builds the linear map inside paging_init() (so there is no usable
+    // linear map while the hook runs) and maps kernel text read-only.  Every
+    // kernel <= 5.x (4.x, 5.4, 5.10, 5.15) keeps the legacy direct paths that
+    // 0.13.5 verified on device; 5.4 follows the non-GKI (legacy) rule too,
+    // and 4.9/4.19 additionally hang on the scratch path regardless of the
+    // restore timing (bisected on 4.9.337).  Gate on the kernel version, NOT
+    // on va1_bits: 4.19/5.4 both run 39-bit VAs.  If the version is unknown
+    // (0), new_era stays 0 and the legacy path is taken, so an image patched
+    // by an older kptools still boots.  The stored version is the raw
+    // setup_preset kernel_version bytes, which on a little-endian machine
+    // read back as [_][patch][minor][major]: major = kv >> 24.
     uint32_t kv = data->kernel_version;
     uint32_t kmajor = (kv >> 24) & 0xFF;
-    uint32_t kminor = (kv >> 16) & 0xFF;
-    int new_era = kmajor > 5 || (kmajor == 5 && kminor >= 4);
+    int new_era = kmajor > 5;
     int have_scratch = new_era && scratch_prep(data, &sc) == 0;
     if (have_scratch) {
         scratch_activate(data, &sc);

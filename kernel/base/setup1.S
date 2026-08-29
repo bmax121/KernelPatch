@@ -135,14 +135,22 @@ start_prepare:
     bl memcpy8
 
     // backup map area
-    // memcpy(start_preset.map_backup, kernel_pa + setup_preset.map_offset, (uint64_t)_map_end - (uint64_t)_map_start)
+    // memcpy(start_preset.map_backup, kernel_pa + setup_preset.map_offset, backup_len)
+    // backup_len = max(map section size, setup_preset.map_max_size): the
+    // backup must cover every byte kptools NOP-synced (map_max_size) as well
+    // as the map section copy itself, so restore_map can rebuild the exact
+    // original anchor region.
     adrp x13, _map_end
     add x13, x13, :lo12:_map_end
     adrp x14, _map_start
     add x14, x14, :lo12:_map_start
     sub x2, x13, x14
-
-    // start_preset.map_backup_len = (uint64_t)_map_end - (uint64_t)_map_start
+    ldr x3, [x10, #setup_map_max_size_offset]
+    cmp x2, x3
+    b.hs 91f
+    mov x2, x3
+91:
+    // start_preset.map_backup_len = backup_len
     str x2, [x11, #start_map_backup_len_offset]
     add x0, x11, #start_map_backup_offset
     add x1, x19, x20
