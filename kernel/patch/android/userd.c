@@ -751,6 +751,20 @@ struct apk_outer_ctx {
     char *inner_path; /* heap-allocated: "/data/app/~~<hash>/" */
     size_t inner_path_len;
     const char *package;
+};
+
+/* Old-kernel (< 6.1) variant.  The two-phase scan (collect "~~" names first,
+ * descend afterwards) applies to OLD kernels only: opening a child directory
+ * while the outer iterate holds the directory inode lock self-deadlocks there.
+ * New kernels use the original in-iterate descent in apk_outer_actor. */
+struct apk_outer_ctx_int {
+    struct dir_context_int dctx; /* MUST be first member */
+    char *result;
+    size_t result_len;
+    int found;
+    char *inner_path; /* heap-allocated: "/data/app/~~<hash>/" */
+    size_t inner_path_len;
+    const char *package;
     /* Phase-1 collection: "~~" subdir names recorded while iterating (no file
      * opens happen inside the iterate — that would re-take the directory lock
      * and deadlock on 4.x).  names is a flat vmalloc array, name_len per slot. */
@@ -760,33 +774,18 @@ struct apk_outer_ctx {
     int name_len;
 };
 
-struct apk_outer_ctx_int {
-    struct dir_context_int dctx; /* MUST be first member */
-    char *result;
-    size_t result_len;
-    int found;
-    char *inner_path; /* heap-allocated: "/data/app/~~<hash>/" */
-    size_t inner_path_len;
-    const char *package;
-    /* Phase-1 collection, see apk_outer_ctx. */
-    char *names;
-    int name_count;
-    int max_names;
-    int name_len;
-};
-
 /*
- * Outer callback (phase 1): scan /data/app/ once.  Match the flat layout
- * directly, otherwise RECORD "~~" scramble subdir names.  No filp_open happens
- * here: the outer iterate holds the directory inode lock on 4.x and opening a
- * child re-takes it -> self-deadlock.  The inner dirs are descended afterwards,
- * in find_trusted_manager_apk_path, once the iterate has released the lock.
+ * Outer callback (new kernels >= 6.1, original method): scan /data/app/ for
+ * ~~* scramble directories and descend into each one inside the iterate.
  */
 static bool apk_outer_actor(struct dir_context *dctx,
                             const char *name, int namelen,
                             loff_t offset, u64 ino, unsigned int d_type)
 {
     struct apk_outer_ctx *ctx = container_of(dctx, struct apk_outer_ctx, dctx);
+    struct apk_inner_ctx *inner;
+    struct file *inner_dir;
+    int len;
 
     if (!ctx)
         return false;
@@ -794,34 +793,42 @@ static bool apk_outer_actor(struct dir_context *dctx,
     if (ctx->found)
         return false;
 
-    /* flat layout: /data/app/<pkg>-<n>/base.apk (pre-Android-11). */
-    {
-        const char *pkg = ctx->package;
-        size_t plen = strnlen(pkg, 128);
-        if (namelen > (int)plen && !memcmp(name, pkg, plen) && name[plen] == '-') {
-            static const char outer_dir[] = "/data/app/";
-            static const char base_apk[] = "/base.apk";
-            size_t olen = sizeof(outer_dir) - 1;
-            size_t blen = sizeof(base_apk);
-            if (olen + (size_t)namelen + blen < ctx->result_len) {
-                memcpy(ctx->result, outer_dir, olen);
-                memcpy(ctx->result + olen, name, namelen);
-                memcpy(ctx->result + olen + namelen, base_apk, blen);
-                ctx->found = 1;
-                return false;
-            }
-            return true;
-        }
+    if (namelen < 2 || name[0] != '~' || name[1] != '~')
+        return true;
+
+    len = snprintf(ctx->inner_path, ctx->inner_path_len,
+                   "/data/app/%.*s/", namelen, name);
+    if (len <= 0 || len >= (int)ctx->inner_path_len)
+        return true;
+
+    inner_dir = filp_open(ctx->inner_path, O_RDONLY | O_NOFOLLOW, 0);
+    if (IS_ERR(inner_dir))
+        return true;
+
+    inner = vmalloc(sizeof(*inner));
+    if (!inner) {
+        filp_close(inner_dir, 0);
+        return true;
+    }
+    memset(inner, 0, sizeof(*inner));
+
+    inner->dctx.actor = apk_inner_actor;
+    inner->dctx.pos = 0;
+    inner->outer_dir = ctx->inner_path;
+    inner->result = ctx->result;
+    inner->result_len = ctx->result_len;
+    inner->package = ctx->package;
+
+    iterate_dir(inner_dir, &inner->dctx);
+    filp_close(inner_dir, 0);
+
+    if (inner->found) {
+        ctx->found = 1;
+        vfree(inner);
+        return false;
     }
 
-    if (namelen >= 2 && name[0] == '~' && name[1] == '~') {
-        if (ctx->name_count < ctx->max_names && namelen < ctx->name_len) {
-            char *slot = ctx->names + ctx->name_count * ctx->name_len;
-            memcpy(slot, name, namelen);
-            slot[namelen] = '\0';
-            ctx->name_count++;
-        }
-    }
+    vfree(inner);
     return true;
 }
 /* https://elixir.bootlin.com/linux/v6.0.19/source/include/linux/fs.h#L2049 */
@@ -881,6 +888,7 @@ static int find_trusted_manager_apk_path(char *apk_path,
     log_boot("finding apk path for package: %s\n", trusted_managers[index].package);
     struct apk_outer_ctx *outer = NULL;
     struct apk_outer_ctx_int *outer_int = NULL;
+    struct apk_inner_ctx *flat = NULL;
     struct file *app_dir;
     struct file *inner_dir;
     int rc = -ENOENT;
@@ -903,19 +911,18 @@ static int find_trusted_manager_apk_path(char *apk_path,
     apk_path[0] = '\0';
 
     if (kver >= VERSION(6, 1, 0)) {
+        flat = vmalloc(sizeof(*flat));
+        if (!flat) { rc = -ENOMEM; goto out_free; }
+
         outer = vmalloc(sizeof(*outer));
         if (!outer) { rc = -ENOMEM; goto out_free; }
 
+        memset(flat, 0, sizeof(*flat));
         memset(outer, 0, sizeof(*outer));
 
         outer->inner_path = vmalloc(256);
         if (!outer->inner_path) { rc = -ENOMEM; goto out_free; }
         outer->inner_path_len = 256;
-
-        outer->name_len = 64;
-        outer->max_names = 256;
-        outer->names = vmalloc((size_t)outer->max_names * outer->name_len);
-        if (!outer->names) { rc = -ENOMEM; goto out_free; }
     } else {
         outer_int = vmalloc(sizeof(*outer_int));
         if (!outer_int) { rc = -ENOMEM; goto out_free; }
@@ -943,11 +950,26 @@ static int find_trusted_manager_apk_path(char *apk_path,
         goto out_free;
     }
 
-    /* Phase 1: iterate /data/app ONCE, collecting "~~" subdir names.  No file
-     * opens during iteration: the outer iterate holds the directory inode lock
-     * on 4.x and opening a child re-takes it (self-deadlock, seen as a boot
-     * hang).  The flat layout is matched inline (no open needed). */
     if (kver >= VERSION(6, 1, 0)) {
+        /* Original method (new kernels): Pass1 = flat layout scan, then a
+         * rewind and Pass2 over "~~" scramble dirs with in-iterate descent. */
+        flat->dctx.actor = apk_inner_actor;
+        flat->dctx.pos = 0;
+        flat->outer_dir = "/data/app/";
+        flat->result = apk_path;
+        flat->result_len = apk_path_len;
+        flat->package = pkg_buf;
+
+        iterate_dir(app_dir, &flat->dctx);
+
+        if (flat->found) {
+            log_boot("apk found (flat): %s\n", apk_path);
+            rc = 0;
+            goto out;
+        }
+
+        vfs_llseek(app_dir, 0, SEEK_SET);
+
         outer->dctx.actor = apk_outer_actor;
         outer->dctx.pos = 0;
         outer->result = apk_path;
@@ -955,7 +977,18 @@ static int find_trusted_manager_apk_path(char *apk_path,
         outer->package = pkg_buf;
 
         iterate_dir(app_dir, &outer->dctx);
+
+        if (outer->found) {
+            log_boot("apk found (scramble): %s\n", apk_path);
+            rc = 0;
+            goto out;
+        }
     } else {
+        /* Old kernels (<= 4.x): two-phase scan.  Phase 1 iterates /data/app
+         * ONCE, collecting "~~" subdir names.  No file opens during iteration:
+         * the outer iterate holds the directory inode lock and opening a child
+         * re-takes it (self-deadlock, seen as a boot hang).  The flat layout is
+         * matched inline (no open needed). */
         outer_int->dctx.actor = apk_outer_actor_int;
         outer_int->dctx.pos = 0;
         outer_int->result = apk_path;
@@ -965,38 +998,15 @@ static int find_trusted_manager_apk_path(char *apk_path,
         iterate_dir_int(app_dir, &outer_int->dctx);
     }
 
-    if ((outer && outer->found) || (outer_int && outer_int->found)) {
+    if (outer_int && outer_int->found) {
         log_boot("apk found: %s\n", apk_path);
         rc = 0;
         goto out;
     }
 
-    /* Phase 2: descend into each collected "~~" dir now that the outer iterate
-     * has released the lock. */
-    if (kver >= VERSION(6, 1, 0)) {
-        for (int i = 0; i < outer->name_count && !outer->found; i++) {
-            struct apk_inner_ctx inner = { 0 };
-            char *slot = outer->names + i * outer->name_len;
-            int plen = snprintf(outer->inner_path, outer->inner_path_len, "/data/app/%s/", slot);
-            if (plen <= 0 || plen >= (int)outer->inner_path_len) continue;
-            inner_dir = filp_open(outer->inner_path, O_RDONLY | O_NOFOLLOW, 0);
-            if (IS_ERR(inner_dir))
-                continue;
-            inner.dctx.actor = apk_inner_actor;
-            inner.dctx.pos = 0;
-            inner.outer_dir = outer->inner_path;
-            inner.result = apk_path;
-            inner.result_len = apk_path_len;
-            inner.package = pkg_buf;
-            iterate_dir(inner_dir, &inner.dctx);
-            filp_close(inner_dir, 0);
-            if (inner.found) {
-                outer->found = 1;
-                log_boot("apk found: %s\n", apk_path);
-                rc = 0;
-            }
-        }
-    } else {
+    /* Phase 2 (old kernels only): descend into each collected "~~" dir now
+     * that the outer iterate has released the lock. */
+    if (outer_int) {
         for (int i = 0; i < outer_int->name_count && !outer_int->found; i++) {
             struct apk_inner_ctx_int inner = { 0 };
             char *slot = outer_int->names + i * outer_int->name_len;
@@ -1029,9 +1039,9 @@ out:
     filp_close(app_dir, 0);
     set_priv_sel_allow(current, false);
 out_free:
+    if (flat) vfree(flat);
     if (outer) {
         if (outer->inner_path) vfree(outer->inner_path);
-        if (outer->names) vfree(outer->names);
         vfree(outer);
     }
     if (outer_int) {
