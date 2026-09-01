@@ -12,7 +12,7 @@
 #include <predata.h>
 
 struct pt_regs;
-
+int cfi_bypass = 0;
 static inline bool should_cfi_pass(unsigned long target)
 {
     return is_kp_text_area(target) || is_kp_hook_area(target) || is_kpm_rox_area(target);
@@ -98,6 +98,7 @@ int bypass_kcfi()
         log_boot("no symbol for pass kcfi (preset and runtime kallsyms both empty)\n");
         log_boot("if CONFIG_CFI_CLANG is enabled (Android 13+ GKI common), every kCFI mismatch on KP memory will panic -> random reboots\n");
     }
+    cfi_bypass = 1;
 
 out:
     return rc;

@@ -25,7 +25,7 @@
 #define bits(n, high, low) (((n) << (63u - (high))) >> (63u - (high) + (low)))
 #define align_floor(x, align) ((uint64_t)(x) & ~((uint64_t)(align) - 1))
 #define align_ceil(x, align) (((uint64_t)(x) + (uint64_t)(align) - 1) & ~((uint64_t)(align) - 1))
-
+extern int cfi_bypass;
 start_preset_t start_preset __attribute__((section(".start.data")));
 
 setup_header_t *setup_header = 0;
@@ -213,9 +213,9 @@ unsigned long kallsyms_lookup_name_by_suffix(const char *name){
 
 
     unsigned long addr = kallsyms_lookup_name(name);
-    log_boot("kallsyms_lookup_name_by_suffix: name=%s addr=%llx\n", name, addr);
     if (addr) return addr;
     if (!kallsyms_on_each_symbol) return 0;
+    if (!cfi_bypass) return 0;
     struct suffix_lookup lookup;
 
     lookup.base = name;
