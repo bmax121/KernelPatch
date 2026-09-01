@@ -20,7 +20,7 @@
 #include <uapi/asm-generic/errno.h>
 #include <predata.h>
 #include <symbol.h>
-#include <linux/spinlock.h>
+#include <kp_spinlock.h>
 #include <stdarg.h>
 #include <asm/atomic.h>
 #include <baselib.h>
@@ -86,7 +86,7 @@ struct task_ext *kf_get_task_ext(const struct task_struct *task)
 static struct task_ext *task_ext_create(struct task_struct *task)
 {
     struct task_ext *ret = NULL;
-    spin_lock(&task_ext_lock);
+    unsigned long flags = kp_private_spin_lock(&task_ext_lock);
     for (int i = 0; i < TASK_EXT_SLOT_NUM; i++) {
         if (task_ext_slots[i].task == task) {
             ret = &task_ext_slots[i].ext;
@@ -103,14 +103,14 @@ static struct task_ext *task_ext_create(struct task_struct *task)
             }
         }
     }
-    spin_unlock(&task_ext_lock);
+    kp_private_spin_unlock(&task_ext_lock, flags);
     return ret;
 }
 
 static void task_ext_free(struct task_struct *task)
 {
     if (likely(!atomic_read(&task_ext_active_count))) return;
-    spin_lock(&task_ext_lock);
+    unsigned long flags = kp_private_spin_lock(&task_ext_lock);
     for (int i = 0; i < TASK_EXT_SLOT_NUM; i++) {
         if (task_ext_slots[i].task == task) {
             task_ext_slots[i].task = NULL;
@@ -118,7 +118,7 @@ static void task_ext_free(struct task_struct *task)
             break;
         }
     }
-    spin_unlock(&task_ext_lock);
+    kp_private_spin_unlock(&task_ext_lock, flags);
 }
 
 /*
