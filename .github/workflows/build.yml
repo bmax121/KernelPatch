@@ -39,6 +39,11 @@ jobs:
           mv kpimg.elf kpimg.elf-android
           make clean
 
+          make kpimg NO_ROOT=1
+          mv kpimg kpimg-android-no-root
+          mv kpimg.elf kpimg.elf-android-no-root
+          make clean
+
           unset ANDROID
           make
           mv kpimg kpimg-linux
@@ -116,6 +121,7 @@ jobs:
           artifacts: |
             kernel/kpimg-linux
             kernel/kpimg-android
+            kernel/kpimg-android-no-root
             kernel/kpimg-x86
             kpms/demo-hello/demo-hello.kpm
             kpms/demo-inlinehook/demo-inlinehook.kpm

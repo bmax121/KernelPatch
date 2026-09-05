@@ -45,6 +45,35 @@ ifdef ANDROID
 	X86_CFLAGS += -DANDROID
 endif
 
+ENABLE_ROOT ?= 1
+ifneq ($(NO_ROOT),)
+	ENABLE_ROOT := 0
+endif
+ifneq ($(DISABLE_ROOT),)
+	ENABLE_ROOT := 0
+endif
+
+ifeq ($(ENABLE_ROOT),0)
+	CFLAGS += -DCONFIG_KP_NO_ROOT
+	X86_CFLAGS += -DCONFIG_KP_NO_ROOT
+endif
+
+ENABLE_OFFICIAL_MANAGER ?= $(ENABLE_ROOT)
+ifneq ($(OFFICIAL_MANAGER),)
+	ENABLE_OFFICIAL_MANAGER := $(OFFICIAL_MANAGER)
+endif
+ifneq ($(NO_MANAGER),)
+	ENABLE_OFFICIAL_MANAGER := 0
+endif
+ifneq ($(NO_OFFICIAL_MANAGER),)
+	ENABLE_OFFICIAL_MANAGER := 0
+endif
+
+ifeq ($(ENABLE_OFFICIAL_MANAGER),0)
+	CFLAGS += -DCONFIG_KP_NO_OFFICIAL_MANAGER
+	X86_CFLAGS += -DCONFIG_KP_NO_OFFICIAL_MANAGER
+endif
+
 INCLUDE := -I. -Iinclude -Ipatch/include -Ilinux -Ilinux/include -Ilinux/arch/arm64/include -Ilinux/tools/arch/arm64/include
 
 X86_INCLUDE := -I. -Iinclude -Ipatch/include -Ilinux/include -Ilinux/include/uapi/asm-generic -Ilinux/tools/arch/arm64/include
@@ -74,6 +103,18 @@ BASE_SRCS += $(wildcard patch/ksyms/*.c)
 
 ifdef ANDROID
 	BASE_SRCS += $(wildcard patch/android/*.c)
+endif
+
+ifeq ($(ENABLE_ROOT),0)
+	ROOT_SRCS := \
+		patch/common/accctl.c \
+		patch/common/selinux_hide.c \
+		patch/common/selinux_sepolicy.c \
+		patch/common/sucompat.c \
+		patch/common/supercmd.c \
+		patch/common/user_event.c
+
+	BASE_SRCS := $(filter-out $(ROOT_SRCS),$(BASE_SRCS))
 endif
 
 SRCS += $(BASE_SRCS)

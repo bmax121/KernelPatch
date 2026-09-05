@@ -100,9 +100,10 @@ static const struct trusted_manager_entry trusted_managers[] = {
 };
 
 static uid_t trusted_manager_uid = TRUSTED_MANAGER_UID_INVALID;
-static int global_pkg_pos = 0;
+static __maybe_unused int global_pkg_pos = 0;
 
 
+#ifndef CONFIG_KP_NO_ROOT
 static const char ORIGIN_RC_FILES[][64] = {
     "/system/etc/init/hw/init.rc",
     "/init.rc",
@@ -170,6 +171,7 @@ static int expand_rc_template(char *dst, size_t dst_size, const char *template, 
     dst[out] = '\0';
     return (int)out;
 }
+#endif /* CONFIG_KP_NO_ROOT */
 
 static const void *kernel_read_file(const char *path, loff_t *len)
 {
@@ -209,7 +211,7 @@ static int path_has_suffix(const char *path, const char *suffix)
     return strcmp(path + path_len - suffix_len, suffix) == 0;
 }
 
-static int is_packages_list_tmp_dentry_path(const char *path)
+static __maybe_unused int is_packages_list_tmp_dentry_path(const char *path)
 {
     return path_has_suffix(path, "/system/packages.list.tmp");
 }
@@ -1125,7 +1127,7 @@ int refresh_trusted_manager_uid(void)
     return refresh_trusted_manager_state();
 }
 
-static int refresh_trusted_manager_state_from_packages_list(int use_tmp)
+static __maybe_unused int refresh_trusted_manager_state_from_packages_list(int use_tmp)
 {
     uid_t uid = TRUSTED_MANAGER_UID_INVALID;
     int rc = refresh_trusted_manager_uid_from_packages_list(&uid, use_tmp);
@@ -1144,29 +1146,41 @@ static int refresh_trusted_manager_state_from_packages_list(int use_tmp)
 
 int refresh_trusted_manager_state(void)
 {
+#ifdef CONFIG_KP_NO_OFFICIAL_MANAGER
+    return 0;
+#else
     return refresh_trusted_manager_state_from_packages_list(0);
+#endif 
 }
 KP_EXPORT_SYMBOL(refresh_trusted_manager_uid);
 
 
 int is_trusted_manager_uid_android(uid_t uid)
 {
+#ifdef CONFIG_KP_NO_OFFICIAL_MANAGER
+    return 0;
+#else
     uid_t trusted_uid = trusted_manager_uid;
     if (trusted_uid == TRUSTED_MANAGER_UID_INVALID) {
         return 0;
     }
     return uid == trusted_uid;
+#endif
 }
 KP_EXPORT_SYMBOL(is_trusted_manager_uid_android);
 
 uid_t get_trusted_manager_uid(void)
 {
+#ifdef CONFIG_KP_NO_OFFICIAL_MANAGER
+    return TRUSTED_MANAGER_UID_INVALID;
+#else
     return trusted_manager_uid;
+#endif
 }
 KP_EXPORT_SYMBOL(get_trusted_manager_uid);
 
 // Simple CSV field parser helper function
-static char *parse_csv_field(char **line_ptr)
+static __maybe_unused char *parse_csv_field(char **line_ptr)
 {
     char *start = *line_ptr;
     char *end = start;
@@ -1213,6 +1227,9 @@ static char *parse_csv_field(char **line_ptr)
 // Returns: number of entries loaded, or negative error code
 int load_ap_package_config()
 {
+#ifdef CONFIG_KP_NO_ROOT
+    return 0;
+#else
     loff_t len = 0;
     const char *data = kernel_read_file(AP_PACKAGE_CONFIG_PATH, &len);
 
@@ -1400,6 +1417,7 @@ next_line:
     kvfree(data);
     log_boot("package_config loaded: %d entries, skipped: %d\n", loaded_count, skipped_count);
     return loaded_count;
+#endif /* CONFIG_KP_NO_ROOT */
 }
 KP_EXPORT_SYMBOL(load_ap_package_config);
 
@@ -1560,10 +1578,12 @@ static void post_init_second_stage()
 
 static void on_first_app_process()
 {
+#ifndef CONFIG_KP_NO_OFFICIAL_MANAGER
     /* Refresh the trusted-manager state (APK scan) synchronously here.  The scan
      * itself is two-phase so it cannot deadlock on the /data/app inode lock. */
     int rc = refresh_trusted_manager_state();
     log_boot("on_first_app_process: trusted manager refresh rc=%d\n", rc);
+#endif
 }
 
 static void handle_before_execve(hook_local_t *hook_local, char **__user u_filename_p, char **__user uargv,
@@ -1575,11 +1595,15 @@ static void handle_before_execve(hook_local_t *hook_local, char **__user u_filen
     hook_local->data2 = 0;
 
     // Check if current process is trusted manager, set auto-su flag
+#ifndef CONFIG_KP_NO_ROOT
     if (is_trusted_manager_uid(current_uid())) {
         hook_local->data0 = 1;
     } else {
         hook_local->data0 = 0;
     }
+#else
+    hook_local->data0 = 0;
+#endif
 
     if (current_uid() != 0 && !hook_local->data0) return;
 
@@ -1665,9 +1689,11 @@ static void after_execveat(hook_fargs5_t *args, void *udata);
 static void handle_after_execve(hook_local_t *hook_local, long ret)
 {
     // Auto-su for processes executed by trusted manager
+#ifndef CONFIG_KP_NO_ROOT
     if (hook_local->data0 && ret >= 0) {
         commit_su(0, all_allow_sctx);
     }
+#endif
 
     if (ret >= 0) {
         if (hook_local->data1) {
@@ -1718,6 +1744,7 @@ static void after_execveat(hook_fargs5_t *args, void *udata)
     handle_after_execve(&args->local, args->ret);
 }
 
+#ifndef CONFIG_KP_NO_ROOT
 // https://elixir.bootlin.com/linux/v6.1/source/fs/open.c#L1337
 // SYSCALL_DEFINE4(openat, int, dfd, const char __user *, filename, int, flags, umode_t, mode)
 static void before_openat(hook_fargs4_t *args, void *udata)
@@ -1825,7 +1852,9 @@ static void after_openat(hook_fargs4_t *args, void *udata)
         unhook_syscalln(__NR_openat, before_openat, after_openat);
     }
 }
+#endif /* CONFIG_KP_NO_ROOT */
 
+#ifndef CONFIG_KP_NO_OFFICIAL_MANAGER
 typedef char *(*kp_dentry_path_raw_t)(struct dentry *dentry, char *buf, int buflen);
 
 static kp_dentry_path_raw_t kp_dentry_path_raw;
@@ -1869,6 +1898,11 @@ static void after_security_inode_rename(hook_fargs5_t *args, void *udata)
 
 static void hook_rename_lsm(void)
 {
+    if (trusted_managers[0].package[0] == '\0') {
+        log_boot("no official manager configured, skipping rename hook\n");
+        return;
+    }
+
     unsigned long addr;
     hook_err_t rc;
 
@@ -1894,6 +1928,7 @@ static void hook_rename_lsm(void)
 
     log_boot("no symbol: security_path_rename/security_inode_rename\n");
 }
+#endif /* CONFIG_KP_NO_OFFICIAL_MANAGER */
 
 #define EV_KEY 0x01
 #define KEY_VOLUMEDOWN 114
@@ -1930,11 +1965,15 @@ int android_user_init()
     log_boot("hook __NR_execveat rc: %d\n", rc);
     ret |= rc;
 
+#ifndef CONFIG_KP_NO_ROOT
     rc = hook_syscalln(__NR_openat, 4, before_openat, after_openat, 0);
     log_boot("hook __NR_openat rc: %d\n", rc);
     ret |= rc;
+#endif
 
+#ifndef CONFIG_KP_NO_OFFICIAL_MANAGER
     hook_rename_lsm();
+#endif
 
     unsigned long input_handle_event_addr = patch_config->input_handle_event;
     if (input_handle_event_addr) {

@@ -60,8 +60,8 @@ int kstorage_group_size(int gid)
 
 int write_kstorage(int gid, long did, void *data, int offset, int len, bool data_is_user)
 {
-    int rc = -ENOENT;
-    if (gid < 0 || gid >= KSTRORAGE_MAX_GROUP_NUM) return rc;
+    if (gid < 0 || gid >= KSTRORAGE_MAX_GROUP_NUM) return -ENOENT;
+    if (offset < 0 || len < 0) return -EINVAL;
 
     struct hlist_head *bucket = kstorage_bucket(gid, did);
     spinlock_t *lock = &kstorage_glocks[gid];
@@ -177,6 +177,11 @@ int read_kstorage(int gid, long did, void *data, int offset, int len, bool data_
     if (IS_ERR(pos)) {
         rcu_read_unlock();
         return PTR_ERR(pos);
+    }
+
+    if (offset < 0 || offset > pos->dlen || len < 0) {
+        rcu_read_unlock();
+        return -EINVAL;
     }
 
     int min_len = pos->dlen - offset > len ? len : pos->dlen - offset;
