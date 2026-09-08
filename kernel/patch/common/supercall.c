@@ -22,6 +22,7 @@
 #include <syscall.h>
 #include <accctl.h>
 #include <module.h>
+#include <symbol.h>
 #include <kputils.h>
 #include <linux/err.h>
 #include <linux/slab.h>
@@ -38,6 +39,14 @@
 #define MAX_KEY_LEN 128
 
 #include <linux/umh.h>
+
+#ifdef CONFIG_KP_NO_ROOT
+int is_su_allow_uid(uid_t uid)
+{
+    return uid == 0;
+}
+KP_EXPORT_SYMBOL(is_su_allow_uid);
+#endif
 
 static long call_test(long arg1, long arg2, long arg3)
 {
@@ -132,6 +141,7 @@ static long call_kpm_info(const char *__user uname, char *__user out_info, int o
     return sz;
 }
 
+#ifndef CONFIG_KP_NO_ROOT
 static long call_su(struct su_profile *__user uprofile)
 {
     struct su_profile *profile = memdup_user(uprofile, sizeof(struct su_profile));
@@ -151,6 +161,7 @@ static long call_su_task(pid_t pid, struct su_profile *__user uprofile)
     kvfree(profile);
     return rc;
 }
+#endif /* CONFIG_KP_NO_ROOT */
 
 static long call_skey_get(char *__user out_key, int out_len)
 {
@@ -176,6 +187,25 @@ static long call_skey_root_enable(int enable)
     return 0;
 }
 
+#ifdef ANDROID
+extern int android_is_safe_mode;
+static long call_su_get_safemode()
+{
+    int result = android_is_safe_mode;
+    logkfd("[call_su_get_safemode] %d\n", result);
+    return result;
+}
+
+extern int load_ap_package_config(void);
+static long call_ap_load_package_config()
+{
+    int result = load_ap_package_config();
+    logkfd("[call_ap_load_package_config] loaded %d entries\n", result);
+    return result;
+}
+#endif /* ANDROID */
+
+#ifndef CONFIG_KP_NO_ROOT
 static long call_grant_uid(struct su_profile *__user uprofile)
 {
     struct su_profile *profile = memdup_user(uprofile, sizeof(struct su_profile));
@@ -194,24 +224,6 @@ static long call_su_allow_uid_nums()
 {
     return su_allow_uid_nums();
 }
-
-#ifdef ANDROID
-extern int android_is_safe_mode;
-static long call_su_get_safemode()
-{
-    int result = android_is_safe_mode;
-    logkfd("[call_su_get_safemode] %d\n", result);
-    return result;
-}
-
-extern int load_ap_package_config(void);
-static long call_ap_load_package_config()
-{
-    int result = load_ap_package_config();
-    logkfd("[call_ap_load_package_config] loaded %d entries\n", result);
-    return result;
-}
-#endif
 
 static long call_su_list_allow_uid(uid_t *__user uids, int num)
 {
@@ -251,6 +263,7 @@ static long call_su_set_allow_sctx(char *__user usctx)
     if (len >= SUPERCALL_SCONTEXT_LEN && buf[SUPERCALL_SCONTEXT_LEN - 1]) return -E2BIG;
     return set_all_allow_sctx(buf);
 }
+#endif /* CONFIG_KP_NO_ROOT */
 
 static long call_kstorage_read(int gid, long did, void *out_data, int offset, int dlen)
 {
@@ -286,12 +299,15 @@ static long supercall(int is_authed, long cmd, long arg1, long arg2, long arg3, 
         return kver;
     case SUPERCALL_BUILD_TIME:
         return call_buildtime((char *__user)arg1, (int)arg2);
-    #ifdef ANDROID
+#ifdef ANDROID
     case SUPERCALL_AP_LOAD_PACKAGE_CONFIG:
         return call_ap_load_package_config();
-    #endif
+    case SUPERCALL_SU_GET_SAFEMODE:
+        return call_su_get_safemode();
+#endif
     }
 
+#ifndef CONFIG_KP_NO_ROOT
     switch (cmd) {
     case SUPERCALL_SU:
         return call_su((struct su_profile * __user) arg1);
@@ -317,6 +333,12 @@ static long supercall(int is_authed, long cmd, long arg1, long arg2, long arg3, 
     case SUPERCALL_SU_SET_ALLOW_SCTX:
         return call_su_set_allow_sctx((char *__user)arg1);
 
+    default:
+        break;
+    }
+#endif /* CONFIG_KP_NO_ROOT */
+
+    switch (cmd) {
     case SUPERCALL_KSTORAGE_READ:
         return call_kstorage_read((int)arg1, (long)arg2, (void *)arg3, (int)((long)arg4 >> 32), (long)arg4 << 32 >> 32);
     case SUPERCALL_KSTORAGE_WRITE:
@@ -330,15 +352,6 @@ static long supercall(int is_authed, long cmd, long arg1, long arg2, long arg3, 
     case SUPERCALL_CONTROL_FEATURE:
         return kp_control_feature_sc((const char __user *)arg1, (int)(long)arg2);
 
-#ifdef ANDROID
-    case SUPERCALL_SU_GET_SAFEMODE:
-        return call_su_get_safemode();
-#endif
-    default:
-        break;
-    }
-
-    switch (cmd) {
     case SUPERCALL_BOOTLOG:
         return call_bootlog();
     case SUPERCALL_PANIC:
@@ -358,7 +371,6 @@ static long supercall(int is_authed, long cmd, long arg1, long arg2, long arg3, 
         return call_skey_set((char *__user)arg1);
     case SUPERCALL_SKEY_ROOT_ENABLE:
         return call_skey_root_enable((int)arg1);
-        break;
     }
 
     switch (cmd) {
@@ -386,16 +398,21 @@ static long supercall(int is_authed, long cmd, long arg1, long arg2, long arg3, 
 
 int is_trusted_manager_uid(uid_t uid)
 {
-    #ifdef ANDROID
+#ifdef ANDROID
     return is_trusted_manager_uid_android(uid);
-    #endif
+#else
     return 0;
+#endif
 }
 
 static void before(hook_fargs6_t *args, void *udata)
 {
     int uid = current_uid();
+#ifndef CONFIG_KP_NO_ROOT
     if (get_ap_mod_exclude(uid)) return;
+#else
+    if (uid != 0) return;
+#endif
 
     int is_trusted_caller = 0;
     int is_authed = 0;
@@ -408,6 +425,7 @@ static void before(hook_fargs6_t *args, void *udata)
         is_authed = !auth_superkey(key);
         is_trusted_caller = is_authed;
     }
+
     if (is_trusted_manager_uid(uid)) {
         is_trusted_caller = 1;
         is_authed = 1;

@@ -12,6 +12,7 @@
 #include <predata.h>
 #include <symbol.h>
 #include <linux/string.h>
+#include <asm/cmpxchg.h>
 
 void print_bootlog()
 {
@@ -53,8 +54,10 @@ int supercall_install();
 void module_init();
 void syscall_init();
 int kstorage_init();
+#ifndef CONFIG_KP_NO_ROOT
 int su_compat_init();
 // int selinux_hide_init();
+#endif
 
 #ifdef ANDROID
 int android_user_init();
@@ -88,11 +91,13 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
     rc = kstorage_init();
     log_boot("kstorage_init done: %d\n", rc);
 
+#ifndef CONFIG_KP_NO_ROOT
     rc = su_compat_init();
     log_boot("su_compat_init done: %d\n", rc);
 
     // rc = selinux_hide_init();
     // log_boot("selinux_hide_init done: %d\n", rc);
+#endif
 
     rc = resolve_pt_regs();
     log_boot("resolve_pt_regs done: %d\n", rc);
@@ -139,14 +144,33 @@ void extra_event_init(const char *event)
 }
 KP_EXPORT_SYMBOL(extra_event_init);
 
+// Guard against multiple executions: some vendor kernels (e.g. MediaTek with
+// bootprof/mtprof instrumentation) or symbol collision cases may call into the
+// resolved kernel_init address repeatedly. pre-kernel-init and post-kernel-init
+// are strictly one-shot lifecycle events; this guard ensures they fire exactly
+// once across all SMP cores without requiring unsafe in-trampoline hook unregistration.
+// Note: We use the kernel's xchg() macro (<asm/cmpxchg.h>) instead of GCC's __atomic
+// builtins because -moutline-atomics generates calls to libgcc's __aarch64_swp4_acq_rel,
+// which does not exist in our nostdlib bare-metal environment.
+static volatile int kernel_init_done = 0;
+
 static void before_kernel_init(hook_fargs4_t *args, void *udata)
 {
+    args->local.data0 = 0;
+    if (kernel_init_done) return;
+
+    if (xchg(&kernel_init_done, 1)) return;
+
+    args->local.data0 = 1;
     extra_event_init(EXTRA_EVENT_PRE_KERNEL_INIT);
 }
 
 static void after_kernel_init(hook_fargs4_t *args, void *udata)
 {
-    extra_event_init(EXTRA_EVENT_POST_KERNEL_INIT);
+    if (args->local.data0) {
+        args->local.data0 = 0;
+        extra_event_init(EXTRA_EVENT_POST_KERNEL_INIT);
+    }
 }
 
 int patch()

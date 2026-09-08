@@ -330,10 +330,12 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
 {
     int is_key_auth = 0;
     int is_trusted_manager = 0;
+#if ANDROID
     is_trusted_manager = is_trusted_manager_uid(current_uid());
     if (is_trusted_manager) {
         is_key_auth = 1;
     }
+#endif /* ANDROID */
     // key
     const char __user *p1 = get_user_arg_ptr(0, *uargv, 1);
     if (!p1 || IS_ERR(p1)) return;

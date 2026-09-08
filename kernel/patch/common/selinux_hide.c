@@ -385,7 +385,7 @@ static int selinux_hide_install_hooks(void)
 
     }else{
         log_boot("selinux_hide: using fp_hook to hook write_op\n");
-        write_op = lookup_name_with_suffix("write_op");
+        write_op = (sel_write_op_fn *)lookup_name_with_suffix("write_op");
         if (!write_op) {
             rc = -ENOENT;
             log_boot("selinux_hide: write_op not found\n");

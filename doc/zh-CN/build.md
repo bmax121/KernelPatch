@@ -10,6 +10,24 @@ export TARGET_COMPILE=aarch64-none-elf-
 cd kernel
 export ANDROID=1 # Android 版本，包含 su 命令支持
 make
+
+# 或者在不包含内置 root 的情况下编译
+make NO_ROOT=1
+# 或 Android 版本不包含内置 root
+make ANDROID=1 NO_ROOT=1
+
+# Manager 可选标志：
+# 当 NO_ROOT=1 时，官方 Manager 的 rename hook 和 APK 扫描默认处于禁用状态。
+# 在 NO_ROOT 构建中启用官方 Manager 包监控：
+make ANDROID=1 NO_ROOT=1 OFFICIAL_MANAGER=1
+# 在标准 root 构建中禁用官方 Manager rename hook：
+make ANDROID=1 NO_MANAGER=1
+
+# 自动加载 KPM 模块（适用于无官方 Manager 或启用 NO_ROOT 的构建）：
+# 在 /data 分区挂载后（post-fs-data 阶段，Zygote 启动前）自动从 /data/adb/kpm 或 /data/adb/ap/kpm 加载 KPM 模块：
+make ANDROID=1 NO_ROOT=1 AUTOLOAD_KPM=1
+# 或在无官方 Manager 的标准 root 构建中：
+make ANDROID=1 NO_MANAGER=1 AUTOLOAD_KPM=1
 ```
 
 ## 编译 kptools

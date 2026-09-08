@@ -10,6 +10,9 @@
 #include <uapi/scdefs.h>
 #include <hook.h>
 
+#include <uapi/asm-generic/errno.h>
+
+#ifndef CONFIG_KP_NO_ROOT
 extern const char sh_path[];
 extern const char default_su_path[];
 extern const char legacy_su_path[];
@@ -46,5 +49,23 @@ void sucompat_unregister_path_probe_hooks(void);
 /* Supercall handler: control a feature by name.
  * state: 1=enable, 0=disable, -1=query current state. */
 long kp_control_feature_sc(const char __user *uname, int state);
+#else
+int is_su_allow_uid(uid_t uid);
+static inline int su_compat_init(void) { return 0; }
+static inline void sucompat_init(void) {}
+static inline int su_add_allow_uid(uid_t uid, uid_t to_uid, const char *scontext) { (void)uid; (void)to_uid; (void)scontext; return -ENOSYS; }
+static inline int su_remove_allow_uid(uid_t uid) { (void)uid; return -ENOSYS; }
+static inline int su_allow_uid_nums(void) { return 0; }
+static inline int su_allow_uids(int is_user, uid_t *out_uids, int out_num) { (void)is_user; (void)out_uids; (void)out_num; return 0; }
+static inline int su_allow_uid_profile(int is_user, uid_t uid, struct su_profile *profile) { (void)is_user; (void)uid; (void)profile; return -ENOSYS; }
+static inline int su_reset_path(const char *path) { (void)path; return -ENOSYS; }
+static inline const char *su_get_path(void) { return ""; }
+static inline int get_ap_mod_exclude(uid_t uid) { (void)uid; return 0; }
+static inline int set_ap_mod_exclude(uid_t uid, int exclude) { (void)uid; (void)exclude; return -ENOSYS; }
+static inline int list_ap_mod_exclude(uid_t *uids, int len) { (void)uids; (void)len; return 0; }
+static inline void sucompat_register_path_probe_hooks(void) {}
+static inline void sucompat_unregister_path_probe_hooks(void) {}
+static inline long kp_control_feature_sc(const char __user *uname, int state) { (void)uname; (void)state; return -ENOSYS; }
+#endif /* CONFIG_KP_NO_ROOT */
 
 #endif

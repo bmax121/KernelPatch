@@ -10,12 +10,16 @@
 
 int load_ap_package_config(void);
 int load_ap_kpm_modules(void);
+#ifdef CONFIG_KP_AUTOLOAD_KPM
+int autoload_kpm_modules(void);
+#endif
 
 #ifdef ANDROID
 int refresh_trusted_manager_uid(void);
 int refresh_trusted_manager_state(void);
-
+#ifndef CONFIG_KP_NO_OFFICIAL_MANAGER
 uid_t get_trusted_manager_uid(void);
+#endif
 int is_trusted_manager_uid_android(uid_t uid);
 #endif
 

@@ -28,6 +28,7 @@
 
 extern void kp_debug_write(const char *fmt, ...);
 
+#ifndef CONFIG_KP_NO_ROOT
 char all_allow_sctx[SUPERCALL_SCONTEXT_LEN] = { '\0' };
 uint32_t all_allow_sid = SECSID_NULL;
 
@@ -174,6 +175,7 @@ int task_su(pid_t pid, uid_t to_uid, const char *sctx)
 out:
     return rc;
 }
+#endif /* CONFIG_KP_NO_ROOT */
 
 static int (*avc_denied_backup)(struct selinux_state *state, void *ssid, void *tsid, void *tclass, void *requested,
                                 void *driver, void *xperm, void *flags, struct av_decision *avd) = 0;
@@ -181,6 +183,7 @@ static int (*avc_denied_backup)(struct selinux_state *state, void *ssid, void *t
 static int avc_denied_replace(struct selinux_state *_state, void *_ssid, void *_tsid, void *_tclass, void *_requested,
                               void *_driver, void *_xperm, void *_flags, struct av_decision *_avd)
 {
+#ifndef CONFIG_KP_NO_ROOT
     if (all_allow_sid != SECSID_NULL) {
         u32 ssid = (u32)(u64)_ssid;
         if ((uint64_t)_state <= 0xffffffffL) {
@@ -195,6 +198,12 @@ static int avc_denied_replace(struct selinux_state *_state, void *_ssid, void *_
     if (unlikely(task_ext_valid(ext) && (ext->sel_allow || ext->priv_sel_allow))) {
         goto allow;
     }
+#else
+    struct task_ext *ext = get_current_task_ext();
+    if (unlikely(task_ext_valid(ext) && ext->priv_sel_allow)) {
+        goto allow;
+    }
+#endif
 
     int rc = avc_denied_backup(_state, _ssid, _tsid, _tclass, _requested, _driver, _xperm, _flags, _avd);
     return rc;
@@ -218,6 +227,7 @@ static int slow_avc_audit_replace(struct selinux_state *_state, void *_ssid, voi
                                   void *_requested, void *_audited, void *_denied, void *_result,
                                   struct common_audit_data *_a)
 {
+#ifndef CONFIG_KP_NO_ROOT
     if (all_allow_sid != SECSID_NULL) {
         u32 ssid = (u64)_ssid;
         if ((uint64_t)_state <= 0xffffffffL) {
@@ -232,6 +242,12 @@ static int slow_avc_audit_replace(struct selinux_state *_state, void *_ssid, voi
     if (unlikely(task_ext_valid(ext) && (ext->sel_allow || ext->priv_sel_allow))) {
         return 0;
     }
+#else
+    struct task_ext *ext = get_current_task_ext();
+    if (unlikely(task_ext_valid(ext) && ext->priv_sel_allow)) {
+        return 0;
+    }
+#endif
 
     int rc = slow_avc_audit_backup(_state, _ssid, _tsid, _tclass, _requested, _audited, _denied, _result, _a);
     return rc;
@@ -258,3 +274,21 @@ int bypass_selinux()
 
     return 0;
 }
+
+#if defined(CONFIG_KP_NO_ROOT) && defined(CONFIG_KP_NO_OFFICIAL_MANAGER)
+void unhook_bypass_selinux(void)
+{
+    unsigned long avc_denied_addr = patch_config->avc_denied;
+    if (avc_denied_addr && avc_denied_backup) {
+        unhook((void *)avc_denied_addr);
+        avc_denied_backup = 0;
+    }
+
+    unsigned long slow_avc_audit_addr = patch_config->slow_avc_audit;
+    if (slow_avc_audit_addr && slow_avc_audit_backup) {
+        unhook((void *)slow_avc_audit_addr);
+        slow_avc_audit_backup = 0;
+    }
+    log_boot("unhooked bypass_selinux (SELinux restored to pristine state)\n");
+}
+#endif
