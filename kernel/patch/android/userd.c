@@ -1790,14 +1790,24 @@ static void before_openat(hook_fargs4_t *args, void *udata)
     }
 
     int cplen = 0;
-    cplen = compat_copy_to_user((void *)filename, REPLACE_RC_FILE, sizeof(REPLACE_RC_FILE));
+    /* The in-place rewrite overwrites the caller's own filename buffer, so it is
+     * only safe when that buffer is at least as long as the replacement string.
+     * A shorter original path (e.g. "/init.rc") would otherwise be overrun; fall
+     * through to the stack copy in that case. */
+    if (strlen(origin_rc) + 1 >= sizeof(REPLACE_RC_FILE)) {
+        cplen = compat_copy_to_user((void *)filename, REPLACE_RC_FILE, sizeof(REPLACE_RC_FILE));
+    }
     if (cplen > 0) {
         args->local.data0 = cplen;
-        args->local.data1 = (uint64_t)args->arg1;
+        /* Read/write the filename argument through syscall_argn rather than
+         * args->arg1: under the global el0_svc_common hook fargs->arg1 is the
+         * syscall number (scno), not x1, so direct arg access would restore the
+         * wrong pointer and the redirect would not take effect. */
+        args->local.data1 = syscall_argn(args, 1);
         log_boot("redirect rc file: %x\n", args->local.data0);
     } else {
         void *__user up = copy_to_user_stack(REPLACE_RC_FILE, sizeof(REPLACE_RC_FILE));
-        args->arg1 = (uint64_t)up;
+        set_syscall_argn(args, 1, (uint64_t)up);
         log_boot("redirect rc file stack: %llx\n", up);
     }
 
@@ -1813,12 +1823,13 @@ out:
 static void after_openat(hook_fargs4_t *args, void *udata)
 {
     if (args->local.data0 && args->local.data3 > 0) {
-        
         const char *origin_rc = ORIGIN_RC_FILES[args->local.data3 - 1];
-        compat_copy_to_user(
-            (void *)args->local.data1,
-            origin_rc,
-            sizeof(ORIGIN_RC_FILES[args->local.data3 - 1]));
+        /* Restore exactly the bytes the before phase overwrote (data0 is that
+         * count). Copying the whole 64-byte ORIGIN_RC_FILES slot wrote ~46
+         * bytes past the caller's filename buffer and corrupted userspace
+         * memory, killing init. The untouched tail of the original string is
+         * still intact, so restoring the overwritten prefix suffices. */
+        compat_copy_to_user((void *)args->local.data1, origin_rc, (int)args->local.data0);
         log_boot("restore rc file: %x\n", args->local.data0);
     }
     if (args->local.data2) {

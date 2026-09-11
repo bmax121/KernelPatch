@@ -166,4 +166,40 @@ hook_err_t hook_compat_syscalln(int nr, int narg, void *before, void *after, voi
 
 void unhook_compat_syscalln(int nr, void *before, void *after);
 
+/**
+ * @brief Install the single el0_svc_common hook that backs hook_syscalln.
+ *
+ * Must run after bypass_kcfi() and after syscall_init() so the syscall-wrapper
+ * detection is available. On failure (or when el0_svc_common cannot be
+ * resolved) hook_syscalln transparently keeps using the per-syscall mechanism.
+ */
+void syscall_dispatch_init(void);
+
+/**
+ * @brief Non-zero once the global el0_svc_common hook is active.
+ */
+int syscall_hook_global_enabled(void);
+
+/**
+ * @brief Register the uid gate the dispatcher evaluates once per syscall before
+ * dispatching any callback. Returning 0 from @param gate suppresses every
+ * callback for that syscall (except slots registered with bypass_gate), so
+ * callbacks do not each need their own root check. Passing NULL disables it.
+ */
+void syscall_hook_set_gate(int (*gate)(void));
+
+/**
+ * @brief Per-syscall hook that preserves the original mechanism, including
+ * skip_origin support.
+ */
+hook_err_t hook_syscalln_legacy(int nr, int narg, void *before, void *after, void *udata);
+
+/**
+ * @brief Register a syscall hook whose before callback may set skip_origin to
+ * suppress the real syscall. Uses the global dispatcher when it is hooked at
+ * invoke_syscall (handler granularity), otherwise falls back to the per-syscall
+ * mechanism. Used by the magic supercall.
+ */
+hook_err_t hook_syscalln_override(int nr, int narg, void *before, void *after, void *udata);
+
 #endif

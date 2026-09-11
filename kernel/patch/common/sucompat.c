@@ -57,6 +57,8 @@ static int su_kstorage_gid = -1;
 static int exclude_kstorage_gid = -1;
 static void su_register_path_probe_hooks(void);
 static void su_unregister_path_probe_hooks(void);
+static int su_hook_getname_flags(void);
+static int su_syscall_gate(void);
 long kp_control_feature_sc(const char __user *uname, int state)
 {
     char name[64];
@@ -86,7 +88,26 @@ long kp_control_feature_sc(const char __user *uname, int state)
 }
 KP_EXPORT_SYMBOL(kp_control_feature_sc);
 
-int is_su_allow_uid(uid_t uid)
+/*
+ * is_su_allow_uid() walks the kstorage hash under RCU. It runs on every
+ * fstatat/faccessat (the su-path probe) and in every su-gated callback, so that
+ * walk is a measurable per-call cost and a timing fingerprint for those syscalls.
+ * Memoise the answer per uid in a lockless direct-mapped table, keyed by
+ * kstorage_generation() which every list write bumps. An entry stamped with the
+ * current generation can only have been produced by a lookup that already
+ * observed the new list; a stale rendezvous just misses and re-queries, never
+ * returns a stale answer. Only the membership bit is cached: profiles/scontext
+ * are still read live where they are needed.
+ */
+#define SU_ALLOW_CACHE_N 256
+/* Entries never expire by time; they are invalidated by kstorage_generation().
+ * 31 generation bits put wrap at ~2.1e9 writes, so an entry can never survive
+ * long enough to alias the current generation. */
+#define SU_ALLOW_GEN_BITS 31
+#define SU_ALLOW_GEN_MASK ((1u << SU_ALLOW_GEN_BITS) - 1)
+static u64 su_allow_cache[SU_ALLOW_CACHE_N];
+
+static int is_su_allow_uid_slow(uid_t uid)
 {
     int rc = 0;
     rcu_read_lock();
@@ -99,6 +120,21 @@ int is_su_allow_uid(uid_t uid)
 out:
     rcu_read_unlock();
     return rc;
+}
+
+int is_su_allow_uid(uid_t uid)
+{
+    u32 gen = kstorage_generation();
+    u32 slot = (uid * 2654435761u) & (SU_ALLOW_CACHE_N - 1);
+    u64 e = __atomic_load_n(&su_allow_cache[slot], __ATOMIC_RELAXED);
+
+    if ((u32)(e >> 32) == (u32)uid && (u32)((e >> 1) & SU_ALLOW_GEN_MASK) == (gen & SU_ALLOW_GEN_MASK))
+        return (int)(e & 1);
+
+    int granted = is_su_allow_uid_slow(uid) ? 1 : 0;
+    u64 ne = ((u64)(u32)uid << 32) | ((u64)(gen & SU_ALLOW_GEN_MASK) << 1) | (u64)(u32)granted;
+    __atomic_store_n(&su_allow_cache[slot], ne, __ATOMIC_RELAXED);
+    return granted;
 }
 KP_EXPORT_SYMBOL(is_su_allow_uid);
 
@@ -361,10 +397,26 @@ __maybe_unused static void before_execveat(hook_fargs5_t *args, void *udata)
 // 		int, dfd, const char __user *, filename, unsigned, flags,
 // 		unsigned int, mask,
 // 		struct statx __user *, buffer)
+/* Evaluated once per syscall by the dispatcher (syscall_hook_set_gate). Only
+ * root / su-allow / trusted-manager callers reach the callbacks at all, which is
+ * what lets su_handler_arg1_ufilename_before and friends drop their own root
+ * checks: for everyone else the dispatcher runs no callback, on any syscall, so
+ * there is no per-syscall signature and no cross-syscall inconsistency. */
+static int su_syscall_gate(void)
+{
+    uid_t uid = current_uid();
+    return uid == 0 || is_su_allow_uid(uid) || is_trusted_manager_uid(uid);
+}
+
 __maybe_unused static void su_handler_arg1_ufilename_before(hook_fargs6_t *args, void *udata)
 {
     uid_t uid = current_uid();
-    if (!is_su_allow_uid(uid) && !is_trusted_manager_uid(uid)) return;
+
+    /* In global-dispatcher mode the dispatcher already gated this callback on the
+     * caller's uid (su_syscall_gate), so the check would be redundant; the legacy
+     * per-syscall fallback has no gate, so it must stay there. udata == 1 marks a
+     * gated registration. */
+    if (!udata && uid != 0 && !is_su_allow_uid(uid) && !is_trusted_manager_uid(uid)) return;
 
     char __user **u_filename_p = (char __user **)syscall_argn_p(args, 1);
 
@@ -505,6 +557,11 @@ int su_compat_init()
     su_add_allow_uid(0, 0, all_allow_sctx);
 #endif
 
+    /* Gate every syscall-hook callback on the caller's uid, once per syscall, in
+     * the dispatcher. Installed before the hooks below so none of them ever runs
+     * for an unprivileged process. */
+    syscall_hook_set_gate(su_syscall_gate);
+
     hook_err_t rc = HOOK_NO_ERR;
 
     uint8_t su_config = patch_config->patch_su_config;
@@ -532,6 +589,12 @@ int su_compat_init()
     rc = hook_compat_syscalln(387, 5, before_execveat, 0, (void *)1);
     log_boot("hook 32 __NR_execveat rc: %d\n", rc);
 
+    su_register_path_probe_hooks();
+
+    return 0;
+}
+static int su_hook_getname_flags(void)
+{
     // Redirect the su path only for granted uids: after_getname_flags checks
     // is_su_allow_uid/is_trusted_manager_uid, so a granted app's stat/access on
     // /system/bin/su or /system/bin/kp lands on the real /system/bin/sh and the
@@ -541,6 +604,7 @@ int su_compat_init()
     // LTO kernels (e.g. OPPO 6.1) emit getname_flags as a CFI wrapper with zero
     // callers; the real entry all path syscalls reach is __original_getname_flags.
     // Prefer it, fall back to getname_flags for non-LTO builds.
+    hook_err_t rc = 0;
     unsigned long getname_flags_addr = 0;
     getname_flags_addr = kallsyms_lookup_name("__original_getname_flags");
     if (!getname_flags_addr) {
@@ -553,10 +617,9 @@ int su_compat_init()
         log_boot("hook getname_flags rc: %d\n", rc);
     } else {
         log_boot("getname_flags not found\n");
+        rc = -HOOK_BAD_ADDRESS;
     }
-
-
-    return 0;
+    return rc;
 }
 
 static void su_register_path_probe_hooks(void)
@@ -566,17 +629,21 @@ static void su_register_path_probe_hooks(void)
     #endif
     hook_err_t rc;
 
-    rc = hook_syscalln(__NR3264_fstatat, 4, su_handler_arg1_ufilename_before, 0, (void *)0);
+    /* udata == 1 tells the callback the dispatcher gate already handled the uid
+     * check; without the global dispatcher it must do the check itself. */
+    void *gated = syscall_hook_global_enabled() ? (void *)1 : (void *)0;
+
+    rc = hook_syscalln(__NR3264_fstatat, 4, su_handler_arg1_ufilename_before, 0, gated);
     log_boot("hook __NR3264_fstatat rc: %d\n", rc);
 
-    rc = hook_syscalln(__NR_faccessat, 3, su_handler_arg1_ufilename_before, 0, (void *)0);
+    rc = hook_syscalln(__NR_faccessat, 3, su_handler_arg1_ufilename_before, 0, gated);
     log_boot("hook __NR_faccessat rc: %d\n", rc);
 
     /* 32-bit compat probes: fstatat64(327) / faccessat(334) */
-    rc = hook_compat_syscalln(327, 4, su_handler_arg1_ufilename_before, 0, (void *)0);
+    rc = hook_compat_syscalln(327, 4, su_handler_arg1_ufilename_before, 0, gated);
     log_boot("hook 32 __NR_fstatat64 rc: %d\n", rc);
 
-    rc = hook_compat_syscalln(334, 3, su_handler_arg1_ufilename_before, 0, (void *)0);
+    rc = hook_compat_syscalln(334, 3, su_handler_arg1_ufilename_before, 0, gated);
     log_boot("hook 32 __NR_faccessat rc: %d\n", rc);
 }
 
@@ -590,6 +657,7 @@ static void su_unregister_path_probe_hooks(void)
 
 void sucompat_init()
 {
+    return;
     struct file *file = filp_open(sucompat_file, O_RDONLY, 0);
     if (IS_ERR(file)) {
         log_boot("failed to open sucompat file: %ld\n", PTR_ERR(file));

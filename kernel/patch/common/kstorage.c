@@ -18,6 +18,35 @@
 
 #define KSTRORAGE_MAX_GROUP_NUM 4
 
+/* Bumped on every successful write/remove so readers can memoise lookups and
+ * still observe list changes (see is_su_allow_uid). */
+static volatile u32 kstorage_gen = 1;
+
+static inline void kstorage_gen_bump(void)
+{
+#if defined(__aarch64__)
+    /* GCC's outline atomics would call __aarch64_ldadd4_relax, which the
+     * freestanding kpimg link (-nostdlib, no libgcc) cannot resolve. Use the
+     * LL/SC pair, which every arm64 CPU implements. */
+    uint32_t old, tmp;
+    asm volatile("1: ldxr  %w0, [%2]\n"
+                 "   add   %w0, %w0, #1\n"
+                 "   stxr  %w1, %w0, [%2]\n"
+                 "   cbnz  %w1, 1b\n"
+                 : "=&r"(old), "=&r"(tmp)
+                 : "r"(&kstorage_gen)
+                 : "memory");
+#else
+    __atomic_add_fetch(&kstorage_gen, 1, __ATOMIC_RELAXED);
+#endif
+}
+
+u32 kstorage_generation(void)
+{
+    return __atomic_load_n(&kstorage_gen, __ATOMIC_RELAXED);
+}
+KP_EXPORT_SYMBOL(kstorage_generation);
+
 #define KSTORAGE_HASH_BITS 8
 #define KSTORAGE_NBUCKETS (1 << KSTORAGE_HASH_BITS)
 
@@ -120,6 +149,7 @@ int write_kstorage(int gid, long did, void *data, int offset, int len, bool data
             kvfree(old);
         }
     }
+    kstorage_gen_bump();
     return 0;
 }
 KP_EXPORT_SYMBOL(write_kstorage);
@@ -259,6 +289,7 @@ int remove_kstorage(int gid, long did)
                 synchronize_rcu();
                 kvfree(pos);
             }
+            kstorage_gen_bump();
             return 0;
         }
     }

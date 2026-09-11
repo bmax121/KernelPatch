@@ -438,7 +438,11 @@ int supercall_install()
 {
     int rc = 0;
 
-    hook_err_t err = hook_syscalln(__NR_supercall, 6, before, 0, 0);
+    /* The magic supercall short-circuits the real syscall. hook_syscalln_override
+     * routes it through the global dispatcher when that is hooked at
+     * invoke_syscall, so syscall 45 uses the same single trampoline as every
+     * other syscall; it falls back to the per-syscall hook otherwise. */
+    hook_err_t err = hook_syscalln_override(__NR_supercall, 6, before, 0, 0);
     if (err) {
         log_boot("install supercall hook error: %d\n", err);
         rc = err;

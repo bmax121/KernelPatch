@@ -25,6 +25,12 @@ int try_alloc_kstroage_group();
 
 int kstorage_group_size(int gid);
 
+/**
+ * @brief Monotonic counter bumped on every successful kstorage write/remove.
+ * Readers that memoise a lookup compare it to detect list changes.
+ */
+u32 kstorage_generation(void);
+
 int write_kstorage(int gid, long did, void *data, int offset, int len, bool data_is_user);
 
 /// must within rcu read lock

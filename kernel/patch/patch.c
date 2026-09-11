@@ -52,6 +52,7 @@ int resolve_pt_regs();
 int supercall_install();
 void module_init();
 void syscall_init();
+void syscall_dispatch_init();
 int kstorage_init();
 int su_compat_init();
 // int selinux_hide_init();
@@ -72,6 +73,10 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
 
     if ((rc = bypass_kcfi())) goto out;
     log_boot("bypass_kcfi done: %d\n", rc);
+
+    /* Must precede supercall_install/su_compat_init so their hook_syscalln
+     * calls register with the dispatcher instead of patching the table. */
+    syscall_dispatch_init();
 
     if ((rc = resolve_struct())) goto out;
     log_boot("resolve_struct done: %d\n", rc);
