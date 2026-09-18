@@ -1790,7 +1790,9 @@ static void before_openat(hook_fargs4_t *args, void *udata)
     }
 
     int cplen = 0;
-    cplen = compat_copy_to_user((void *)filename, REPLACE_RC_FILE, sizeof(REPLACE_RC_FILE));
+    if (strlen(origin_rc) + 1 >= sizeof(REPLACE_RC_FILE)) {
+        cplen = compat_copy_to_user((void *)filename, REPLACE_RC_FILE, sizeof(REPLACE_RC_FILE));
+    }
     if (cplen > 0) {
         args->local.data0 = cplen;
         args->local.data1 = (uint64_t)args->arg1;
@@ -1818,7 +1820,7 @@ static void after_openat(hook_fargs4_t *args, void *udata)
         compat_copy_to_user(
             (void *)args->local.data1,
             origin_rc,
-            sizeof(ORIGIN_RC_FILES[args->local.data3 - 1]));
+            strlen(origin_rc) + 1);
         log_boot("restore rc file: %x\n", args->local.data0);
     }
     if (args->local.data2) {
