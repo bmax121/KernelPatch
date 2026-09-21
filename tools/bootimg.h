@@ -14,6 +14,10 @@
 #define LZ4_BLOCK_SIZE 0x800000
 #define LZ4HC_CLEVEL 12
 #define AVB_FOOTER_SIZE 64
+#define AVB_FOOTER_MAGIC "AVBf"
+#define AVB_FOOTER_VERSION 1
+/* An AvbVBMetaImageHeader is 256 bytes, so nothing smaller can be metadata. */
+#define AVB_VBMETA_MIN_SIZE 256
 
 struct boot_img_hdr {
     uint8_t magic[8];           // "ANDROID!"
@@ -72,17 +76,33 @@ struct fdt_header {
     uint32_t size_dt_strings;
     uint32_t size_dt_struct;
 };
+/*
+ * AVB footer: the last AVB_FOOTER_SIZE bytes of the image, starting with
+ * "AVBf".  Layout observed on stock boot images (header v3/v4 GKI and Pixel
+ * images, and what the manager side locates the metadata with):
+ *
+ *   0   magic[4]              "AVBf"
+ *   4   version[4]            1, big endian
+ *   8   reserved0[4]          0 on every image seen so far
+ *   12  image_size[8]         original_image_size, big endian
+ *   20  vbmeta_offset[8]      big endian
+ *   28  vbmeta_size[8]        big endian
+ *   36  reserved1[28]
+ *
+ * The numbers are kept as byte arrays so the footer can be copied around and
+ * patched without host endianness or alignment concerns.  The repacker only
+ * rewrites image_size and vbmeta_offset (shifted by the padded kernel size
+ * change) and copies every other byte from the original footer, so fields it
+ * does not know about survive untouched.
+ */
 struct avb_footer {
-    uint32_t reverse[16];
-    /* 0x00 */ uint32_t magic;              /* ("AVBf") */
-    /* 0x04 */ uint32_t version;            /*  0x00000001 */
-    /* 0x08 */ uint64_t reserved1;          /*  0x0000000000000000 */
-    /* 0x10 */ uint32_t data_size1;         /*  0x00022FC000000000 */
-    /* 0x10 */ uint32_t data_size_1;         /*  0x00022FC000000000 */
-    /* 0x16 */ uint32_t data_size2;         /* same as data_size1 */
-    /* 0x16 */ uint32_t data_size_2;         /* same as data_size1 */
-    /* 0x20 */ uint64_t unknown_field;      /* 0x0000000000000940 */
-    /* 0x30 */ uint8_t  padding[24];        /*  */
+    uint8_t magic[4];              /* "AVBf" */
+    uint8_t version[4];            /* big endian, 1 */
+    uint8_t reserved0[4];
+    uint8_t image_size[8];         /* original_image_size */
+    uint8_t vbmeta_offset[8];      /* offset of the vbmeta blob */
+    uint8_t vbmeta_size[8];        /* size of the vbmeta blob */
+    uint8_t reserved1[28];
 } __attribute__((packed));
 
 int repack_bootimg(const char *orig_boot_path,

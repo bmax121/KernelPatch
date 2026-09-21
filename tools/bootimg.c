@@ -20,6 +20,8 @@
 #include "lib/sha/sha1.h"
 // #include "lib/zstd/zstd.h"
 
+_Static_assert(sizeof(struct avb_footer) == AVB_FOOTER_SIZE, "unexpected AVB footer layout");
+
 
 static uint64_t XXH_swap64(uint64_t x) {
     return ((x << 56) & 0xff00000000000000ULL) |
@@ -44,6 +46,25 @@ static uint32_t fdt32_to_cpu(uint32_t val) {
            ((val << 8)  & 0x00ff0000) |
            ((val >> 8)  & 0x0000ff00) |
            ((val >> 24) & 0x000000ff);
+}
+
+/* AVB footer fields are big endian and unaligned; the footer struct keeps them
+ * as byte arrays, so read and write them explicitly. */
+static uint64_t avb_read_be64(const uint8_t *p) {
+    uint64_t v;
+    memcpy(&v, p, sizeof(v));
+    return XXH_swap64(v);
+}
+
+static void avb_write_be64(uint8_t *p, uint64_t v) {
+    v = XXH_swap64(v);
+    memcpy(p, &v, sizeof(v));
+}
+
+static uint32_t avb_read_be32(const uint8_t *p) {
+    uint32_t v;
+    memcpy(&v, p, sizeof(v));
+    return XXH_swap32(v);
 }
 
 void *memmem(const void *haystack, size_t haystacklen,
@@ -783,6 +804,74 @@ int detect_compress_method(compress_head data) {
     return 0; // Raw Kernel
 }
 
+/* Compare two equally sized ranges of two files.  Returns 0 when the ranges are
+ * byte for byte identical. */
+static int file_range_equal(const char *a_path, uint64_t a_offset, const char *b_path, uint64_t b_offset,
+                            uint64_t size) {
+    enum { chunk = 64 * 1024 };
+    int rc = -1;
+    uint8_t *a_buf = malloc(chunk);
+    uint8_t *b_buf = malloc(chunk);
+    FILE *a = fopen(a_path, "rb");
+    FILE *b = fopen(b_path, "rb");
+    if (!a_buf || !b_buf || !a || !b) goto out;
+    if (fseek(a, (long)a_offset, SEEK_SET) != 0 || fseek(b, (long)b_offset, SEEK_SET) != 0) goto out;
+    for (uint64_t done = 0; done < size; done += chunk) {
+        size_t n = (size - done) < chunk ? (size_t)(size - done) : chunk;
+        if (fread(a_buf, 1, n, a) != n || fread(b_buf, 1, n, b) != n) goto out;
+        if (memcmp(a_buf, b_buf, n) != 0) goto out;
+    }
+    rc = 0;
+out:
+    if (a) fclose(a);
+    if (b) fclose(b);
+    free(a_buf);
+    free(b_buf);
+    return rc;
+}
+
+/*
+ * Point the AVB footer of the repacked image at the metadata blob at its new
+ * offset.  The blob must be byte for byte the one the original footer records:
+ * a repack that truncated, dropped or rewrote it must not be signed off with a
+ * footer that claims otherwise.  All other footer fields - including ones this
+ * code does not know about - stay as copied from the original image, which
+ * keeps the algorithm, rollback index and device properties untouched.
+ */
+static int avb_preserve_metadata(const char *orig_path, uint64_t orig_offset, const char *out_path,
+                                 uint64_t out_offset, uint64_t size, uint64_t image_size) {
+    if (file_range_equal(orig_path, orig_offset, out_path, out_offset, size) != 0) {
+        tools_loge("AVB metadata at offset %llu was not preserved, refusing to point the footer at it\n",
+                   (unsigned long long)out_offset);
+        return -1;
+    }
+
+    FILE *out = fopen(out_path, "r+b");
+    if (!out) {
+        tools_loge("Cannot open %s to update the AVB footer\n", out_path);
+        return -1;
+    }
+
+    struct avb_footer footer;
+    int rc = -1;
+    if (fseek(out, -(long)sizeof(footer), SEEK_END) == 0 && fread(&footer, sizeof(footer), 1, out) == 1 &&
+        memcmp(footer.magic, AVB_FOOTER_MAGIC, sizeof(footer.magic)) == 0) {
+        avb_write_be64(footer.image_size, image_size);
+        avb_write_be64(footer.vbmeta_offset, out_offset);
+        if (fseek(out, -(long)sizeof(footer), SEEK_END) == 0 && fwrite(&footer, sizeof(footer), 1, out) == 1) {
+            rc = 0;
+        }
+    }
+    fclose(out);
+
+    if (rc) {
+        tools_loge("Cannot update the AVB footer of %s\n", out_path);
+    } else {
+        tools_logi("- Preserved original AVB metadata at offset %llu\n", (unsigned long long)out_offset);
+    }
+    return rc;
+}
+
 int repack_bootimg_mem(const char *orig_boot_path,
                        const uint8_t *new_kernel, uint32_t new_kernel_size,
                        const char *out_boot_path) {
@@ -805,11 +894,18 @@ int repack_bootimg_mem(const char *orig_boot_path,
     fseek(f_orig, 0, SEEK_END);
     long total_size = ftell(f_orig);
 
-    uint32_t avb_size = 0;
-    //uint8_t *foot_buf = NULL;
-    //foot_buf = malloc(64);
-    fseek(f_orig, total_size-sizeof(avb), SEEK_SET);
-    fread(&avb, sizeof(avb), 1, f_orig);
+    // The AVB footer is the last sizeof(avb) bytes of the image.  Without its
+    // magic the tail is opaque and is only copied back verbatim further down.
+    memset(&avb, 0, sizeof(avb));
+    int has_avb = 0;
+    uint64_t old_vbmeta_offset = 0, old_vbmeta_size = 0;
+    uint64_t new_image_size = 0, new_vbmeta_offset = 0;
+    if (total_size >= (long)sizeof(avb) &&
+        fseek(f_orig, total_size - (long)sizeof(avb), SEEK_SET) == 0 &&
+        fread(&avb, sizeof(avb), 1, f_orig) == 1 &&
+        memcmp(avb.magic, AVB_FOOTER_MAGIC, sizeof(avb.magic)) == 0) {
+        has_avb = 1;
+    }
 
     uint32_t header_ver = hdr.unused[0];
     if (header_ver > 10){header_ver = 0;extracted_size = hdr.unused[0];}
@@ -910,11 +1006,14 @@ int repack_bootimg_mem(const char *orig_boot_path,
     uint32_t rest_data_offset = page_size + old_k_aligned;
     uint32_t rest_data_size = (total_size > rest_data_offset) ? (total_size - rest_data_offset) : 0;
     hdr.kernel_size = final_k_size + dtb_size;
+    uint32_t new_k_total_aligned = ALIGN(hdr.kernel_size, page_size);
     uint32_t checksum_aligned = ALIGN(fmt_size , page_size);
     uint8_t *rest_buf_tmp = NULL;
     uint8_t *rest_buf = NULL;
     uint32_t rest_buf_offset  = 0;
-    if (rest_data_size > 0) {
+    // The tail must be longer than the footer itself: the scan below starts at
+    // rest_data_size - sizeof(avb) and has to stay inside the buffer.
+    if (rest_data_size > sizeof(avb)) {
         // calloc so the last sizeof(avb) bytes (not read from file, they hold the
         // separate AVB footer) are deterministic instead of heap garbage
         rest_buf_tmp = calloc(1, rest_data_size);
@@ -940,6 +1039,70 @@ int repack_bootimg_mem(const char *orig_boot_path,
             free(rest_buf_tmp);
         }
 
+    }
+
+    // The tail is written verbatim, so the output keeps the original image size
+    // unless a bigger kernel pushes it past the old end of the image.
+    if (rest_buf && page_size + (long)new_k_total_aligned + rest_data_size > total_size) {
+        total_size = ALIGN(page_size + (long)new_k_total_aligned + rest_data_size, (long)page_size);
+        tools_logi("Tail no longer fits, growing image to %ld bytes\n", total_size);
+    }
+
+    /*
+     * Repacking only changes the padded kernel size, so everything behind the
+     * kernel - the AVB metadata included - moves by that same delta.  Derive the
+     * new metadata offset from the footer of the original image instead of
+     * searching the image for an "AVB0" header: a boot image can contain more
+     * than one (an embedded GKI certificate next to the metadata the device is
+     * verified against) and only the footer says which one belongs to this
+     * partition.  If the metadata cannot be located, or would not survive the
+     * repack, fail before writing anything instead of pointing the output
+     * footer at the wrong blob.
+     */
+    if (has_avb) {
+        uint64_t old_image_size = avb_read_be64(avb.image_size);
+        old_vbmeta_offset = avb_read_be64(avb.vbmeta_offset);
+        old_vbmeta_size = avb_read_be64(avb.vbmeta_size);
+        int64_t delta = (int64_t)new_k_total_aligned - (int64_t)old_k_aligned;
+        uint64_t footer_offset = (uint64_t)total_size - sizeof(avb);
+        uint8_t magic[4];
+        const char *err = NULL;
+
+        tools_logi("AVB footer: image_size=%llu, vbmeta_offset=%llu, vbmeta_size=%llu, shift=%lld\n",
+                   (unsigned long long)old_image_size, (unsigned long long)old_vbmeta_offset,
+                   (unsigned long long)old_vbmeta_size, (long long)delta);
+
+        if (avb_read_be32(avb.version) != AVB_FOOTER_VERSION) {
+            err = "unsupported AVB footer version";
+        } else if (old_image_size < (uint64_t)page_size + old_k_aligned) {
+            err = "AVB image_size does not cover the kernel";
+        } else if (old_vbmeta_offset < old_image_size || old_vbmeta_offset > footer_offset) {
+            err = "AVB vbmeta_offset points outside the image";
+        } else if (old_vbmeta_size < AVB_VBMETA_MIN_SIZE ||
+                   old_vbmeta_size > footer_offset - old_vbmeta_offset) {
+            err = "AVB vbmeta_size does not fit the image";
+        } else if (fseek(f_orig, (long)old_vbmeta_offset, SEEK_SET) != 0 ||
+                   fread(magic, 1, sizeof(magic), f_orig) != sizeof(magic) ||
+                   memcmp(magic, "AVB0", sizeof(magic)) != 0) {
+            err = "AVB vbmeta_offset does not point at a vbmeta image";
+        } else {
+            new_image_size = (uint64_t)((int64_t)old_image_size + delta);
+            new_vbmeta_offset = (uint64_t)((int64_t)old_vbmeta_offset + delta);
+            if (new_image_size < (uint64_t)page_size + new_k_total_aligned) {
+                err = "AVB image_size would not cover the repacked kernel";
+            } else if (new_vbmeta_offset < new_image_size) {
+                err = "AVB vbmeta_offset would precede the repacked image";
+            } else if (new_vbmeta_offset > footer_offset ||
+                       old_vbmeta_size > footer_offset - new_vbmeta_offset) {
+                err = "AVB metadata would not fit the repacked image";
+            }
+        }
+
+        if (err) {
+            tools_loge("%s, refusing to write a broken AVB footer\n", err);
+            fclose(f_orig);
+            return -5;
+        }
     }
     fclose(f_orig);
 
@@ -1037,86 +1200,49 @@ int repack_bootimg_mem(const char *orig_boot_path,
     }
     tools_logi("dtb_size=%d\n",dtb_size);
 
-    uint32_t new_k_total_aligned = ALIGN(hdr.kernel_size, page_size);
     fseek(f_out, page_size + new_k_total_aligned, SEEK_SET);
-    //tools_logi("rest_data_size=%d,total_size=%d,rest_data_offset=%d,now=%d\n",rest_data_size , total_size , rest_data_offset,page_size + new_k_total_aligned);
-    //const uint8_t avb_magic[] = "AVB0";
-    uint8_t avb_sig[] = {
-        0x41,0x56,0x42,0x30,
-        0x00,0x00,0x00,0x01,
-        0x00,0x00,0x00,0x00,
-        0x00,0x00,0x00,0x00,
-        0x00,0x00,0x00
-    };
-
 
     if (rest_buf) {
-        uint8_t *avb_ptr = memmem(rest_buf, rest_data_size, avb_sig, sizeof(avb_sig));
-
-        if (!avb_ptr) {
-            avb_sig[18] = 0x01; // Try next version
-            avb_ptr = memmem(rest_buf, rest_data_size, avb_sig, sizeof(avb_sig));
-        }
-        if (!avb_ptr) {
-            avb_sig[18] = 0x02; // Try next version
-            avb_ptr = memmem(rest_buf, rest_data_size, avb_sig, sizeof(avb_sig));
-        }
-        if (avb_ptr) {
-            uint8_t *last_avb = NULL;
-            uint8_t *search_ptr = avb_ptr;
-            while (search_ptr) {
-                last_avb = search_ptr;
-                tools_logi("Found AVB footer in rest data.%p\n", search_ptr);
-                uint32_t offset = (uint32_t)(search_ptr - rest_buf) + sizeof(avb_sig);
-                if (offset >= rest_data_size)
-                    break;
-
-                search_ptr = memmem(
-                    rest_buf + offset,
-                    rest_data_size - offset,
-                    avb_sig,
-                    sizeof(avb_sig)
-                );
-            }
-            avb_ptr = last_avb;
-
-        }
-
-        if (avb_ptr) {
-            size_t avb_offset = avb_ptr - rest_buf;
-            tools_logi("avb_offset=%zu\n",avb_offset);
-            uint32_t avb_size = page_size + avb_offset + new_k_total_aligned;
-            avb.data_size1 = XXH_swap32(avb_size);
-            avb.data_size2 = XXH_swap32(avb_size);
-        }
-        if (rest_data_size > total_size - page_size - new_k_total_aligned){
-            // when rest data is larger than original, we need to expand the total size to fit it
-            total_size = ALIGN(page_size + new_k_total_aligned + rest_data_size, page_size);
-        }
         // write exactly the rest data; any slack up to total_size is zero-padded below
         fwrite(rest_buf, 1, rest_data_size, f_out);
     }
-
-
 
     long current_pos = ftell(f_out);
 
     //  Padding
     //tools_logi("current_post=%d,total_size=%d\n",current_pos,total_size);
-    if (current_pos <= total_size - sizeof(avb)) {
-        uint32_t padding = total_size - current_pos - sizeof(avb);
+    long footer_pos = total_size - (long)sizeof(avb);
+    int footer_written = 0;
+    if (current_pos <= footer_pos) {
+        long padding = footer_pos - current_pos;
         if (padding > 0) {
             uint8_t *zero_pad = calloc(1, padding);
             fwrite(zero_pad, 1, padding, f_out);
             free(zero_pad);
         }
-        fwrite(&avb, sizeof(avb), 1, f_out);
+        // Footer of the original image, copied byte for byte.  Its pointers are
+        // rewritten below, once the metadata is confirmed to be intact at its
+        // new offset.
+        fwrite(&avb, 1, sizeof(avb), f_out);
+        footer_written = 1;
+    } else {
+        tools_loge("Repacked image ends at %ld, no room for the AVB footer at %ld\n", current_pos, footer_pos);
     }
 
     fclose(f_out);
     if (compressed_buf) free(compressed_buf);
     if (extracted_dtb) free(extracted_dtb);
     if (rest_buf) free(rest_buf);
+
+    if (has_avb) {
+        if (!footer_written) return -6;
+        // Fail rather than point the footer at a metadata blob that the repack
+        // did not preserve: an image with a wrong footer is rejected by AVB, and
+        // a flashed one would be unusable.
+        int rc = avb_preserve_metadata(orig_boot_path, old_vbmeta_offset, out_boot_path, new_vbmeta_offset,
+                                       old_vbmeta_size, new_image_size);
+        if (rc) return rc;
+    }
 
     tools_logi("Repack completed: %s\n", out_boot_path);
     return 0;
