@@ -203,7 +203,7 @@ int resolve_cred_offset()
     kernel_cap_t new_cap_e = { 0xff }, new_cap_i = { 0xf }, new_cap_p = { 0xfff };
     cap_capset(cred1, cred, &new_cap_e, &new_cap_i, &new_cap_p);
 
-    for (int i = 0; i < CRED_MAX_SIZE; i += sizeof(uint32_t)) {
+    for (int i = 0; i + (int)sizeof(kernel_cap_t) <= CRED_MAX_SIZE; i += sizeof(uint32_t)) {
         if (is_bl(i)) continue;
         kernel_cap_t cap = *(kernel_cap_t *)((uintptr_t)cred + i);
         kernel_cap_t cap1 = *(kernel_cap_t *)((uintptr_t)cred1 + i);
@@ -225,7 +225,7 @@ int resolve_cred_offset()
     }
 
     // cap_bset
-    for (int i = 0; i < CRED_MAX_SIZE; i += sizeof(uint32_t)) {
+    for (int i = 0; i + (int)sizeof(kernel_cap_t) <= CRED_MAX_SIZE; i += sizeof(uint32_t)) {
         if (is_bl(i)) continue;
         kernel_cap_t cap1 = *(kernel_cap_t *)((uintptr_t)cred1 + i);
         if (cap1.val == effective.val) {
@@ -353,7 +353,11 @@ int resolve_cred_offset()
     *(unsigned *)((uintptr_t)new_cred + cred_offset.securebits_offset) = 0;
     cap_task_prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_RAISE, 0xf, 0, 0);
     new_cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
-    for (int i = 0; i < CRED_MAX_SIZE; i += sizeof(uint32_t)) {
+    /* prctl installed a slab cred, not one of our CRED_MAX_SIZE scratch buffers. */
+    unsigned long (*cred_size)(const void *) = (typeof(cred_size))kallsyms_lookup_name("ksize");
+    unsigned long ambient_scan_len = cred_size ? cred_size(new_cred) : CRED_MAX_SIZE;
+    for (int i = 0; i + (int)sizeof(kernel_cap_t) <= CRED_MAX_SIZE &&
+                    i + (int)sizeof(kernel_cap_t) <= ambient_scan_len; i += sizeof(uint32_t)) {
         if (is_bl(i)) continue;
         kernel_cap_t cap = *(kernel_cap_t *)((uintptr_t)cred + i);
         kernel_cap_t new_cap = *(kernel_cap_t *)((uintptr_t)new_cred + i);
@@ -401,7 +405,8 @@ int resolve_task_offset()
     int cred_offset_idx = 0;
     init_cred = get_task_cred(init_task); // todo: get_task_cred not export
     log_boot("    init_cred addr: %llx\n", init_cred);
-    for (uintptr_t i = (uintptr_t)init_task; i < (uintptr_t)init_task + TASK_STRUCT_MAX_SIZE; i += sizeof(uint32_t)) {
+    for (uintptr_t i = (uintptr_t)init_task; i + sizeof(uintptr_t) <= (uintptr_t)init_task + TASK_STRUCT_MAX_SIZE;
+         i += sizeof(uint32_t)) {
         uintptr_t val = *(uintptr_t *)i;
         if (val == (uintptr_t)init_cred) {
             cred_offset[cred_offset_idx++] = i - (uintptr_t)init_task;
@@ -443,7 +448,8 @@ int resolve_task_offset()
     // active_mm
     init_mm = (struct mm_struct *)kallsyms_lookup_name("init_mm");
     if (init_mm) {
-        for (uintptr_t i = (uintptr_t)task; i < (uintptr_t)task + TASK_STRUCT_MAX_SIZE; i += sizeof(uint32_t)) {
+        for (uintptr_t i = (uintptr_t)task; i + sizeof(uintptr_t) <= (uintptr_t)task + TASK_STRUCT_MAX_SIZE;
+             i += sizeof(uint32_t)) {
             uintptr_t active_mm = *(uintptr_t *)i;
             if (active_mm == (uintptr_t)init_mm) {
                 task_struct_offset.active_mm_offset = i - (uintptr_t)task;
