@@ -443,7 +443,7 @@ static ssize_t my_write_access(struct file *file, char *buf, size_t size)
                     /*
                      * Only change seqno.
                      */
-                    seqno = selinux_sepolicy_clean_seq();
+                    seqno = 1;
 
                     /*
                      * Rebuild the response while preserving
