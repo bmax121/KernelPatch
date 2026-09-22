@@ -30,9 +30,17 @@ int selinux_hide_init(void);
 int selinux_hide_post_fs_data(const char *args);
 
 /* Supercall control entry. state: 1 = enable, 0 = disable, < 0 = query.
- * Returns: query -> 1/0 (on/off), or -EOPNOTSUPP when the kernel is too old;
- * set -> 0 on success or a negative errno. */
+ * Query log (prints every intercepted query with the caller uid and its
+ * content -- /sys/fs/selinux/context, /access, /status and setprocattr):
+ *   -2 = query the current level (0/1/2), 2 = off, 3 = intercepted queries
+ *   (the default), 4 = also the internal ss/ redirect hooks.
+ * Returns: feature query -> 1/0 (on/off), log query -> the level;
+ * -EOPNOTSUPP when the kernel is too old; set -> 0 or a negative errno. */
 long selinux_hide_control(int state);
+
+/* Current query-log level (see the KP_QLOG_* block in selinux_hide.c); read by
+ * selinux_sepolicy.c for its level-2 redirect logging. */
+int selinux_hide_query_log_level(void);
 
 /* Whether the feature is currently active. */
 int selinux_hide_is_enabled(void);
