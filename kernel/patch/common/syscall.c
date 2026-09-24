@@ -622,21 +622,12 @@ void syscall_dispatch_init(void)
         name = "invoke_syscall";
         granular = 1;
     }
-    if (!addr) {
-        addr = kallsyms_lookup_name_by_suffix("invoke_syscall");
-        if (addr) {
-            name = "invoke_syscall.<suffix>";
-            granular = 1;
-        }
-    }
+
     if (!addr) {
         addr = kallsyms_lookup_name("el0_svc_common");
         if (addr) name = "el0_svc_common";
     }
-    if (!addr) {
-        addr = kallsyms_lookup_name_by_suffix("el0_svc_common");
-        if (addr) name = "el0_svc_common.<suffix>";
-    }
+    
     if (!addr) {
         log_boot("syscall dispatcher: no invoke_syscall/el0_svc_common, keep per-syscall hooks\n");
         return;

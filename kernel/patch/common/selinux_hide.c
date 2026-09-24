@@ -672,30 +672,20 @@ static int kp_install_fp_slot(uintptr_t slot, void *replace, void **backup, cons
     return 0;
 }
 
-/* Locate the write_op[] entry holding `handler`.  The table is indexed by the
- * selinuxfs inode enum, which gains entries between Android releases (on
- * android16 the fixed indices 5/6 no longer point at context/access), so scan
- * for the resolved function address instead -- the match is the proof. */
-static uintptr_t kp_write_op_slot(unsigned long write_op, unsigned long handler, const char *name)
+
+static uintptr_t kp_found_write_op_slot(unsigned long write_op, unsigned long index)
 {
     sel_write_op_fn *w = (sel_write_op_fn *)write_op;
-
-    if (!write_op || is_bad_address((void *)write_op) || !handler) return 0;
-    for (int i = 0; i < 40; i++) {
-        if ((unsigned long)w[i] == handler) return (uintptr_t)&w[i];
-    }
-    log_boot("selinux_hide: %s not found in write_op[], keeping inline hook\n", name);
+    if (!write_op || is_bad_address((void *)write_op) || !index) return 0;
+    if (!is_bad_address(&w[index])) return (uintptr_t)&w[index];
     return 0;
 }
 
-/* Locate the slot holding `handler` inside a file_operations-like struct. */
-static uintptr_t kp_find_fops_slot(unsigned long ops, unsigned long handler, int words)
+static uintptr_t kp_find_fops_slot(unsigned long ops, unsigned long index)
 {
     unsigned long *p = (unsigned long *)ops;
-
-    if (!ops || is_bad_address((void *)ops) || !handler) return 0;
-    for (int i = 0; i < words; i++)
-        if (p[i] == handler) return (uintptr_t)&p[i];
+    if (!ops || is_bad_address((void *)ops) || !index) return 0;
+    if (!is_bad_address(&p[index])) return (uintptr_t)&p[index];
     return 0;
 }
 
@@ -735,28 +725,36 @@ static int selinux_hide_install_hooks(void)
              write_op, status_ops, sel_write_context_addr, sel_write_access_addr,
              sel_read_handle_status_addr, sel_mmap_handle_status_addr);
 
-    /* context / access: data-pointer hooks through the verified write_op[]
-     * entries (same table the kernel dispatches through). */
-    slot = kp_write_op_slot(write_op, sel_write_context_addr, "sel_write_context");
-    if (slot) {
-        rc = kp_install_fp_slot(slot, (void *)my_write_context, (void **)&orig_context_write,
-                                "sel_write_context");
-        if (rc) goto err;
-    } else {
+    // https://android.googlesource.com/kernel/common/+/refs/heads/android13-5.10/security/selinux/selinuxfs.c?utm_source=chatgpt.com
+    // enum sel_inos 
+    if (sel_write_context_addr) {
         rc = kp_install_hook(sel_write_context_addr, (void *)my_write_context, (void **)&orig_context_write,
                              "sel_write_context");
+        log_boot("selinux_hide: installed hook for sel_write_context\n");
         if (rc) goto err;
+    }else{
+        slot = kp_found_write_op_slot(write_op, SEL_WRITE_OP_CONTEXT);
+        if (slot) {
+            kp_install_fp_slot(slot, (void *)my_write_context, (void **)&orig_context_write,"sel_write_context");
+            log_boot("selinux_hide: installed fp slot for sel_write_context\n");
+        }else{
+            log_boot("selinux_hide: failed to find write_op slot for sel_write_context\n");
+        }
     }
 
-    slot = kp_write_op_slot(write_op, sel_write_access_addr, "sel_write_access");
-    if (slot) {
-        rc = kp_install_fp_slot(slot, (void *)my_write_access, (void **)&orig_access_write,
-                                "sel_write_access");
-        if (rc) goto err;
-    } else {
+    if (sel_write_access_addr) {
         rc = kp_install_hook(sel_write_access_addr, (void *)my_write_access, (void **)&orig_access_write,
                              "sel_write_access");
+        log_boot("selinux_hide: installed hook for sel_write_access\n");
         if (rc) goto err;
+    }else{
+        slot = kp_found_write_op_slot(write_op, SEL_WRITE_OP_ACCESS);
+        if (slot) {
+            kp_install_fp_slot(slot, (void *)my_write_access, (void **)&orig_access_write,"sel_write_access");
+            log_boot("selinux_hide: installed fp slot for sel_write_access\n");
+        }else{
+            log_boot("selinux_hide: failed to find write_op slot for sel_write_access\n");
+        }
     }
 
     /* setprocattr is reached through the LSM hook list (no data slot we can
@@ -764,30 +762,50 @@ static int selinux_hide_install_hooks(void)
     if (selinux_setprocattr_addr) {
         rc = kp_install_hook(selinux_setprocattr_addr, (void *)my_setprocattr, (void **)&orig_setprocattr,
                              "selinux_setprocattr");
+        log_boot("selinux_hide: installed hook for selinux_setprocattr\n");
         if (rc) goto err;
     }
+
 
     /* status read/mmap: data-pointer hooks in the status file_operations. */
-    slot = kp_find_fops_slot(status_ops, sel_read_handle_status_addr, 48);
-    if (slot) {
-        rc = kp_install_fp_slot(slot, (void *)my_sel_read_handle_status, (void **)&orig_sel_read_handle_status,
-                                "sel_read_handle_status");
-        if (rc) goto err;
-    } else if (sel_read_handle_status_addr) {
+
+    // https://android.googlesource.com/kernel/common/%2B/d2f7eca60b29006285d57c7035539e33300e89e5/include/linux/fs.h
+    // struct file_operations {
+
+    if (sel_read_handle_status_addr){
         rc = kp_install_hook(sel_read_handle_status_addr, (void *)my_sel_read_handle_status,
                              (void **)&orig_sel_read_handle_status, "sel_read_handle_status");
+        log_boot("selinux_hide: installed hook for sel_read_handle_status\n");
         if (rc) goto err;
-    }
+    }else{
+        // ssize_t (*write) (struct file *, const char __user *, size_t, loff_t *);
+        slot = kp_find_fops_slot(status_ops, 3);
+        if (slot) {
+            rc = kp_install_fp_slot(slot, (void *)my_sel_read_handle_status, (void **)&orig_sel_read_handle_status,
+                                    "sel_read_handle_status");
+            if (rc) goto err;
+            log_boot("selinux_hide: installed fops slot for sel_read_handle_status\n");
+        } else {
+            log_boot("selinux_hide: failed to find fops slot for sel_read_handle_status\n");
+        }
 
-    slot = kp_find_fops_slot(status_ops, sel_mmap_handle_status_addr, 48);
-    if (slot) {
-        rc = kp_install_fp_slot(slot, (void *)my_sel_mmap_handle_status, (void **)&orig_sel_mmap_handle_status,
-                                "sel_mmap_handle_status");
-        if (rc) goto err;
-    } else if (sel_mmap_handle_status_addr) {
+    }
+    if (sel_mmap_handle_status_addr){
         rc = kp_install_hook(sel_mmap_handle_status_addr, (void *)my_sel_mmap_handle_status,
                              (void **)&orig_sel_mmap_handle_status, "sel_mmap_handle_status");
+        log_boot("selinux_hide: installed hook for sel_mmap_handle_status\n");
         if (rc) goto err;
+    }else{
+        // int (*mmap) (struct file *, struct vm_area_struct *);
+        slot = kp_find_fops_slot(status_ops, 12);
+        if (slot) {
+            rc = kp_install_fp_slot(slot, (void *)my_sel_mmap_handle_status, (void **)&orig_sel_mmap_handle_status,
+                                    "sel_mmap_handle_status");
+            if (rc) goto err;
+            log_boot("selinux_hide: installed fops slot for sel_mmap_handle_status\n");
+        } else {
+            log_boot("selinux_hide: failed to find fops slot for sel_mmap_handle_status\n");
+        }
     }
     return 0;
 err:
