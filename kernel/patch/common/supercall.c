@@ -402,7 +402,7 @@ static void before(hook_fargs6_t *args, void *udata)
     if (has_preset_superkey()) {
         const char *__user key_user = (const char *__user)syscall_argn(args, 0);
         
-        char key[MAX_KEY_LEN];
+        char key[MAX_KEY_LEN] = { 0 };
         long len = compat_strncpy_from_user(key, key_user, MAX_KEY_LEN);
         if (len <= 0) return;
         is_authed = !auth_superkey(key);
