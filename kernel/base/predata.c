@@ -41,9 +41,17 @@ static bool root_superkey_is_set = false;
 
 int auth_superkey(const char *key)
 {
-    int rc = 0;
-    for (int i = 0; superkey[i]; i++) {
-        rc |= (superkey[i] ^ key[i]);
+    size_t configured_len = lib_strnlen(superkey, SUPER_KEY_LEN);
+    size_t key_len = lib_strnlen(key, SUPER_KEY_LEN + 1);
+
+    if (key_len == 0 || key_len >= SUPER_KEY_LEN) return 1;
+
+    int rc = 1;
+    if (configured_len > 0 && configured_len < SUPER_KEY_LEN) {
+        rc = (key_len != configured_len);
+        for (size_t i = 0; i < configured_len; i++) {
+            rc |= (superkey[i] ^ (i < key_len ? key[i] : '\0'));
+        }
     }
     if (!rc) goto out;
 
@@ -52,7 +60,7 @@ int auth_superkey(const char *key)
     BYTE hash[SHA256_BLOCK_SIZE];
     SHA256_CTX ctx;
     sha256_init(&ctx);
-    sha256_update(&ctx, (const BYTE *)key, lib_strnlen(key, SUPER_KEY_LEN));
+    sha256_update(&ctx, (const BYTE *)key, key_len);
     sha256_final(&ctx, hash);
     int len = SHA256_BLOCK_SIZE > ROOT_SUPER_KEY_HASH_LEN ? ROOT_SUPER_KEY_HASH_LEN : SHA256_BLOCK_SIZE;
     rc = lib_memcmp(root_superkey, hash, len);

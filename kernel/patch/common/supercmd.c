@@ -341,8 +341,11 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
     struct su_profile profile = { .to_uid = 0, .scontext = "" };
 
     // auth key
-    char arg1[SUPER_KEY_LEN];
-    if (compat_strncpy_from_user(arg1, p1, sizeof(arg1)) <= 0) return;
+    // Keep two bytes beyond the configured key capacity so a key that is too
+    // long can be distinguished from a valid key ending at the boundary.
+    char arg1[SUPER_KEY_LEN + 2] = { 0 };
+    long arg1_len = compat_strncpy_from_user(arg1, p1, sizeof(arg1));
+    if (arg1_len <= 0 || arg1_len >= sizeof(arg1)) return;
 
     if (!auth_superkey(arg1)) {
         is_key_auth = 1;
