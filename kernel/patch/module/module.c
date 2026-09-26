@@ -19,7 +19,7 @@
 #include <linux/list.h>
 #include <linux/kernel.h>
 #include <linux/spinlock.h>
-#include <linux/mutex.h>
+#include <kp_spinlock.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <linux/rcupdate.h>
@@ -448,7 +448,7 @@ static int elf_header_check(struct load_info *info)
 }
 
 struct module modules = { 0 };
-static DEFINE_MUTEX(module_ctl_lock);
+static spinlock_t module_ctl_lock;
 
 long load_module(const void *data, int len, const char *args, const char *event, void *__user reserved)
 {
@@ -459,7 +459,7 @@ long load_module(const void *data, int len, const char *args, const char *event,
     if ((rc = elf_header_check(info))) goto out;
     if ((rc = setup_load_info(info))) goto out;
 
-    mutex_lock(&module_ctl_lock);
+    unsigned long ctl_flags = kp_private_spin_lock(&module_ctl_lock);
 
     if (find_module(info->info.name)) {
         logkfd("%s exist\n", info->info.name);
@@ -519,7 +519,7 @@ free:
 free1:
     kvfree(mod);
 unlock:
-    mutex_unlock(&module_ctl_lock);
+    kp_private_spin_unlock(&module_ctl_lock, ctl_flags);
 out:
     set_kpm_load_result(reserved, rc, rc ? load_error(info, "load module failed") : "module loaded");
     return rc;
@@ -532,7 +532,7 @@ long unload_module(const char *name, void *__user reserved)
 
     long rc = 0;
 
-    mutex_lock(&module_ctl_lock);
+    unsigned long ctl_flags = kp_private_spin_lock(&module_ctl_lock);
 
     struct module *mod = find_module(name);
     if (!mod) {
@@ -552,7 +552,7 @@ long unload_module(const char *name, void *__user reserved)
     logkfi("name: %s, rc: %d\n", name, rc);
 
 out:
-    mutex_unlock(&module_ctl_lock);
+    kp_private_spin_unlock(&module_ctl_lock, ctl_flags);
     return rc;
 }
 
@@ -615,7 +615,7 @@ long module_control0(const char *name, const char *ctl_args, char *__user out_ms
     logkfi("name %s, args: %s\n", name, ctl_args);
 
     long rc = 0;
-    mutex_lock(&module_ctl_lock);
+    unsigned long ctl_flags = kp_private_spin_lock(&module_ctl_lock);
 
     struct module *mod = find_module(name);
     if (!mod) {
@@ -643,7 +643,7 @@ long module_control0(const char *name, const char *ctl_args, char *__user out_ms
 
     logkfi("name: %s, rc: %d\n", name, rc);
 out:
-    mutex_unlock(&module_ctl_lock);
+    kp_private_spin_unlock(&module_ctl_lock, ctl_flags);
     return rc;
 }
 
@@ -772,4 +772,5 @@ int get_module_info(const char *name, char *out_info, int size)
 void module_init()
 {
     INIT_LIST_HEAD(&modules.list);
+    spin_lock_init(&module_ctl_lock);
 }
