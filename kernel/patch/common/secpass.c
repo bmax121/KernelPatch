@@ -10,6 +10,9 @@
 #include <uapi/asm-generic/errno.h>
 
 #include <predata.h>
+#ifndef CONFIG_X86_64
+#include <asm/ptrace.h>
+#endif
 
 struct pt_regs;
 int cfi_bypass = 0;
@@ -17,6 +20,22 @@ static inline bool should_cfi_pass(unsigned long target)
 {
     return is_kp_text_area(target) || is_kp_hook_area(target) || is_kpm_rox_area(target);
 }
+
+#ifndef CONFIG_X86_64
+static void (*skip_cfi_brk)(struct pt_regs *, unsigned long);
+
+/* LTO can inline report_cfi_failure into the arm64 trap handler. Preserve
+ * the existing KP/KPM-only exception even when that function hook is bypassed. */
+static void before_cfi_handler(hook_fargs2_t *args, void *udata)
+{
+    struct pt_regs *regs = (struct pt_regs *)args->arg0;
+    unsigned int target_reg = args->arg1 & 0x1f; /* CFI_BRK_IMM_TARGET */
+    if (user_mode(regs) || target_reg == 31 || !should_cfi_pass(regs->regs[target_reg])) return;
+    skip_cfi_brk(regs, 4);
+    args->ret = 0; /* DBG_HOOK_HANDLED */
+    args->skip_origin = 1;
+}
+#endif
 
 enum bug_trap_type
 {
@@ -49,6 +68,16 @@ static void replace__cfi_slowpath(uint64_t id, void *ptr, void *diag)
 int bypass_kcfi()
 {
     int rc = 0;
+
+    #ifndef CONFIG_X86_64
+    unsigned long cfi_handler_addr = kallsyms_lookup_name("cfi_handler");
+    skip_cfi_brk = (typeof(skip_cfi_brk))kallsyms_lookup_name("arm64_skip_faulting_instruction");
+    if (cfi_handler_addr && skip_cfi_brk) {
+        rc = hook_wrap2((void *)cfi_handler_addr, before_cfi_handler, 0, 0);
+        log_boot("hook cfi_handler: %llx, rc: %d\n", cfi_handler_addr, rc);
+        if (rc) goto out;
+    }
+    #endif
 
     // 6.1.0
     // todo: Is there more elegant way?
