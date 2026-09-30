@@ -759,7 +759,10 @@ int get_module_info(const char *name, char *out_info, int size)
     rcu_read_lock();
 
     struct module *mod = find_module(name);
-    if (!mod) return -ENOENT;
+    if (!mod) {
+        rcu_read_unlock();
+        return -ENOENT;
+    }
 
     int sz = snprintf(out_info, size,
                       "name=%s\n"
