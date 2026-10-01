@@ -316,6 +316,19 @@ static long my_init(const char *args, const char *event, void *reserved)
 }
 ```
 
+## 跨模块符号导出（LKM 风格）
+
+KPM 支持类似内核模块 `EXPORT_SYMBOL` 的跨模块符号导出：
+
+```c
+int my_helper(int a, int b);
+KPM_EXPORT(my_helper);
+```
+
+- `KPM_EXPORT` 将符号写入 `.kpm.export` 段；后加载的 KPM 直接 `extern` 引用即可，加载器按名解析并记录模块依赖。
+- 仍被其他 KPM 引用的模块拒绝卸载（返回 `-EBUSY`），与 `rmmod` 的 in-use 语义一致；引用方卸载或加载失败时自动回滚引用计数。
+- kpimg 与 LKM 两个后端行为一致。
+
 ## 从用户空间加载和管理模块
 
 使用 `supercall.h` 中的 API 在运行时管理 KPM：

@@ -8,6 +8,8 @@
 
 #include <asm-generic/module.h>
 #include <kpmodule.h>
+#include <kpmlink.h>
+#include <kpmdep.h>
 
 struct load_info
 {
@@ -51,6 +53,14 @@ struct module
     unsigned int ro_size;
 
     void *start;
+    struct kpm_link_state link;
+
+    /* LKM-style cross-KPM exports (KPM_EXPORT -> .kpm.export) + deps */
+    const struct kpm_export_entry *exports;
+    unsigned int export_count;
+    struct module *deps[KPM_DEP_MAX]; /* providers we import from */
+    unsigned int dep_count;
+    unsigned int export_refs;         /* modules importing from us */
 
     struct list_head list;
 };

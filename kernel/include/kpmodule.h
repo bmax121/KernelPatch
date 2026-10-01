@@ -47,4 +47,20 @@ typedef long (*mod_eventcall_t)(const char *event, const char *args, void *reser
 #define KPM_EVENT(fn) \
     static mod_eventcall_t __kpm_eventcall_##fn __attribute__((__used__)) __attribute__((__section__(".kpm.event"))) = fn
 
+/* LKM EXPORT_SYMBOL equivalent: publish a symbol for later KPMs.  The entry
+ * lands in the allocatable .kpm.export section; the loader relocates it and
+ * resolves other KPMs' `extern` references against it, tracking module
+ * dependencies the same way the kernel module loader does. */
+struct kpm_export_entry {
+    const char *name;
+    void *target;
+};
+
+#define KPM_EXPORT(sym)                                                                \
+    static const struct kpm_export_entry __kpm_export_##sym __attribute__((__used__))  \
+    __attribute__((__section__(".kpm.export"), aligned(8))) = {                        \
+        .name = #sym,                                                                  \
+        .target = (void *)&sym,                                                        \
+    }
+
 #endif
