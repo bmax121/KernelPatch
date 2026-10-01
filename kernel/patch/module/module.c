@@ -220,14 +220,21 @@ static unsigned long kpm_module_export_lookup(const char *name, struct module *i
         unsigned int i;
         for (i = 0; i < pos->export_count; i++) {
             if (!strcmp(name, pos->exports[i].name)) {
-                if (kpm_dep_record((void **)importer->deps, &importer->dep_count, KPM_DEP_MAX, pos) < 0) {
-                    /* Table full: fail the resolution so the KPM load aborts.
-                     * Silently succeeding here would allow the provider to be
-                     * unloaded while the consumer still holds its symbols. */
-                    logke("dependency table full; cannot import %s from %s\n", name, pos->info.name);
-                    goto out;
+                {
+                    int edge = kpm_dep_record((void **)importer->deps, &importer->dep_count,
+                                              KPM_DEP_MAX, pos);
+                    if (edge < 0) {
+                        /* Table full: fail the resolution so the KPM load aborts.
+                         * Silently succeeding here would allow the provider to be
+                         * unloaded while the consumer still holds its symbols. */
+                        logke("dependency table full; cannot import %s from %s\n", name, pos->info.name);
+                        goto out;
+                    }
+                    /* Pin the provider before returning its address.  The
+                     * reference stays provisional through importer init and is
+                     * rolled back if loading fails. */
+                    if (edge > 0) pos->export_refs++;
                 }
-                pos->export_refs++;
                 found = (unsigned long)pos->exports[i].target;
                 goto out;
             }
@@ -398,9 +405,32 @@ static int rewrite_section_headers(struct load_info *info)
             return -ENOEXEC;
         if (shdr->sh_addralign && (shdr->sh_addralign & (shdr->sh_addralign - 1)))
             return -ENOEXEC;
-        if (shdr->sh_type != SHT_NOBITS && info->len < shdr->sh_offset + shdr->sh_size) {
+        /* Subtraction, not sh_offset + sh_size: the sum can wrap for a
+         * crafted 64-bit offset and let the bounds check pass. */
+        if (shdr->sh_type != SHT_NOBITS &&
+            (shdr->sh_offset > info->len || shdr->sh_size > info->len - shdr->sh_offset)) {
             return -ENOEXEC;
         }
+        /* sh_name indexes the section string table; bound it before
+         * move_module() hands the name to strcmp(). */
+        {
+            const Elf_Shdr *section_strings = &info->sechdrs[info->hdr->e_shstrndx];
+            if (shdr->sh_name >= section_strings->sh_size ||
+                !memchr(info->secstrings + shdr->sh_name, 0,
+                        section_strings->sh_size - shdr->sh_name))
+                return -ENOEXEC;
+        }
+        /* sh_name indexes the section string table; bound it before any
+         * find_sec()/move_module() string operation consumes it. */
+        {
+            const Elf_Shdr *shstr = &info->sechdrs[info->hdr->e_shstrndx];
+            if (shdr->sh_name >= shstr->sh_size ||
+                !memchr(info->secstrings + shdr->sh_name, 0,
+                        shstr->sh_size - shdr->sh_name))
+                return -ENOEXEC;
+        }
+        if (shdr->sh_addralign && (shdr->sh_addralign & (shdr->sh_addralign - 1)))
+            return -ENOEXEC;
         /* Mark all sections sh_addr with their address in the temporary image. */
         shdr->sh_addr = (size_t)info->hdr + shdr->sh_offset;
     }
@@ -602,7 +632,10 @@ long load_module_ex(const void *data, int len, const char *args, const char *eve
     if ((rc = elf_header_check(info))) goto out;
     if ((rc = setup_load_info(info))) goto out;
 
-    if (find_module(info->info.name)) {
+    rcu_read_lock();
+    bool module_exists = find_module(info->info.name) != NULL;
+    rcu_read_unlock();
+    if (module_exists) {
         logkfd("%s exist\n", info->info.name);
         set_load_error(info, "module already exists");
         rc = -EEXIST;
@@ -653,9 +686,21 @@ long load_module_ex(const void *data, int len, const char *args, const char *eve
     if (!rc) {
         logkfi("[%s] initialized\n", mod->info.name);
         {
-            unsigned long flags = kp_private_spin_lock(&module_lock);
-            list_add_tail(&mod->list, &modules.list);
+            unsigned long flags;
+            bool duplicate;
+            rcu_read_lock();
+            flags = kp_private_spin_lock(&module_lock);
+            duplicate = find_module(mod->info.name) != NULL;
+            if (!duplicate)
+                list_add_tail_rcu(&mod->list, &modules.list);
             kp_private_spin_unlock(&module_lock, flags);
+            rcu_read_unlock();
+            if (duplicate) {
+                set_load_error(info, "module already exists");
+                rc = -EEXIST;
+                (*mod->exit)(reserved);
+                goto free;
+            }
         }
         goto out;
     } else {
@@ -669,8 +714,10 @@ free:
      * the kernel module loader when init_module fails. */
     {
         unsigned int i;
+        unsigned long flags = kp_private_spin_lock(&module_lock);
         for (i = 0; i < mod->dep_count; i++) mod->deps[i]->export_refs--;
         mod->dep_count = 0;
+        kp_private_spin_unlock(&module_lock, flags);
     }
     if (mod->args) kvfree(mod->args);
     kp_free_exec(mod->start);
@@ -684,43 +731,46 @@ out:
 // todo: lock
 long unload_module(const char *name, void *__user reserved)
 {
+    struct module *mod;
+    unsigned long lock_flags;
+    unsigned int i;
+    long rc;
+
     if (!name) return -EINVAL;
+    if (!kfunc(synchronize_rcu)) return -ENOSYS;
     logkfe("name: %s\n", name);
 
     rcu_read_lock();
-    long rc = 0;
-
-    struct module *mod = find_module(name);
+    lock_flags = kp_private_spin_lock(&module_lock);
+    mod = find_module(name);
     if (!mod) {
-        rc = -ENOENT;
-        goto out;
+        kp_private_spin_unlock(&module_lock, lock_flags);
+        rcu_read_unlock();
+        return -ENOENT;
     }
     if (mod->export_refs) {
-        /* LKM rmmod semantics: refuse while other KPMs still import us. */
         logkfe("module %s is in use by %u other KPM(s)\n", name, mod->export_refs);
-        rc = -EBUSY;
-        goto out;
+        kp_private_spin_unlock(&module_lock, lock_flags);
+        rcu_read_unlock();
+        return -EBUSY;
     }
-    list_del(&mod->list);
+    list_del_rcu(&mod->list);
+    kp_private_spin_unlock(&module_lock, lock_flags);
+    rcu_read_unlock();
+
+    kfunc(synchronize_rcu)();
     rc = (*mod->exit)(reserved);
 
-    /* Dropping an importer releases its providers. */
-    {
-        unsigned int i;
-        for (i = 0; i < mod->dep_count; i++) mod->deps[i]->export_refs--;
-        mod->dep_count = 0;
-    }
+    lock_flags = kp_private_spin_lock(&module_lock);
+    for (i = 0; i < mod->dep_count; i++) mod->deps[i]->export_refs--;
+    mod->dep_count = 0;
+    kp_private_spin_unlock(&module_lock, lock_flags);
 
     if (mod->args) kvfree(mod->args);
     if (mod->ctl_args) kvfree(mod->ctl_args);
-
     kp_free_exec(mod->start);
     kvfree(mod);
-
-    logkfi("name: %s, rc: %d\n", name, rc);
-
-out:
-    rcu_read_unlock();
+    logkfi("name: %s, rc: %ld\n", name, rc);
     return rc;
 }
 
@@ -865,7 +915,7 @@ long notify_modules_event(const char *event, const char *args, void *__user rese
     rcu_read_lock();
 
     struct module *pos;
-    list_for_each_entry(pos, &modules.list, list)
+    list_for_each_entry_rcu(pos, &modules.list, list)
     {
         if (!pos->event || !*pos->event) continue;
 
@@ -883,7 +933,7 @@ KP_EXPORT_SYMBOL(notify_modules_event);
 struct module *find_module(const char *name)
 {
     struct module *pos;
-    list_for_each_entry(pos, &modules.list, list)
+    list_for_each_entry_rcu(pos, &modules.list, list)
     {
         if (!strcmp(name, pos->info.name)) {
             return pos;
@@ -898,7 +948,7 @@ int get_module_nums()
 
     struct module *pos;
     int n = 0;
-    list_for_each_entry(pos, &modules.list, list)
+    list_for_each_entry_rcu(pos, &modules.list, list)
     {
         n++;
     }
@@ -917,7 +967,7 @@ int list_modules(char *out_names, int size)
 
     struct module *pos;
     int off = 0;
-    list_for_each_entry(pos, &modules.list, list)
+    list_for_each_entry_rcu(pos, &modules.list, list)
     {
         off += snprintf(out_names + off, size - 1 - off, "%s\n", pos->info.name);
     }

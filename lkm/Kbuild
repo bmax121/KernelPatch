@@ -54,10 +54,10 @@ ifeq ($(strip $(KP_LKM_MAJOR)),)
 KP_LKM_MAJOR := 0
 endif
 ifeq ($(strip $(KP_LKM_MINOR)),)
-KP_LKM_MINOR := 14
+KP_LKM_MINOR := 13
 endif
 ifeq ($(strip $(KP_LKM_PATCH)),)
-KP_LKM_PATCH := 0
+KP_LKM_PATCH := 3
 endif
 ccflags-y += -DKP_LKM_MAJOR=$(KP_LKM_MAJOR) -DKP_LKM_MINOR=$(KP_LKM_MINOR) -DKP_LKM_PATCH=$(KP_LKM_PATCH)
 $(info -- KP version: $(KP_LKM_MAJOR).$(KP_LKM_MINOR).$(KP_LKM_PATCH) from $(KP_VERSION_FILE))

@@ -380,25 +380,38 @@ static unsigned long kpm_module_export_lookup(const char *name, struct kp_module
 	unsigned long found = 0;
 
 	if (!importer) return 0;
-	spin_lock(&module_lock);
-	list_for_each_entry(pos, &modules.list, list) {
-		unsigned int i;
-		for (i = 0; i < pos->export_count; i++) {
-			if (!strcmp(name, pos->exports[i].name)) {
-				if (kpm_dep_record((void **)importer->deps, &importer->dep_count, KPM_DEP_MAX, pos) < 0) {
-					/* Fail resolution: silently succeeding would allow the
-					 * provider to be unloaded while consumer still uses it. */
-					logke("dependency table full; cannot import %s from %s\n", name, pos->info.name);
+	{
+		/* IRQ-safe: kp_kpm_safe_kallsyms_on_each_symbol() takes this same lock
+		 * with spin_lock_irqsave() and can run from a KPM callback context.
+		 * Mixing the two forms lets a same-CPU interrupt deadlock on it. */
+		unsigned long flags;
+		spin_lock_irqsave(&module_lock, flags);
+		list_for_each_entry(pos, &modules.list, list) {
+			unsigned int i;
+			for (i = 0; i < pos->export_count; i++) {
+				if (!strcmp(name, pos->exports[i].name)) {
+					int edge = kpm_dep_record((void **)importer->deps,
+								  &importer->dep_count,
+								  KPM_DEP_MAX, pos);
+					if (edge < 0) {
+						/* Fail resolution: silently succeeding would allow the
+						 * provider to be unloaded while consumer still uses it. */
+						logke("dependency table full; cannot import %s from %s\n",
+						      name, pos->info.name);
+						goto out;
+					}
+					/* Pin the provider before returning its address.  The
+					 * reference stays provisional through importer init and is
+					 * rolled back if loading fails. */
+					if (edge > 0) pos->export_refs++;
+					found = (unsigned long)pos->exports[i].target;
 					goto out;
 				}
-				pos->export_refs++;
-				found = (unsigned long)pos->exports[i].target;
-				goto out;
 			}
 		}
-	}
 out:
-	spin_unlock(&module_lock);
+		spin_unlock_irqrestore(&module_lock, flags);
+	}
 	return found;
 }
 
@@ -563,8 +576,20 @@ static int rewrite_section_headers(struct kp_load_info *info)
             return -ENOEXEC;
         if (shdr->sh_addralign && (shdr->sh_addralign & (shdr->sh_addralign - 1)))
             return -ENOEXEC;
-		if (shdr->sh_type != SHT_NOBITS && info->len < shdr->sh_offset + shdr->sh_size)
+		/* Subtraction, not sh_offset + sh_size: the sum can wrap for a
+		 * crafted 64-bit offset and let the bounds check pass. */
+		if (shdr->sh_type != SHT_NOBITS &&
+		    (shdr->sh_offset > info->len || shdr->sh_size > info->len - shdr->sh_offset))
 			return -ENOEXEC;
+		/* sh_name indexes the section string table; bound it before
+		 * move_module() hands the name to strcmp(). */
+		{
+			const Elf_Shdr *section_strings = &info->sechdrs[info->hdr->e_shstrndx];
+			if (shdr->sh_name >= section_strings->sh_size ||
+				!memchr(info->secstrings + shdr->sh_name, 0,
+						section_strings->sh_size - shdr->sh_name))
+				return -ENOEXEC;
+		}
 		/* Mark all sections sh_addr with their address in the temporary image. */
 		shdr->sh_addr = (size_t)info->hdr + shdr->sh_offset;
 	}
@@ -861,7 +886,7 @@ int kp_kpm_safe_kallsyms_on_each_symbol(kp_kallsyms_cb_t fn, void *data)
 static struct kp_module *kp_find_module(const char *name)
 {
 	struct kp_module *pos;
-	list_for_each_entry(pos, &modules.list, list)
+	list_for_each_entry_rcu(pos, &modules.list, list)
 	{
 		if (!strcmp(name, pos->info.name))
 			return pos;
@@ -965,10 +990,11 @@ long kp_load_module(const void *data, int len, const char *args, const char *eve
 	pr_emerg(KPLKM_TAG ": KPM [%s] init returned %ld\n", mod->info.name, rc);
 
 	if (!rc) {
+		unsigned long lock_flags;
 		logkfi("[%s] succeed\n", mod->info.name);
-		spin_lock(&module_lock);
-		list_add_tail(&mod->list, &modules.list);
-		spin_unlock(&module_lock);
+		spin_lock_irqsave(&module_lock, lock_flags);
+		list_add_tail_rcu(&mod->list, &modules.list);
+		spin_unlock_irqrestore(&module_lock, lock_flags);
 		goto out;
 	} else {
 		set_load_error(info, "module init failed");
@@ -982,8 +1008,11 @@ free:
 	/* A failed load must undo the dependency references it took. */
 	{
 		unsigned int i;
+		unsigned long flags;
+		spin_lock_irqsave(&module_lock, flags);
 		for (i = 0; i < mod->dep_count; i++) mod->deps[i]->export_refs--;
 		mod->dep_count = 0;
+		spin_unlock_irqrestore(&module_lock, flags);
 	}
 	if (mod->args)
 		kvfree(mod->args);
@@ -998,53 +1027,50 @@ out:
 
 long kp_unload_module(const char *name, void __user *reserved)
 {
-	if (!name)
-		return -EINVAL;
-	logkfe("name: %s\n", name);
+    struct kp_module *mod;
+    unsigned long lock_flags;
+    unsigned int i;
+    long rc;
 
-	rcu_read_lock();
-	long rc = 0;
+    if (!name) return -EINVAL;
+    logkfe("name: %s\n", name);
 
-	struct kp_module *mod = kp_find_module(name);
-	if (!mod) {
-		rc = -ENOENT;
-		goto out;
-	}
-	if (mod->export_refs) {
-		/* LKM rmmod semantics: refuse while other KPMs still import us. */
-		logkfe("module %s is in use by %u other KPM(s)\n", name, mod->export_refs);
-		rc = -EBUSY;
-		goto out;
-	}
-	list_del(&mod->list);
-	rc = kp_call_exit(mod->exit, reserved);
+    rcu_read_lock();
+    spin_lock_irqsave(&module_lock, lock_flags);
+    mod = kp_find_module(name);
+    if (!mod) {
+        spin_unlock_irqrestore(&module_lock, lock_flags);
+        rcu_read_unlock();
+        return -ENOENT;
+    }
+    if (mod->export_refs) {
+        logkfe("module %s is in use by %u other KPM(s)\n", name, mod->export_refs);
+        spin_unlock_irqrestore(&module_lock, lock_flags);
+        rcu_read_unlock();
+        return -EBUSY;
+    }
+    list_del_rcu(&mod->list);
+    spin_unlock_irqrestore(&module_lock, lock_flags);
+    rcu_read_unlock();
 
-	/* Dropping an importer releases its providers. */
-	{
-		unsigned int i;
-		for (i = 0; i < mod->dep_count; i++) mod->deps[i]->export_refs--;
-		mod->dep_count = 0;
-	}
+    synchronize_rcu();
+    rc = kp_call_exit(mod->exit, reserved);
 
-	if (mod->args)
-		kvfree(mod->args);
-	if (mod->ctl_args)
-		kvfree(mod->ctl_args);
+    spin_lock_irqsave(&module_lock, lock_flags);
+    for (i = 0; i < mod->dep_count; i++) mod->deps[i]->export_refs--;
+    mod->dep_count = 0;
+    spin_unlock_irqrestore(&module_lock, lock_flags);
 
-	if (kp_set_memory_nx && mod->start) {
-		int npages = (mod->size + PAGE_SIZE - 1) >> PAGE_SHIFT;
-		kp_do_set_memory_nx((unsigned long)mod->start, npages);
-	}
-
-	if (kp_module_memfree && mod->start)
-		kp_free_exec(mod->start);
-	kfree(mod);
-
-	logkfi("name: %s, rc: %ld\n", name, rc);
-
-out:
-	rcu_read_unlock();
-	return rc;
+    if (mod->args) kvfree(mod->args);
+    if (mod->ctl_args) kvfree(mod->ctl_args);
+    if (kp_set_memory_nx && mod->start) {
+        int npages = (mod->size + PAGE_SIZE - 1) >> PAGE_SHIFT;
+        kp_do_set_memory_nx((unsigned long)mod->start, npages);
+    }
+    if (kp_module_memfree && mod->start) kp_free_exec(mod->start);
+    kfree(mod);
+    logkfi("name: %s, rc: %ld\n", name, rc);
+    return rc;
 }
 
 long kp_load_module_path(const char *path, const char *args, void __user *reserved)
@@ -1181,7 +1207,7 @@ long kp_notify_modules_event(const char *event, const char *args, void __user *r
 	rcu_read_lock();
 
 	struct kp_module *pos;
-	list_for_each_entry(pos, &modules.list, list)
+	list_for_each_entry_rcu(pos, &modules.list, list)
 	{
 		if (!pos->event || !*pos->event)
 			continue;
@@ -1203,7 +1229,7 @@ int kp_get_module_nums(void)
 
 	struct kp_module *pos;
 	int n = 0;
-	list_for_each_entry(pos, &modules.list, list)
+	list_for_each_entry_rcu(pos, &modules.list, list)
 	{
 		n++;
 	}
@@ -1223,7 +1249,7 @@ int kp_list_modules(char *out_names, int size)
 
 	struct kp_module *pos;
 	int off = 0;
-	list_for_each_entry(pos, &modules.list, list)
+	list_for_each_entry_rcu(pos, &modules.list, list)
 	{
 		off += snprintf(out_names + off, size - 1 - off, "%s\n", pos->info.name);
 	}
