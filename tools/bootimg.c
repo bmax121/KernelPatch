@@ -1200,7 +1200,11 @@ int repack_bootimg_mem(const char *orig_boot_path,
     }
     tools_logi("dtb_size=%d\n",dtb_size);
 
-    fseek(f_out, page_size + new_k_total_aligned, SEEK_SET);
+    // A seek alone does not extend the file when nothing follows the kernel.
+    if (new_k_total_aligned > hdr.kernel_size) {
+        fseek(f_out, page_size + new_k_total_aligned - 1, SEEK_SET);
+        fputc(0, f_out);
+    }
 
     if (rest_buf) {
         // write exactly the rest data; any slack up to total_size is zero-padded below
