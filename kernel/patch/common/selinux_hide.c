@@ -88,6 +88,8 @@ typedef ssize_t (*sel_write_op_fn)(struct file *file, char *buf, size_t size);
 typedef int (*sel_mmap_status_fn)(struct file *, struct vm_area_struct *);
 typedef ssize_t (*sel_read_status_fn)(struct file *, char __user *, size_t, loff_t *);
 typedef int (*selinux_setprocattr_fn)(const char *, void *, size_t);
+/* < 6.6 avc_has_perm ABI takes the global selinux_state as the first argument. */
+typedef int (*avc_has_perm_compat_fn)(void *state, u32 ssid, u32 tsid, u16 tclass, u32 requested, void *auditdata);
 
 static unsigned long sel_write_context_addr;
 static unsigned long sel_write_access_addr;
@@ -243,276 +245,131 @@ static bool kp_pgprot_plausible(unsigned long prot)
     return prot != 0 && (prot & 0x3) == 0x3 && (prot >> 48) == 0;
 }
 
+/* ---- permission / sid helpers (KernelSU my_write_* parity) ---- */
+
+static avc_has_perm_compat_fn kp_avc_has_perm_compat;
+static unsigned long kp_selinux_state_addr; /* < 6.6 avc ABI needs the state */
+
+static u32 kp_current_sid(void)
+{
+    struct cred *cred = *(struct cred **)((uintptr_t)current + task_struct_offset.cred_offset);
+    u32 sid = 0;
+    if (!kp_security_cred_getsecid || !cred) return 0;
+    kp_security_cred_getsecid(cred, &sid);
+    return sid;
+}
+
+/* avc_has_perm(current_sid, tsid, tclass, requested).  0 = granted (or the
+ * check is unavailable, which matches stock behaviour for untrusted_app). */
+static int kp_avc_check(u32 tsid, u16 tclass, u32 requested)
+{
+    u32 mysid = kp_current_sid();
+    if (!mysid) return 0;
+    if (kver >= VERSION(6, 6, 0)) {
+        if (!kfunc(avc_has_perm)) return 0;
+        return kfunc(avc_has_perm)(mysid, tsid, tclass, requested, NULL);
+    }
+    if (!kp_avc_has_perm_compat)
+        kp_avc_has_perm_compat = (avc_has_perm_compat_fn)lookup_name_with_suffix("avc_has_perm");
+    if (!kp_avc_has_perm_compat || !kp_selinux_state_addr) return 0;
+    return kp_avc_has_perm_compat((void *)kp_selinux_state_addr, mysid, tsid, tclass, requested, NULL);
+}
+
 /* ---- /sys/fs/selinux/context handler ---- */
 
 static ssize_t my_write_context(struct file *file, char *buf, size_t size)
 {
     uid_t uid = current_uid();
-    ssize_t ret;
+    char *canon = NULL;
+    u32 sid, len;
+    ssize_t length;
 
     kp_qlog("context_write", uid, buf, size);
 
     if (likely(uid < 10000)) {
-        ret = orig_context_write(file, buf, size);
-        if (ret > 0){ 
-            kp_qlog("context_answer", uid, buf, (size_t)ret);
-        }else{
-            kp_qlog("context_answer_failed", uid, buf, (size_t)ret);
-        }
-        return ret;
+        length = orig_context_write(file, buf, size);
+        if (length > 0) kp_qlog("context_answer", uid, buf, (size_t)length);
+        else kp_qlog("context_answer_failed", uid, buf, (size_t)length);
+        return length;
     }
-    /* Answer against the clean snapshot: run the original handler under the
-     * clean-eval scope so its internal security_context_to_sid ->
-     * string_to_context_struct uses the redirected clean policydb (the
-     * selinux_magisk_access_filter KPM mechanism). */
-    if (selinux_sepolicy_clean_eval_enter() == 0) {
-        ret = orig_context_write(file, buf, size);
-        selinux_sepolicy_clean_eval_leave();
-    } else {
-        ret = orig_context_write(file, buf, size);
+
+    /* KernelSU my_write_context: answer entirely from the clean snapshot.
+     * The stock handler is never run for apps, so the live (patched) sidtab
+     * can never leak into the canonical answer -- no symbol-redirect scope,
+     * no silent fallback to the live policy. */
+    length = kp_avc_check(KP_SECINITSID_SECURITY, KP_SECCLASS_SECURITY, KP_SECURITY__CHECK_CONTEXT);
+    if (length) return length;
+
+    length = selinux_sepolicy_context_to_sid(buf, size, &sid, KP_GFP_KERNEL);
+    if (length) return length;
+
+    length = selinux_sepolicy_sid_to_context(sid, &canon, &len);
+    if (length) return length;
+
+    if (len > KP_SIMPLE_TRANSACTION_LIMIT) {
+        length = -ERANGE;
+        goto out;
     }
-    if (ret > 0) kp_qlog("context_answer", uid, buf, (size_t)ret);
-    return ret;
+
+    lib_memcpy(buf, canon, len);
+    length = (ssize_t)len;
+out:
+    if (canon && kfunc(kfree)) kfunc(kfree)(canon);
+    return length;
 }
 
 /* ---- /sys/fs/selinux/access handler ---- */
 
-/* Patch the seqno (5th whitespace token, "%u") in an /access response so
- * detectors don't see live policy reloads.  Ported from the
- * selinux_magisk_access_filter KPM. */
-static ssize_t kp_patch_response_seqno(char *buf, ssize_t ret, u32 new_seqno)
-{
-    char *p = buf, *end = buf + ret, *tok_start;
-    char new_str[12];
-    int ns_len, tok, i;
-    ssize_t diff;
-
-    if (ret <= 0 || !buf) return ret;
-    for (tok = 0; tok < 4; tok++) {
-        while (p < end && *p == ' ') p++;
-        while (p < end && *p != ' ') p++;
-    }
-    while (p < end && *p == ' ') p++;
-    tok_start = p;
-    while (p < end && *p != ' ' && *p != '\0' && *p != '\n') p++;
-    if (tok_start >= p) return ret;
-
-    {
-        u32 v = new_seqno;
-        char tmp[12];
-        if (v == 0) {
-            new_str[0] = '0';
-            ns_len = 1;
-        } else {
-            i = 0;
-            while (v > 0) {
-                tmp[i++] = '0' + (v % 10);
-                v /= 10;
-            }
-            for (ns_len = 0; ns_len < i; ns_len++)
-                new_str[ns_len] = tmp[i - 1 - ns_len];
-        }
-    }
-
-    diff = (ssize_t)ns_len - (ssize_t)(p - tok_start);
-    if (diff != 0) {
-        char *dst = tok_start + ns_len, *src = p;
-        size_t move = (size_t)(end - src);
-        int j;
-        if (diff < 0) {
-            for (j = 0; j < (int)move; j++) dst[j] = src[j];
-        } else {
-            for (j = (int)move - 1; j >= 0; j--) dst[j] = src[j];
-        }
-        ret += diff;
-    }
-    for (i = 0; i < ns_len; i++)
-        tok_start[i] = new_str[i];
-    return ret;
-}
-
-/* DirtySepolicy reads avd.seqno via SELinux.access("u:r:untrusted_app:s0",
- * "u:r:untrusted_app:s0", 0);*/
-static bool kp_avd_seqno_probe(const char *scon,
-                               const char *tcon,
-                               u16 tclass)
-{
-    static const char prefix[] = "u:r:untrusted_app:s0";
-
-    if (tclass != 0)
-        return false;
-
-    if (!scon || !tcon)
-        return false;
-
-    if (lib_strncmp(scon, prefix, sizeof(prefix) - 1) != 0)
-        return false;
-
-    if (lib_strncmp(tcon, prefix, sizeof(prefix) - 1) != 0)
-        return false;
-
-    if (scon[sizeof(prefix) - 1] != '\0' &&
-        scon[sizeof(prefix) - 1] != ':')
-        return false;
-
-    if (tcon[sizeof(prefix) - 1] != '\0' &&
-        tcon[sizeof(prefix) - 1] != ':')
-        return false;
-
-    return true;
-}
-
 static ssize_t my_write_access(struct file *file, char *buf, size_t size)
 {
-    ssize_t ret;
     uid_t uid = current_uid();
+    char scon[256], tcon[256];
+    struct av_decision avd;
+    u32 ssid, tsid;
+    u16 tclass = 0;
+    ssize_t length;
 
     kp_qlog("access_write", uid, buf, size);
 
     if (likely(uid < 10000)) {
-        ret = orig_access_write(file, buf, size);
-        if (ret > 0) {
-            kp_qlog("access_answer", uid, buf, (size_t)ret);
-        } else {
-            kp_qlog("access_answer_failed", uid, buf, (size_t)ret);
-        }
-        return ret;
+        length = orig_access_write(file, buf, size);
+        if (length > 0) kp_qlog("access_answer", uid, buf, (size_t)length);
+        else kp_qlog("access_answer_failed", uid, buf, (size_t)length);
+        return length;
     }
 
-    /*
-     * DirtySepolicy avd.seqno probe:
-     *
-     * Let the original SELinux handler generate the complete AVD response,
-     * then change only the seqno (5th field) to 0.
-     *
-     * Example:
-     *   original: 0 ffffffff 0 ffffffff 3 0
-     *   patched : 0 ffffffff 0 ffffffff 0 0
-     */
-    {
-        char tmp[96];
-        char scon[64], tcon[64];
+    /* KernelSU my_write_access: compute the whole decision against the clean
+     * snapshot and report the stock seqno.  This uniformly covers the
+     * DirtySepolicy avd.seqno probe (untrusted_app x untrusted_app, class 0):
+     * its answer is produced by the pre-root policy with seqno 1, so no
+     * response patching or special case is needed any more. */
+    length = kp_avc_check(KP_SECINITSID_SECURITY, KP_SECCLASS_SECURITY, KP_SECURITY__COMPUTE_AV);
+    if (length) return length;
 
-        unsigned int allowed;
-        unsigned int decided;
-        unsigned int auditallow;
-        unsigned int auditdeny;
-        unsigned int seqno;
-        unsigned int flags;
+    if (sscanf(buf, "%255s %255s %hu", scon, tcon, &tclass) != 3) return -EINVAL;
 
-        u16 tclass = 0;
+    length = selinux_sepolicy_context_str_to_sid(scon, &ssid, KP_GFP_KERNEL);
+    if (length) return length;
 
-        size_t tn = size < sizeof(tmp) - 1
-                    ? size
-                    : sizeof(tmp) - 1;
+    length = selinux_sepolicy_context_str_to_sid(tcon, &tsid, KP_GFP_KERNEL);
+    if (length) return length;
 
-        lib_memcpy(tmp, buf, tn);
-        tmp[tn] = '\0';
+    lib_memset(&avd, 0, sizeof(avd));
+    avd.auditdeny = 0xffffffff;
+    selinux_sepolicy_compute_av_user(ssid, tsid, tclass, &avd);
+    avd.seqno = KP_AVD_CLEAN_SEQNO;
 
-        if (sscanf(tmp, "%63s %63s %hu", scon, tcon, &tclass) == 3 &&
-            kp_avd_seqno_probe(scon, tcon, tclass)) {
-
-            /*
-             * First let the original handler generate the real response.
-             *
-             * buf will become something like:
-             *   "0 ffffffff 0 ffffffff 3 0"
-             */
-            ret = orig_access_write(file, buf, size);
-
-            if (ret > 0) {
-                /*
-                 * Parse the six fields returned by sel_write_access:
-                 *
-                 *   allowed
-                 *   decided
-                 *   auditallow
-                 *   auditdeny
-                 *   seqno
-                 *   flags
-                 */
-                if (sscanf(buf,
-                           "%x %x %x %x %u %x",
-                           &allowed,
-                           &decided,
-                           &auditallow,
-                           &auditdeny,
-                           &seqno,
-                           &flags) == 6) {
-
-                    /*
-                     * Only change seqno.
-                     */
-                    seqno = 1;
-
-                    /*
-                     * Rebuild the response while preserving
-                     * all other fields.
-                     */
-                    ret = snprintf(buf,
-                                   size,
-                                   "%x %x %x %x %u %x",
-                                   allowed,
-                                   decided,
-                                   auditallow,
-                                   auditdeny,
-                                   seqno,
-                                   flags);
-
-                    if (ret > 0 && (size_t)ret < size) {
-                        kp_qlog("access_answer(seqno probe)",
-                                uid, buf, (size_t)ret);
-
-                        logkfi(
-                            "access_answer(seqno probe) "
-                            "uid=%u buf=%s,"
-                            "scon=%s,tcon=%s,tclass=%hu,"
-                            "origin=%zd,now=%zd,origin_buf=%s\n",
-                            (unsigned int)uid,
-                            buf,
-                            scon,
-                            tcon,
-                            tclass,
-                            ret,
-                            ret,
-                            tmp
-                        );
-
-                        return ret;
-                    }
-                }
-            }
-            return ret;
-        }
-    }
-
-    /*
-     * Answer against the clean snapshot: run the original handler under
-     * the clean-eval scope so its internal compute_av uses the redirected
-     * clean policydb.
-     */
-    if (selinux_sepolicy_clean_eval_enter() == 0) {
-        ret = orig_access_write(file, buf, size);
-        selinux_sepolicy_clean_eval_leave();
-    } else {
-        ret = orig_access_write(file, buf, size);
-    }
-
-    if (ret > 0)
-        ret = kp_patch_response_seqno(buf, ret, KP_AVD_CLEAN_SEQNO);
-
-    if (ret > 0)
-        kp_qlog("access_answer", uid, buf, (size_t)ret);
-
-    return ret;
+    return snprintf(buf, size, "%x %x %x %x %u %x",
+                    avd.allowed, 0xffffffff, avd.auditallow, avd.auditdeny,
+                    avd.seqno, avd.flags);
 }
-
 
 /* ---- setprocattr handler ---- */
 
 static int my_setprocattr(const char *name, void *value, size_t size)
 {
     uid_t uid = current_uid();
+    char *str = value;
     char vbuf[96];
 
     if (selinux_hide_query_log != KP_QLOG_OFF) {
@@ -521,22 +378,31 @@ static int my_setprocattr(const char *name, void *value, size_t size)
                name ? name : "(null)", vbuf);
     }
 
-    if (likely(uid < 10000)) goto call_orig;
-    if (lib_strcmp(name, "current")) goto call_orig;
-    if (!kfunc(avc_has_perm) || !selinux_has_selinux_state()) goto call_orig;
+    /* KernelSU my_setprocattr: apps may only transition to contexts that the
+     * CLEAN policy knows; a root-manager context is rejected here, before the
+     * stock handler ever consults the patched live policy. */
+    if (uid < 10000 || lib_strcmp(name, "current")) goto call_orig;
 
-    /* Run the original handler under the clean-eval scope so its internal
-     * security_context_to_sid uses the redirected clean policydb: a root
-     * context (magisk/ksu/...) that the clean policy lacks is then rejected.
-     * (selinux_magisk_access_filter KPM mechanism.) */
-    if (selinux_sepolicy_clean_eval_enter() == 0) {
-        int rc = orig_setprocattr(name, value, size);
-        selinux_sepolicy_clean_eval_leave();
-        return rc;
+    {
+        u32 mysid = kp_current_sid();
+        int error = kp_avc_check(mysid, KP_SECCLASS_PROCESS, KP_PROCESS__SETCURRENT);
+        if (error) return error;
+
+        if (size && str[0] && str[0] != '\n') {
+            u32 sid = 0;
+            if (str[size - 1] == '\n') {
+                str[size - 1] = 0;
+                size--;
+            }
+            error = selinux_sepolicy_context_to_sid(str, size, &sid, KP_GFP_KERNEL);
+            if (error) return error;
+        }
     }
+
 call_orig:
     return orig_setprocattr(name, value, size);
 }
+
 
 /* ---- /sys/fs/selinux/status (read + mmap) ---- */
 
@@ -827,6 +693,11 @@ int selinux_hide_enable(void)
     }
     if (selinux_hide_enabled) return 0;
 
+    if (!selinux_sepolicy_backup_ready()) {
+        log_boot("selinux_hide: no backup sepolicy available, please save feature and reboot to retry\n");
+        return -EAGAIN;
+    }
+
     rc = selinux_hide_install_hooks();
     if (rc) return rc;
 
@@ -962,6 +833,7 @@ int selinux_hide_init(void)
     selinux_sepolicy_init();
 
     kp_security_cred_getsecid = (security_cred_getsecid_fn)kallsyms_lookup_name("security_cred_getsecid");
+    kp_selinux_state_addr = lookup_name_with_suffix("selinux_state");
 
     sel_write_context_addr = lookup_name_with_suffix("sel_write_context");
     sel_write_access_addr = lookup_name_with_suffix("sel_write_access");
