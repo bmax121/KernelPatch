@@ -35,8 +35,8 @@ long kp_control_feature_sc(const char __user *uname, int state)
 
 long kp_handle_supercall(long cmd, long a1, long a2, long a3, long a4)
 {
-	/* Debug: log every supercall the manager/root app issues. */
-	logki("supercall cmd 0x%lx a1=%lx a2=%lx a3=%lx a4=%lx\n", cmd, a1, a2, a3, a4);
+	/* Argument values may contain userspace pointers or credentials. */
+	logkd("supercall cmd 0x%lx\n", cmd);
 
 	switch (cmd) {
 	case SUPERCALL_HELLO:

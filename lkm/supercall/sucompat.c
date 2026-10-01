@@ -55,7 +55,7 @@ int kp_su_add_allow_uid(uid_t uid, uid_t to_uid, const char *scontext)
 	if (scontext)
 		strscpy(profile.scontext, scontext, sizeof(profile.scontext));
 	int rc = kp_kstorage_write(su_group, (long)uid, &profile, 0, sizeof(profile), false);
-	logki("allow uid %u -> %u (sctx %s) rc=%d\n", uid, to_uid, profile.scontext, rc);
+	logkd("allow uid %u -> %u rc=%d\n", uid, to_uid, rc);
 	return rc;
 }
 

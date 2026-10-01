@@ -35,6 +35,9 @@
 #include <userd.h>
 #endif
 
+#include <kpscauth.h>
+#include <kpsecret.h>
+
 #define MAX_KEY_LEN 128
 
 #include <linux/umh.h>
@@ -154,20 +157,33 @@ static long call_su_task(pid_t pid, struct su_profile *__user uprofile)
 
 static long call_skey_get(char *__user out_key, int out_len)
 {
+    /* Backward compat: return the superkey so callers can verify they hold
+     * the right credential.  If KP_HIDE_SUPERKEY is defined at build time,
+     * returns -EOPNOTSUPP instead (for hardened deployments where the key
+     * should never cross the kernel boundary in plaintext). */
+#ifdef KP_HIDE_SUPERKEY
+    return -EOPNOTSUPP;
+#else
     const char *key = get_superkey();
     int klen = strlen(key);
-    if (klen >= out_len) return -ENOMEM;
-    int rc = compat_copy_to_user(out_key, key, klen + 1);
-    return rc;
+    if (!out_key || out_len <= klen) return -ENOBUFS;
+    return compat_copy_to_user(out_key, key, klen + 1) == klen + 1 ? 0 : -EFAULT;
+#endif
 }
 
 static long call_skey_set(char *__user new_key)
 {
-    char buf[SUPER_KEY_LEN];
-    int len = compat_strncpy_from_user(buf, new_key, sizeof(buf));
-    if (len >= SUPER_KEY_LEN && buf[SUPER_KEY_LEN - 1]) return -E2BIG;
-    reset_superkey(new_key);
-    return 0;
+    char buf[SUPER_KEY_LEN + 2] = { 0 };
+    long copied = compat_strncpy_from_user(buf, new_key, sizeof(buf));
+    long rc = 0;
+    unsigned long len = kp_secret_length(buf, sizeof(buf));
+    if (copied < 0) rc = copied;
+    else if (!copied) rc = -EFAULT;
+    else if (!len) rc = -EINVAL;
+    else if (len >= SUPER_KEY_LEN) rc = -E2BIG;
+    else reset_superkey(buf); /* Never dereference a __user pointer in reset_superkey. */
+    kp_secret_wipe(buf, sizeof(buf));
+    return rc;
 }
 
 static long call_skey_root_enable(int enable)
@@ -180,6 +196,10 @@ static long call_grant_uid(struct su_profile *__user uprofile)
 {
     struct su_profile *profile = memdup_user(uprofile, sizeof(struct su_profile));
     if (!profile || IS_ERR(profile)) return PTR_ERR(profile);
+    if (strnlen(profile->scontext, sizeof(profile->scontext)) == sizeof(profile->scontext)) {
+        kvfree(profile);
+        return -E2BIG;
+    }
     int rc = su_add_allow_uid(profile->uid, profile->to_uid, profile->scontext);
     kvfree(profile);
     return rc;
@@ -274,6 +294,9 @@ static long call_kstorage_remove(int gid, long did)
 
 static long supercall(int is_authed, long cmd, long arg1, long arg2, long arg3, long arg4)
 {
+    if (!is_authed && !kp_supercall_allowed_for_su(cmd)) return -EPERM;
+    if (!is_authed && cmd == SUPERCALL_SU_PROFILE && (uid_t)arg1 != current_uid()) return -EPERM;
+
     switch (cmd) {
     case SUPERCALL_HELLO:
         logki(SUPERCALL_HELLO_ECHO "\n");
@@ -404,8 +427,9 @@ static void before(hook_fargs6_t *args, void *udata)
         
         char key[MAX_KEY_LEN] = { 0 };
         long len = compat_strncpy_from_user(key, key_user, MAX_KEY_LEN);
+        if (len > 0) is_authed = !auth_superkey(key);
+        kp_secret_wipe(key, sizeof(key));
         if (len <= 0) return;
-        is_authed = !auth_superkey(key);
         is_trusted_caller = is_authed;
     }
     if (is_trusted_manager_uid(uid)) {
