@@ -267,10 +267,19 @@ static int apk_sig_block_matches_trusted_digest(struct file *fp, loff_t *pos, lo
     uint32_t cert_len;
     uint8_t *cert_buf;
 
-    // v2 block: signers sequence -> first signer -> signed data -> digests
+    // v2/v3/v3.1 block: signers sequence -> signer -> signed data -> digests
     if (read_length_prefixed_end(fp, pos, block_end, &signers_end) ||
-        read_length_prefixed_end(fp, pos, signers_end, &signer_end) ||
-        read_length_prefixed_end(fp, pos, signer_end, &signed_data_end) ||
+        read_length_prefixed_end(fp, pos, signers_end, &signer_end)) {
+        return 0;
+    }
+    // only the first signer's certificate is checked below, so require it to
+    // be the only signer; a second signer with another key would otherwise
+    // be accepted unchecked
+    if (signer_end != signers_end) {
+        log_boot("trusted manager apk has more than one signer\n");
+        return 0;
+    }
+    if (read_length_prefixed_end(fp, pos, signer_end, &signed_data_end) ||
         read_length_prefixed_end(fp, pos, signed_data_end, &digests_end)) {
         return 0;
     }
@@ -504,19 +513,23 @@ static int apk_matches_trusted_signature(const char *path, const uint8_t *expect
     }
 
 
-    // only a lone, valid v2 signature is trusted; v1/v3/v3.1 verification
-    // parsing above is kept for diagnostics but does not grant trust
+    // Only certificates are compared here; the signatures themselves were
+    // verified by the package manager at install time, and it verifies only
+    // the newest scheme present (v3.1, else v3, else v2). The cert in any
+    // other block is never checked by Android and could be forged, so every
+    // v2/v3/v3.1 block present must carry the trusted cert: then whichever
+    // block Android verified is the trusted signer. Official APatch releases
+    // are signed with v1+v2+v3.
+    //
+    // A v1 (JAR) signature grants nothing here and is ignored by Android
+    // whenever a v2+ block is present (the block is protected against
+    // stripping), so it is only logged.
     if (apk_has_v1_signature(fp, (loff_t)cd_offset, eocd_offset)) {
-        log_boot("trusted manager apk unexpected v1 (JAR) signature scheme\n");
-        goto out;
+        log_boot("trusted manager apk also has a v1 (JAR) signature, ignored\n");
     }
 
-    if (v3_blocks || v31_blocks) {
-        log_boot("trusted manager apk unexpected v3/v3.1 signature scheme alongside v2\n");
-        goto out;
-    }
-
-    if (!v2_valid) {
+    if (!(v2_blocks || v3_blocks || v31_blocks) || v2_blocks > 1 || v3_blocks > 1 || v31_blocks > 1 ||
+        (v2_blocks && !v2_valid) || (v3_blocks && !v3_valid) || (v31_blocks && !v31_valid)) {
         log_boot("trusted manager apk sig invalid: v2=%d/%d v3=%d/%d v31=%d/%d\n",
                  v2_valid, v2_blocks, v3_valid, v3_blocks, v31_valid, v31_blocks);
         goto out;
