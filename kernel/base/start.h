@@ -24,6 +24,8 @@ typedef struct
     int64_t symbol_lookup_anchor_offset;
     int64_t kconfig_offset;
     int64_t kconfig_size;
+    int64_t btf_offset;
+    int64_t btf_size;
     int64_t map_backup_len;
     uint8_t map_backup[MAP_MAX_SIZE];
     uint8_t superkey[SUPER_KEY_LEN];
@@ -43,7 +45,9 @@ typedef struct
 #define start_symbol_lookup_anchor_offset_offset (start_sprintf_offset_offset + 8)
 #define start_kconfig_offset_offset (start_symbol_lookup_anchor_offset_offset + 8)
 #define start_kconfig_size_offset (start_kconfig_offset_offset + 8)
-#define start_map_backup_len_offset (start_kconfig_size_offset + 8)
+#define start_btf_offset_offset (start_kconfig_size_offset + 8)
+#define start_btf_size_offset (start_btf_offset_offset + 8)
+#define start_map_backup_len_offset (start_btf_size_offset + 8)
 #define start_map_backup_offset (start_map_backup_len_offset + 8)
 #define start_superkey_offset (start_map_backup_offset + MAP_MAX_SIZE)
 #define start_root_superkey_offset (start_superkey_offset + SUPER_KEY_LEN)
