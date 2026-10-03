@@ -57,6 +57,7 @@ typedef struct
     bool is_uncompressed_img;
 } kernel_file_t;
 
+void patch_set_show_secrets(bool enabled);
 void read_kernel_file(const char *path, kernel_file_t *kernel_file);
 void new_kernel_file(kernel_file_t *kernel_file, kernel_file_t *old, int32_t kimg_len, bool is_different_endian);
 void update_kernel_file_img_len(kernel_file_t *kernel_file, int32_t kimg_len, bool is_different_endian);

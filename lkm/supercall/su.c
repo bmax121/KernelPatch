@@ -40,8 +40,11 @@ long kp_su_sc(const struct su_profile __user *uprofile)
 	if (IS_ERR(profile))
 		return PTR_ERR(profile);
 
-	logki("SU requested for to_uid=%u scontext=%.*s\n", profile->to_uid,
-	      (int)sizeof(profile->scontext), profile->scontext);
+	if (strnlen(profile->scontext, sizeof(profile->scontext)) == sizeof(profile->scontext)) {
+		kfree(profile);
+		return -E2BIG;
+	}
+	logkd("SU requested for to_uid=%u\n", profile->to_uid);
 
 	rc = kp_commit_su(profile->to_uid, profile->scontext);
 	kfree(profile);
@@ -59,6 +62,10 @@ long kp_su_task_sc(pid_t pid, const struct su_profile __user *uprofile)
 	if (IS_ERR(profile))
 		return PTR_ERR(profile);
 
+	if (strnlen(profile->scontext, sizeof(profile->scontext)) == sizeof(profile->scontext)) {
+		kfree(profile);
+		return -E2BIG;
+	}
 	rc = kp_task_su(pid, profile->to_uid, profile->scontext);
 	kfree(profile);
 	return rc;
@@ -75,6 +82,10 @@ long kp_su_grant_uid_sc(const struct su_profile __user *uprofile)
 	if (IS_ERR(profile))
 		return PTR_ERR(profile);
 
+	if (strnlen(profile->scontext, sizeof(profile->scontext)) == sizeof(profile->scontext)) {
+		kfree(profile);
+		return -E2BIG;
+	}
 	rc = kp_su_add_allow_uid(profile->uid, profile->to_uid, profile->scontext);
 	kfree(profile);
 	return rc;
@@ -94,7 +105,9 @@ long kp_su_allow_uid_nums_sc(void)
 
 long kp_su_allow_uid_list_sc(uid_t __user *uids, int max)
 {
-	uid_t list[128];
+	if (!uids || max <= 0)
+		return -EINVAL;
+	uid_t list[128] = { 0 };
 	int n = kp_su_allow_uids(list, ARRAY_SIZE(list));
 	if (n < 0)
 		return n;
@@ -102,7 +115,7 @@ long kp_su_allow_uid_list_sc(uid_t __user *uids, int max)
 		n = max;
 	if (copy_to_user(uids, list, n * sizeof(uid_t)))
 		return -EFAULT;
-	logki("su_allow_uid_list -> %d uids: [%u %u %u %u]\n", n, list[0], list[1], list[2], list[3]);
+	logkd("su_allow_uid_list -> %d entries\n", n);
 	return n;
 }
 

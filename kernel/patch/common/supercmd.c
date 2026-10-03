@@ -17,6 +17,7 @@
 #include <module.h>
 #include <user_event.h>
 #include <log.h>
+#include <kpsecret.h>
 #ifdef ANDROID
 #include <userd.h>
 #endif
@@ -131,8 +132,9 @@ static void handle_cmd_sumgr(char **__user u_filename_p, const char **carr, char
         }
         if (carr[3]) kstrtoull(carr[3], 10, &to_uid);
         if (carr[4]) scontext = carr[4];
-        su_add_allow_uid(uid, to_uid, scontext);
-        sprintf(buffer, "grant %d, %d, %s", uid, to_uid, scontext);
+        cmd_res->rc = su_add_allow_uid(uid, to_uid, scontext);
+        if (cmd_res->rc) return;
+        snprintf(buffer, buflen, "grant %llu, %llu", uid, to_uid);
         cmd_res->msg = buffer;
     } else if (!strcmp(sub_cmd, "revoke")) {
         const char *suid = carr[2];
@@ -240,15 +242,22 @@ static void handle_cmd_key_auth(char **__user u_filename_p, const char *cmd, con
         const char *sub_cmd = carr[1];
         if (!sub_cmd) sub_cmd = "";
         if (!strcmp("get", sub_cmd)) {
+#ifdef KP_HIDE_SUPERKEY
+            cmd_res->rc = -EOPNOTSUPP;
+            cmd_res->err_msg = "superkey readback disabled (built with KP_HIDE_SUPERKEY)";
+#else
             cmd_res->msg = get_superkey();
+#endif
         } else if (!strcmp("set", sub_cmd)) {
             const char *key = carr[2];
-            if (!key) {
+            unsigned long len = kp_secret_length(key, SUPER_KEY_LEN);
+            if (!key || !len || len >= SUPER_KEY_LEN) {
+                cmd_res->rc = -EINVAL;
                 cmd_res->err_msg = "invalid new key";
                 return;
             }
-            cmd_res->msg = key;
             reset_superkey(key);
+            cmd_res->msg = "key updated";
         } else if (!strcmp("hash", sub_cmd)) {
             const char *able = carr[2];
             if (able && !strcmp("enable", able)) {
@@ -345,11 +354,17 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
     // long can be distinguished from a valid key ending at the boundary.
     char arg1[SUPER_KEY_LEN + 2] = { 0 };
     long arg1_len = compat_strncpy_from_user(arg1, p1, sizeof(arg1));
-    if (arg1_len <= 0 || arg1_len >= sizeof(arg1)) return;
+    if (arg1_len <= 0 || arg1_len >= sizeof(arg1)) {
+        kp_secret_wipe(arg1, sizeof(arg1));
+        return;
+    }
 
-    if (!auth_superkey(arg1)) {
+    int valid_key = !auth_superkey(arg1);
+    int requested_su = !strcmp("su", arg1);
+    kp_secret_wipe(arg1, sizeof(arg1));
+    if (valid_key) {
         is_key_auth = 1;
-    } else if (!strcmp("su", arg1)) {
+    } else if (requested_su) {
         uid_t uid = current_uid();
         if (!is_su_allow_uid(uid) && !is_trusted_manager) return;
         su_allow_uid_profile(0, uid, &profile);
@@ -443,6 +458,13 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
         goto free;
     }
 
+    if (!is_key_auth && (!strcmp("sumgr", cmd) || !strcmp("reload-cfg", cmd) ||
+                         !strcmp("bootlog", cmd) || !strcmp("test", cmd))) {
+        cmd_res.rc = -EPERM;
+        cmd_res.err_msg = "administrator authentication required";
+        goto echo;
+    }
+
     if (!strcmp("help", cmd)) {
         cmd_res.msg = supercmd_help;
     } else if (!strcmp("-c", cmd)) {
@@ -495,7 +517,7 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
     }
 
 echo:
-    if (cmd_res.msg) supercmd_echo(u_filename_p, uargv, &sp, cmd_res.msg);
+    if (cmd_res.msg) supercmd_echo(u_filename_p, uargv, &sp, "%s", cmd_res.msg);
     if (cmd_res.rc) supercmd_echo(u_filename_p, uargv, &sp, "supercmd error code: %d", cmd_res.rc);
     if (cmd_res.err_msg) supercmd_echo(u_filename_p, uargv, &sp, "supercmd error message: %s", cmd_res.err_msg);
 
@@ -504,6 +526,7 @@ free:
     for (int i = 2; i < sizeof(parr) / sizeof(parr[0]); i++) {
         const char *a = parr[i];
         if (!a) continue;
+        kp_secret_wipe((void *)a, strlen(a));
         kfree(a);
     }
 }

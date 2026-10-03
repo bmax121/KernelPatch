@@ -145,9 +145,11 @@ int su_add_allow_uid(uid_t uid, uid_t to_uid, const char *scontext)
         uid,
         to_uid,
     };
-    memcpy(profile.scontext, scontext, SUPERCALL_SCONTEXT_LEN);
+    size_t sctx_len = strnlen(scontext, sizeof(profile.scontext));
+    if (sctx_len >= sizeof(profile.scontext)) return -E2BIG;
+    memcpy(profile.scontext, scontext, sctx_len + 1);
     int rc = write_kstorage(su_kstorage_gid, uid, &profile, 0, sizeof(struct su_profile), false);
-    logkfd("uid: %d, to_uid: %d, sctx: %s, rc: %d\n", uid, to_uid, scontext, rc);
+    logkfd("uid: %d, to_uid: %d, rc: %d\n", uid, to_uid, rc);
     return rc;
 }
 KP_EXPORT_SYMBOL(su_add_allow_uid);

@@ -119,6 +119,9 @@ base/puff/puff.x86.o: base/puff/puff.c
 base/sha256.x86.o: base/sha256.c
 	${X86_CC} $(X86_CFLAGS) $(X86_INCLUDE) -c -O0 -o $@ $<
 
+base/setup.o: ../version
+x86/setup.x86.o: ../version
+
 %.o: %.c
 	${CC} $(CFLAGS) $(INCLUDE) -c -O2 -o $@ $<
 

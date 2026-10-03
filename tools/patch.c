@@ -242,6 +242,13 @@ static char *bytes_to_hexstr(const unsigned char *data, int len)
     return buf;
 }
 
+static bool show_secrets;
+
+void patch_set_show_secrets(bool enabled)
+{
+    show_secrets = enabled;
+}
+
 void print_preset_info(preset_t *preset)
 {
     setup_header_t *header = &preset->header;
@@ -257,12 +264,13 @@ void print_preset_info(preset_t *preset)
     fprintf(stdout, "compile_time=%s\n", header->compile_time);
     fprintf(stdout, "config=%s,%s\n", is_android ? "android" : "linux", is_debug ? "debug" : "release");
     fprintf(stdout, "arch=%s\n", is_x86_64 ? "x86_64" : "arm64");
-    fprintf(stdout, "superkey=%s\n", setup->superkey);
+    fprintf(stdout, "superkey=%.*s\n", SUPER_KEY_LEN,
+            show_secrets ? (const char *)setup->superkey : "<redacted>");
 
     // todo: remove compat version
     if (ver_num > 0xa04) {
         char *hexstr = bytes_to_hexstr(setup->root_superkey, ROOT_SUPER_KEY_HASH_LEN);
-        fprintf(stdout, "root_superkey=%s\n", hexstr);
+        fprintf(stdout, "root_superkey=%s\n", show_secrets ? hexstr : "<redacted>");
         free(hexstr);
     }
 
@@ -835,7 +843,7 @@ int patch_update_img_buf(const char *kimg, int kimg_len, const char *kpimg_path,
 
     // superkey
     if (!root_key) {
-        tools_logi("superkey: %s\n", superkey);
+        tools_logi("superkey configured (value omitted)\n");
         strncpy((char *)setup->superkey, superkey, SUPER_KEY_LEN - 1);
     } else if (superkey && superkey[0] != '\0') {
         int len = SHA256_BLOCK_SIZE > ROOT_SUPER_KEY_HASH_LEN ? ROOT_SUPER_KEY_HASH_LEN : SHA256_BLOCK_SIZE;
@@ -845,9 +853,7 @@ int patch_update_img_buf(const char *kimg, int kimg_len, const char *kpimg_path,
         sha256_update(&ctx, (const BYTE *)superkey, strnlen(superkey, SUPER_KEY_LEN));
         sha256_final(&ctx, buf);
         memcpy(setup->root_superkey, buf, len);
-        char *hexstr = bytes_to_hexstr(setup->root_superkey, len);
-        tools_logi("root superkey hash: %s\n", hexstr);
-        free(hexstr);
+        tools_logi("root superkey verifier configured (value omitted)\n");
     } else {
         memset(setup->root_superkey, 0, ROOT_SUPER_KEY_HASH_LEN);
         tools_logi("root_key mode with empty superkey: root_superkey zeroed\n");
@@ -1037,13 +1043,12 @@ int reset_key(const char *kimg_path, const char *out_path, const char *superkey)
     preset_t *preset = get_preset(kernel_file.kimg, kernel_file.kimg_len);
     if (!preset) tools_loge_exit("not patched kernel image\n");
 
-    char *origin_key = strdup((char *)preset->setup.superkey);
+    memset(preset->setup.superkey, 0, sizeof(preset->setup.superkey));
     strcpy((char *)preset->setup.superkey, superkey);
-    tools_logi("reset superkey: %s -> %s\n", origin_key, preset->setup.superkey);
+    tools_logi("superkey updated (values omitted)\n");
 
     write_kernel_file(&kernel_file, out_path);
 
-    free(origin_key);
     free_kernel_file(&kernel_file);
 
     return 0;

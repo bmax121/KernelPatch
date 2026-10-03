@@ -65,7 +65,7 @@ int set_all_allow_sctx(const char *sctx)
         strncpy(all_allow_sctx, sctx, sizeof(all_allow_sctx) - 1);
         all_allow_sctx[sizeof(all_allow_sctx) - 1] = '\0';
         dsb(ish);
-        logkfd("set all allow sconetxt: %s, sid: %d\n", all_allow_sctx, all_allow_sid);
+        logkfd("set configured SELinux context: rc=%d\n", rc);
     }
     return rc;
 }
@@ -115,8 +115,8 @@ int commit_common_su(uid_t to_uid, const char *sctx)
     commit_creds(new);
 
 out:
-    logkfi("pid: %d, tgid: %d, to_uid: %d, sctx: %s, via_hook: %d\n", ext ? ext->pid : -1, ext ? ext->tgid : -1,
-           to_uid, sctx, ext ? ext->sel_allow : 0);
+    logkfi("pid: %d, tgid: %d, to_uid: %d, rc: %d\n", ext ? ext->pid : -1, ext ? ext->tgid : -1,
+           to_uid, rc);
     return rc;
 }
 
@@ -169,8 +169,7 @@ int task_su(pid_t pid, uid_t to_uid, const char *sctx)
     }
     ext->priv_sel_allow = !scontext_changed;
 
-    logkfi("pid: %d, tgid: %d, to_uid: %d, sctx: %s, via_hook: %d\n", ext->pid, ext->tgid, to_uid, sctx,
-           ext->priv_sel_allow);
+    logkfi("pid: %d, tgid: %d, to_uid: %d, rc: %d\n", ext->pid, ext->tgid, to_uid, rc);
 out:
     return rc;
 }
