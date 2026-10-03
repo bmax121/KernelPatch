@@ -1864,6 +1864,57 @@ static void after_security_inode_rename(hook_fargs5_t *args, void *udata)
     }
 }
 
+// int selinux_inode_rename(struct inode *old_inode, struct dentry *old_dentry,
+//                          struct inode *new_inode, struct dentry *new_dentry)
+static void after_selinux_inode_rename(hook_fargs4_t *args, void *udata)
+{
+    if ((int)args->ret >= 0) {
+        refresh_packages_list_tmp_rename((struct dentry *)args->arg1);
+    }
+}
+
+typedef int (*kp_kallsyms_lookup_size_offset_t)(unsigned long addr, unsigned long *symbolsize, unsigned long *offset);
+
+/* 1 if the body of caller_name branches (B or BL) to callee, 0 if it does not,
+ * -1 if that cannot be determined. LTO can inline an LSM wrapper into its
+ * caller and leave the out-of-line copy, still listed in kallsyms, uncalled. */
+static int calls_directly(const char *caller_name, unsigned long callee)
+{
+    kp_kallsyms_lookup_size_offset_t lookup_size_offset;
+    unsigned long caller, size = 0, offset = 0, pc;
+
+    lookup_size_offset = (kp_kallsyms_lookup_size_offset_t)kallsyms_lookup_name("kallsyms_lookup_size_offset");
+    caller = kallsyms_lookup_name(caller_name);
+    if (!lookup_size_offset || !caller || !lookup_size_offset(caller, &size, &offset) || offset || !size) return -1;
+
+    for (pc = caller; pc + 4 <= caller + size; pc += 4) {
+        uint32_t insn = *(uint32_t *)pc;
+        // B is 0b000101 and BL is 0b100101 in bits [31:26]. Bit 31 is the link
+        // bit, so masking it out (0x7c000000) leaves 0x14000000 for both.
+        if ((insn & 0x7c000000) != 0x14000000) continue;
+        // imm26 in bits [25:0] is a signed offset in instructions. Shifting
+        // left by 38 moves its sign bit to bit 63; the arithmetic shift right
+        // by 36 then sign-extends it and multiplies by 4 to get bytes.
+        if (pc + ((int64_t)((uint64_t)insn << 38) >> 36) == callee) return 1;
+    }
+    return 0;
+}
+
+static int hook_rename_wrapper(const char *name, const char *caller_name, hook_chain5_callback after)
+{
+    unsigned long addr = kallsyms_lookup_name(name);
+    hook_err_t rc;
+
+    if (!addr) return -ENOENT;
+    if (!calls_directly(caller_name, addr)) {
+        log_boot("%s is inlined into %s\n", name, caller_name);
+        return -ENOENT;
+    }
+    rc = hook_wrap5((void *)addr, 0, after, 0);
+    log_boot("hook %s rc: %d\n", name, rc);
+    return 0;
+}
+
 static void hook_rename_lsm(void)
 {
     unsigned long addr;
@@ -1875,21 +1926,17 @@ static void hook_rename_lsm(void)
         return;
     }
 
-    addr = kallsyms_lookup_name("security_path_rename");
-    if (addr) {
-        rc = hook_wrap5((void *)addr, 0, after_security_path_rename, 0);
-        log_boot("hook security_path_rename rc: %d\n", rc);
+    if (!hook_rename_wrapper("security_path_rename", "do_renameat2", after_security_path_rename)) return;
+    if (!hook_rename_wrapper("security_inode_rename", "vfs_rename", after_security_inode_rename)) return;
+
+    // Reached only through the LSM hook table, so it cannot be inlined away.
+    addr = kallsyms_lookup_name("selinux_inode_rename");
+    if (!addr) {
+        log_boot("no symbol: security_path_rename/security_inode_rename/selinux_inode_rename\n");
         return;
     }
-
-    addr = kallsyms_lookup_name("security_inode_rename");
-    if (addr) {
-        rc = hook_wrap5((void *)addr, 0, after_security_inode_rename, 0);
-        log_boot("hook security_inode_rename rc: %d\n", rc);
-        return;
-    }
-
-    log_boot("no symbol: security_path_rename/security_inode_rename\n");
+    rc = hook_wrap4((void *)addr, 0, after_selinux_inode_rename, 0);
+    log_boot("hook selinux_inode_rename rc: %d\n", rc);
 }
 
 #define EV_KEY 0x01
