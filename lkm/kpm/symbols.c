@@ -1,6 +1,18 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-/* Compatibility symbols exported by the in-kernel KP runtime to KPMs. */
+/* Compatibility symbols exported by the in-kernel KP runtime to KPMs.
+ *
+ * The table mirrors the kpimg .kp.symbol ABI (see checks/symbol_compat.py for
+ * the enforced cross-version matrix).  Where the LKM has no backing mechanism
+ * (kstorage, SU allowlist, IKCONFIG, raw_syscalln) the symbol is NOT faked:
+ * those either stay absent or degrade explicitly, so an old KPM gets a precise
+ * "unavailable on this backend" load error instead of a dangling address. */
 #include "symbols.h"
+
+#include <asm/current.h>
+#include <linux/random.h>
+
+#include "module.h"
+#include "../infra/symbol_resolver.h"
 
 #include <linux/cred.h>
 #include <linux/gfp.h>
@@ -145,6 +157,59 @@ struct kp_kpm_symbol {
 	const char *name;
 	unsigned long addr;
 };
+
+/* ---- previous-generation ABI shims (see checks/symbol_compat.py) ----
+ *
+ * kp_kconfig_*: the IKCONFIG blob is a kpimg preset (start_preset.kconfig_*).
+ * An insmod-loaded LKM has no preset and the kernel's own kernel_config_data
+ * is freed init memory, so report "unavailable" honestly: old KPMs branch on
+ * kp_kconfig_available() and degrade gracefully instead of failing to load. */
+static int kp_kpm_kconfig_available(void)
+{
+	return 0;
+}
+
+static int kp_kpm_kconfig_enabled(const char *name)
+{
+	(void)name;
+	return 0;
+}
+
+static const char *kp_kpm_kconfig_value(const char *name)
+{
+	(void)name;
+	return NULL;
+}
+
+/* copy_to_user_stack: same contract as kpimg's utils.c. */
+static long kp_kpm_copy_to_user_stack(const void *data, int len)
+{
+	unsigned long sp = current_user_stack_pointer();
+	if (!data || len <= 0)
+		return -EINVAL;
+	sp = (sp - (unsigned long)len) & ~0x7UL;
+	return copy_to_user((void __user *)sp, data, len) ? -EFAULT : (long)sp;
+}
+
+/* get_random_u64 is not exported on GKI 5.10; resolve at first use, then fall
+ * back to the exported get_random_bytes. */
+static u64 kp_kpm_get_random_u64(void)
+{
+	static u64 (*fn)(void);
+	u64 v = 0;
+	if (!fn)
+		fn = (void *)kallsyms_lookup_name("get_random_u64");
+	if (fn)
+		return fn();
+	get_random_bytes(&v, sizeof(v));
+	return v;
+}
+
+/* Data-symbol ABI: KPMs declare `extern unsigned long *sys_call_table;` and
+ * dereference once, so the slot must hold the table base.  arm64 GKI has no
+ * compat table; a NULL slot plus has_config_compat=0 is the stock contract. */
+static kp_syscall_fn_t *kp_kpm_sys_call_table_ptr;
+static kp_syscall_fn_t *kp_kpm_compat_sys_call_table_ptr;
 
 /* KPM headers declare printk/kallsyms_lookup_name/kallsyms_on_each_symbol as
  * function-pointer *variables* (extern void (*printk)(...)), so KPMs load the
@@ -348,6 +413,29 @@ static struct kp_kpm_symbol kp_kpm_symbols[] = {
 	{ "hook_uninstall", (unsigned long)hook_uninstall },
 	{ "hook", (unsigned long)hook },
 	{ "unhook", (unsigned long)unhook },
+
+	/* ---- previous-generation kpimg ABI (matrix: checks/symbol_compat.py) ----
+	 * The LKM only implements the table-rewrite hook strategy, so the inline
+	 * and fp syscall-hook variants all route through the same wrappers.
+	 * kp_kconfig_* degrade to "unavailable" (the IKCONFIG blob is a kpimg
+	 * preset); sys_call_table slots expose the resolved table / NULL compat. */
+	{ "inline_wrap_syscalln", (unsigned long)kp_kpm_hook_syscalln },
+	{ "inline_unwrap_syscalln", (unsigned long)kp_kpm_unhook_syscalln },
+	{ "fp_wrap_syscalln", (unsigned long)kp_kpm_hook_syscalln },
+	{ "fp_unwrap_syscalln", (unsigned long)kp_kpm_unhook_syscalln },
+	{ "kp_kconfig_available", (unsigned long)kp_kpm_kconfig_available },
+	{ "kp_kconfig_enabled", (unsigned long)kp_kpm_kconfig_enabled },
+	{ "kp_kconfig_value", (unsigned long)kp_kpm_kconfig_value },
+	{ "copy_to_user_stack", (unsigned long)kp_kpm_copy_to_user_stack },
+	{ "get_random_u64", (unsigned long)kp_kpm_get_random_u64 },
+	{ "notify_modules_event", (unsigned long)kp_notify_modules_event },
+	{ "symbol_lookup_name", (unsigned long)kp_kpm_symbol_lookup },
+	{ "kallsyms_lookup_name_by_suffix", (unsigned long)kp_resolve_symbol_variant },
+/* The table symbols are typed as kp_syscall_fn_t pointers, matching the LKM
+ * syscall-table ABI.  KPM data-symbol relocations still receive their
+ * address, then dereference it once. */
+	{ "sys_call_table", (unsigned long)&kp_kpm_sys_call_table_ptr },
+	{ "compat_sys_call_table", (unsigned long)&kp_kpm_compat_sys_call_table_ptr },
 };
 
 int kp_kpm_symbols_init(void)
@@ -406,6 +494,11 @@ int kp_kpm_symbols_init(void)
 	kp_kpm_mm_struct_offset.env_end_offset = offsetof(struct mm_struct, env_end);
 
 	kp_kpm_has_config_compat = 0;
+
+	/* Previous-generation data-symbol ABI: sys_call_table mirrors the
+	 * resolved table; arm64 GKI has no compat table. */
+	kp_kpm_sys_call_table_ptr = kp_sys_call_table;
+	kp_kpm_compat_sys_call_table_ptr = NULL;
 
 	/* arm64 GKI: syscalls go through __arm64_sys_* wrappers, so the KPM must
 	 * parse syscall args with the wrapper ABI (narg + 1). */

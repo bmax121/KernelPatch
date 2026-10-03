@@ -26,6 +26,8 @@
 
 #include "module.h"
 #include "relo.h"
+#include <kp_spinlock.h>
+#include <kpmsymbol.h>
 
 #define SZ_128M 0x08000000
 
@@ -198,6 +200,94 @@ static bool is_core_symbol(const Elf_Sym *src, const Elf_Shdr *sechdrs, unsigned
     return true;
 }
 
+
+extern struct module modules;
+static spinlock_t module_lock;
+
+/* LKM loader semantics: search the export tables of already-loaded KPMs
+ * (.kpm.export / KPM_EXPORT) for @name and record the dependency edge on
+ * @importer.  Runtime-table symbols win, exactly like vmlinux exports shadow
+ * module exports in the kernel's find_symbol(). */
+static unsigned long kpm_module_export_lookup(const char *name, struct module *importer)
+{
+    struct module *pos;
+    unsigned long found = 0;
+    unsigned long flags;
+
+    if (!importer) return 0;
+    flags = kp_private_spin_lock(&module_lock);
+    list_for_each_entry(pos, &modules.list, list) {
+        unsigned int i;
+        for (i = 0; i < pos->export_count; i++) {
+            if (!strcmp(name, pos->exports[i].name)) {
+                {
+                    int edge = kpm_dep_record((void **)importer->deps, &importer->dep_count,
+                                              KPM_DEP_MAX, pos);
+                    if (edge < 0) {
+                        /* Table full: fail the resolution so the KPM load aborts.
+                         * Silently succeeding here would allow the provider to be
+                         * unloaded while the consumer still holds its symbols. */
+                        logke("dependency table full; cannot import %s from %s\n", name, pos->info.name);
+                        goto out;
+                    }
+                    /* Pin the provider before returning its address.  The
+                     * reference stays provisional through importer init and is
+                     * rolled back if loading fails. */
+                    if (edge > 0) pos->export_refs++;
+                }
+                found = (unsigned long)pos->exports[i].target;
+                goto out;
+            }
+        }
+    }
+out:
+    kp_private_spin_unlock(&module_lock, flags);
+    return found;
+}
+
+static unsigned long kpm_compat_lookup(const char *name, void *context)
+{
+    unsigned long addr = symbol_lookup_name(name);
+    if (addr) return addr;
+    return kpm_module_export_lookup(name, context);
+}
+
+static unsigned long kpm_function_lookup(const char *name, void *context)
+{
+    (void)context;
+    return kallsyms_lookup_name ? kallsyms_lookup_name_by_suffix(name) : 0;
+}
+
+static unsigned long kpm_data_lookup(const char *name, void *context)
+{
+    (void)context;
+    return kallsyms_lookup_name ? kallsyms_lookup_name(name) : 0;
+}
+
+static unsigned long kpm_pointer_slot(unsigned long target, void *context)
+{
+    struct module *mod = context;
+    return kpm_link_pointer(&mod->link, mod->start, target);
+}
+
+/* Reserve pointer slots and a worst-case PLT/GOT entry per allocated RELA. */
+static int kpm_prepare_link(struct module *mod, const struct load_info *info)
+{
+    unsigned long count = info->sechdrs[info->index.sym].sh_size / sizeof(Elf_Sym);
+    unsigned int i;
+    if (count > KPM_LINK_MAX_IMAGE / KPM_LINK_SLOT_SIZE) return -E2BIG;
+    for (i = 1; i < info->hdr->e_shnum; i++) {
+        const Elf_Shdr *section = &info->sechdrs[i];
+        if (section->sh_type != SHT_RELA || section->sh_info >= info->hdr->e_shnum ||
+            !(info->sechdrs[section->sh_info].sh_flags & SHF_ALLOC)) continue;
+        if (section->sh_size % sizeof(Elf64_Rela)) return -ENOEXEC;
+        if (section->sh_size / sizeof(Elf64_Rela) > KPM_LINK_MAX_IMAGE / KPM_LINK_SLOT_SIZE - count)
+            return -E2BIG;
+        count += section->sh_size / sizeof(Elf64_Rela);
+    }
+    return kpm_link_reserve(&mod->link, &mod->size, count) ? -E2BIG : 0;
+}
+
 /* Change all symbols so that st_value encodes the pointer directly. */
 static int simplify_symbols(struct module *mod, struct load_info *info)
 {
@@ -211,27 +301,38 @@ static int simplify_symbols(struct module *mod, struct load_info *info)
         const char *name = info->strtab + sym[i].st_name;
         switch (sym[i].st_shndx) {
         case SHN_COMMON:
-            if (!strncmp(name, "__gnu_lto", 9)) {
-                logkd("Please compile with -fno-common\n");
-                ret = -ENOEXEC;
-            }
+            set_load_error(info, "COMMON symbol unsupported: compile with -fno-common and without LTO");
+            ret = -ENOEXEC;
             break;
         case SHN_ABS:
             break;
-        case SHN_UNDEF:
-            unsigned long addr = symbol_lookup_name(name);
-            // kernel symbol cause overflow in relocation
-            // if (!addr) addr = kallsyms_lookup_name(name);
-            if (!addr) {
-                logke("unknown symbol: %s\n", name);
+        case SHN_UNDEF: {
+            struct kpm_symbol_resolution resolved;
+            int rc = kpm_symbol_resolve(name, kpm_compat_lookup, kpm_function_lookup,
+                                        kpm_data_lookup, kpm_pointer_slot, mod, &resolved);
+            if (rc) {
+                if (rc == -1 && ELF_ST_BIND(sym[i].st_info) == STB_WEAK) {
+                    sym[i].st_value = 0;
+                    break;
+                }
+                logke("unresolved symbol: %s (%s)\n", name,
+                      rc == -2 ? "link arena exhausted" : "unavailable on this kernel");
                 if (!info->info.error_msg[0])
-                    snprintf(info->info.error_msg, sizeof(info->info.error_msg), "unknown symbol: %s", name);
-                ret = -ENOENT;
+                    snprintf(info->info.error_msg, sizeof(info->info.error_msg),
+                             "unresolved symbol: %s (%s)", name,
+                             rc == -2 ? "link arena exhausted" : "unavailable on this kernel");
+                ret = rc == -2 ? -ENOMEM : -ENOENT;
                 break;
             }
-            sym[i].st_value = addr;
+            sym[i].st_value = resolved.address;
             break;
+        }
         default:
+            if (sym[i].st_shndx >= info->hdr->e_shnum) {
+                set_load_error(info, "invalid symbol section index");
+                ret = -ENOEXEC;
+                break;
+            }
             secbase = info->sechdrs[sym[i].st_shndx].sh_addr;
             sym[i].st_value += secbase;
             break;
@@ -298,9 +399,38 @@ static int rewrite_section_headers(struct load_info *info)
     info->sechdrs[0].sh_addr = 0;
     for (int i = 1; i < info->hdr->e_shnum; i++) {
         Elf_Shdr *shdr = &info->sechdrs[i];
-        if (shdr->sh_type != SHT_NOBITS && info->len < shdr->sh_offset + shdr->sh_size) {
+        Elf_Shdr *strings = &info->sechdrs[info->hdr->e_shstrndx];
+        if (shdr->sh_name >= strings->sh_size ||
+            !memchr(info->secstrings + shdr->sh_name, 0, strings->sh_size - shdr->sh_name))
+            return -ENOEXEC;
+        if (shdr->sh_addralign && (shdr->sh_addralign & (shdr->sh_addralign - 1)))
+            return -ENOEXEC;
+        /* Subtraction, not sh_offset + sh_size: the sum can wrap for a
+         * crafted 64-bit offset and let the bounds check pass. */
+        if (shdr->sh_type != SHT_NOBITS &&
+            (shdr->sh_offset > info->len || shdr->sh_size > info->len - shdr->sh_offset)) {
             return -ENOEXEC;
         }
+        /* sh_name indexes the section string table; bound it before
+         * move_module() hands the name to strcmp(). */
+        {
+            const Elf_Shdr *section_strings = &info->sechdrs[info->hdr->e_shstrndx];
+            if (shdr->sh_name >= section_strings->sh_size ||
+                !memchr(info->secstrings + shdr->sh_name, 0,
+                        section_strings->sh_size - shdr->sh_name))
+                return -ENOEXEC;
+        }
+        /* sh_name indexes the section string table; bound it before any
+         * find_sec()/move_module() string operation consumes it. */
+        {
+            const Elf_Shdr *shstr = &info->sechdrs[info->hdr->e_shstrndx];
+            if (shdr->sh_name >= shstr->sh_size ||
+                !memchr(info->secstrings + shdr->sh_name, 0,
+                        shstr->sh_size - shdr->sh_name))
+                return -ENOEXEC;
+        }
+        if (shdr->sh_addralign && (shdr->sh_addralign & (shdr->sh_addralign - 1)))
+            return -ENOEXEC;
         /* Mark all sections sh_addr with their address in the temporary image. */
         shdr->sh_addr = (size_t)info->hdr + shdr->sh_offset;
     }
@@ -343,6 +473,11 @@ static int move_module(struct module *mod, struct load_info *info)
         if (!mod->event && !strcmp(".kpm.event", sname)) mod->event = (mod_eventcall_t *)dest;
 
         if (!mod->info.base && !strcmp(".kpm.info", sname)) mod->info.base = (const char *)dest;
+
+        if (!mod->exports && !strcmp(".kpm.export", sname)) {
+            mod->exports = (const struct kpm_export_entry *)dest;
+            mod->export_count = shdr->sh_size / sizeof(struct kpm_export_entry);
+        }
     }
     mod->info.name = info->info.name - info->info.base + mod->info.base;
     mod->info.version = info->info.version - info->info.base + mod->info.base;
@@ -358,6 +493,16 @@ static int setup_load_info(struct load_info *info)
 {
     int rc = 0;
     info->sechdrs = (void *)info->hdr + info->hdr->e_shoff;
+    if (!info->hdr->e_shstrndx || info->hdr->e_shstrndx >= info->hdr->e_shnum) {
+        set_load_error(info, "invalid section string table index");
+        return -ENOEXEC;
+    }
+    Elf_Shdr *section_strings = &info->sechdrs[info->hdr->e_shstrndx];
+    if (section_strings->sh_type != SHT_STRTAB || section_strings->sh_offset > info->len ||
+        section_strings->sh_size > info->len - section_strings->sh_offset) {
+        set_load_error(info, "invalid section string table bounds");
+        return -ENOEXEC;
+    }
     info->secstrings = (void *)info->hdr + info->sechdrs[info->hdr->e_shstrndx].sh_offset;
 
     if ((rc = rewrite_section_headers(info))) {
@@ -415,6 +560,10 @@ static int setup_load_info(struct load_info *info)
         if (info->sechdrs[i].sh_type == SHT_SYMTAB) {
             info->index.sym = i;
             info->index.str = info->sechdrs[i].sh_link;
+            if (info->index.str >= info->hdr->e_shnum) {
+                set_load_error(info, "invalid symbol string section index");
+                return -ENOEXEC;
+            }
             info->strtab = (char *)info->hdr + info->sechdrs[info->index.str].sh_offset;
             break;
         }
@@ -424,6 +573,31 @@ static int setup_load_info(struct load_info *info)
         logkd("module has no symbols (stripped?)\n");
         set_load_error(info, "module has no symbols (stripped?)");
         return -ENOEXEC;
+    }
+    Elf_Shdr *symbols = &info->sechdrs[info->index.sym];
+    if (symbols->sh_size % sizeof(Elf_Sym) || symbols->sh_link >= info->hdr->e_shnum) {
+        set_load_error(info, "invalid ELF symbol table");
+        return -ENOEXEC;
+    }
+    Elf_Shdr *strings = &info->sechdrs[symbols->sh_link];
+    if (strings->sh_type != SHT_STRTAB || !strings->sh_size) {
+        set_load_error(info, "invalid ELF symbol strings");
+        return -ENOEXEC;
+    }
+    Elf_Sym *table = (void *)info->hdr + symbols->sh_offset;
+    for (unsigned int i = 0; i < symbols->sh_size / sizeof(Elf_Sym); i++) {
+        if (table[i].st_name >= strings->sh_size ||
+            !memchr(info->strtab + table[i].st_name, 0, strings->sh_size - table[i].st_name)) {
+            set_load_error(info, "unterminated ELF symbol name");
+            return -ENOEXEC;
+        }
+    }
+    {
+        int export_sec = find_sec(info, ".kpm.export");
+        if (export_sec && info->sechdrs[export_sec].sh_size % sizeof(struct kpm_export_entry)) {
+            set_load_error(info, "malformed .kpm.export section");
+            return -ENOEXEC;
+        }
     }
     return 0;
 }
@@ -447,7 +621,6 @@ static int elf_header_check(struct load_info *info)
 }
 
 struct module modules = { 0 };
-static spinlock_t module_lock;
 
 long load_module_ex(const void *data, int len, const char *args, const char *event, const char *source,
                     void *__user reserved)
@@ -459,7 +632,10 @@ long load_module_ex(const void *data, int len, const char *args, const char *eve
     if ((rc = elf_header_check(info))) goto out;
     if ((rc = setup_load_info(info))) goto out;
 
-    if (find_module(info->info.name)) {
+    rcu_read_lock();
+    bool module_exists = find_module(info->info.name) != NULL;
+    rcu_read_unlock();
+    if (module_exists) {
         logkfd("%s exist\n", info->info.name);
         set_load_error(info, "module already exists");
         rc = -EEXIST;
@@ -488,6 +664,10 @@ long load_module_ex(const void *data, int len, const char *args, const char *eve
 
     layout_sections(mod, info);
     layout_symtab(mod, info);
+    if ((rc = kpm_prepare_link(mod, info))) {
+        set_load_error(info, "module link arena too large or invalid");
+        goto free;
+    }
 
     if ((rc = move_module(mod, info))) {
         set_load_error(info, "allocate executable module memory failed");
@@ -504,16 +684,41 @@ long load_module_ex(const void *data, int len, const char *args, const char *eve
     rc = (*mod->init)(mod->args, event, reserved);
 
     if (!rc) {
-        logkfi("[%s] succeed with [%s] \n", mod->info.name, args);
-        list_add_tail(&mod->list, &modules.list);
+        logkfi("[%s] initialized\n", mod->info.name);
+        {
+            unsigned long flags;
+            bool duplicate;
+            rcu_read_lock();
+            flags = kp_private_spin_lock(&module_lock);
+            duplicate = find_module(mod->info.name) != NULL;
+            if (!duplicate)
+                list_add_tail_rcu(&mod->list, &modules.list);
+            kp_private_spin_unlock(&module_lock, flags);
+            rcu_read_unlock();
+            if (duplicate) {
+                set_load_error(info, "module already exists");
+                rc = -EEXIST;
+                (*mod->exit)(reserved);
+                goto free;
+            }
+        }
         goto out;
     } else {
         set_load_error(info, "module init failed");
-        logkfi("[%s] failed with [%s] error: %d, try exit ...\n", mod->info.name, args, rc);
+        logkfi("[%s] init failed: %ld, try exit ...\n", mod->info.name, rc);
         (*mod->exit)(reserved);
     }
 
 free:
+    /* A failed load must undo the dependency references it took, exactly like
+     * the kernel module loader when init_module fails. */
+    {
+        unsigned int i;
+        unsigned long flags = kp_private_spin_lock(&module_lock);
+        for (i = 0; i < mod->dep_count; i++) mod->deps[i]->export_refs--;
+        mod->dep_count = 0;
+        kp_private_spin_unlock(&module_lock, flags);
+    }
     if (mod->args) kvfree(mod->args);
     kp_free_exec(mod->start);
 free1:
@@ -526,30 +731,46 @@ out:
 // todo: lock
 long unload_module(const char *name, void *__user reserved)
 {
+    struct module *mod;
+    unsigned long lock_flags;
+    unsigned int i;
+    long rc;
+
     if (!name) return -EINVAL;
+    if (!kfunc(synchronize_rcu)) return -ENOSYS;
     logkfe("name: %s\n", name);
 
     rcu_read_lock();
-    long rc = 0;
-
-    struct module *mod = find_module(name);
+    lock_flags = kp_private_spin_lock(&module_lock);
+    mod = find_module(name);
     if (!mod) {
-        rc = -ENOENT;
-        goto out;
+        kp_private_spin_unlock(&module_lock, lock_flags);
+        rcu_read_unlock();
+        return -ENOENT;
     }
-    list_del(&mod->list);
+    if (mod->export_refs) {
+        logkfe("module %s is in use by %u other KPM(s)\n", name, mod->export_refs);
+        kp_private_spin_unlock(&module_lock, lock_flags);
+        rcu_read_unlock();
+        return -EBUSY;
+    }
+    list_del_rcu(&mod->list);
+    kp_private_spin_unlock(&module_lock, lock_flags);
+    rcu_read_unlock();
+
+    kfunc(synchronize_rcu)();
     rc = (*mod->exit)(reserved);
+
+    lock_flags = kp_private_spin_lock(&module_lock);
+    for (i = 0; i < mod->dep_count; i++) mod->deps[i]->export_refs--;
+    mod->dep_count = 0;
+    kp_private_spin_unlock(&module_lock, lock_flags);
 
     if (mod->args) kvfree(mod->args);
     if (mod->ctl_args) kvfree(mod->ctl_args);
-
     kp_free_exec(mod->start);
     kvfree(mod);
-
-    logkfi("name: %s, rc: %d\n", name, rc);
-
-out:
-    rcu_read_unlock();
+    logkfi("name: %s, rc: %ld\n", name, rc);
     return rc;
 }
 
@@ -576,6 +797,11 @@ long load_module_path_event(const char *path, const char *args, const char *even
         goto out;
     }
     loff_t len = vfs_llseek(filp, 0, SEEK_END);
+    if (len <= 0 || len > KPM_LINK_MAX_IMAGE) {
+        rc = len < 0 ? len : -E2BIG;
+        set_kpm_load_result(reserved, rc, "module file size invalid or too large");
+        goto close;
+    }
     logkfd("module size: %llx\n", len);
     vfs_llseek(filp, 0, SEEK_SET);
 
@@ -619,7 +845,7 @@ long module_control0(const char *name, const char *ctl_args, char *__user out_ms
     int args_len = strlen(ctl_args);
     if (args_len <= 0) return -EINVAL;
 
-    logkfi("name %s, args: %s\n", name, ctl_args);
+    logkfi("control module: %s\n", name);
 
     long rc = 0;
     rcu_read_lock();
@@ -689,7 +915,7 @@ long notify_modules_event(const char *event, const char *args, void *__user rese
     rcu_read_lock();
 
     struct module *pos;
-    list_for_each_entry(pos, &modules.list, list)
+    list_for_each_entry_rcu(pos, &modules.list, list)
     {
         if (!pos->event || !*pos->event) continue;
 
@@ -707,7 +933,7 @@ KP_EXPORT_SYMBOL(notify_modules_event);
 struct module *find_module(const char *name)
 {
     struct module *pos;
-    list_for_each_entry(pos, &modules.list, list)
+    list_for_each_entry_rcu(pos, &modules.list, list)
     {
         if (!strcmp(name, pos->info.name)) {
             return pos;
@@ -722,7 +948,7 @@ int get_module_nums()
 
     struct module *pos;
     int n = 0;
-    list_for_each_entry(pos, &modules.list, list)
+    list_for_each_entry_rcu(pos, &modules.list, list)
     {
         n++;
     }
@@ -741,7 +967,7 @@ int list_modules(char *out_names, int size)
 
     struct module *pos;
     int off = 0;
-    list_for_each_entry(pos, &modules.list, list)
+    list_for_each_entry_rcu(pos, &modules.list, list)
     {
         off += snprintf(out_names + off, size - 1 - off, "%s\n", pos->info.name);
     }

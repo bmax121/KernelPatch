@@ -18,6 +18,8 @@
 #include <scdefs.h>
 
 #include <kpmodule.h>
+#include <kpmlink.h>
+#include <kpmdep.h>
 
 /* KPM ABI function types (from kpmodule.h): mod_initcall_t, mod_ctl0call_t,
  * mod_ctl1call_t, mod_exitcall_t, mod_eventcall_t. */
@@ -57,6 +59,14 @@ struct kp_module {
 	unsigned int ro_size;
 
 	void *start;
+	struct kpm_link_state link;
+
+	/* LKM-style cross-KPM exports (KPM_EXPORT -> .kpm.export) + deps */
+	const struct kpm_export_entry *exports;
+	unsigned int export_count;
+	struct kp_module *deps[KPM_DEP_MAX]; /* providers we import from */
+	unsigned int dep_count;
+	unsigned int export_refs;            /* modules importing from us */
 
 	struct list_head list;
 };

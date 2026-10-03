@@ -318,6 +318,19 @@ static long my_init(const char *args, const char *event, void *reserved)
 }
 ```
 
+## Cross-KPM Symbol Exports (LKM style)
+
+KPMs can publish symbols to later KPMs the way an LKM uses `EXPORT_SYMBOL`:
+
+```c
+int my_helper(int a, int b);
+KPM_EXPORT(my_helper);
+```
+
+- `KPM_EXPORT` places the symbol in the `.kpm.export` section; later KPMs reference it with a plain `extern`, the loader resolves it by name and records the dependency.
+- A module whose exports are still imported refuses to unload (`-EBUSY`), matching `rmmod` in-use semantics; importers release their providers on unload, and a failed load rolls references back.
+- Behaviour is identical on the kpimg and LKM backends.
+
 ## Loading and Managing Modules
 
 Use the SuperCall API from userspace to manage KPMs at runtime:

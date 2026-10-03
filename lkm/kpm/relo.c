@@ -39,7 +39,7 @@ static u64 do_reloc(enum kp_aarch64_reloc_op reloc_op, void *place, u64 val)
 
 static int reloc_data(enum kp_aarch64_reloc_op op, void *place, u64 val, int len)
 {
-	u64 imm_mask = (1 << len) - 1;
+	u64 imm_mask = len == 64 ? ~0ULL : (1ULL << len) - 1;
 	s64 sval = do_reloc(op, place, val);
 
 	switch (len) {
@@ -62,7 +62,7 @@ static int reloc_data(enum kp_aarch64_reloc_op op, void *place, u64 val, int len
 	sval = (s64)(sval & ~(imm_mask >> 1)) >> (len - 1);
 
 	/* Overflow if the value is not representable in len bits. */
-	if ((u64)(sval + 1) > 2)
+	if (len != 64 && (u64)(sval + 1) >= 2)
 		return -ERANGE;
 
 	return 0;
@@ -135,7 +135,7 @@ static int reloc_insn_imm(enum kp_aarch64_reloc_op op, void *place, u64 val, int
 int kp_apply_relocate(Elf64_Shdr *sechdrs, const char *strtab, unsigned int symindex,
 		      unsigned int relsec, struct kp_module *me)
 {
-	return 0;
+	return -ENOEXEC;
 }
 
 int kp_apply_relocate_add(Elf64_Shdr *sechdrs, const char *strtab, unsigned int symindex,
@@ -281,10 +281,31 @@ int kp_apply_relocate_add(Elf64_Shdr *sechdrs, const char *strtab, unsigned int 
 		case R_AARCH64_CONDBR19:
 			ovf = reloc_insn_imm(RELOC_OP_PREL, loc, val, 2, 19, KP_INSN_IMM_19);
 			break;
-		case R_AARCH64_JUMP26:
-		case R_AARCH64_CALL26:
-			ovf = reloc_insn_imm(RELOC_OP_PREL, loc, val, 2, 26, KP_INSN_IMM_26);
-			break;
+        case R_AARCH64_JUMP26:
+        case R_AARCH64_CALL26:
+            if (val & 3) return -ENOEXEC;
+            if (!kpm_link_branch_in_range((unsigned long)loc, val)) {
+                val = kpm_link_plt(&me->link, me->start, val);
+                if (!val) return -ENOMEM;
+            }
+            ovf = reloc_insn_imm(RELOC_OP_PREL, loc, val, 2, 26, KP_INSN_IMM_26);
+            break;
+        case KPM_RELOC_ADR_GOT_PAGE:
+            val = kpm_link_pointer(&me->link, me->start, val);
+            if (!val) return -ENOMEM;
+            ovf = reloc_insn_imm(RELOC_OP_PAGE, loc, val, 12, 21, KP_INSN_IMM_ADR);
+            break;
+        case KPM_RELOC_LD64_GOT_LO12_NC:
+            val = kpm_link_pointer(&me->link, me->start, val);
+            if (!val) return -ENOMEM;
+            overflow_check = false;
+            ovf = reloc_insn_imm(RELOC_OP_ABS, loc, val, 3, 9, KP_INSN_IMM_12);
+            break;
+        case KPM_RELOC_GOT_LD_PREL19:
+            val = kpm_link_pointer(&me->link, me->start, val);
+            if (!val) return -ENOMEM;
+            ovf = reloc_insn_imm(RELOC_OP_PREL, loc, val, 2, 19, KP_INSN_IMM_19);
+            break;
 		default:
 			pr_err("unsupported RELA relocation: %llu\n", ELF64_R_TYPE(rel[i].r_info));
 			return -ENOEXEC;
