@@ -19,6 +19,7 @@
 #include <predata.h>
 #include <accctl.h>
 #include <asm/current.h>
+#include <asm/cmpxchg.h>
 #include <linux/printk.h>
 #include <linux/fs.h>
 #include <linux/vmalloc.h>
@@ -101,6 +102,24 @@ static const struct trusted_manager_entry trusted_managers[] = {
 
 static uid_t trusted_manager_uid = TRUSTED_MANAGER_UID_INVALID;
 static int global_pkg_pos = 0;
+
+#define AID_SYSTEM 1000
+/* task_work_add() notify: bool before 5.8, int TWA_RESUME (1) in 5.8/5.9,
+ * enum TWA_RESUME (1) since 5.10; 1 means "run on return to user" on all.
+ * TODO(verify): signature/values against the oldest and newest target kernels. */
+#define KP_TWA_RESUME 1
+#define PKG_LIST_REFRESH_SLOTS 4
+
+typedef int (*kp_task_work_add_t)(struct task_struct *task, struct callback_head *work, int notify);
+static kp_task_work_add_t kp_task_work_add;
+
+struct pkg_list_refresh_slot {
+    struct callback_head twork;
+    int busy;
+};
+static struct pkg_list_refresh_slot pkg_list_refresh_slots[PKG_LIST_REFRESH_SLOTS];
+static int trusted_manager_refresh_running = 0;
+static int trusted_manager_refresh_again = 0;
 
 
 static const char ORIGIN_RC_FILES[][64] = {
@@ -1078,7 +1097,7 @@ static int refresh_trusted_manager_uid_from_packages_list(uid_t *trusted_uid_out
                 apk_path, PATH_MAX,
                 i);
         if (rc) {
-            log_boot("no apk via iterate for %s rc=%d, fallback to xml\n",
+            log_boot("no apk via iterate for %s rc=%d\n",
              trusted_managers[i].package, rc);
 
 
@@ -1141,9 +1160,32 @@ static int refresh_trusted_manager_state_from_packages_list(int use_tmp)
     return 0;
 }
 
+/* Serialize all refreshes: a request arriving while one runs makes the runner
+ * loop once more instead of racing it, so an older scan can never overwrite the
+ * result of a newer one.  The coalesced caller returns 0 without waiting. */
+static int refresh_trusted_manager_state_serialized(void)
+{
+    int rc = 0;
+
+    for (;;) {
+        if (xchg(&trusted_manager_refresh_running, 1)) {
+            smp_store_release(&trusted_manager_refresh_again, 1);
+            if (!smp_load_acquire(&trusted_manager_refresh_running)) continue;
+            log_boot("trusted manager refresh coalesced\n");
+            return 0;
+        }
+        do {
+            xchg(&trusted_manager_refresh_again, 0);
+            rc = refresh_trusted_manager_state_from_packages_list(0);
+        } while (smp_load_acquire(&trusted_manager_refresh_again));
+        smp_store_release(&trusted_manager_refresh_running, 0);
+        if (!smp_load_acquire(&trusted_manager_refresh_again)) return rc;
+    }
+}
+
 int refresh_trusted_manager_state(void)
 {
-    return refresh_trusted_manager_state_from_packages_list(0);
+    return refresh_trusted_manager_state_serialized();
 }
 KP_EXPORT_SYMBOL(refresh_trusted_manager_uid);
 
@@ -1827,6 +1869,50 @@ typedef char *(*kp_dentry_path_raw_t)(struct dentry *dentry, char *buf, int bufl
 
 static kp_dentry_path_raw_t kp_dentry_path_raw;
 
+/* task_work callback: runs when the renaming task returns to user space, after
+ * do_renameat2() has dropped the parent directory i_rwsem, and reads the final
+ * packages.list.  Called indirectly by task_work_run(); kCFI is passed for KP
+ * text by bypass_kcfi() (secpass.c), as for the iterate_dir actors. */
+static void packages_list_refresh_twork(struct callback_head *head)
+{
+    struct pkg_list_refresh_slot *slot = container_of(head, struct pkg_list_refresh_slot, twork);
+    int rc;
+
+    /* TODO(verify): task_work_run() loads work->next before calling ->func on
+     * every target kernel, so the slot may be requeued from here on. */
+    smp_store_release(&slot->busy, 0);
+    rc = refresh_trusted_manager_state_serialized();
+    log_boot("packages.list rename deferred refresh rc=%d\n", rc);
+}
+
+/* Called from the LSM rename hook with the parent directory locked: no VFS
+ * lookup/open/read may happen here, a dcache miss in that directory would
+ * down_read() the i_rwsem this task already holds for write. */
+static void queue_packages_list_refresh(void)
+{
+    int i;
+
+    if (!kp_task_work_add) return;
+
+    for (i = 0; i < PKG_LIST_REFRESH_SLOTS; i++) {
+        struct pkg_list_refresh_slot *slot = &pkg_list_refresh_slots[i];
+        int rc;
+
+        if (xchg(&slot->busy, 1)) continue;
+        slot->twork.next = 0;
+        slot->twork.func = packages_list_refresh_twork;
+        rc = kp_task_work_add(current, &slot->twork, KP_TWA_RESUME);
+        if (!rc) return;
+        smp_store_release(&slot->busy, 0);
+        log_boot("packages.list rename: task_work_add failed rc=%d, refresh skipped\n", rc);
+        return;
+    }
+
+    /* every slot is queued on another renaming task; its refresh runs again */
+    smp_store_release(&trusted_manager_refresh_again, 1);
+    log_boot("packages.list rename: refresh slots busy, coalesced\n");
+}
+
 static void refresh_packages_list_tmp_rename(struct dentry *tmp_dentry)
 {
     char path[128];
@@ -1836,6 +1922,10 @@ static void refresh_packages_list_tmp_rename(struct dentry *tmp_dentry)
         return;
     }
 
+    /* only system_server rewrites packages.list; also keeps apps from
+     * triggering a refresh with their own .../system/packages.list.tmp */
+    if (current_uid() != AID_SYSTEM) return;
+
     buf = kp_dentry_path_raw(tmp_dentry, path, sizeof(path));
     if (IS_ERR(buf)) {
         log_boot("packages.list rename: dentry_path_raw failed\n");
@@ -1843,10 +1933,8 @@ static void refresh_packages_list_tmp_rename(struct dentry *tmp_dentry)
     }
 
     if (is_packages_list_tmp_dentry_path(buf)) {
-        int rc;
-        log_boot("packages.list rename matched: %s\n", buf);
-        rc = refresh_trusted_manager_state_from_packages_list(1);
-        log_boot("packages.list rename refresh trusted manager rc=%d\n", rc);
+        log_boot("packages.list rename matched: %s, refresh deferred\n", buf);
+        queue_packages_list_refresh();
     }
 }
 
@@ -1868,6 +1956,15 @@ static void hook_rename_lsm(void)
 {
     unsigned long addr;
     hook_err_t rc;
+
+    /* Without task_work there is no safe place to refresh: never fall back to
+     * I/O inside the rename hook.  The uid_listener event and reload-cfg still
+     * refresh the trusted manager from process context. */
+    kp_task_work_add = (kp_task_work_add_t)kallsyms_lookup_name_by_suffix("task_work_add");
+    if (!kp_task_work_add) {
+        log_boot("no symbol: task_work_add, packages.list rename hook disabled\n");
+        return;
+    }
 
     kp_dentry_path_raw = (kp_dentry_path_raw_t)kallsyms_lookup_name("dentry_path_raw");
     if (!kp_dentry_path_raw) {
