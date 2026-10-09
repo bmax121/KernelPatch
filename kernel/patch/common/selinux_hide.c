@@ -275,13 +275,86 @@ static int kp_avc_check(u32 tsid, u16 tclass, u32 requested)
     return kp_avc_has_perm_compat((void *)kp_selinux_state_addr, mysid, tsid, tclass, requested, NULL);
 }
 
+static ssize_t kp_patch_response_seqno(char *buf, ssize_t ret, u32 new_seqno)
+{
+    char *p = buf, *end = buf + ret, *tok_start;
+    char new_str[12];
+    int ns_len, tok, i;
+    ssize_t diff;
+
+    if (ret <= 0 || !buf) return ret;
+    for (tok = 0; tok < 4; tok++) {
+        while (p < end && *p == ' ') p++;
+        while (p < end && *p != ' ') p++;
+    }
+    while (p < end && *p == ' ') p++;
+    tok_start = p;
+    while (p < end && *p != ' ' && *p != '\0' && *p != '\n') p++;
+    if (tok_start >= p) return ret;
+
+    {
+        u32 v = new_seqno;
+        char tmp[12];
+        if (v == 0) {
+            new_str[0] = '0';
+            ns_len = 1;
+        } else {
+            i = 0;
+            while (v > 0) {
+                tmp[i++] = '0' + (v % 10);
+                v /= 10;
+            }
+            for (ns_len = 0; ns_len < i; ns_len++)
+                new_str[ns_len] = tmp[i - 1 - ns_len];
+        }
+    }
+
+    diff = (ssize_t)ns_len - (ssize_t)(p - tok_start);
+    if (diff != 0) {
+        char *dst = tok_start + ns_len, *src = p;
+        size_t move = (size_t)(end - src);
+        int j;
+        if (diff < 0) {
+            for (j = 0; j < (int)move; j++) dst[j] = src[j];
+        } else {
+            for (j = (int)move - 1; j >= 0; j--) dst[j] = src[j];
+        }
+        ret += diff;
+    }
+    for (i = 0; i < ns_len; i++)
+        tok_start[i] = new_str[i];
+    return ret;
+}
+
+static bool kp_avd_seqno_probe(const char *scon,
+                               const char *tcon,
+                               u16 tclass)
+{
+    static const char prefix[] = "u:r:untrusted_app:s0";
+    if (tclass != 0)
+        return false;
+    if (!scon || !tcon)
+        return false;
+    if (lib_strncmp(scon, prefix, sizeof(prefix) - 1) != 0)
+        return false;
+    if (lib_strncmp(tcon, prefix, sizeof(prefix) - 1) != 0)
+        return false;
+    if (scon[sizeof(prefix) - 1] != '\0' &&
+        scon[sizeof(prefix) - 1] != ':')
+        return false;
+    if (tcon[sizeof(prefix) - 1] != '\0' &&
+        tcon[sizeof(prefix) - 1] != ':')
+        return false;
+    return true;
+}
 /* ---- /sys/fs/selinux/context handler ---- */
 
-static ssize_t my_write_context(struct file *file, char *buf, size_t size)
+static ssize_t my_write_context_new(struct file *file, char *buf, size_t size)
 {
+
     uid_t uid = current_uid();
     char *canon = NULL;
-    u32 sid, len;
+    u32 sid, len, tmp;
     ssize_t length;
 
     kp_qlog("context_write", uid, buf, size);
@@ -301,7 +374,13 @@ static ssize_t my_write_context(struct file *file, char *buf, size_t size)
     if (length) return length;
 
     length = selinux_sepolicy_context_to_sid(buf, size, &sid, KP_GFP_KERNEL);
-    if (length) return length;
+    if (length) {
+        return length;
+    } else {
+        // sync to global sidtab
+        security_context_to_sid_fn(buf, size, &sid, KP_GFP_KERNEL);
+    }
+
 
     length = selinux_sepolicy_sid_to_context(sid, &canon, &len);
     if (length) return length;
@@ -317,15 +396,41 @@ out:
     if (canon && kfunc(kfree)) kfunc(kfree)(canon);
     return length;
 }
-
-/* ---- /sys/fs/selinux/access handler ---- */
-
-static ssize_t my_write_access(struct file *file, char *buf, size_t size)
+static ssize_t my_write_context(struct file *file, char *buf, size_t size)
 {
+    if (kver > VERSION(5 ,0 ,0)) return my_write_context_new(file, buf, size);
+    uid_t uid = current_uid();
+    ssize_t ret;
+
+    kp_qlog("context_write", uid, buf, size);
+
+    if (likely(uid < 10000)) {
+        ret = orig_context_write(file, buf, size);
+        if (ret > 0){ 
+            kp_qlog("context_answer", uid, buf, (size_t)ret);
+        }else{
+            kp_qlog("context_answer_failed", uid, buf, (size_t)ret);
+        }
+        return ret;
+    }
+    if (selinux_sepolicy_clean_eval_enter() == 0) {
+        ret = orig_context_write(file, buf, size);
+        selinux_sepolicy_clean_eval_leave();
+    } else {
+        ret = orig_context_write(file, buf, size);
+    }
+    if (ret > 0) kp_qlog("context_answer", uid, buf, (size_t)ret);
+    return ret;
+
+}
+
+static ssize_t my_write_access_new(struct file *file, char *buf, size_t size)
+{
+    ssize_t ret;
     uid_t uid = current_uid();
     char scon[256], tcon[256];
     struct av_decision avd;
-    u32 ssid, tsid;
+    u32 ssid, tsid, sconlen, tconlen ,tmp;
     u16 tclass = 0;
     ssize_t length;
 
@@ -338,21 +443,23 @@ static ssize_t my_write_access(struct file *file, char *buf, size_t size)
         return length;
     }
 
-    /* KernelSU my_write_access: compute the whole decision against the clean
-     * snapshot and report the stock seqno.  This uniformly covers the
-     * DirtySepolicy avd.seqno probe (untrusted_app x untrusted_app, class 0):
-     * its answer is produced by the pre-root policy with seqno 1, so no
-     * response patching or special case is needed any more. */
+
     length = kp_avc_check(KP_SECINITSID_SECURITY, KP_SECCLASS_SECURITY, KP_SECURITY__COMPUTE_AV);
     if (length) return length;
 
     if (sscanf(buf, "%255s %255s %hu", scon, tcon, &tclass) != 3) return -EINVAL;
 
     length = selinux_sepolicy_context_str_to_sid(scon, &ssid, KP_GFP_KERNEL);
-    if (length) return length;
+    if (length) {
+        length = security_context_to_sid_fn(scon, lib_strlen(scon), &ssid, KP_GFP_KERNEL);
+        if (length) return length;
+    }
 
     length = selinux_sepolicy_context_str_to_sid(tcon, &tsid, KP_GFP_KERNEL);
-    if (length) return length;
+    if (length) {
+        length = security_context_to_sid_fn(tcon, lib_strlen(tcon), &tsid, KP_GFP_KERNEL);
+        if (length) return length;
+    }
 
     lib_memset(&avd, 0, sizeof(avd));
     avd.auditdeny = 0xffffffff;
@@ -363,15 +470,81 @@ static ssize_t my_write_access(struct file *file, char *buf, size_t size)
                     avd.allowed, 0xffffffff, avd.auditallow, avd.auditdeny,
                     avd.seqno, avd.flags);
 }
+static ssize_t my_write_access(struct file *file, char *buf, size_t size)
+{
+    if (kver > VERSION(5 ,0 ,0)) return my_write_access_new(file, buf, size);
+
+    ssize_t ret;
+    uid_t uid = current_uid();
+    char scon[256], tcon[256];
+    struct av_decision avd;
+    u32 ssid, tsid, sconlen, tconlen ,tmp;
+    u16 tclass = 0;
+    ssize_t length;
+
+    kp_qlog("access_write", uid, buf, size);
+
+    if (likely(uid < 10000)) {
+        length = orig_access_write(file, buf, size);
+        if (length > 0) kp_qlog("access_answer", uid, buf, (size_t)length);
+        else kp_qlog("access_answer_failed", uid, buf, (size_t)length);
+        return length;
+    }
+ 
+ 
+        {
+            char tmp[96];
+            char scon[64], tcon[64];
+            unsigned int allowed, decided,auditallow,auditdeny,seqno,flags;
+            u16 tclass = 0;
+            size_t tn = size < sizeof(tmp) - 1? size: sizeof(tmp) - 1;
+            lib_memcpy(tmp, buf, tn);
+            tmp[tn] = '\0';
+            if (sscanf(tmp, "%63s %63s %hu", scon, tcon, &tclass) == 3 &&
+                kp_avd_seqno_probe(scon, tcon, tclass)) {
+                ret = orig_access_write(file, buf, size);
+                if (ret > 0) {
+                    if (sscanf(buf,"%x %x %x %x %u %x",&allowed,&decided,&auditallow,&auditdeny,&seqno,&flags) == 6) {
+                        seqno = 1;
+                        ret = snprintf(buf,size,"%x %x %x %x %u %x",allowed,decided,auditallow,auditdeny,seqno,flags);
+                        if (ret > 0 && (size_t)ret < size) {
+                            kp_qlog("access_answer(seqno probe)",uid, buf, (size_t)ret);
+                            logkfi("access_answer(seqno probe) ""uid=%u buf=%s,""scon=%s,tcon=%s,tclass=%hu,""origin=%zd,now=%zd,origin_buf=%s\n",(unsigned int)uid,buf,scon,tcon,tclass,ret,ret,tmp);
+                            return ret;
+                        }
+                    }
+                }
+                return ret;
+            }
+        }
+
+        if (selinux_sepolicy_clean_eval_enter() == 0) {
+            ret = orig_access_write(file, buf, size);
+            selinux_sepolicy_clean_eval_leave();
+        } else {
+            ret = orig_access_write(file, buf, size);
+        }
+
+        if (ret > 0)
+            ret = kp_patch_response_seqno(buf, ret, KP_AVD_CLEAN_SEQNO);
+
+        if (ret > 0)
+            kp_qlog("access_answer", uid, buf, (size_t)ret);
+
+        return ret;
+    
+}
 
 /* ---- setprocattr handler ---- */
 
-static int my_setprocattr(const char *name, void *value, size_t size)
+
+static int my_setprocattr_new(const char *name, void *value, size_t size)
 {
     uid_t uid = current_uid();
+    u32 tmp, mysid;
     char *str = value;
     char vbuf[96];
-
+    int error,perm_error;
     if (selinux_hide_query_log != KP_QLOG_OFF) {
         kp_qlog_str(vbuf, value, size, sizeof(vbuf) - 1);
         logkfi("query setprocattr uid=%u name=%s value=%s\n", (unsigned int)uid,
@@ -384,10 +557,6 @@ static int my_setprocattr(const char *name, void *value, size_t size)
     if (uid < 10000 || lib_strcmp(name, "current")) goto call_orig;
 
     {
-        u32 mysid = kp_current_sid();
-        int error = kp_avc_check(mysid, KP_SECCLASS_PROCESS, KP_PROCESS__SETCURRENT);
-        if (error) return error;
-
         if (size && str[0] && str[0] != '\n') {
             u32 sid = 0;
             if (str[size - 1] == '\n') {
@@ -395,7 +564,11 @@ static int my_setprocattr(const char *name, void *value, size_t size)
                 size--;
             }
             error = selinux_sepolicy_context_to_sid(str, size, &sid, KP_GFP_KERNEL);
-            if (error) return error;
+            if (error){
+                
+                perm_error = kp_avc_check(mysid, KP_SECCLASS_PROCESS, KP_PROCESS__SETCURRENT);
+                return perm_error ?: error;
+            } 
         }
     }
 
@@ -404,6 +577,33 @@ call_orig:
 }
 
 
+static int my_setprocattr(const char *name, void *value, size_t size)
+{
+    if (kver > VERSION(5, 0 ,0)) return my_setprocattr_new(name, value, size);
+    uid_t uid = current_uid();
+    u32 tmp, mysid;
+    char *str = value;
+    char vbuf[96];
+    int error,perm_error;
+    if (selinux_hide_query_log != KP_QLOG_OFF) {
+        kp_qlog_str(vbuf, value, size, sizeof(vbuf) - 1);
+        logkfi("query setprocattr uid=%u name=%s value=%s\n", (unsigned int)uid,
+               name ? name : "(null)", vbuf);
+    }
+    if (likely(uid < 10000)) goto call_orig;
+    if (lib_strcmp(name, "current")) goto call_orig;
+    if (!kfunc(avc_has_perm) || !selinux_has_selinux_state()) goto call_orig;
+    if (selinux_sepolicy_clean_eval_enter() == 0) {
+        int rc = orig_setprocattr(name, value, size);
+        selinux_sepolicy_clean_eval_leave();
+        return rc;
+
+    }
+
+call_orig:
+    return orig_setprocattr(name, value, size);
+
+}
 /* ---- /sys/fs/selinux/status (read + mmap) ---- */
 
 static ssize_t my_sel_read_handle_status(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
@@ -791,7 +991,14 @@ int selinux_hide_post_fs_data(const char *args)
     }
     return 0;
 }
-
+int security_context_to_sid_fn(const char *context, int len, u32 *sid, gfp_t gfp)
+{
+    if (kver >= VERSION(6, 6, 0)) {
+        return kfunc(security_context_to_sid)(context, len, sid, gfp);
+    } else {
+        return kfunc(security_context_to_sid_compat)((void *)kp_selinux_state_addr, context, len, sid, gfp);
+    }
+}
 
 unsigned long lookup_name_with_suffix(const char *base)
 {
@@ -825,8 +1032,12 @@ int selinux_hide_init(void)
         (typeof(kfunc(security_compute_av_user)))lookup_name_with_suffix("security_compute_av_user");
     kfunc(security_sid_to_context) =
         (typeof(kfunc(security_sid_to_context)))lookup_name_with_suffix("security_sid_to_context");
-    kfunc(security_context_to_sid) =
-        (typeof(kfunc(security_context_to_sid)))lookup_name_with_suffix("security_context_to_sid");
+    if (kver >= VERSION(6,6,0))
+        kfunc(security_context_to_sid) =
+            (typeof(kfunc(security_context_to_sid)))lookup_name_with_suffix("security_context_to_sid");
+    else
+        kfunc(security_context_to_sid_compat) =
+            (typeof(kfunc(security_context_to_sid_compat)))lookup_name_with_suffix("security_context_to_sid_compat");
     kfunc(security_context_str_to_sid) =
         (typeof(kfunc(security_context_str_to_sid)))lookup_name_with_suffix("security_context_str_to_sid");
 

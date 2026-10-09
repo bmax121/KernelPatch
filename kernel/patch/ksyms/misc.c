@@ -550,6 +550,7 @@ int kfunc_def(security_sid_to_context)(u32 sid, char **scontext, u32 *scontext_l
 int kfunc_def(security_sid_to_context_force)(u32 sid, char **scontext, u32 *scontext_len) = 0;
 int kfunc_def(security_sid_to_context_inval)(u32 sid, char **scontext, u32 *scontext_len) = 0;
 int kfunc_def(security_context_to_sid)(const char *scontext, u32 scontext_len, u32 *out_sid, gfp_t gfp) = 0;
+int kfunc_def(security_context_to_sid_compat)(struct selinux_state *state, const char *scontext, u32 scontext_len, u32 *out_sid, gfp_t gfp) = 0;
 int kfunc_def(security_context_str_to_sid)(const char *scontext, u32 *out_sid, gfp_t gfp) = 0;
 int kfunc_def(security_context_to_sid_default)(const char *scontext, u32 scontext_len, u32 *out_sid, u32 def_sid,
                                                gfp_t gfp_flags) = 0;
