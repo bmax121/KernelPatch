@@ -45,11 +45,9 @@
 #include <uapi/asm-generic/errno.h>
 #include <security/selinux/include/security.h>
 #include <security/selinux/include/avc.h>
+#include <selinux_hide.h>
 
 /* ---- constants ---- */
-
-#define KP_SEPOLICY_MIN_VERSION VERSION(4, 19, 0)
-#define KP_SEPOLICY_WITH_POLICY_MIN_VERSION VERSION(6, 4, 0) /* helpers drop the state arg here */
 
 #define KP_POLICY_POLICYDB_OFFSET (sizeof(void *)) /* struct selinux_policy { sidtab*, policydb, ... } */
 /* Heap allocations for the copy (KernelSU uses kmemdup/vmalloc the same way).
@@ -450,7 +448,7 @@ static void *g_backup_policy; /* our own struct selinux_policy-equivalent (heap)
 
 static bool selinux_sepolicy_supported(void)
 {
-    return kver >= KP_SEPOLICY_MIN_VERSION;
+    return selinux_hide_is_supported();
 }
 
 static struct policydb *kp_backup_policydb(void);
@@ -703,7 +701,7 @@ static void kp_install_load_hook(void)
     if (g_load_hook_installed || !selinux_sepolicy_supported()) return;
     addr = lookup_name_with_suffix("security_load_policy");
     if (!addr) return;
-    if (kver >= KP_SEPOLICY_WITH_POLICY_MIN_VERSION)
+    if (selinux_hide_is_without_sepolicy_state_version())
         hook_wrap3((void *)addr, NULL, after_security_load_policy_3, NULL);
     else
         hook_wrap4((void *)addr, NULL, after_security_load_policy_4, NULL);
@@ -1002,7 +1000,7 @@ int selinux_sepolicy_init(void)
     kp_context_struct_to_string = (context_struct_to_string_fn)lookup_name_with_suffix("context_struct_to_string");
     kp_sidtab_search_core = (sidtab_search_core_fn)lookup_name_with_suffix("sidtab_search_core");
     kp_context_struct_compute_av = (context_struct_compute_av_fn)lookup_name_with_suffix("context_struct_compute_av");
-    if (kver <= VERSION(5, 0, 0)) {
+    if (!selinux_hide_is_new_version()) {
         /* Only the argument-redirect hooks are needed: the deep copy is consumed by
         * swapping the policydb argument while an app query runs. */
         addr = lookup_name_with_suffix("context_struct_compute_av");
@@ -1023,7 +1021,7 @@ int selinux_sepolicy_init(void)
      * (state, data, len, load_state). */
     addr = lookup_name_with_suffix("security_load_policy");
     if (addr) {
-        if (kver >= KP_SEPOLICY_WITH_POLICY_MIN_VERSION)
+        if (selinux_hide_is_without_sepolicy_state_version())
             hook_wrap3((void *)addr, NULL, after_security_load_policy_3, NULL);
         else
             hook_wrap4((void *)addr, NULL, after_security_load_policy_4, NULL);

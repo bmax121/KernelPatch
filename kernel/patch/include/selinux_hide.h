@@ -21,8 +21,25 @@
  * 4.19..6.3 backup range the write hooks fall back to the live policy and only
  * the status hide remains.
  */
-
+#include <common.h>
+#define KP_SELINUX_HIDE_MIN_VERSION VERSION(4, 19, 0)
+#define KP_SELINUX_NEW_VERSION VERSION(5, 0, 0)
+#define KP_SELINUX_WITHOUT_SEPOLICY_STATE_VERSION VERSION(6, 6, 0)
 /* Resolve symbols / cache support state at boot. Never installs hooks. */
+
+static bool selinux_hide_is_supported(void)
+{
+    return kver >= KP_SELINUX_HIDE_MIN_VERSION;
+}
+static bool selinux_hide_is_new_version(void)
+{
+    return kver >= KP_SELINUX_NEW_VERSION;
+}
+static bool selinux_hide_is_without_sepolicy_state_version(void)
+{
+    return kver >= KP_SELINUX_WITHOUT_SEPOLICY_STATE_VERSION;
+}
+
 int selinux_hide_init(void);
 
 /* Called from report_user_event for the post-fs-data before/after events.
