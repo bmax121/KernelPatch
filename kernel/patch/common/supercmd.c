@@ -22,6 +22,8 @@
 #include <userd.h>
 #endif
 
+#define SUPERCMD_BUFFER_SIZE 4096
+
 static char *__user supercmd_str_to_user_sp(const char *data, uintptr_t *sp)
 {
     int len = strlen(data) + 1;
@@ -45,7 +47,7 @@ static void supercmd_echo(char **__user u_filename_p, char **__user uargv, uintp
 {
     supercmd_exec(u_filename_p, ECHO_PATH, sp);
 
-    char buffer[4096];
+    char buffer[SUPERCMD_BUFFER_SIZE];
     va_list va;
     va_start(va, fmt);
     vsnprintf(buffer, sizeof(buffer), fmt, va);
@@ -399,6 +401,7 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
         return;
     }
 
+    char *buffer = NULL;
     int pi = 2;
 
     // options, contiguous
@@ -437,9 +440,6 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
     commit_su(profile.to_uid, profile.scontext);
 
     struct cmd_res cmd_res = { 0 };
-
-    char buffer[4096];
-    buffer[0] = '\0';
 
     // command
     const char **carr = parr + pi;
@@ -494,7 +494,12 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
         goto echo;
     #endif
     } else if (!strcmp("sumgr", cmd)) {
-        handle_cmd_sumgr(u_filename_p, carr, buffer, sizeof(buffer), &cmd_res);
+        buffer = kmalloc(SUPERCMD_BUFFER_SIZE, GFP_KERNEL);
+        if (!buffer) {
+            cmd_res.err_msg = "not enough memory for command output";
+            goto echo;
+        }
+        handle_cmd_sumgr(u_filename_p, carr, buffer, SUPERCMD_BUFFER_SIZE, &cmd_res);
     } else if (!strcmp("event", cmd)) {
         if (carr[1]) {
             cmd_res.rc = report_user_event(carr[1], carr[2]);
@@ -510,7 +515,12 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
         cmd_res.msg = "test done...";
     } else {
         if (is_key_auth) {
-            handle_cmd_key_auth(u_filename_p, cmd, carr, buffer, sizeof(buffer), &cmd_res);
+            buffer = kmalloc(SUPERCMD_BUFFER_SIZE, GFP_KERNEL);
+            if (!buffer) {
+                cmd_res.err_msg = "not enough memory for command output";
+                goto echo;
+            }
+            handle_cmd_key_auth(u_filename_p, cmd, carr, buffer, SUPERCMD_BUFFER_SIZE, &cmd_res);
         } else {
             cmd_res.err_msg = "invalid command or a superkey is required";
         }
@@ -522,6 +532,7 @@ echo:
     if (cmd_res.err_msg) supercmd_echo(u_filename_p, uargv, &sp, "supercmd error message: %s", cmd_res.err_msg);
 
 free:
+    kfree(buffer);
     // free args
     for (int i = 2; i < sizeof(parr) / sizeof(parr[0]); i++) {
         const char *a = parr[i];
