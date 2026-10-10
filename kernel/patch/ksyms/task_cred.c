@@ -176,6 +176,28 @@ static void add_bll(int16_t off, int16_t size)
     }
 }
 
+/*
+ * Creds installed by setresuid/setresgid/prctl come from the cred_jar slab,
+ * so they are smaller than CRED_MAX_SIZE. With MTE (KASAN_HW_TAGS, enforced
+ * by GrapheneOS with kasan.fault=panic) a read past the object through its
+ * tagged pointer is a fatal tag-check fault, even within the slab slot.
+ * Scan only the slot (ksize) and access it through the match-all tag, which
+ * is what the kernel itself uses for unchecked accesses. Without MTE the
+ * kernel pointer already carries 0xff in the top byte and nothing changes.
+ */
+static inline uintptr_t slab_cred_base(const struct cred *cred)
+{
+    return (uintptr_t)cred | (0xffUL << 56);
+}
+
+static int slab_cred_scan_len(const struct cred *cred)
+{
+    static unsigned long (*cred_size)(const void *) = 0;
+    if (!cred_size) cred_size = (typeof(cred_size))kallsyms_lookup_name("ksize");
+    unsigned long len = cred_size ? cred_size(cred) : CRED_MAX_SIZE;
+    return len < CRED_MAX_SIZE ? (int)len : CRED_MAX_SIZE;
+}
+
 int resolve_cred_offset()
 {
     log_boot("struct cred: \n");
@@ -318,9 +340,10 @@ int resolve_cred_offset()
     // suid
     raw_syscall3(__NR_setresuid, 0, 0, 1158);
     new_cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
-    for (int i = 0; i < CRED_MAX_SIZE; i += sizeof(uint32_t)) {
+    int scan_len = slab_cred_scan_len(new_cred);
+    for (int i = 0; i + (int)sizeof(uid_t) <= scan_len; i += sizeof(uint32_t)) {
         if (is_bl(i)) continue;
-        uid_t *uidp = (uid_t *)((uintptr_t)new_cred + i);
+        uid_t *uidp = (uid_t *)(slab_cred_base(new_cred) + i);
         if (*uidp == 1158) {
             cred_offset.suid_offset = i;
             *uidp = 0;
@@ -333,9 +356,10 @@ int resolve_cred_offset()
     // sgid
     raw_syscall3(__NR_setresgid, 0, 0, 1158);
     new_cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
-    for (int i = 0; i < CRED_MAX_SIZE; i += sizeof(uint32_t)) {
+    scan_len = slab_cred_scan_len(new_cred);
+    for (int i = 0; i + (int)sizeof(gid_t) <= scan_len; i += sizeof(uint32_t)) {
         if (is_bl(i)) continue;
-        gid_t *uidp = (gid_t *)((uintptr_t)new_cred + i);
+        gid_t *uidp = (gid_t *)(slab_cred_base(new_cred) + i);
         if (*uidp == 1158) {
             cred_offset.sgid_offset = i;
             *uidp = 0;
@@ -354,13 +378,11 @@ int resolve_cred_offset()
     cap_task_prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_RAISE, 0xf, 0, 0);
     new_cred = *(struct cred **)((uintptr_t)task + task_struct_offset.cred_offset);
     /* prctl installed a slab cred, not one of our CRED_MAX_SIZE scratch buffers. */
-    unsigned long (*cred_size)(const void *) = (typeof(cred_size))kallsyms_lookup_name("ksize");
-    unsigned long ambient_scan_len = cred_size ? cred_size(new_cred) : CRED_MAX_SIZE;
-    for (int i = 0; i + (int)sizeof(kernel_cap_t) <= CRED_MAX_SIZE &&
-                    i + (int)sizeof(kernel_cap_t) <= ambient_scan_len; i += sizeof(uint32_t)) {
+    scan_len = slab_cred_scan_len(new_cred);
+    for (int i = 0; i + (int)sizeof(kernel_cap_t) <= scan_len; i += sizeof(uint32_t)) {
         if (is_bl(i)) continue;
         kernel_cap_t cap = *(kernel_cap_t *)((uintptr_t)cred + i);
-        kernel_cap_t new_cap = *(kernel_cap_t *)((uintptr_t)new_cred + i);
+        kernel_cap_t new_cap = *(kernel_cap_t *)(slab_cred_base(new_cred) + i);
         if (!cap.val && new_cap.val == (1 << 0xf)) {
             cred_offset.cap_ambient_offset = i;
             add_bll(i, sizeof(kernel_cap_t));

@@ -212,6 +212,27 @@ static preset_t *find_patched_preset(const char *kimg, int kimg_len, int32_t *sa
     return NULL;
 }
 
+// arm64 Image header: image_size (effective memory footprint), little endian
+#define ARM64_IMAGE_SIZE_OFFSET 16
+
+// Patching grows the header image_size so the bootloader keeps the relocated
+// start image free. The original value is kept in setup.kernel_size; put it
+// back so unpatching yields the original image and re-patching starts from
+// the real kernel size instead of growing it again.
+static void restore_kernel_image_size(char *kimg, int kimg_len, const preset_t *preset)
+{
+    if (kimg_len < ARM64_IMAGE_SIZE_OFFSET + 8) return;
+    uint64_t saved, cur;
+    memcpy(&saved, &preset->setup.kernel_size, sizeof(saved));
+    memcpy(&cur, kimg + ARM64_IMAGE_SIZE_OFFSET, sizeof(cur));
+    saved = u64le(saved);
+    cur = u64le(cur);
+    // only ever grown by patching; anything else is an older layout, leave it
+    if (!saved || saved >= cur) return;
+    tools_logi("restore kernel image_size 0x%llx -> 0x%llx\n", (unsigned long long)cur, (unsigned long long)saved);
+    memcpy(kimg + ARM64_IMAGE_SIZE_OFFSET, &preset->setup.kernel_size, sizeof(saved));
+}
+
 static uint32_t extra_item_header_version(const patch_extra_item_t *item)
 {
     return PATCH_EXTRA_FLAGS_GET_HEADER_VERSION(item->flags);
@@ -323,6 +344,7 @@ int parse_image_patch_info(const char *kimg, int kimg_len, patched_kimg_t *pimg)
     if (old_preset) {
         tools_logi("restore header backup before parsing patched kernel image\n");
         memcpy((char *)kimg, preset_header_backup(old_preset), HDR_BACKUP_SIZE);
+        restore_kernel_image_size((char *)kimg, kimg_len, old_preset);
     }
 
     // kernel image infomation
@@ -865,6 +887,19 @@ int patch_update_img_buf(const char *kimg, int kimg_len, const char *kpimg_path,
     int text_offset = align_kimg_len + SZ_4K;
     b((uint32_t *)(out_kernel_file.kimg + kinfo->b_stext_insn_offset), kinfo->b_stext_insn_offset, text_offset);
 
+    // At entry the start image and extras are copied to kernel_pa + start_offset,
+    // which is at or past the end of the kernel's declared image_size. The arm64
+    // boot protocol only keeps image_size bytes free, so a bootloader may place
+    // the DTB, ramdisk or bootconfig right there. Declare the copy target as part
+    // of the image so it is left alone. kpimg_len bounds the start image size.
+    {
+        uint64_t page_size = 1ULL << kinfo->page_shift;
+        if (page_size < SZ_4K) page_size = SZ_4K;
+        uint64_t image_size = align_ceil(start_offset + kpimg_len + extra_size, page_size);
+        tools_logi("kernel image_size: 0x%x -> 0x%llx\n", kinfo->kernel_size, (unsigned long long)image_size);
+        kernel_resize(kinfo, out_kernel_file.kimg, (int32_t)image_size);
+    }
+
     // additional [len key=value] set
     char *addition_pos = setup->additional;
     for (int i = 0;; i++) {
@@ -1020,6 +1055,7 @@ int unpatch_img(const char *kimg_path, const char *out_path)
 
     // todo: check whether the endian is different or not
     memcpy(kernel_file.kimg, preset->setup.header_backup, sizeof(preset->setup.header_backup));
+    restore_kernel_image_size(kernel_file.kimg, kernel_file.kimg_len, preset);
     int kimg_size = preset->setup.kimg_size ?: ((char *)preset - kernel_file.kimg);
     update_kernel_file_img_len(&kernel_file, kimg_size, false);
 
