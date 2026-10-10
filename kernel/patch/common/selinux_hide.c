@@ -1037,7 +1037,7 @@ int selinux_hide_init(void)
             (typeof(kfunc(security_context_to_sid)))lookup_name_with_suffix("security_context_to_sid");
     else
         kfunc(security_context_to_sid_compat) =
-            (typeof(kfunc(security_context_to_sid_compat)))lookup_name_with_suffix("security_context_to_sid_compat");
+            (typeof(kfunc(security_context_to_sid_compat)))lookup_name_with_suffix("security_context_to_sid");
     kfunc(security_context_str_to_sid) =
         (typeof(kfunc(security_context_str_to_sid)))lookup_name_with_suffix("security_context_str_to_sid");
 
