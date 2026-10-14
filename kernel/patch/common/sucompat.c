@@ -55,16 +55,32 @@ static const char *current_su_path = 0;
 
 static int su_kstorage_gid = -1;
 static int exclude_kstorage_gid = -1;
+static bool su_getname_hooked;
 static void su_register_path_probe_hooks(void);
 static void su_unregister_path_probe_hooks(void);
 static int su_hook_getname_flags(void);
 static int su_syscall_gate(void);
+int su_guard_add_prefix(const char *prefix);
+int su_guard_del_prefix(const char *prefix);
+
+/* App-channel switch for the path-guard registry: default closed, open it by
+ * creating this file. KPMs use the exported functions directly, unaffected. */
+#define SU_GUARD_EXT_FILE "/data/adb/ap/guard_ext"
+static int su_guard_ext_enabled(void)
+{
+    struct file *f = filp_open(SU_GUARD_EXT_FILE, O_RDONLY, 0);
+    if (IS_ERR(f)) return 0;
+    filp_close(f, NULL);
+    return 1;
+}
+
 long kp_control_feature_sc(const char __user *uname, int state)
 {
     char name[64];
     int len = compat_strncpy_from_user(name, uname, sizeof(name));
-    if (len <= 0)
+    if (len <= 0 || len >= (int)sizeof(name))
         return -EINVAL;
+    name[sizeof(name) - 1] = '\0';
 
     if (!strcmp(name, "selinux_hide")) {
         return selinux_hide_control(state);
@@ -81,6 +97,18 @@ long kp_control_feature_sc(const char __user *uname, int state)
         logkfi("sucompat_extra %s via supercall\n",
                state ? "enabled" : "disabled");
         return 0;
+    }
+
+    /* External path-guard registry for root apps/modules (KPMs call the
+     * exported functions directly): "guard_add:/prefix" / "guard_del:/prefix".
+     * The app channel stays closed until /data/adb/ap/guard_ext exists. */
+    if (!strncmp(name, "guard_add:", 10)) {
+        if (!su_guard_ext_enabled()) return -EPERM;
+        return su_guard_add_prefix(name + 10);
+    }
+    if (!strncmp(name, "guard_del:", 10)) {
+        if (!su_guard_ext_enabled()) return -EPERM;
+        return su_guard_del_prefix(name + 10);
     }
 
     /* Unknown feature name. */
@@ -441,16 +469,162 @@ __maybe_unused static void su_handler_arg1_ufilename_before(hook_fargs6_t *args,
     }
 }
 
+/* /data/adb prefix guard: matches the directory itself and any child path,
+ * never a sibling like /data/adbfoo. */
+static bool su_is_adb_prefix(const char *name)
+{
+    if (strncmp(name, "/data/adb", 9)) return false;
+    return name[9] == '\0' || name[9] == '/';
+}
+
+/* External path-guard registry: KPMs call su_guard_add_prefix() directly,
+ * userspace goes through kp_control_feature_sc("guard_add:/path"). Same
+ * match rule as the built-in guard: exact prefix or its child paths. */
+#define SU_GUARD_SLOT_MAX 8
+#define SU_GUARD_PREFIX_LEN 64
+struct su_guard_slot {
+    char prefix[SU_GUARD_PREFIX_LEN];
+    int valid; /* 0 empty, 1 published; release/acquire around prefix */
+};
+static struct su_guard_slot su_guard_slots[SU_GUARD_SLOT_MAX];
+static DEFINE_SPINLOCK(su_guard_lock);
+
+/* Roots whose subtrees legitimate apps need: refuse prefixes covering them,
+ * or every app's storage/data access dies with the guard. */
+static const char *const su_guard_deny_roots[] = {
+    "/data", "/data/data", "/data/user", "/data/user_de", "/data/media",
+    "/data/app", "/storage", "/mnt", "/sdcard", "/system", "/vendor",
+    "/product", "/system_ext", "/apex", "/proc", "/sys", "/dev",
+};
+
+static bool su_guard_covers_deny(const char *p, size_t len)
+{
+    size_t i;
+    for (i = 0; i < sizeof(su_guard_deny_roots) / sizeof(su_guard_deny_roots[0]); i++) {
+        const char *d = su_guard_deny_roots[i];
+        if (!strncmp(p, d, len) && (d[len] == '\0' || d[len] == '/'))
+            return true;
+    }
+    return false;
+}
+
+static bool su_guard_match(const char *name, const char *prefix)
+{
+    size_t len = strlen(prefix);
+    return !strncmp(name, prefix, len) &&
+           (name[len] == '\0' || name[len] == '/');
+}
+
+int su_guard_add_prefix(const char *prefix)
+{
+    int i, free_slot = -1;
+    size_t len;
+
+    if (!prefix || prefix[0] != '/') return -EINVAL;
+    len = strlen(prefix);
+    if (len < 2 || len >= SU_GUARD_PREFIX_LEN) return -EINVAL;
+    while (len > 1 && prefix[len - 1] == '/') len--;
+    if (su_guard_covers_deny(prefix, len)) return -EPERM;
+
+    spin_lock(&su_guard_lock);
+    for (i = 0; i < SU_GUARD_SLOT_MAX; i++) {
+        struct su_guard_slot *s = &su_guard_slots[i];
+        if (!__atomic_load_n(&s->valid, __ATOMIC_ACQUIRE)) {
+            if (free_slot < 0) free_slot = i;
+            continue;
+        }
+        if (!strncmp(s->prefix, prefix, SU_GUARD_PREFIX_LEN)) {
+            spin_unlock(&su_guard_lock);
+            return 0; /* idempotent */
+        }
+    }
+    if (free_slot < 0) {
+        spin_unlock(&su_guard_lock);
+        return -ENOSPC;
+    }
+    {
+        struct su_guard_slot *s = &su_guard_slots[free_slot];
+        memcpy(s->prefix, prefix, len);
+        s->prefix[len] = '\0';
+        __atomic_store_n(&s->valid, 1, __ATOMIC_RELEASE);
+    }
+    spin_unlock(&su_guard_lock);
+    logkfi("guard add: %s\n", prefix);
+    return 0;
+}
+KP_EXPORT_SYMBOL(su_guard_add_prefix);
+
+int su_guard_del_prefix(const char *prefix)
+{
+    int i;
+    size_t len;
+    if (!prefix || prefix[0] != '/') return -EINVAL;
+    /* Trim trailing slashes like add does, so del of the string that was
+     * registered ("foo/") finds the stored, already-trimmed slot. */
+    len = strlen(prefix);
+    while (len > 1 && prefix[len - 1] == '/') len--;
+
+    spin_lock(&su_guard_lock);
+    for (i = 0; i < SU_GUARD_SLOT_MAX; i++) {
+        struct su_guard_slot *s = &su_guard_slots[i];
+        if (!__atomic_load_n(&s->valid, __ATOMIC_ACQUIRE)) continue;
+        if (!strncmp(s->prefix, prefix, len) && s->prefix[len] == '\0') {
+            __atomic_store_n(&s->valid, 0, __ATOMIC_RELEASE);
+            spin_unlock(&su_guard_lock);
+            logkfi("guard del: %s\n", prefix);
+            return 0;
+        }
+    }
+    spin_unlock(&su_guard_lock);
+    return -ENOENT;
+}
+KP_EXPORT_SYMBOL(su_guard_del_prefix);
+
+static bool su_is_guarded_path(const char *name)
+{
+    int i;
+    if (su_is_adb_prefix(name)) return true;
+    for (i = 0; i < SU_GUARD_SLOT_MAX; i++) {
+        struct su_guard_slot *s = &su_guard_slots[i];
+        /* ACQUIRE pairs the writer's RELEASE publication: a RELAXED reader can
+         * observe valid=1 before the memcpy'd prefix, see the zeroed slot, and
+         * (empty prefix matches every absolute path) storm EACCES system-wide. */
+        if (!__atomic_load_n(&s->valid, __ATOMIC_ACQUIRE)) continue;
+        if (su_guard_match(name, s->prefix)) return true;
+    }
+    return false;
+}
+
 static void after_getname_flags(hook_fargs3_t *args, void *udata)
 {
     struct filename *fn = (struct filename *)args->ret;
     if (IS_ERR_OR_NULL(fn)) return;
 
     uid_t uid = current_uid();
-    if (!is_su_allow_uid(uid) && !is_trusted_manager_uid(uid)) return;
-
     const char *name = fn->name;
-    if (!name || strcmp(name, su_get_path())) return;
+    if (!name) return;
+
+    /* Name match first, granted check only on the rare hit: the common path
+     * stays pure string compares, so the guard adds no kstorage-dependent
+     * per-call cost that a timing probe could latch onto. */
+    if (su_is_guarded_path(name)) {
+        if (is_su_allow_uid(uid) || is_trusted_manager_uid(uid)) return;
+        /* Unauthorized callers get one uniform EACCES for guarded prefixes,
+         * existing or not: the same answer stock DAC/SELinux gives, so child
+         * existence is never observable and an external hide layer answering
+         * ENOENT cannot open an errno oracle either. */
+        static unsigned long adb_guard_log;
+        if (adb_guard_log < 4) {
+            adb_guard_log++;
+            logkfi("uid: %d, adb guard: %s\n", uid, name);
+        }
+        if (kfunc(putname)) kfunc(putname)(fn);
+        args->ret = (uint64_t)ERR_PTR(-EACCES);
+        return;
+    }
+
+    if (strcmp(name, su_get_path())) return;
+    if (!is_su_allow_uid(uid) && !is_trusted_manager_uid(uid)) return;
 
     if (strlen(sh_path) <= strlen(name)) {
         strcpy((char *)name, sh_path);
@@ -494,13 +668,20 @@ static void after_security_inode_getattr(hook_fargs1_t *args, void *udata)
     if (!p || !p[0]) return;
 
 #ifdef ANDROID
-    if (strcmp(p, su_get_path()) && strcmp(p, legacy_su_path)) return;
+    bool is_su_file = !strcmp(p, su_get_path()) || !strcmp(p, legacy_su_path);
 #else
-    if (strcmp(p, su_get_path())) return;
+    bool is_su_file = !strcmp(p, su_get_path());
 #endif
+    if (!is_su_file && !su_is_guarded_path(p)) return;
 
-    // Hide the real su file from unprivileged callers; keep it visible to granted ones.
+    // Unauthorized callers: the real su file disappears (ENOENT, same as the
+    // virtual su path), and anything under /data/adb reports the stock
+    // prefix-deny answer EACCES so existence never leaks here either.
     if (!granted) {
+        if (!is_su_file) {
+            args->ret = (uint64_t)-EACCES;
+            return;
+        }
         args->ret = (uint64_t)-ENOENT;
         logkfi("uid: %d, hide real su file: %s\n", uid, p);
     } else {
@@ -607,6 +788,8 @@ static int su_hook_getname_flags(void)
     // callers; the real entry all path syscalls reach is __original_getname_flags.
     // Prefer it, fall back to getname_flags for non-LTO builds.
     hook_err_t rc = 0;
+    if (!su_dentry_path_raw)
+        su_dentry_path_raw = (su_dentry_path_raw_t)kallsyms_lookup_name("dentry_path_raw");
     unsigned long getname_flags_addr = 0;
     getname_flags_addr = kallsyms_lookup_name("__original_getname_flags");
     if (!getname_flags_addr) {
@@ -647,6 +830,15 @@ static void su_register_path_probe_hooks(void)
 
     rc = hook_compat_syscalln(334, 3, su_handler_arg1_ufilename_before, 0, gated);
     log_boot("hook 32 __NR_faccessat rc: %d\n", rc);
+
+    /* Unauthorized /data/adb probe guard: the getname wrap fires for every
+     * caller regardless of the dispatcher gate, so it is the one hook that can
+     * force a uniform EACCES before lookup. Registered once; wrap hooks have
+     * no cheap symmetric unhook, so it rides out later disables. */
+    if (!su_getname_hooked) {
+        rc = su_hook_getname_flags();
+        if (!rc) su_getname_hooked = true;
+    }
 }
 
 static void su_unregister_path_probe_hooks(void)
