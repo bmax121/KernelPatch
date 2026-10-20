@@ -307,11 +307,27 @@ static int rewrite_section_headers(struct load_info *info)
     return 0;
 }
 
+/* Largest sh_addralign among the module's SHF_ALLOC sections, floored to 8.
+ * get_offset() aligns each section's offset relative to mod->start, so
+ * mod->start itself must be aligned to the module's strictest requirement
+ * for those offsets to be absolute addresses with the same alignment. */
+static unsigned long module_max_alloc_align(const struct load_info *info)
+{
+    unsigned long max_align = 8;
+    for (int i = 1; i < info->hdr->e_shnum; i++) {
+        Elf_Shdr *shdr = &info->sechdrs[i];
+        if (!(shdr->sh_flags & SHF_ALLOC)) continue;
+        if (shdr->sh_addralign > max_align) max_align = shdr->sh_addralign;
+    }
+    return max_align;
+}
+
 static int move_module(struct module *mod, struct load_info *info)
 {
     // todo:
-    logki("alloc module size: %llx\n", mod->size);
-    mod->start = kp_malloc_exec(mod->size);
+    unsigned long max_align = module_max_alloc_align(info);
+    logki("alloc module size: %llx, align: %lx\n", mod->size, max_align);
+    mod->start = kp_memalign_exec(max_align, mod->size);
     if (!mod->start) {
         return -ENOMEM;
     }
