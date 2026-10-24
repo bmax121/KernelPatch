@@ -44,6 +44,7 @@
 #include <uapi/asm-generic/errno.h>
 #include <security/selinux/include/security.h>
 #include <security/selinux/include/avc.h>
+#include <kbtf.h>
 #include <selinux_hide.h>
 /* ---- feature constants ---- */
 #ifdef ANDROID
@@ -51,11 +52,15 @@ extern int android_is_safe_mode;
 #endif
 
 #define KP_SELINUX_HIDE_FILE "/data/adb/ap/selinux_hide"
-
+#define KP_SELINUX_HIDE_STRICT_FILE "/data/adb/ap/selinux_hide_strict"
 
 #define KP_O_RDONLY 0
 #define KP_PAGE_SIZE 4096
-#define KP_SIMPLE_TRANSACTION_LIMIT 4096
+#define KP_TRANSACTION_ARGRESP 8
+static size_t kp_transaction_limit(void)
+{
+    return (page_size > 0 ? (size_t)page_size : (size_t)KP_PAGE_SIZE) - KP_TRANSACTION_ARGRESP;
+}
 #define KP_GFP_KERNEL 0xcc0u /* __GFP_RECLAIM | __GFP_IO | __GFP_FS */
 
 /* SELinux class / permission constants, matching
@@ -103,35 +108,22 @@ static selinux_setprocattr_fn orig_setprocattr;
 static sel_read_status_fn orig_sel_read_handle_status;
 static sel_mmap_status_fn orig_sel_mmap_handle_status;
 
-
 static unsigned char fake_status_bytes[KP_SELINUX_STATUS_SIZE];
 static void *fake_status_vaddr; /* vmalloc'd page mapped for uid >= 10000 */
 
 static unsigned long g_hooked[8];
 static int g_hooked_cnt;
 
+static bool g_hooked_context;
+static bool g_hooked_access;
+static bool g_hooked_status_read;
+static bool g_hooked_status_mmap;
 
-
+static bool g_eval_busy_warned;
+static bool g_setprocattr_busy_warned;
 
 /* ---- helpers ---- */
 
-/*
- * Query log (reserved switch).
- *
- * Every selinuxfs query the feature intercepts is logged with the caller uid
- * and the query content, so it is visible in dmesg what apps/detectors ask for:
- *   /sys/fs/selinux/context    (sel_write_context)
- *   /sys/fs/selinux/access     (sel_write_access)
- *   /proc/<pid>/attr/current   (selinux_setprocattr)
- *   /sys/fs/selinux/status     (sel_read_handle_status / sel_mmap_handle_status)
- *
- * Levels: 0 = off, 1 = intercepted queries (default), 2 = also the internal
- * ss/ redirect hooks (context_struct_compute_av / string_to_context_struct,
- * very noisy: one line per AV computation).
- * Runtime switch: selinux_hide_control(2) = off, (3) = level 1, (4) = level 2,
- * (-2) = query the current level.  The control file /data/adb/ap/selinux_hide
- * only governs whether the feature is enabled, not this log.
- */
 #define KP_QLOG_OFF 0
 #define KP_QLOG_ON 1
 #define KP_QLOG_VERBOSE 2
@@ -172,6 +164,19 @@ int selinux_hide_query_log_level(void)
     return selinux_hide_query_log;
 }
 
+static unsigned long kp_selinux_state_addr;
+
+static u32 kp_live_enforcing(void)
+{
+    static long off = -2;
+    unsigned long addr = kp_selinux_state_addr;
+
+    if (off == -2) off = kp_btf_member_offset("selinux_state", "enforcing");
+    if (!addr) addr = lookup_name_with_suffix("selinux_state");
+    if (!addr || off < 0 || off > 120) return 1;
+    return *(volatile u8 *)(addr + (unsigned long)off) ? 1 : 0;
+}
+
 static void put_u32_le(unsigned char *dst, u32 value)
 {
     dst[0] = (unsigned char)(value & 0xff);
@@ -180,71 +185,119 @@ static void put_u32_le(unsigned char *dst, u32 value)
     dst[3] = (unsigned char)((value >> 24) & 0xff);
 }
 
-/*
- * Values a clean, enforcing device is expected to expose in
- * /sys/fs/selinux/status.  On modern kernels a policy reload bumps policyload
- * and the sequence is nonzero; older kernels stay at the boot-time 0/0.
- */
 static void fill_fake_status_bytes(void)
 {
-    u32 seq, pload;
-
-    if (kver >= VERSION(6, 7, 0)) {
-        seq = 4;
-        pload = 1;
-    } else {
-        seq = 0;
-        pload = 0;
-    }
-    /* access-query responses report the same seqno (selinux_sepolicy_clean_seq). */
-    seq = selinux_sepolicy_clean_seq();
+    u32 seq = selinux_sepolicy_clean_seq();
+    u32 pload = 0;
 
     lib_memset(fake_status_bytes, 0, sizeof(fake_status_bytes));
     put_u32_le(fake_status_bytes + 0, KP_SELINUX_KERNEL_STATUS_VERSION);
     put_u32_le(fake_status_bytes + 4, seq);
-    put_u32_le(fake_status_bytes + 8, 1);  /* enforcing -- always report enforcing */
+    put_u32_le(fake_status_bytes + 8, kp_live_enforcing());
     put_u32_le(fake_status_bytes + 12, pload);
-    put_u32_le(fake_status_bytes + 16, 1); /* deny_unknown */
+    put_u32_le(fake_status_bytes + 16, (u32)selinux_sepolicy_clean_deny_unknown());
 }
 
 static void init_fake_status(void)
 {
-    if (fake_status_vaddr) return;
-    void *p = kp_vmalloc(KP_PAGE_SIZE);
-    if (!p) {
-        logkfw("selinux_hide: vmalloc unavailable, fake status disabled\n");
-        return;
+    unsigned long size = page_size > 0 ? (unsigned long)page_size : KP_PAGE_SIZE;
+
+    if (!fake_status_vaddr) {
+        void *p = kp_vmalloc(size);
+        if (!p) {
+            logkfw("selinux_hide: vmalloc unavailable, fake status disabled\n");
+            return;
+        }
+        lib_memset(p, 0, size);
+        fake_status_vaddr = p;
+        logkfi("selinux_hide: fake status page ready (%lu bytes)\n", size);
     }
-    lib_memcpy(p, fake_status_bytes, sizeof(fake_status_bytes));
-    fake_status_vaddr = p;
-    logkfi("selinux_hide: fake status page ready\n");
+    lib_memcpy(fake_status_vaddr, fake_status_bytes, sizeof(fake_status_bytes));
 }
 
-/* ---- vm_area_struct field offsets for the status mmap ----
- *
- * struct vm_area_struct starts with vm_start/vm_end in every version, and the
- * page protection slot sits right after vm_mm; 6.1 reordered the middle of the
- * struct (maple tree), earlier kernels kept vm_next/vm_prev/vm_rb before vm_mm.
- * The offsets below were read from the target kernel's BTF (6.12: vm_start 0,
- * vm_page_prot 24); a wrong slot cannot cause a bad mapping because the value
- * is checked for a plausible arm64 pgprot first -- anything else falls back to
- * the kernel's own mapping. */
 #define KP_VMA_VM_START_OFF 0
-static int kp_vma_page_prot_off(void)
+#define KP_VMA_VM_END_OFF 8
+
+#define KP_VM_READ 0x00000001UL
+#define KP_VM_WRITE 0x00000002UL
+#define KP_VM_MAYREAD 0x00000010UL
+#define KP_VM_MAYWRITE 0x00000020UL
+
+static long g_vma_page_prot_off = -1;
+static long g_vma_vm_flags_off = -1;
+static long g_vma_vm_pgoff_off = -1;
+static long g_vma_vm_file_off = -1;
+
+#define KP_ADDR_TAG_BITS (0xFUL << 56)
+static unsigned long kp_untag_addr(unsigned long addr)
 {
+    return addr & ~KP_ADDR_TAG_BITS;
+}
+
+static bool kp_vma_off_ok(long off)
+{
+    return off >= 0 && off < 256 && (off & 7) == 0;
+}
+
+static void kp_resolve_vma_offsets(void)
+{
+    long prot = -1, flags = -1, pgoff = -1, file = -1, size = -1;
+
+    if (kp_btf_available()) {
+        prot = kp_btf_member_offset("vm_area_struct", "vm_page_prot");
+        flags = kp_btf_member_offset("vm_area_struct", "vm_flags");
+        pgoff = kp_btf_member_offset("vm_area_struct", "vm_pgoff");
+        file = kp_btf_member_offset("vm_area_struct", "vm_file");
+        size = kp_btf_type_size("vm_area_struct");
+        if (kp_vma_off_ok(prot) && kp_vma_off_ok(flags) && flags > prot &&
+            kp_vma_off_ok(pgoff) && kp_vma_off_ok(file) && file > pgoff &&
+            size > 0 && pgoff + 8 <= size && file + 8 <= size) {
+            g_vma_page_prot_off = prot;
+            g_vma_vm_flags_off = flags;
+            g_vma_vm_pgoff_off = pgoff;
+            g_vma_vm_file_off = file;
+            log_boot("selinux_hide: vm_area_struct offsets from BTF: "
+                     "vm_page_prot %ld, vm_flags %ld, vm_pgoff %ld, vm_file %ld\n",
+                     prot, flags, pgoff, file);
+            return;
+        }
+        log_boot("selinux_hide: vm_area_struct BTF lookup incomplete "
+                 "(vm_page_prot %ld, vm_flags %ld, vm_pgoff %ld, vm_file %ld)\n",
+                 prot, flags, pgoff, file);
+    }
+    if (kver >= VERSION(6, 1, 0)) {
+        g_vma_page_prot_off = 24;
+        g_vma_vm_flags_off = 32;
+    } else {
+        g_vma_page_prot_off = 72;
+        g_vma_vm_flags_off = 80;
+    }
+    log_boot("selinux_hide: vm_area_struct offsets from version table: vm_page_prot %ld, vm_flags %ld\n",
+             g_vma_page_prot_off, g_vma_vm_flags_off);
+}
+
+static unsigned long kp_vma_page_prot_off(void)
+{
+    if (g_vma_page_prot_off > 0) return (unsigned long)g_vma_page_prot_off;
     return kver >= VERSION(6, 1, 0) ? 24 : 72;
+}
+
+static unsigned long kp_vma_vm_flags_off(void)
+{
+    if (g_vma_vm_flags_off > 0) return (unsigned long)g_vma_vm_flags_off;
+    return kver >= VERSION(6, 1, 0) ? 32 : 80;
 }
 
 static bool kp_pgprot_plausible(unsigned long prot)
 {
-    /* arm64 pgprot: valid|type low bits set, attribute bits only, no address */
-    return prot != 0 && (prot & 0x3) == 0x3 && (prot >> 48) == 0;
+    return (prot & 0x3) == 0x3 &&
+           (prot & 0x0000FFFFFFF000UL) == 0 &&
+           (prot >> 55) == 0;
 }
 
 /* ---- permission / sid helpers (KernelSU my_write_* parity) ---- */
 
 static avc_has_perm_compat_fn kp_avc_has_perm_compat;
-static unsigned long kp_selinux_state_addr; /* < 6.6 avc ABI needs the state */
 
 static u32 kp_current_sid(void)
 {
@@ -361,27 +414,6 @@ static ssize_t kp_patch_response_seqno(char *buf, ssize_t ret, u32 new_seqno)
     return ret;
 }
 
-static bool kp_avd_seqno_probe(const char *scon,
-                               const char *tcon,
-                               u16 tclass)
-{
-    static const char prefix[] = "u:r:untrusted_app:s0";
-    if (tclass != 0)
-        return false;
-    if (!scon || !tcon)
-        return false;
-    if (lib_strncmp(scon, prefix, sizeof(prefix) - 1) != 0)
-        return false;
-    if (lib_strncmp(tcon, prefix, sizeof(prefix) - 1) != 0)
-        return false;
-    if (scon[sizeof(prefix) - 1] != '\0' &&
-        scon[sizeof(prefix) - 1] != ':')
-        return false;
-    if (tcon[sizeof(prefix) - 1] != '\0' &&
-        tcon[sizeof(prefix) - 1] != ':')
-        return false;
-    return true;
-}
 /* ---- app-facing selinuxfs query surface ----
  *
  * selinuxfs exposes the context-resolving transaction nodes context/access/
@@ -423,7 +455,7 @@ static ssize_t my_write_context_new(struct file *file, char *buf, size_t size)
     if (likely(uid < 10000)) {
         length = orig_context_write(file, buf, size);
         if (length > 0) kp_qlog("context_answer", uid, buf, (size_t)length);
-        else kp_qlog("context_answer_failed", uid, buf, (size_t)length);
+        else kp_qlog("context_answer_failed", uid, buf, 0);
         return length;
     }
 
@@ -442,7 +474,7 @@ static ssize_t my_write_context_new(struct file *file, char *buf, size_t size)
     length = selinux_sepolicy_sid_to_context(sid, &canon, &len);
     if (length) return length;
 
-    if (len > KP_SIMPLE_TRANSACTION_LIMIT) {
+    if ((size_t)len > kp_transaction_limit()) {
         length = -ERANGE;
         goto out;
     }
@@ -450,7 +482,7 @@ static ssize_t my_write_context_new(struct file *file, char *buf, size_t size)
     lib_memcpy(buf, canon, len);
     length = (ssize_t)len;
 out:
-    if (canon && kfunc(kfree)) kfunc(kfree)(canon);
+    if (canon) kp_kernel_str_free(canon);
     return length;
 }
 static ssize_t my_write_context(struct file *file, char *buf, size_t size)
@@ -466,7 +498,7 @@ static ssize_t my_write_context(struct file *file, char *buf, size_t size)
         if (ret > 0){ 
             kp_qlog("context_answer", uid, buf, (size_t)ret);
         }else{
-            kp_qlog("context_answer_failed", uid, buf, (size_t)ret);
+            kp_qlog("context_answer_failed", uid, buf, 0);
         }
         return ret;
     }
@@ -474,16 +506,32 @@ static ssize_t my_write_context(struct file *file, char *buf, size_t size)
         ret = orig_context_write(file, buf, size);
         selinux_sepolicy_clean_eval_leave();
     } else {
-        ret = orig_context_write(file, buf, size);
+        if (!g_eval_busy_warned) {
+            g_eval_busy_warned = true;
+            logkfw("selinux_hide: context: redirect slots busy, query refused with -EAGAIN\n");
+        }
+        return -EAGAIN;
     }
     if (ret > 0) kp_qlog("context_answer", uid, buf, (size_t)ret);
     return ret;
 
 }
 
+#define KP_SEL_RESPONSE_RESERVE 64
+
+static ssize_t kp_sel_reply(char *buf, const char *text)
+{
+    size_t limit = kp_transaction_limit() - KP_SEL_RESPONSE_RESERVE;
+    size_t n = lib_strlen(text);
+
+    if (n >= limit) n = limit - 1;
+    lib_memcpy(buf, text, n);
+    buf[n] = 0;
+    return (ssize_t)n;
+}
+
 static ssize_t my_write_access_new(struct file *file, char *buf, size_t size)
 {
-    ssize_t ret;
     uid_t uid = current_uid();
     char scon[256], tcon[256];
     struct av_decision avd;
@@ -496,10 +544,9 @@ static ssize_t my_write_access_new(struct file *file, char *buf, size_t size)
     if (likely(uid < 10000)) {
         length = orig_access_write(file, buf, size);
         if (length > 0) kp_qlog("access_answer", uid, buf, (size_t)length);
-        else kp_qlog("access_answer_failed", uid, buf, (size_t)length);
+        else kp_qlog("access_answer_failed", uid, buf, 0);
         return length;
     }
-
 
     length = kp_avc_check(KP_SECINITSID_SECURITY, KP_SECCLASS_SECURITY, KP_SECURITY__COMPUTE_AV);
     if (length) return length;
@@ -525,9 +572,13 @@ static ssize_t my_write_access_new(struct file *file, char *buf, size_t size)
     selinux_sepolicy_compute_av_user(ssid, tsid, tclass, &avd);
     avd.seqno = KP_AVD_CLEAN_SEQNO;
 
-    return snprintf(buf, size, "%x %x %x %x %u %x",
-                    avd.allowed, 0xffffffff, avd.auditallow, avd.auditdeny,
-                    avd.seqno, avd.flags);
+    {
+        char out[96];
+        snprintf(out, sizeof(out), "%x %x %x %x %u %x",
+                 avd.allowed, 0xffffffff, avd.auditallow, avd.auditdeny,
+                 avd.seqno, avd.flags);
+        return kp_sel_reply(buf, out);
+    }
 }
 static ssize_t my_write_access(struct file *file, char *buf, size_t size)
 {
@@ -535,67 +586,39 @@ static ssize_t my_write_access(struct file *file, char *buf, size_t size)
 
     ssize_t ret;
     uid_t uid = current_uid();
-    char scon[256], tcon[256];
-    struct av_decision avd;
-    u32 ssid, tsid, sconlen, tconlen ,tmp;
-    u16 tclass = 0;
-    ssize_t length;
 
     kp_qlog("access_write", uid, buf, size);
 
     if (likely(uid < 10000)) {
-        length = orig_access_write(file, buf, size);
-        if (length > 0) kp_qlog("access_answer", uid, buf, (size_t)length);
-        else kp_qlog("access_answer_failed", uid, buf, (size_t)length);
-        return length;
-    }
- 
- 
-        {
-            char tmp[96];
-            char scon[64], tcon[64];
-            unsigned int allowed, decided,auditallow,auditdeny,seqno,flags;
-            u16 tclass = 0;
-            size_t tn = size < sizeof(tmp) - 1? size: sizeof(tmp) - 1;
-            lib_memcpy(tmp, buf, tn);
-            tmp[tn] = '\0';
-            if (sscanf(tmp, "%63s %63s %hu", scon, tcon, &tclass) == 3 &&
-                kp_avd_seqno_probe(scon, tcon, tclass)) {
-                ret = orig_access_write(file, buf, size);
-                if (ret > 0) {
-                    if (sscanf(buf,"%x %x %x %x %u %x",&allowed,&decided,&auditallow,&auditdeny,&seqno,&flags) == 6) {
-                        seqno = 1;
-                        ret = snprintf(buf,size,"%x %x %x %x %u %x",allowed,decided,auditallow,auditdeny,seqno,flags);
-                        if (ret > 0 && (size_t)ret < size) {
-                            kp_qlog("access_answer(seqno probe)",uid, buf, (size_t)ret);
-                            logkfi("access_answer(seqno probe) ""uid=%u buf=%s,""scon=%s,tcon=%s,tclass=%hu,""origin=%zd,now=%zd,origin_buf=%s\n",(unsigned int)uid,buf,scon,tcon,tclass,ret,ret,tmp);
-                            return ret;
-                        }
-                    }
-                }
-                return ret;
-            }
-        }
-
-        if (selinux_sepolicy_clean_eval_enter() == 0) {
-            ret = orig_access_write(file, buf, size);
-            selinux_sepolicy_clean_eval_leave();
-        } else {
-            ret = orig_access_write(file, buf, size);
-        }
-
-        if (ret > 0)
-            ret = kp_patch_response_seqno(buf, ret, KP_AVD_CLEAN_SEQNO);
-
-        if (ret > 0)
-            kp_qlog("access_answer", uid, buf, (size_t)ret);
-
+        ret = orig_access_write(file, buf, size);
+        if (ret > 0) kp_qlog("access_answer", uid, buf, (size_t)ret);
+        else kp_qlog("access_answer_failed", uid, buf, 0);
         return ret;
-    
+    }
+
+    if (selinux_sepolicy_clean_eval_enter() == 0) {
+        ret = orig_access_write(file, buf, size);
+        selinux_sepolicy_clean_eval_leave();
+    } else {
+        if (!g_eval_busy_warned) {
+            g_eval_busy_warned = true;
+            logkfw("selinux_hide: access: redirect slots busy, query refused with -EAGAIN\n");
+        }
+        return -EAGAIN;
+    }
+
+    if (ret > 0)
+        ret = kp_patch_response_seqno(buf, ret, KP_AVD_CLEAN_SEQNO);
+
+    if (ret > 0)
+        kp_qlog("access_answer", uid, buf, (size_t)ret);
+
+    return ret;
 }
 
 /* ---- setprocattr handler ---- */
 
+static bool g_setprocattr_infra_warned;
 
 static int my_setprocattr_new(const char *name, void *value, size_t size)
 {
@@ -644,6 +667,15 @@ static int my_setprocattr_new(const char *name, void *value, size_t size)
          * clean device would not have: for a denied app the stock handler stops
          * at its own permission check before resolving anything. */
         error = selinux_sepolicy_context_to_sid(value, size, &sid, KP_GFP_KERNEL);
+        if (error == -ENOSYS || error == -EOPNOTSUPP) {
+            if (!g_setprocattr_infra_warned) {
+                g_setprocattr_infra_warned = true;
+                logkfw("selinux_hide: snapshot unavailable (%d), app context transitions fall "
+                       "back to the stock path\n",
+                       error);
+            }
+            goto call_orig;
+        }
         if (error) return error;
     }
 
@@ -651,15 +683,12 @@ call_orig:
     return orig_setprocattr(name, value, size);
 }
 
-
 static int my_setprocattr(const char *name, void *value, size_t size)
 {
     if (selinux_hide_is_new_version()) return my_setprocattr_new(name, value, size);
     uid_t uid = current_uid();
-    u32 tmp, mysid;
-    char *str = value;
     char vbuf[96];
-    int error,perm_error;
+
     if (selinux_hide_query_log != KP_QLOG_OFF) {
         kp_qlog_str(vbuf, value, size, sizeof(vbuf) - 1);
         logkfi("query setprocattr uid=%u name=%s value=%s\n", (unsigned int)uid,
@@ -672,12 +701,15 @@ static int my_setprocattr(const char *name, void *value, size_t size)
         int rc = orig_setprocattr(name, value, size);
         selinux_sepolicy_clean_eval_leave();
         return rc;
-
     }
+    if (!g_setprocattr_busy_warned) {
+        g_setprocattr_busy_warned = true;
+        logkfw("selinux_hide: setprocattr: redirect slots busy, using the stock path\n");
+    }
+    return orig_setprocattr(name, value, size);
 
 call_orig:
     return orig_setprocattr(name, value, size);
-
 }
 /* ---- /sys/fs/selinux/status (read + mmap) ---- */
 
@@ -694,6 +726,10 @@ static ssize_t my_sel_read_handle_status(struct file *filp, char __user *buffer,
         loff_t pos = ppos ? *ppos : 0;
         size_t avail;
 
+        if (!fake_status_vaddr) {
+            logkfw("selinux_hide: status read: fake page missing, refusing the read\n");
+            return -ENODEV;
+        }
         if (pos < 0) return -EINVAL;
         if (!count || pos >= (loff_t)sizeof(fake_status_bytes)) return 0;
 
@@ -708,58 +744,117 @@ static ssize_t my_sel_read_handle_status(struct file *filp, char __user *buffer,
     return orig_sel_read_handle_status(filp, buffer, count, ppos);
 }
 
-static int my_sel_mmap_handle_status(struct file *filp,
-                                     struct vm_area_struct *vma)
+#define KP_VMA_SCAN_WORDS 21
+
+static bool kp_is_kernel_text(unsigned long addr)
+{
+    static unsigned long text_start, text_end;
+    static bool resolved;
+
+    if (!addr) return false;
+    if (!resolved) {
+        resolved = true;
+        if (kallsyms_lookup_name) {
+            text_start = kallsyms_lookup_name("_text");
+            text_end = kallsyms_lookup_name("_etext");
+        }
+    }
+    if (text_start && text_end) return addr >= text_start && addr < text_end;
+    return !is_bad_address((void *)addr);
+}
+
+static bool kp_is_kernel_ptr(unsigned long addr)
+{
+    return addr == 0 || (addr >> 60) == 0xf;
+}
+
+static int kp_vma_pgoff(struct vm_area_struct *vma, void *filp, unsigned long *pgoff)
+{
+    unsigned long *w = (unsigned long *)vma;
+    unsigned long want;
+    int i;
+
+    if (!vma || is_bad_address((void *)vma) || !filp) return -ENOENT;
+    want = kp_untag_addr((unsigned long)filp);
+
+    if (g_vma_vm_pgoff_off >= 0 && g_vma_vm_file_off >= 0) {
+        unsigned long file = *(unsigned long *)((unsigned long)vma + g_vma_vm_file_off);
+        if (kp_untag_addr(file) == want) {
+            *pgoff = *(unsigned long *)((unsigned long)vma + g_vma_vm_pgoff_off);
+            return 0;
+        }
+    }
+
+    for (i = 3; i < KP_VMA_SCAN_WORDS; i++) {
+        if (kp_untag_addr(w[i]) != want) continue;
+        if (w[i - 2] && !kp_is_kernel_ptr(kp_untag_addr(w[i - 2]))) continue;
+        *pgoff = w[i - 1];
+        return 0;
+    }
+    return -ENOENT;
+}
+
+static int my_sel_mmap_handle_status(struct file *filp, struct vm_area_struct *vma)
 {
     uid_t uid = current_uid();
+    unsigned long *vm = (unsigned long *)vma;
+    unsigned long start, size, prot, pa, pgoff, flags_off;
+    unsigned long kpage = page_size > 0 ? (unsigned long)page_size : KP_PAGE_SIZE;
+    int ret;
 
     kp_qlog_plain("status_mmap", uid);
 
-    if (selinux_hide_enabled && uid >= 10000 &&
-        fake_status_vaddr && kp_remap_pfn_range) {
+    if (!selinux_hide_enabled || uid < 10000)
+        goto real_page;
 
-        unsigned long *vm = (unsigned long *)vma;
-        unsigned long start;
-        unsigned long prot;
-        unsigned long pa;
-        int ret;
-
-        start = vm[KP_VMA_VM_START_OFF / sizeof(unsigned long)];
-        prot = vm[kp_vma_page_prot_off() / sizeof(unsigned long)];
-
-        pa = pgtable_phys_kernel((uintptr_t)fake_status_vaddr);
-
-        if (!pa) {
-            logkfw("selinux_hide: status mmap: "
-                   "failed to resolve fake page PA, vma=%px start=%lx "
-                   "prot=%016lx\n",
-                   vma, start, prot);
-            goto real_page;
-        }
-
-        if (start & (KP_PAGE_SIZE - 1)) {
-            logkfw("selinux_hide: status mmap: "
-                   "invalid vm_start=%lx prot=%016lx\n",
-                   start, prot);
-            goto real_page;
-        }
-
-        ret = kp_remap_pfn_range(
-            vma,
-            start,
-            pa >> page_shift,
-            KP_PAGE_SIZE,
-            prot
-        );
-
-        if (!ret)
-            return 0;
-
-        logkfw("selinux_hide: status mmap: "
-               "remap_pfn_range failed ret=%d pa=%llx "
-               "start=%lx prot=%016lx\n",
-               ret, pa, start, prot);
+    if (!fake_status_vaddr || !kp_remap_pfn_range || !vma || is_bad_address((void *)vma)) {
+        logkfw("selinux_hide: status mmap: feature incomplete (page %px remap %llx vma %px), refusing the mapping\n",
+               fake_status_vaddr, (unsigned long)kp_remap_pfn_range, vma);
+        return -ENODEV;
     }
+
+    start = vm[KP_VMA_VM_START_OFF / sizeof(unsigned long)];
+    size = vm[KP_VMA_VM_END_OFF / sizeof(unsigned long)] - start;
+
+    if (kp_vma_pgoff(vma, filp, &pgoff)) {
+        logkfw("selinux_hide: status mmap: cannot locate vm_pgoff, refusing the mapping\n");
+        return -ENODEV;
+    }
+
+    if (pgoff || size != kpage) return -EIO;
+
+    flags_off = kp_vma_vm_flags_off() / sizeof(unsigned long);
+    if ((vm[flags_off] & (KP_VM_READ | KP_VM_MAYREAD)) != (KP_VM_READ | KP_VM_MAYREAD)) {
+        logkfw("selinux_hide: status mmap: vm_flags slot looks wrong (0x%lx at +%lu), refusing the mapping\n",
+               vm[flags_off], flags_off * sizeof(unsigned long));
+        return -ENODEV;
+    }
+    if (vm[flags_off] & KP_VM_WRITE) return -EPERM;
+    vm[flags_off] &= ~KP_VM_MAYWRITE;
+
+    prot = vm[kp_vma_page_prot_off() / sizeof(unsigned long)];
+    if (!kp_pgprot_plausible(prot)) {
+        logkfw("selinux_hide: status mmap: bogus prot=%016lx at vma %px, refusing the mapping\n", prot, vma);
+        return -ENODEV;
+    }
+
+    if (start & (kpage - 1)) {
+        logkfw("selinux_hide: status mmap: unaligned vm_start=%lx\n", start);
+        return -EINVAL;
+    }
+
+    pa = pgtable_phys_kernel((uintptr_t)fake_status_vaddr);
+    if (!pa) {
+        logkfw("selinux_hide: status mmap: cannot resolve the fake page PA (vma %px)\n", vma);
+        return -ENODEV;
+    }
+
+    ret = kp_remap_pfn_range(vma, start, pa >> page_shift, size, prot);
+    if (!ret) return 0;
+
+    logkfw("selinux_hide: status mmap: remap_pfn_range failed ret=%d pa=%llx start=%lx\n",
+           ret, pa, start);
+    return ret;
 
 real_page:
     return orig_sel_mmap_handle_status(filp, vma);
@@ -780,20 +875,6 @@ static int kp_install_hook(unsigned long func, void *replace, void **backup, con
     return 0;
 }
 
-/* ---- data-pointer (KernelSU-style) hooks ----
- *
- * selinuxfs dispatches through data structures -- the write_op[] table and the
- * status file_operations -- so the handlers can be replaced by rewriting a
- * pointer slot.  No kernel text is modified that way, which is what keeps
- * these invisible to text-integrity checks; only the (verified) slot changes.
- *
- * Member offsets differ per kernel version, so nothing is hardcoded: the
- * write_op[] indices are confirmed against the resolved handler symbols before
- * use, and the status slots are located by scanning the ops struct for the
- * resolved handler address.  Anything unverified falls back to the old inline
- * hook so behaviour never regresses silently.
- */
-
 #define KP_MAX_FP_HOOKS 8
 static uintptr_t g_fp_slot[KP_MAX_FP_HOOKS];
 static void *g_fp_orig[KP_MAX_FP_HOOKS];
@@ -813,21 +894,58 @@ static int kp_install_fp_slot(uintptr_t slot, void *replace, void **backup, cons
     return 0;
 }
 
+static bool kp_slot_is_handler(uintptr_t slot)
+{
+    if (!slot || is_bad_address((void *)slot)) return false;
+    return kp_is_kernel_text(*(unsigned long *)slot);
+}
 
-static uintptr_t kp_found_write_op_slot(unsigned long write_op, unsigned long index)
+static uintptr_t kp_found_write_op_slot(unsigned long write_op, unsigned long index, const char *name)
 {
     sel_write_op_fn *w = (sel_write_op_fn *)write_op;
     if (!write_op || is_bad_address((void *)write_op) || !index) return 0;
-    if (!is_bad_address(&w[index])) return (uintptr_t)&w[index];
-    return 0;
+    if (is_bad_address(&w[index]) || !kp_slot_is_handler((uintptr_t)&w[index])) return 0;
+    logkfw("selinux_hide: %s: write_op[%lu] is an unverified handler slot\n", name, index);
+    return (uintptr_t)&w[index];
 }
 
-static uintptr_t kp_find_fops_slot(unsigned long ops, unsigned long index)
+static uintptr_t kp_find_fops_slot(unsigned long ops, unsigned long index, const char *name)
 {
     unsigned long *p = (unsigned long *)ops;
     if (!ops || is_bad_address((void *)ops) || !index) return 0;
-    if (!is_bad_address(&p[index])) return (uintptr_t)&p[index];
-    return 0;
+    if (is_bad_address(&p[index]) || !kp_slot_is_handler((uintptr_t)&p[index])) return 0;
+    logkfw("selinux_hide: %s: fops[%lu] is an unverified handler slot\n", name, index);
+    return (uintptr_t)&p[index];
+}
+
+#define KP_FOPS_SCAN 24
+
+static long kp_fops_find_handler(unsigned long ops, unsigned long handler)
+{
+    int i;
+
+    if (!ops || is_bad_address((void *)ops) || !handler) return -1;
+    for (i = 0; i < KP_FOPS_SCAN; i++) {
+        if (((unsigned long *)ops)[i] == handler) return i;
+    }
+    return -1;
+}
+
+static unsigned long kp_fops_shift(void)
+{
+    if (kver >= VERSION(5, 12, 0)) return 10;
+    if (kver >= VERSION(5, 1, 0)) return 11;
+    return 10;
+}
+
+static unsigned long kp_fops_read_index(long llseek)
+{
+    return llseek >= 0 ? (unsigned long)llseek + 1 : 0;
+}
+
+static unsigned long kp_fops_mmap_index(long llseek)
+{
+    return llseek >= 0 ? (unsigned long)llseek + kp_fops_shift() : 0;
 }
 
 static void kp_uninstall_hooks(void)
@@ -844,6 +962,11 @@ static void kp_uninstall_hooks(void)
     }
     g_fp_cnt = 0;
 
+    g_hooked_context = false;
+    g_hooked_access = false;
+    g_hooked_status_read = false;
+    g_hooked_status_mmap = false;
+
     orig_context_write = NULL;
     orig_access_write = NULL;
     orig_setprocattr = NULL;
@@ -855,6 +978,8 @@ static int selinux_hide_install_hooks(void)
 {
     int rc;
     unsigned long write_op, status_ops;
+    long llseek_idx;
+    unsigned long read_idx, mmap_idx;
     uintptr_t slot;
 
     fill_fake_status_bytes();
@@ -862,8 +987,13 @@ static int selinux_hide_install_hooks(void)
 
     write_op = lookup_name_with_suffix("write_op");
     status_ops = lookup_name_with_suffix("sel_handle_status_ops");
-    log_boot("selinux_hide: write_op=%llx status_ops=%llx ctx=%llx acc=%llx rd=%llx mmap=%llx\n",
-             write_op, status_ops, sel_write_context_addr, sel_write_access_addr,
+    llseek_idx = kp_fops_find_handler(status_ops, lookup_name_with_suffix("generic_file_llseek"));
+    read_idx = kp_fops_read_index(llseek_idx);
+    mmap_idx = kp_fops_mmap_index(llseek_idx);
+    log_boot("selinux_hide: write_op=%llx status_ops=%llx idx(llseek=%ld read=%lu mmap=%lu) "
+             "ctx=%llx acc=%llx rd=%llx mmap=%llx\n",
+             write_op, status_ops, llseek_idx, read_idx, mmap_idx,
+             sel_write_context_addr, sel_write_access_addr,
              sel_read_handle_status_addr, sel_mmap_handle_status_addr);
 
     // https://android.googlesource.com/kernel/common/+/refs/heads/android13-5.10/security/selinux/selinuxfs.c?utm_source=chatgpt.com
@@ -873,11 +1003,13 @@ static int selinux_hide_install_hooks(void)
                              "sel_write_context");
         log_boot("selinux_hide: installed hook for sel_write_context\n");
         if (rc) goto err;
+        g_hooked_context = true;
     }else{
-        slot = kp_found_write_op_slot(write_op, SEL_WRITE_OP_CONTEXT);
+        slot = kp_found_write_op_slot(write_op, SEL_WRITE_OP_CONTEXT, "sel_write_context");
         if (slot) {
             kp_install_fp_slot(slot, (void *)my_write_context, (void **)&orig_context_write,"sel_write_context");
             log_boot("selinux_hide: installed fp slot for sel_write_context\n");
+            g_hooked_context = true;
         }else{
             log_boot("selinux_hide: failed to find write_op slot for sel_write_context\n");
         }
@@ -888,11 +1020,13 @@ static int selinux_hide_install_hooks(void)
                              "sel_write_access");
         log_boot("selinux_hide: installed hook for sel_write_access\n");
         if (rc) goto err;
+        g_hooked_access = true;
     }else{
-        slot = kp_found_write_op_slot(write_op, SEL_WRITE_OP_ACCESS);
+        slot = kp_found_write_op_slot(write_op, SEL_WRITE_OP_ACCESS, "sel_write_access");
         if (slot) {
             kp_install_fp_slot(slot, (void *)my_write_access, (void **)&orig_access_write,"sel_write_access");
             log_boot("selinux_hide: installed fp slot for sel_write_access\n");
+            g_hooked_access = true;
         }else{
             log_boot("selinux_hide: failed to find write_op slot for sel_write_access\n");
         }
@@ -907,7 +1041,6 @@ static int selinux_hide_install_hooks(void)
         if (rc) goto err;
     }
 
-
     /* status read/mmap: data-pointer hooks in the status file_operations. */
 
     // https://android.googlesource.com/kernel/common/%2B/d2f7eca60b29006285d57c7035539e33300e89e5/include/linux/fs.h
@@ -918,14 +1051,18 @@ static int selinux_hide_install_hooks(void)
                              (void **)&orig_sel_read_handle_status, "sel_read_handle_status");
         log_boot("selinux_hide: installed hook for sel_read_handle_status\n");
         if (rc) goto err;
+        g_hooked_status_read = true;
     }else{
-        // ssize_t (*write) (struct file *, const char __user *, size_t, loff_t *);
-        slot = kp_find_fops_slot(status_ops, 3);
+        if (!read_idx)
+            logkfw("selinux_hide: status read slot: sel_handle_status_ops has no anchor for "
+                   "generic_file_llseek (CFI jump table?), slot path skipped\n");
+        slot = read_idx ? kp_find_fops_slot(status_ops, read_idx, "sel_read_handle_status") : 0;
         if (slot) {
             rc = kp_install_fp_slot(slot, (void *)my_sel_read_handle_status, (void **)&orig_sel_read_handle_status,
                                     "sel_read_handle_status");
             if (rc) goto err;
             log_boot("selinux_hide: installed fops slot for sel_read_handle_status\n");
+            g_hooked_status_read = true;
         } else {
             log_boot("selinux_hide: failed to find fops slot for sel_read_handle_status\n");
         }
@@ -936,18 +1073,38 @@ static int selinux_hide_install_hooks(void)
                              (void **)&orig_sel_mmap_handle_status, "sel_mmap_handle_status");
         log_boot("selinux_hide: installed hook for sel_mmap_handle_status\n");
         if (rc) goto err;
+        g_hooked_status_mmap = true;
     }else{
         // int (*mmap) (struct file *, struct vm_area_struct *);
-        slot = kp_find_fops_slot(status_ops, 12);
+        if (!mmap_idx)
+            logkfw("selinux_hide: status mmap slot: sel_handle_status_ops has no anchor for "
+                   "generic_file_llseek (CFI jump table?), slot path skipped\n");
+        slot = mmap_idx ? kp_find_fops_slot(status_ops, mmap_idx, "sel_mmap_handle_status") : 0;
         if (slot) {
             rc = kp_install_fp_slot(slot, (void *)my_sel_mmap_handle_status, (void **)&orig_sel_mmap_handle_status,
                                     "sel_mmap_handle_status");
             if (rc) goto err;
             log_boot("selinux_hide: installed fops slot for sel_mmap_handle_status\n");
+            g_hooked_status_mmap = true;
         } else {
             log_boot("selinux_hide: failed to find fops slot for sel_mmap_handle_status\n");
         }
     }
+    if (!g_hooked_context || !g_hooked_access) {
+        logkfw("selinux_hide: transaction hooks unavailable (context=%d access=%d), not enabling\n",
+               g_hooked_context, g_hooked_access);
+        rc = -ENOENT;
+        goto err;
+    }
+    if (!fake_status_vaddr || !g_hooked_status_read || !g_hooked_status_mmap) {
+        logkfw("selinux_hide: status surface incomplete (page=%d read=%d mmap=%d), not enabling\n",
+               fake_status_vaddr != NULL, g_hooked_status_read, g_hooked_status_mmap);
+        rc = -ENOENT;
+        goto err;
+    }
+    logkfi("selinux_hide: hooks ready (context=%d access=%d status_read=%d status_mmap=%d setprocattr=%d)\n",
+           g_hooked_context, g_hooked_access, g_hooked_status_read, g_hooked_status_mmap,
+           selinux_setprocattr_addr != 0);
     return 0;
 err:
     kp_uninstall_hooks();
@@ -986,10 +1143,6 @@ int selinux_hide_disable(void)
     if (!selinux_hide_enabled) return 0;
 
     kp_uninstall_hooks();
-    if (fake_status_vaddr) {
-        kp_vfree(fake_status_vaddr);
-        fake_status_vaddr = NULL;
-    }
     selinux_hide_enabled = false;
     logkfi("selinux_hide: disabled\n");
     return 0;
@@ -1055,6 +1208,18 @@ int selinux_hide_post_fs_data(const char *args)
             int src = selinux_sepolicy_snapshot();
             log_boot("selinux_sepolicy: snapshot rc=%d\n", src);
 
+            if (selinux_sepolicy_snapshot_dirty()) {
+                struct file *sf = filp_open(KP_SELINUX_HIDE_STRICT_FILE, KP_O_RDONLY, 0);
+                bool strict = !IS_ERR(sf);
+                if (strict) {
+                    filp_close(sf, 0);
+                    logkfw("selinux_hide: %s is present and the snapshot already carries a manager "
+                           "domain, refusing to enable\n",
+                           KP_SELINUX_HIDE_STRICT_FILE);
+                    return 0;
+                }
+            }
+
             selinux_hide_approved = true;
         }
     } else if (lib_strcmp(args, "after") == 0) {
@@ -1069,8 +1234,10 @@ int selinux_hide_post_fs_data(const char *args)
 int security_context_to_sid_fn(const char *context, int len, u32 *sid, gfp_t gfp)
 {
     if (selinux_hide_is_without_sepolicy_state_version()) {
+        if (!kfunc(security_context_to_sid)) return -ENOSYS;
         return kfunc(security_context_to_sid)(context, len, sid, gfp);
     } else {
+        if (!kfunc(security_context_to_sid_compat) || !kp_selinux_state_addr) return -ENOSYS;
         return kfunc(security_context_to_sid_compat)((void *)kp_selinux_state_addr, context, len, sid, gfp);
     }
 }
@@ -1117,6 +1284,8 @@ int selinux_hide_init(void)
         (typeof(kfunc(security_context_str_to_sid)))lookup_name_with_suffix("security_context_str_to_sid");
 
     selinux_sepolicy_init();
+
+    kp_resolve_vma_offsets();
 
     kp_security_cred_getsecid = (security_cred_getsecid_fn)kallsyms_lookup_name("security_cred_getsecid");
     kp_selinux_state_addr = lookup_name_with_suffix("selinux_state");

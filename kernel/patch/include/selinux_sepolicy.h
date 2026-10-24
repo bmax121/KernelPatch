@@ -35,6 +35,8 @@ struct av_decision;
 void *kp_vmalloc(unsigned long size);
 void kp_vfree(const void *addr);
 
+void kp_kernel_str_free(void *p);
+
 /* Install anything needed once at boot. */
 int selinux_sepolicy_init(void);
 
@@ -43,18 +45,21 @@ int selinux_sepolicy_snapshot(void);
 
 bool selinux_sepolicy_backup_ready(void);
 
+bool selinux_sepolicy_snapshot_dirty(void);
+
+int selinux_sepolicy_clean_eval_enter(void);
+void selinux_sepolicy_clean_eval_leave(void);
+
 /* Query helpers that answer against the deep copy. */
 int selinux_sepolicy_context_to_sid(const char *scontext, u32 scontext_len, u32 *out_sid, gfp_t gfp);
 int selinux_sepolicy_sid_to_context(u32 sid, char **scontext, u32 *scontext_len);
 int selinux_sepolicy_context_str_to_sid(const char *scontext, u32 *out_sid, gfp_t gfp);
 void selinux_sepolicy_compute_av_user(u32 ssid, u32 tsid, u16 tclass, struct av_decision *avd);
 
-/* Sequence value the fake /sys/fs/selinux/status page uses (>= 6.7), and the
- * access-query response's seqno.  A clean device exposes sequence=4/policyload=1
- * in the status page but latest_granting=1 in the access response -- the two are
- * different counters, so they must NOT be equal (detectors compare both). */
 u32 selinux_sepolicy_clean_seq(void);
 #define KP_AVD_CLEAN_SEQNO 1
+
+int selinux_sepolicy_clean_deny_unknown(void);
 
 /* The queries above compute entirely against the deep copy (KernelSU style);
  * no redirect scope is needed or provided any more. */
