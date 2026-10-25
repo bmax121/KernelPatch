@@ -310,6 +310,27 @@ int print_kp_image_info_path(const char *kpimg_path)
     return rc;
 }
 
+// arm64 Image header: image_size, the kernel's effective memory footprint.
+#define ARM64_HDR_IMAGE_SIZE 16
+
+/*
+ * patch_update_img_buf() grows the header image_size; the kernel's own value
+ * stays in setup.kernel_size. Both fields are kept in kernel byte order, so a
+ * byte copy puts it back. Only a value smaller than the current header is
+ * accepted, which is all patching ever produces.
+ */
+static void restore_header_image_size(char *kimg, int kimg_len, const preset_t *preset)
+{
+    if (kimg_len < ARM64_HDR_IMAGE_SIZE + 8) return;
+    uint64_t orig = u64le(preset->setup.kernel_size);
+    uint64_t cur;
+    memcpy(&cur, kimg + ARM64_HDR_IMAGE_SIZE, sizeof(cur));
+    cur = u64le(cur);
+    if (!orig || orig >= cur) return;
+    tools_logi("restore image_size 0x%llx -> 0x%llx\n", (unsigned long long)cur, (unsigned long long)orig);
+    memcpy(kimg + ARM64_HDR_IMAGE_SIZE, &preset->setup.kernel_size, 8);
+}
+
 int parse_image_patch_info(const char *kimg, int kimg_len, patched_kimg_t *pimg)
 {
     pimg->kimg = kimg;
@@ -323,6 +344,7 @@ int parse_image_patch_info(const char *kimg, int kimg_len, patched_kimg_t *pimg)
     if (old_preset) {
         tools_logi("restore header backup before parsing patched kernel image\n");
         memcpy((char *)kimg, preset_header_backup(old_preset), HDR_BACKUP_SIZE);
+        restore_header_image_size((char *)kimg, kimg_len, old_preset);
     }
 
     // kernel image infomation
@@ -760,6 +782,15 @@ int patch_update_img_buf(const char *kimg, int kimg_len, const char *kpimg_path,
     memset(out_kernel_file.kimg + ori_kimg_len, 0, align_kimg_len - ori_kimg_len);
     memcpy(out_kernel_file.kimg + align_kimg_len, kpimg, kpimg_len);
 
+    // On entry, setup1.S copies the start image and extras to kernel_pa + start_offset,
+    // outside the footprint the header declares. The arm64 boot protocol keeps only
+    // image_size bytes free, so a bootloader may put the DTB or initramfs exactly
+    // there and the copy would overwrite it. Declare the copy as part of the image.
+    // kpimg_len covers the start image, which is kpimg minus its setup prefix.
+    int image_size = align_ceil(start_offset + kpimg_len + extra_size, SZ_4K);
+    tools_logi("image_size: 0x%x -> 0x%x\n", kinfo->kernel_size, image_size);
+    kernel_resize(kinfo, out_kernel_file.kimg, image_size);
+
     // set preset
     preset_t *preset = (preset_t *)(out_kernel_file.kimg + align_kimg_len);
 
@@ -1037,6 +1068,7 @@ int unpatch_img(const char *kimg_path, const char *out_path)
 
     // todo: check whether the endian is different or not
     memcpy(kernel_file.kimg, preset->setup.header_backup, sizeof(preset->setup.header_backup));
+    restore_header_image_size(kernel_file.kimg, kernel_file.kimg_len, preset);
     int kimg_size = preset->setup.kimg_size ?: ((char *)preset - kernel_file.kimg);
     update_kernel_file_img_len(&kernel_file, kimg_size, false);
 
