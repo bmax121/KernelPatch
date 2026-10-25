@@ -271,8 +271,12 @@ map_prepare:
     // if ((map_data.paging_init_backup & 0xFFFFFD1F) == 0xD503211F)
     cmp w0, w1
     b.ne .backup
-    // map_data.paging_init_backup = NOP
-    mov w12, w3
+    // map_data.paging_init_backup = BTI c
+    // The PAC instruction was also paging_init's BTI landing pad, and _paging_init
+    // calls paging_init through a register. BTI c keeps a landing pad and is a
+    // hint, so it executes as NOP where BTI is not implemented or not enabled.
+    mov w12, #0x245F
+    movk w12, #0xD503, lsl#16
     // uint32_t *p = (uint32_t *)paging_init_pa + 1;
     add x11, x13, #4
 .cmp_auti:
