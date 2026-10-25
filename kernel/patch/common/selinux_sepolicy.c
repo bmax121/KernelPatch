@@ -42,6 +42,7 @@
 #include <linux/string.h>
 #include <linux/err.h>
 #include <asm/current.h>
+#include <asm/cmpxchg.h>
 #include <uapi/asm-generic/errno.h>
 #include <security/selinux/include/security.h>
 #include <security/selinux/include/avc.h>
@@ -56,6 +57,7 @@
 #define KP_BACKUP_POLICY_SIZE 0x8000 /* standalone policydb + wrapper */
 #define KP_BACKUP_SIDTAB_SIZE 0x4000 /* struct sidtab (hash roots etc.) */
 #define KP_GFP_KERNEL 0xcc0u /* __GFP_RECLAIM | __GFP_IO | __GFP_FS */
+#define KP_CONTEXT_PAYLOAD_LIMIT 4096
 
 /* ---- SELinux ss/ structures (layouts from the kpm selinux_hook module) ---- */
 
@@ -409,6 +411,60 @@ void kp_vfree(const void *addr)
     if (kfunc(vfree)) kfunc(vfree)(addr);
 }
 
+typedef void *(*kp_kmalloc_fn)(size_t, gfp_t);
+typedef void (*kp_kfree_fn)(const void *);
+
+static kp_kmalloc_fn kp_payload_kmalloc;
+static kp_kfree_fn kp_payload_kfree;
+static bool kp_payload_resolved;
+
+static void kp_payload_resolve(void)
+{
+    if (kp_payload_resolved) return;
+    kp_payload_resolved = true;
+
+    kp_payload_kmalloc = (kp_kmalloc_fn)lookup_name_with_suffix("__kmalloc");
+    if (!kp_payload_kmalloc) kp_payload_kmalloc = (kp_kmalloc_fn)lookup_name_with_suffix("__kmalloc_noprof");
+    if (!kp_payload_kmalloc) kp_payload_kmalloc = (kp_kmalloc_fn)lookup_name_with_suffix("kmalloc");
+    kp_payload_kfree = (kp_kfree_fn)lookup_name_with_suffix("kfree");
+    log_boot("selinux_sepolicy: payload allocator: %s, free: %s\n",
+             kp_payload_kmalloc ? "kmalloc" : "vmalloc", kp_payload_kfree ? "kfree" : "none");
+}
+
+static void *kp_payload_alloc(size_t size, gfp_t gfp, bool *via_vmalloc)
+{
+    kp_payload_resolve();
+    if (kp_payload_kmalloc && kp_payload_kfree) {
+        *via_vmalloc = false;
+        return kp_payload_kmalloc(size, gfp);
+    }
+    *via_vmalloc = true;
+    return kp_vmalloc(size);
+}
+
+static void kp_payload_free(void *p, bool via_vmalloc)
+{
+    if (!p) return;
+    if (via_vmalloc) kp_vfree(p);
+    else if (kp_payload_kfree) kp_payload_kfree(p);
+}
+
+void kp_kernel_str_free(void *p)
+{
+    static bool warned;
+
+    if (!p) return;
+    kp_payload_resolve();
+    if (kp_payload_kfree) {
+        kp_payload_kfree(p);
+        return;
+    }
+    if (!warned) {
+        warned = true;
+        logkfw("selinux_sepolicy: kfree unresolved, kernel strings cannot be released\n");
+    }
+}
+
 /* ---- resolved symbols ---- */
 
 typedef int (*policydb_read_fn)(struct policydb *p, struct policy_file *fp);
@@ -445,6 +501,7 @@ static context_struct_compute_av_fn kp_context_struct_compute_av;
 
 static bool g_backup_ready;
 static void *g_backup_policy; /* our own struct selinux_policy-equivalent (heap) */
+static bool g_backup_allow_unknown;
 
 static bool selinux_sepolicy_supported(void)
 {
@@ -459,43 +516,58 @@ static int kp_context_to_sid_with_policy(const char *scontext, u32 scontext_len,
 static int kp_sid_to_context_with_policy(u32 sid, char **scontext, u32 *scontext_len);
 static void kp_compute_av_user_with_policy(u32 ssid, u32 tsid, u16 tclass, struct av_decision *avd);
 
+#define KP_CLEAN_EVAL_SLOTS 8
 
 static struct {
     void *task;
     u32 depth;
-} clean_eval_scope = { NULL, 0 };
+} clean_eval_slots[KP_CLEAN_EVAL_SLOTS];
 
-/* Task-keyed and synchronous: only the task that entered the scope is
- * redirected.  The slot is advisory — if another task holds it we just fall
- * back to the live policy, so no atomicity is required. */
 static bool kp_clean_eval_enter(void)
 {
-    if (clean_eval_scope.task == current) {
-        clean_eval_scope.depth++;
-    } else if (!clean_eval_scope.task) {
-        clean_eval_scope.task = current;
-        clean_eval_scope.depth = 1;
-    } else {
-        return false;
+    int i;
+
+    for (i = 0; i < KP_CLEAN_EVAL_SLOTS; i++) {
+        if (__atomic_load_n(&clean_eval_slots[i].task, __ATOMIC_ACQUIRE) == current) {
+            clean_eval_slots[i].depth++;
+            return true;
+        }
     }
-    return true;
+    for (i = 0; i < KP_CLEAN_EVAL_SLOTS; i++) {
+        if (cmpxchg(&clean_eval_slots[i].task, NULL, current) == NULL) {
+            clean_eval_slots[i].depth = 1;
+            return true;
+        }
+    }
+    return false;
 }
 
 static void kp_clean_eval_leave(void)
 {
-    if (clean_eval_scope.task == current) {
-        if (clean_eval_scope.depth > 1) {
-            clean_eval_scope.depth--;
+    int i;
+
+    for (i = 0; i < KP_CLEAN_EVAL_SLOTS; i++) {
+        if (__atomic_load_n(&clean_eval_slots[i].task, __ATOMIC_ACQUIRE) != current) continue;
+        if (clean_eval_slots[i].depth > 1) {
+            clean_eval_slots[i].depth--;
         } else {
-            clean_eval_scope.depth = 0;
-            clean_eval_scope.task = NULL;
+            clean_eval_slots[i].depth = 0;
+            __atomic_store_n(&clean_eval_slots[i].task, NULL, __ATOMIC_RELEASE);
         }
+        return;
     }
 }
 
 static bool kp_clean_eval_active(void)
 {
-    return clean_eval_scope.task == current && clean_eval_scope.depth;
+    int i;
+
+    for (i = 0; i < KP_CLEAN_EVAL_SLOTS; i++) {
+        if (__atomic_load_n(&clean_eval_slots[i].task, __ATOMIC_ACQUIRE) == current &&
+            clean_eval_slots[i].depth)
+            return true;
+    }
+    return false;
 }
 
 int selinux_sepolicy_clean_eval_enter(void)
@@ -617,6 +689,40 @@ static bool kp_blob_is_clean(const void *blob, size_t len)
     return true;
 }
 
+typedef int (*security_read_policy_compat_fn)(void *state, void **data, size_t *len);
+
+static security_read_policy_compat_fn kp_security_read_policy_compat;
+static unsigned long kp_sepolicy_state_addr;
+static bool kp_sepolicy_read_logged;
+
+static int kp_sepolicy_read(void **data, size_t *len)
+{
+    bool without_state = selinux_hide_is_without_sepolicy_state_version();
+
+    if (!kfunc(security_read_policy)) {
+        kfunc(security_read_policy) = (typeof(kfunc(security_read_policy)))lookup_name_with_suffix(
+            "security_read_policy");
+        if (!kfunc(security_read_policy)) return -ENOENT;
+    }
+
+    if (!kp_sepolicy_read_logged) {
+        kp_sepolicy_read_logged = true;
+        log_boot("selinux_sepolicy: security_read_policy: %s ABI (kver %x)\n",
+                 without_state ? "plain 2-arg" : "state 3-arg", kver);
+    }
+
+    if (without_state) return kfunc(security_read_policy)(data, len);
+
+    if (!kp_sepolicy_state_addr) kp_sepolicy_state_addr = lookup_name_with_suffix("selinux_state");
+    if (!kp_sepolicy_state_addr) {
+        logkfw("selinux_sepolicy: selinux_state not found, the policy cannot be serialized\n");
+        return -ENOENT;
+    }
+    if (!kp_security_read_policy_compat)
+        kp_security_read_policy_compat = (security_read_policy_compat_fn)(uintptr_t)kfunc(security_read_policy);
+    return kp_security_read_policy_compat((void *)kp_sepolicy_state_addr, data, len);
+}
+
 /* ---- policy-load capture ----
  *
  * Android loads the policy more than once: first-stage init loads the platform
@@ -635,6 +741,35 @@ static void *g_clean_blob;      /* last marker-free policy blob (as loaded) */
 static size_t g_clean_blob_len;
 static bool g_clean_locked;     /* a marker-carrying load was seen */
 
+static void kp_log_blob_diag(const char *tag, const void *blob, size_t len);
+
+#define KP_POLICYDB_MAGIC 0xf97cff8cU
+
+static bool kp_blob_looks_valid(const void *blob, size_t len)
+{
+    u32 magic = 0;
+
+    if (!blob || len < 4096 || len > (16u << 20)) return false;
+    lib_memcpy(&magic, blob, sizeof(magic));
+    return magic == KP_POLICYDB_MAGIC;
+}
+
+static bool kp_blob_config_word(const void *blob, size_t len, u32 *config)
+{
+    u32 magic = 0, slen = 0;
+    size_t off;
+
+    if (!blob || !config || len < 32) return false;
+    lib_memcpy(&magic, blob, sizeof(magic));
+    if (magic != KP_POLICYDB_MAGIC) return false;
+    lib_memcpy(&slen, (const char *)blob + 4, sizeof(slen));
+    if (!slen || slen > 64) return false;
+    off = 8 + (size_t)slen + sizeof(u32);
+    if (off + sizeof(u32) > len) return false;
+    lib_memcpy(config, (const char *)blob + off, sizeof(*config));
+    return true;
+}
+
 static void kp_capture_policy_load(uint64_t ret)
 {
     void *data = NULL;
@@ -649,14 +784,15 @@ static void kp_capture_policy_load(uint64_t ret)
      * not the blob pointer, and dereferencing it oopsed).  Serialize whatever
      * is active now instead -- right after a successful load that is exactly
      * the policy that was just installed. */
-    if (!kfunc(security_read_policy)) {
-        kfunc(security_read_policy) = (typeof(kfunc(security_read_policy)))lookup_name_with_suffix(
-            "security_read_policy");
-        if (!kfunc(security_read_policy)) return;
-    }
-    rc = security_read_policy(&data, &len);
+    rc = kp_sepolicy_read(&data, &len);
+    if (rc == -ENOENT) return;
     if (rc || !data || !len) {
         if (data && kfunc(kvfree)) kfunc(kvfree)(data);
+        return;
+    }
+    if (!kp_blob_looks_valid(data, len)) {
+        logkfw("selinux_sepolicy: serialized policy rejected (len %zu), ignoring this load\n", len);
+        if (kfunc(kvfree)) kfunc(kvfree)(data);
         return;
     }
 
@@ -664,6 +800,7 @@ static void kp_capture_policy_load(uint64_t ret)
         g_clean_locked = true;
         log_boot("selinux_sepolicy: loaded policy len %zu carries root markers, keeping the %zu byte clean blob\n",
                  len, g_clean_blob_len);
+        kp_log_blob_diag("rejected", data, len);
     } else {
         copy = kp_vmalloc(len);
         if (copy) {
@@ -733,6 +870,41 @@ static void kp_log_blob_diag(const char *tag, const void *blob, size_t len)
              kp_blob_count(blob, len, "xposed"), kp_blob_count(blob, len, "droidspaces"));
 }
 
+static bool g_snapshot_dirty;
+
+static void kp_probe_one(const char *ctx, int *hits)
+{
+    u32 sid = 0;
+    int rc = kp_context_to_sid_with_policy(ctx, lib_strlen(ctx), &sid, SECSID_NULL, KP_GFP_KERNEL);
+
+    if (!rc) {
+        (*hits)++;
+        logkfw("selinux_sepolicy: snapshot resolves %s -> sid %u; it already carries a manager "
+               "domain, hiding it is ineffective\n",
+               ctx, sid);
+    }
+}
+
+static void kp_probe_snapshot_domains(void)
+{
+    int hits = 0;
+
+    if (!g_backup_ready) return;
+    kp_probe_one("u:r:su:s0", &hits);
+    kp_probe_one("u:r:ksu:s0", &hits);
+    kp_probe_one("u:r:magisk:s0", &hits);
+    kp_probe_one("u:r:lsposed:s0", &hits);
+    if (hits)
+        g_snapshot_dirty = true;
+    else
+        log_boot("selinux_sepolicy: snapshot answers no manager domain (clean)\n");
+}
+
+bool selinux_sepolicy_snapshot_dirty(void)
+{
+    return g_snapshot_dirty;
+}
+
 static int kp_dup_sepolicy(void)
 {
     struct policy_file fp;
@@ -756,11 +928,16 @@ static int kp_dup_sepolicy(void)
         len = g_clean_blob_len;
         log_boot("selinux_sepolicy: using the captured clean policy blob (%zu bytes)\n", len);
     } else {
-        rc = security_read_policy(&data, &len);
+        rc = kp_sepolicy_read(&data, &len);
         if (rc || !data || !len) {
             log_boot("selinux_sepolicy: security_read_policy failed rc=%d\n", rc);
             if (data && kfunc(kvfree)) kfunc(kvfree)(data);
             return rc ? rc : -EINVAL;
+        }
+        if (!kp_blob_looks_valid(data, len)) {
+            logkfw("selinux_sepolicy: serialized policy rejected (len %zu), no snapshot\n", len);
+            if (kfunc(kvfree)) kfunc(kvfree)(data);
+            return -EINVAL;
         }
         owned = true;
         /* No load was captured: this is whatever policy is live now, so report
@@ -789,7 +966,15 @@ static int kp_dup_sepolicy(void)
         log_boot("selinux_sepolicy: policydb_read failed rc=%d\n", rc);
         goto out_free;
     }
-    pdb->len = len; /* KernelSU restores the serialized length after reparse */
+
+    {
+        u32 config = 0;
+
+        if (kp_blob_config_word(data, len, &config))
+            g_backup_allow_unknown = (config & 0x4) != 0;
+        else
+            logkfw("selinux_sepolicy: policy header unparsable, assuming deny_unknown\n");
+    }
 
     rc = kp_policydb_load_isids(pdb, sidtab);
     if (rc) {
@@ -801,8 +986,9 @@ static int kp_dup_sepolicy(void)
     *(void **)pol = sidtab; /* policy->sidtab @0 */
     g_backup_policy = pol;
     g_backup_ready = true;
-    log_boot("selinux_sepolicy: deep copy ready (vers %u, len %zu, pdb %llx, sidtab %llx)\n",
-             pdb->policyvers, pdb->len, (unsigned long)pdb, (unsigned long)sidtab);
+    log_boot("selinux_sepolicy: deep copy ready (blob len %zu, allow_unknown %d, pdb %llx, sidtab %llx)\n",
+             len, g_backup_allow_unknown, (unsigned long)pdb, (unsigned long)sidtab);
+    kp_probe_snapshot_domains();
     rc = 0;
     goto out;
 
@@ -853,26 +1039,27 @@ static int kp_context_to_sid_with_policy(const char *scontext, u32 scontext_len,
     if (!policydb || !sidtab || !scontext_len) return -EINVAL;
     if (!kp_string_to_context_struct || !kp_sidtab_context_to_sid) return -ENOSYS;
 
-    /* Hot path: every app selinuxfs query goes through here.  Use a stack
-     * buffer for the (short) context string; vmalloc/vfree per query was a
-     * measurable cost and a page-table churn source. */
-    char stackbuf[256];
-    char *heapbuf = NULL, *scontext2;
-    if (scontext_len < sizeof(stackbuf)) {
-        scontext2 = stackbuf;
-    } else {
-        heapbuf = kp_vmalloc(scontext_len + 1);
-        if (!heapbuf) return -ENOMEM;
-        scontext2 = heapbuf;
-    }
+    char *scontext2;
+    bool via_vmalloc = false;
+
+    if (scontext_len >= KP_CONTEXT_PAYLOAD_LIMIT) return -EINVAL;
+    scontext2 = kp_payload_alloc(scontext_len + 1, gfp, &via_vmalloc);
+    if (!scontext2) return -ENOMEM;
     lib_memcpy(scontext2, scontext, scontext_len);
     scontext2[scontext_len] = '\0';
 
     rc = kp_string_to_context_struct(policydb, sidtab, scontext2, &context, def_sid);
     if (!rc)
         rc = kp_sidtab_context_to_sid(sidtab, &context, out_sid);
-    if (heapbuf) kp_vfree(heapbuf);
+    kp_payload_free(scontext2, via_vmalloc);
     return rc;
+}
+
+static struct sidtab_entry *kp_sidtab_lookup(void *sidtab, u32 sid)
+{
+    if (kp_sidtab_search_entry) return kp_sidtab_search_entry(sidtab, sid);
+    if (kp_sidtab_search_core) return kp_sidtab_search_core(sidtab, sid, 0);
+    return NULL;
 }
 
 static int kp_sid_to_context_with_policy(u32 sid, char **scontext, u32 *scontext_len)
@@ -884,9 +1071,9 @@ static int kp_sid_to_context_with_policy(u32 sid, char **scontext, u32 *scontext
 
     if (scontext) *scontext = NULL;
     *scontext_len = 0;
-    if (!policydb || !sidtab || !kp_sidtab_search_entry) return -EINVAL;
+    if (!policydb || !sidtab) return -EINVAL;
 
-    entry = kp_sidtab_search_entry(sidtab, sid);
+    entry = kp_sidtab_lookup(sidtab, sid);
     if (!entry) return -EINVAL;
 
     if (kp_sidtab_sid2str_get) {
@@ -907,7 +1094,8 @@ static void kp_compute_av_user_with_policy(u32 ssid, u32 tsid, u16 tclass, struc
     struct sidtab_entry *se, *te;
     struct context *scontext, *tcontext;
 
-    if (!policydb || !sidtab || !kp_context_struct_compute_av || !kp_sidtab_search_core) return;
+    if (!policydb || !sidtab || !kp_context_struct_compute_av) return;
+    if (!kp_sidtab_search_entry && !kp_sidtab_search_core) return;
 
     avd->allowed = 0;
     avd->auditallow = 0;
@@ -915,21 +1103,16 @@ static void kp_compute_av_user_with_policy(u32 ssid, u32 tsid, u16 tclass, struc
     avd->seqno = KP_AVD_CLEAN_SEQNO;
     avd->flags = 0;
 
-    se = kp_sidtab_search_core(sidtab, ssid, 0);
+    se = kp_sidtab_lookup(sidtab, ssid);
     if (!se) return;
     scontext = &se->context;
 
-    te = kp_sidtab_search_core(sidtab, tsid, 0);
+    te = kp_sidtab_lookup(sidtab, tsid);
     if (!te) return;
     tcontext = &te->context;
 
     if (unlikely(!tclass)) {
-        /* KernelSU security_compute_av_user_with_policy parity: stock answers
-         * an unknown class with everything granted when the (clean) policy
-         * allows unknown classes.  The permissive-domain flag is deliberately
-         * not replicated: reading permissive_map needs an ebitmap walk over
-         * layout-sensitive nodes for no hiding benefit. */
-        if (policydb->allow_unknown) avd->allowed = 0xffffffff;
+        if (g_backup_allow_unknown) avd->allowed = 0xffffffff;
         return;
     }
 
@@ -969,8 +1152,13 @@ void selinux_sepolicy_compute_av_user(u32 ssid, u32 tsid, u16 tclass, struct av_
 
 u32 selinux_sepolicy_clean_seq(void)
 {
-    if (kver >= VERSION(6, 7, 0)) return 4;
     return 0;
+}
+
+int selinux_sepolicy_clean_deny_unknown(void)
+{
+    if (!g_backup_ready) return 1;
+    return g_backup_allow_unknown ? 0 : 1;
 }
 
 /* ---- init ---- */
@@ -1000,6 +1188,7 @@ int selinux_sepolicy_init(void)
     kp_context_struct_to_string = (context_struct_to_string_fn)lookup_name_with_suffix("context_struct_to_string");
     kp_sidtab_search_core = (sidtab_search_core_fn)lookup_name_with_suffix("sidtab_search_core");
     kp_context_struct_compute_av = (context_struct_compute_av_fn)lookup_name_with_suffix("context_struct_compute_av");
+    kp_payload_resolve();
     if (!selinux_hide_is_new_version()) {
         /* Only the argument-redirect hooks are needed: the deep copy is consumed by
         * swapping the policydb argument while an app query runs. */
@@ -1027,7 +1216,6 @@ int selinux_sepolicy_init(void)
             hook_wrap4((void *)addr, NULL, after_security_load_policy_4, NULL);
         log_boot("selinux_sepolicy: hooked security_load_policy @ %llx\n", addr);
     }
-
 
     log_boot("selinux_sepolicy: read=%llx str2ctx=%llx sidtab2sid=%llx search=%llx\n",
              (unsigned long)kfunc(security_read_policy), (unsigned long)kp_string_to_context_struct,
