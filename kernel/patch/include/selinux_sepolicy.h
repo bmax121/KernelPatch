@@ -56,8 +56,15 @@ int selinux_sepolicy_sid_to_context(u32 sid, char **scontext, u32 *scontext_len)
 int selinux_sepolicy_context_str_to_sid(const char *scontext, u32 *out_sid, gfp_t gfp);
 void selinux_sepolicy_compute_av_user(u32 ssid, u32 tsid, u16 tclass, struct av_decision *avd);
 
+/* Stock counters: sequence is the even seqlock progress (4 once booted),
+ * policyload is policy->latest_granting (1 for the boot load) and avd.seqno
+ * follows policyload; pre-6.7 kernels leave the page at 0. */
+#define KP_CLEAN_STATUS_SEQUENCE 4
+#define KP_CLEAN_STATUS_POLICYLOAD 1
+#define KP_AVD_CLEAN_SEQNO KP_CLEAN_STATUS_POLICYLOAD
+
 u32 selinux_sepolicy_clean_seq(void);
-#define KP_AVD_CLEAN_SEQNO 1
+u32 selinux_sepolicy_clean_policyload(void);
 
 int selinux_sepolicy_clean_deny_unknown(void);
 

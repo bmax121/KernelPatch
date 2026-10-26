@@ -1150,9 +1150,19 @@ void selinux_sepolicy_compute_av_user(u32 ssid, u32 tsid, u16 tclass, struct av_
     kp_compute_av_user_with_policy(ssid, tsid, tclass, avd);
 }
 
+static bool kp_clean_status_modern(void)
+{
+    return kver >= VERSION(6, 7, 0);
+}
+
 u32 selinux_sepolicy_clean_seq(void)
 {
-    return 0;
+    return kp_clean_status_modern() ? KP_CLEAN_STATUS_SEQUENCE : 0;
+}
+
+u32 selinux_sepolicy_clean_policyload(void)
+{
+    return kp_clean_status_modern() ? KP_CLEAN_STATUS_POLICYLOAD : 0;
 }
 
 int selinux_sepolicy_clean_deny_unknown(void)
