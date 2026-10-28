@@ -188,14 +188,18 @@ static void put_u32_le(unsigned char *dst, u32 value)
 static void fill_fake_status_bytes(void)
 {
     u32 seq = selinux_sepolicy_clean_seq();
-    u32 pload = 0;
+    u32 pload = selinux_sepolicy_clean_policyload();
+    u32 deny_unknown = (u32)selinux_sepolicy_clean_deny_unknown();
 
     lib_memset(fake_status_bytes, 0, sizeof(fake_status_bytes));
     put_u32_le(fake_status_bytes + 0, KP_SELINUX_KERNEL_STATUS_VERSION);
     put_u32_le(fake_status_bytes + 4, seq);
     put_u32_le(fake_status_bytes + 8, kp_live_enforcing());
     put_u32_le(fake_status_bytes + 12, pload);
-    put_u32_le(fake_status_bytes + 16, (u32)selinux_sepolicy_clean_deny_unknown());
+    put_u32_le(fake_status_bytes + 16, deny_unknown);
+
+    logkfi("selinux_hide: fake status seq=%u policyload=%u deny_unknown=%u (kver %x)\n",
+           seq, pload, deny_unknown, kver);
 }
 
 static void init_fake_status(void)
