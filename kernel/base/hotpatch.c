@@ -139,7 +139,9 @@ int hotpatch(void *addrs[], uint32_t values[], int cnt)
          * this is the path fp_hook/hook_install used before the hotpatch
          * migration and the one that boots 4.x.  fall back to a direct write
          * only if it cannot be resolved. */
-        if (kfunc(aarch64_insn_patch_text)) return kfunc(aarch64_insn_patch_text)(addrs, values, cnt);
+        if (kver > VERSION(4, 4, 255)) {
+            if (kfunc(aarch64_insn_patch_text)) return kfunc(aarch64_insn_patch_text)(addrs, values, cnt);
+        }
         for (int i = 0; i < cnt; ++i) {
             int rc = hotpatch_nosync(addrs[i], values[i]);
             if (rc) return rc;
