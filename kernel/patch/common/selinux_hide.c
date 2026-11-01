@@ -140,7 +140,8 @@ static bool g_setprocattr_busy_warned;
 #define KP_QLOG_ON 1
 #define KP_QLOG_VERBOSE 2
 
-static int selinux_hide_query_log = KP_QLOG_OFF;
+/* Read directly by the hot redirect hooks; keep it a plain int. */
+int selinux_hide_qlog_level = KP_QLOG_OFF;
 
 /* Printable, bounded, NUL-terminated copy of a query string. */
 static void kp_qlog_str(char *dst, const void *src, size_t len, size_t max)
@@ -159,21 +160,21 @@ static void kp_qlog(const char *what, uid_t uid, const void *detail, size_t dlen
 {
     char s[96];
 
-    if (selinux_hide_query_log == KP_QLOG_OFF) return;
+    if (selinux_hide_qlog_level == KP_QLOG_OFF) return;
     kp_qlog_str(s, detail, dlen, sizeof(s) - 1);
     logkfi("query %s uid=%u: %s\n", what, (unsigned int)uid, s);
 }
 
 static void kp_qlog_plain(const char *what, uid_t uid)
 {
-    if (selinux_hide_query_log == KP_QLOG_OFF) return;
+    if (selinux_hide_qlog_level == KP_QLOG_OFF) return;
     logkfi("query %s uid=%u\n", what, (unsigned int)uid);
 }
 
 /* Read by selinux_sepolicy.c for its level-2 (internal redirect) logging. */
 int selinux_hide_query_log_level(void)
 {
-    return selinux_hide_query_log;
+    return selinux_hide_qlog_level;
 }
 
 static unsigned long kp_selinux_state_addr;
@@ -292,7 +293,7 @@ static void kp_resolve_vma_offsets(void)
                  "(vm_page_prot %ld, vm_flags %ld, vm_pgoff %ld, vm_file %ld)\n",
                  prot, flags, pgoff, file);
     }
-    if (kver >= VERSION(6, 1, 0)) {
+    if (selinux_hide_has_vma_layout()) {
         g_vma_page_prot_off = 24;
         g_vma_vm_flags_off = 32;
     } else {
@@ -306,13 +307,13 @@ static void kp_resolve_vma_offsets(void)
 static unsigned long kp_vma_page_prot_off(void)
 {
     if (g_vma_page_prot_off > 0) return (unsigned long)g_vma_page_prot_off;
-    return kver >= VERSION(6, 1, 0) ? 24 : 72;
+    return selinux_hide_has_vma_layout() ? 24 : 72;
 }
 
 static unsigned long kp_vma_vm_flags_off(void)
 {
     if (g_vma_vm_flags_off > 0) return (unsigned long)g_vma_vm_flags_off;
-    return kver >= VERSION(6, 1, 0) ? 32 : 80;
+    return selinux_hide_has_vma_layout() ? 32 : 80;
 }
 
 static bool kp_pgprot_plausible(unsigned long prot)
@@ -398,6 +399,8 @@ static ssize_t kp_patch_response_seqno(char *buf, ssize_t ret, u32 new_seqno)
     }
 
     diff = (ssize_t)ns_len - (ssize_t)(p - tok_start);
+    /* The reply lives in the transaction page; never grow it past the limit. */
+    if (diff > 0 && ret + diff > (ssize_t)kp_transaction_limit()) return ret;
     if (diff != 0) {
         char *dst = tok_start + ns_len, *src = p;
         size_t move = (size_t)(end - src);
@@ -416,28 +419,12 @@ static ssize_t kp_patch_response_seqno(char *buf, ssize_t ret, u32 new_seqno)
 
 /* ---- app-facing selinuxfs query surface ----
  *
- * selinuxfs exposes the context-resolving transaction nodes context/access/
- * create/relabel/user/member (world-readable and world-writable at the VFS
- * level: S_IRUGO|S_IWUGO) and validatetrans (world-writable).  Which of them an
- * app-side caller can actually use is decided by the permission each handler
- * checks *before* it parses the payload:
- *
- *   context  (check_context)   -- hooked below, answered from the snapshot
- *   access   (compute_av)      -- hooked below, answered from the snapshot
- *   create   (compute_create)  -- no hook needed: AOSP grants none of these to
- *   relabel  (compute_relabel)    an app-side domain.  app_zygote is the only
- *   user     (compute_user)       app-uid domain with SELinux query rights and
- *   member   (compute_member)     selinux_check_access() gives it exactly
- *   validatetrans (validate_trans) compute_av + check_context, while plain app
- *                                 domains are denied both outright
- *                                 (private/app.te: "SELinux is not an API for
- *                                 apps to use").  The kernel checks the
- *                                 permission before parsing, so every app-side
- *                                 call to those five is rejected with EACCES
- *                                 before any policy lookup -- there is nothing
- *                                 to intercept there.
- *
- * setprocattr ("current") and the status page are hooked further down. */
+ * context (check_context) and access (compute_av) are hooked below and
+ * answered from the snapshot.  create/relabel/user/member/validatetrans need no
+ * hook: no app-side domain is granted those permissions, and the kernel checks
+ * the permission before parsing, so those calls are rejected with EACCES before
+ * any policy lookup.  setprocattr and the status page are hooked further down.
+ */
 
 static ssize_t my_write_context_new(struct file *file, char *buf, size_t size)
 {
@@ -451,6 +438,8 @@ static ssize_t my_write_context_new(struct file *file, char *buf, size_t size)
      * probes visible, and its cost depends only on the payload length, so two
      * equal-length writes cannot be told apart through it. */
     kp_qlog("context_write", uid, buf, size);
+
+    if (size >= kp_transaction_limit()) return -ERANGE;
 
     if (likely(uid < 10000)) {
         length = orig_context_write(file, buf, size);
@@ -630,24 +619,13 @@ static int my_setprocattr_new(const char *name, void *value, size_t size)
     /* Apps only; non-"current" attributes go straight to the stock handler. */
     if (uid < 10000 || lib_strcmp(name, "current")) goto call_orig;
 
-    /* Fast path.  The stock handler performs the SETCURRENT check *before* it
-     * parses, so a rejected write never reaches the parser and the clean-eval
-     * scope would be pure cost.  Run that same check here, once, for every
-     * value: a denial then costs exactly one avc_has_perm and no scope, which
-     * is what stock does.
-     *
-     * Everything past the check is admitted through the scope for every value,
-     * including one the stock handler does not parse (empty or a leading
-     * newline).  The scope is what redirects the parse, but a paired A/B probe
-     * compares two payloads of the same length, so letting only the parsed one
-     * pay the enter/leave would leave a value-dependent cost in the pair at
-     * every clock -- and it would also mean the two payloads are checked
-     * against different policies.  A value the handler never parses pays the
-     * same few cycles and nothing else. */
+    /* Fast path.  Stock checks SETCURRENT before it parses, inside the same
+     * call; let it run that check in the snapshot's scope instead of duplicating
+     * it here.  A rejected write then costs the one avc_has_perm stock costs
+     * (and the detector's lookup counter stays at one per write), while every
+     * value -- parsed or not -- pays the same enter/leave, so a paired A/B probe
+     * differs only by the parse itself. */
     if (selinux_sepolicy_live_aligned()) {
-        mysid = kp_current_sid();
-        error = kp_avc_check_sid(mysid, mysid, KP_SECCLASS_PROCESS, KP_PROCESS__SETCURRENT);
-        if (error) return error;
         if (selinux_sepolicy_clean_eval_enter() == 0) {
             int rc = orig_setprocattr(name, value, size);
             selinux_sepolicy_clean_eval_leave();
@@ -664,9 +642,9 @@ static int my_setprocattr_new(const char *name, void *value, size_t size)
      * check and parse the payload against the snapshot before the stock
      * handler, which would otherwise resolve it in the patched live policy. */
     mysid = kp_current_sid();
-    error = kp_avc_check(mysid, KP_SECCLASS_PROCESS, KP_PROCESS__SETCURRENT);
+    error = kp_avc_check_sid(mysid, mysid, KP_SECCLASS_PROCESS, KP_PROCESS__SETCURRENT);
 
-    if (selinux_hide_query_log != KP_QLOG_OFF) {
+    if (selinux_hide_qlog_level != KP_QLOG_OFF) {
         /* After the permission decision, so nothing input-dependent precedes
          * it, and denied writes stay visible: a detector's attr/current probe
          * shows up here as a denied write of a full application context. */
@@ -681,15 +659,10 @@ static int my_setprocattr_new(const char *name, void *value, size_t size)
             str[size - 1] = 0;
             size--;
         }
-        /* The snapshot has to know the context -- that is what rejects a
-         * manager context, and here it is the whole decision.  The SID is not
-         * used because the stock handler performs the transition: it resolves
-         * the context in the live policy itself (registering it there once, as
-         * any stock query would) and applies the bounded-transition /
-         * DYNTRANSITION / ptrace checks with its own audit trail.  Leaving the
-         * live policy out of this path also keeps it free of side effects a
-         * clean device would not have: for a denied app the stock handler stops
-         * at its own permission check before resolving anything. */
+        /* The snapshot must know the context: that is the whole decision.  The
+         * transition itself is left to the stock handler, which resolves it in
+         * the live policy and applies bounded-transition / DYNTRANSITION /
+         * ptrace with its own audit trail. */
         error = selinux_sepolicy_context_to_sid(value, size, &sid, KP_GFP_KERNEL);
         if (error == -ENOSYS || error == -EOPNOTSUPP) {
             if (!g_setprocattr_infra_warned) {
@@ -713,7 +686,7 @@ static int my_setprocattr(const char *name, void *value, size_t size)
     uid_t uid = current_uid();
     char vbuf[96];
 
-    if (selinux_hide_query_log != KP_QLOG_OFF) {
+    if (selinux_hide_qlog_level != KP_QLOG_OFF) {
         kp_qlog_str(vbuf, value, size, sizeof(vbuf) - 1);
         logkfi("query setprocattr uid=%u name=%s value=%s\n", (unsigned int)uid,
                name ? name : "(null)", vbuf);
@@ -745,12 +718,9 @@ call_orig:
 }
 /* ---- /sys/fs/selinux/status (read + mmap) ---- */
 
-/* Preferred status path: hook the page factory.  sel_open_handle_status() then
- * stores our page in filp->private_data and the stock read/mmap handlers run
- * unchanged -- same simple_read_from_buffer semantics, same pgoff/VM_WRITE
- * rules and errno.  Only uid >= 10000 gets the synthetic page; root sees the
- * real one.  The read/mmap hooks below stay as a fallback for kernels where
- * the factory symbol cannot be resolved. */
+/* Preferred status path: hook the page factory so sel_open_handle_status()
+ * stores our page and the stock read/mmap handlers run unchanged.  Only
+ * uid >= 10000 sees it; the read/mmap hooks below are the fallback. */
 static void before_selinux_kernel_status_page(hook_fargs1_t *a, void *u)
 {
     void *page;
@@ -785,7 +755,7 @@ static ssize_t my_sel_read_handle_status(struct file *filp, char __user *buffer,
 {
     uid_t uid = current_uid();
 
-    if (selinux_hide_query_log != KP_QLOG_OFF) {
+    if (selinux_hide_qlog_level != KP_QLOG_OFF) {
         logkfi("query status_read uid=%u count=%u pos=%u\n", (unsigned int)uid,
                (unsigned int)count, (unsigned int)(ppos ? *ppos : 0));
     }
@@ -1002,8 +972,8 @@ static long kp_fops_find_handler(unsigned long ops, unsigned long handler)
 
 static unsigned long kp_fops_shift(void)
 {
-    if (kver >= VERSION(5, 12, 0)) return 10;
-    if (kver >= VERSION(5, 1, 0)) return 11;
+    if (kver >= KP_SELINUX_FOPS_SHIFT_512_VERSION) return 10;
+    if (kver >= KP_SELINUX_FOPS_SHIFT_51_VERSION) return 11;
     return 10;
 }
 
@@ -1313,17 +1283,17 @@ long selinux_hide_control(int state)
      * the feature state. */
     switch (state) {
     case -2:
-        return selinux_hide_query_log;
+        return selinux_hide_qlog_level;
     case 2:
-        selinux_hide_query_log = KP_QLOG_OFF;
+        selinux_hide_qlog_level = KP_QLOG_OFF;
         logkfi("query log: off\n");
         return 0;
     case 3:
-        selinux_hide_query_log = KP_QLOG_ON;
+        selinux_hide_qlog_level = KP_QLOG_ON;
         logkfi("query log: on (intercepted queries)\n");
         return 0;
     case 4:
-        selinux_hide_query_log = KP_QLOG_VERBOSE;
+        selinux_hide_qlog_level = KP_QLOG_VERBOSE;
         logkfi("query log: verbose (intercepted queries + ss/ redirects)\n");
         return 0;
     default:

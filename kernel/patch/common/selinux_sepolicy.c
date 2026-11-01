@@ -43,6 +43,7 @@
 #include <linux/err.h>
 #include <asm/current.h>
 #include <asm/cmpxchg.h>
+#include <kp_spinlock.h>
 #include <uapi/asm-generic/errno.h>
 #include <security/selinux/include/security.h>
 #include <security/selinux/include/avc.h>
@@ -521,6 +522,30 @@ static bool g_string_redirect_installed;
 static void *g_backup_policy; /* our own struct selinux_policy-equivalent (heap) */
 static bool g_backup_allow_unknown;
 
+/* The snapshot is published once, before the hooks are installed.  The
+ * acquire/release pair makes "ready implies policy is visible" a property of
+ * the code rather than of the boot ordering. */
+static inline bool kp_backup_ready(void)
+{
+    return __atomic_load_n(&g_backup_ready, __ATOMIC_ACQUIRE);
+}
+
+extern int selinux_hide_qlog_level;
+
+static void *g_clean_pdb; /* snapshot policydb, cached for the redirect hooks */
+
+static inline void *kp_clean_policydb(void)
+{
+    return __atomic_load_n(&g_clean_pdb, __ATOMIC_RELAXED);
+}
+
+static inline void kp_backup_publish(void *policy)
+{
+    __atomic_store_n(&g_clean_pdb, (char *)policy + KP_POLICY_POLICYDB_OFFSET, __ATOMIC_RELAXED);
+    __atomic_store_n(&g_backup_policy, policy, __ATOMIC_RELAXED);
+    __atomic_store_n(&g_backup_ready, true, __ATOMIC_RELEASE);
+}
+
 static bool selinux_sepolicy_supported(void)
 {
     return selinux_hide_is_supported();
@@ -536,58 +561,119 @@ static void kp_compute_av_user_with_policy(u32 ssid, u32 tsid, u16 tclass, struc
 
 #define KP_CLEAN_EVAL_SLOTS 8
 
+/* One word carries the common case: the scope owner in the upper bits, the
+ * nesting depth in bits 0-1, and bit 2 while a fallback slot is in use.  The
+ * two redirect hooks run on every AVC miss / parse in the system, so the idle
+ * test must stay one load; for the owner the same load also proves the scope.
+ * A sequential enter/leave is one CAS on one cache line, where the slot array
+ * cost a claim plus a separate counter update on two lines.  Two tasks parsing
+ * at once fall back to the slot array, exactly as before. */
+#define KP_SCOPE_DEPTH_MASK 0x3UL
+#define KP_SCOPE_ARRAY_BIT  0x4UL
+#define KP_SCOPE_PTR_MASK   (~0x7UL)
+
+static unsigned long kp_scope_word __attribute__((aligned(64)));
+
+/* The array path serializes its bookkeeping with this short-lived lock.  A slot
+ * claim and the ARRAY_BIT that makes it visible to the hooks must be one
+ * critical section: otherwise a clearer can scan (empty), miss the claim, and
+ * clear the bit after the claimer set it, leaving a live scope invisible to the
+ * redirect hooks.  The owner word itself stays lock-free; its CAS handles the
+ * races against the owner path. */
+static spinlock_t kp_scope_array_lock;
+
 static struct {
     void *task;
     u32 depth;
 } clean_eval_slots[KP_CLEAN_EVAL_SLOTS];
 
-/* Non-zero while a task holds a slot.  before_context_struct_compute_av() runs
- * for every context in the system -- every AVC miss, hidden or not -- so its
- * idle path has to be one load and a branch, not a walk of the slot array.  The
- * counter is touched only when a scope is really entered or left, and it sits
- * on its own cache line so the two hot hooks never share one with the slots a
- * scope writes. */
-static int kp_clean_eval_users __attribute__((aligned(64)));
-
-static inline bool kp_clean_eval_idle(void)
+static inline unsigned long kp_scope_owner(unsigned long w)
 {
-    return __atomic_load_n(&kp_clean_eval_users, __ATOMIC_ACQUIRE) == 0;
+    return w & KP_SCOPE_PTR_MASK;
 }
 
-/* Keep the counter a cmpxchg loop: a 32-bit add would be outlined into
- * __aarch64_ldadd4_rel, which this freestanding image does not link. */
-static void kp_clean_eval_users_add(int delta)
+static bool kp_clean_eval_array_owned(void)
 {
-    int old, new;
+    int i;
 
-    do {
-        old = __atomic_load_n(&kp_clean_eval_users, __ATOMIC_RELAXED);
-        new = old + delta;
-    } while (cmpxchg(&kp_clean_eval_users, old, new) != old);
+    for (i = 0; i < KP_CLEAN_EVAL_SLOTS; i++)
+        if (__atomic_load_n(&clean_eval_slots[i].task, __ATOMIC_ACQUIRE) == current)
+            return true;
+    return false;
 }
 
-static bool kp_clean_eval_enter(void)
+/* True when the calling task is inside a clean-eval scope.  One load while no
+ * scope is open anywhere; the array walk only runs while a second task holds a
+ * fallback slot. */
+static inline bool kp_clean_eval_current(void)
 {
+    unsigned long w = __atomic_load_n(&kp_scope_word, __ATOMIC_ACQUIRE);
+
+    if (!w) return false;
+    if (kp_scope_owner(w) == (unsigned long)current)
+        return (w & KP_SCOPE_DEPTH_MASK) != 0;
+    if (!(w & KP_SCOPE_ARRAY_BIT)) return false;
+    return kp_clean_eval_array_owned();
+}
+
+/* Caller holds kp_scope_array_lock. */
+static void kp_scope_set_array_bit(void)
+{
+    unsigned long w;
+
+    for (;;) {
+        w = __atomic_load_n(&kp_scope_word, __ATOMIC_ACQUIRE);
+        if (w & KP_SCOPE_ARRAY_BIT) return;
+        if (cmpxchg(&kp_scope_word, w, w | KP_SCOPE_ARRAY_BIT) == w) return;
+    }
+}
+
+/* Caller holds kp_scope_array_lock: a stale bit only costs a walk, so the bit
+ * is cleared only after proving the array is empty, and the claim side cannot
+ * slip in between that proof and the clear. */
+static void kp_scope_clear_array_bit(void)
+{
+    unsigned long w;
+    int i;
+
+    for (i = 0; i < KP_CLEAN_EVAL_SLOTS; i++)
+        if (__atomic_load_n(&clean_eval_slots[i].task, __ATOMIC_ACQUIRE))
+            return;
+    for (;;) {
+        w = __atomic_load_n(&kp_scope_word, __ATOMIC_ACQUIRE);
+        if (!(w & KP_SCOPE_ARRAY_BIT)) return;
+        if (cmpxchg(&kp_scope_word, w, w & ~KP_SCOPE_ARRAY_BIT) == w) return;
+    }
+}
+
+static bool kp_clean_eval_enter_array(void)
+{
+    unsigned long flags = kp_private_spin_lock(&kp_scope_array_lock);
     int i;
 
     for (i = 0; i < KP_CLEAN_EVAL_SLOTS; i++) {
         if (__atomic_load_n(&clean_eval_slots[i].task, __ATOMIC_ACQUIRE) == current) {
             clean_eval_slots[i].depth++;
+            kp_scope_set_array_bit();
+            kp_private_spin_unlock(&kp_scope_array_lock, flags);
             return true;
         }
     }
     for (i = 0; i < KP_CLEAN_EVAL_SLOTS; i++) {
         if (cmpxchg(&clean_eval_slots[i].task, NULL, current) == NULL) {
             clean_eval_slots[i].depth = 1;
-            kp_clean_eval_users_add(1);
+            kp_scope_set_array_bit();
+            kp_private_spin_unlock(&kp_scope_array_lock, flags);
             return true;
         }
     }
+    kp_private_spin_unlock(&kp_scope_array_lock, flags);
     return false;
 }
 
-static void kp_clean_eval_leave(void)
+static void kp_clean_eval_leave_array(void)
 {
+    unsigned long flags = kp_private_spin_lock(&kp_scope_array_lock);
     int i;
 
     for (i = 0; i < KP_CLEAN_EVAL_SLOTS; i++) {
@@ -597,23 +683,58 @@ static void kp_clean_eval_leave(void)
         } else {
             clean_eval_slots[i].depth = 0;
             __atomic_store_n(&clean_eval_slots[i].task, NULL, __ATOMIC_RELEASE);
-            kp_clean_eval_users_add(-1);
         }
-        return;
+        break;
     }
+    kp_scope_clear_array_bit();
+    kp_private_spin_unlock(&kp_scope_array_lock, flags);
 }
 
-static bool kp_clean_eval_active(void)
+/* Callers enter once per handler; nesting is supported per task through the
+ * depth bits but is not used by the current call sites. */
+static bool kp_clean_eval_enter(void)
 {
-    int i;
+    unsigned long me = (unsigned long)current;
 
-    if (kp_clean_eval_idle()) return false;
-    for (i = 0; i < KP_CLEAN_EVAL_SLOTS; i++) {
-        if (__atomic_load_n(&clean_eval_slots[i].task, __ATOMIC_ACQUIRE) == current &&
-            clean_eval_slots[i].depth)
-            return true;
+    if (!(me & 0x7UL)) {
+        for (;;) {
+            unsigned long w = __atomic_load_n(&kp_scope_word, __ATOMIC_ACQUIRE);
+            unsigned long nw;
+
+            if (!w) {
+                nw = me | 1;
+            } else if (kp_scope_owner(w) == me) {
+                if ((w & KP_SCOPE_DEPTH_MASK) >= KP_SCOPE_DEPTH_MASK)
+                    return kp_clean_eval_enter_array();
+                nw = w + 1;
+            } else {
+                return kp_clean_eval_enter_array();
+            }
+            if (cmpxchg(&kp_scope_word, w, nw) == w) return true;
+        }
     }
-    return false;
+    return kp_clean_eval_enter_array();
+}
+
+static void kp_clean_eval_leave(void)
+{
+    unsigned long me = (unsigned long)current;
+
+    for (;;) {
+        unsigned long w = __atomic_load_n(&kp_scope_word, __ATOMIC_ACQUIRE);
+        unsigned long nw;
+
+        if (!w || kp_scope_owner(w) != me) break;
+        nw = (w & KP_SCOPE_DEPTH_MASK) > 1 ? w - 1 : (w & KP_SCOPE_ARRAY_BIT);
+        if (cmpxchg(&kp_scope_word, w, nw) == w) {
+            /* The array bit can only belong to another task, but a task that
+             * entered through the array while the word was taken could hold
+             * both; releasing the word then frees that slot too. */
+            if (nw & KP_SCOPE_ARRAY_BIT) kp_clean_eval_leave_array();
+            return;
+        }
+    }
+    kp_clean_eval_leave_array();
 }
 
 int selinux_sepolicy_clean_eval_enter(void)
@@ -626,59 +747,42 @@ void selinux_sepolicy_clean_eval_leave(void)
     kp_clean_eval_leave();
 }
 
+/* The redirect target is cached at publish time; the scope check is one load
+ * of the scope word for the owning task and a walk only for anyone else. */
 static void before_context_struct_compute_av(hook_fargs6_t *a, void *u)
 {
-    /* One load for the whole system: this runs on every AVC miss. */
-    if (!g_backup_ready || kp_clean_eval_idle()) return;
-    if (!kp_clean_eval_active()) return;
-    {
-        void *clean = kp_backup_policydb();
+    void *clean;
 
-        if (!is_bad_address(clean)) {
-            if (selinux_hide_query_log_level() >= 2)
-                logkfi("query redirect compute_av: policydb %llx -> %llx\n", a->arg0, (unsigned long)clean);
-            a->arg0 = (uint64_t)clean;
-        }
-    }
+    if (!kp_backup_ready() || !kp_clean_eval_current()) return;
+    clean = kp_clean_policydb();
+    if (!clean) return;
+    if (selinux_hide_qlog_level >= 2)
+        logkfi("query redirect compute_av: policydb %llx -> %llx\n", a->arg0, (unsigned long)clean);
+    a->arg0 = (uint64_t)clean;
 }
 
 /* string_to_context_struct(policydb, sidtab, scontext, ctx, def_sid): same
  * redirect so contextExists probes resolve against the clean snapshot. */
 static void before_string_to_context_struct(hook_fargs5_t *a, void *u)
 {
-    if (!g_backup_ready || kp_clean_eval_idle()) return;
-    if (!kp_clean_eval_active()) return;
-    {
-        void *clean = kp_backup_policydb();
+    void *clean;
 
-        if (!is_bad_address(clean)) {
-            if (selinux_hide_query_log_level() >= 2)
-                logkfi("query redirect string_to_context_struct: policydb %llx -> %llx\n", a->arg0,
-                       (unsigned long)clean);
-            a->arg0 = (uint64_t)clean;
-        }
-    }
+    if (!kp_backup_ready() || !kp_clean_eval_current()) return;
+    clean = kp_clean_policydb();
+    if (!clean) return;
+    if (selinux_hide_qlog_level >= 2)
+        logkfi("query redirect string_to_context_struct: policydb %llx -> %llx\n", a->arg0,
+               (unsigned long)clean);
+    a->arg0 = (uint64_t)clean;
 }
 
 /* ---- KernelSU-style deep copy of the clean policy ----
- * Mirror of KernelSU's ksu_dup_sepolicy(): the copy is fully independent, so
- * every pointer it holds belongs to it (that is what makes it a deep copy --
- * a struct copy would share the live policy's tables).  Steps:
- *   1. security_read_policy() serializes the (still stock) live policy; the
- *      policydb_write() hook in patch/android/sepolicy_flags.c has already
- *      fixed the AOSP android_netlink_route/getneigh config bits in the blob
- *      (KernelSU patches the same word by hand at offset 20).
- *   2. policydb_read() rebuilds a standalone policydb from the blob into a
- *      zeroed heap block laid out as
- *      struct selinux_policy { struct sidtab *sidtab; struct policydb; ... }.
- *   3. the serialized length is restored (KernelSU forces policydb.len too:
- *      the reparse can compute a different value).
- *   4. policydb_load_isids() populates our own sidtab with the initial SIDs, so
- *      sid <-> context queries answer from the copy (KernelSU gives
- *      backup_sepolicy a fresh sidtab the same way).
- *
- * Unlike security_load_policy() this starts no sidtab-conversion workqueue and
- * never touches the live policy, so it cannot wedge a workqueue pool.
+ * security_read_policy() serializes the still-stock policy (the policydb_write
+ * hook already fixed the AOSP config bits), policydb_read() rebuilds a
+ * standalone policydb in a zeroed heap block laid out as
+ * struct selinux_policy { sidtab*, policydb }, and policydb_load_isids() fills
+ * our own sidtab.  The copy shares nothing with the live policy and, unlike
+ * security_load_policy(), starts no conversion workqueue.
  */
 
 /* Snapshot cleanliness probe: the serialized policy is scanned for
@@ -779,17 +883,10 @@ static int kp_sepolicy_read(void **data, size_t *len)
 
 /* ---- policy-load capture ----
  *
- * Android loads the policy more than once: first-stage init loads the platform
- * policy, second-stage init the full one (vendor/odm included), and only then
- * do the root managers reload it with their patches.  Snapshotting at
- * post-fs-data can therefore copy an EARLIER epoch (e.g. the platform-only
- * policy, which lacks vendor types such as msd_daemon) -- an "oracle" detector
- * asks the policy about contexts the device must know, gets "unknown" and
- * concludes the policy was swapped.
- *
- * So instead of guessing a time, keep the last blob whose scan is clean and
- * stop replacing it once a marker-carrying load shows up: at boot that yields
- * the full platform policy, and the manager's later reload cannot overwrite it.
+ * Android loads the policy in several epochs (platform, then the full one, then
+ * the manager's patched reload).  Keep the last blob whose scan is clean and
+ * stop replacing it once a marker-carrying load appears: at boot that is the
+ * full platform policy, and the manager's reload cannot overwrite it.
  */
 static void *g_clean_blob;      /* last marker-free policy blob (as loaded) */
 static size_t g_clean_blob_len;
@@ -948,7 +1045,7 @@ static void kp_probe_snapshot_domains(void)
 {
     int hits = 0;
 
-    if (!g_backup_ready) return;
+    if (!kp_backup_ready()) return;
     kp_probe_one("u:r:su:s0", &hits);
     kp_probe_one("u:r:ksu:s0", &hits);
     kp_probe_one("u:r:magisk:s0", &hits);
@@ -1043,8 +1140,7 @@ static int kp_dup_sepolicy(void)
     }
 
     *(void **)pol = sidtab; /* policy->sidtab @0 */
-    g_backup_policy = pol;
-    g_backup_ready = true;
+    kp_backup_publish(pol);
     log_boot("selinux_sepolicy: deep copy ready (blob len %zu, allow_unknown %d, pdb %llx, sidtab %llx)\n",
              len, g_backup_allow_unknown, (unsigned long)pdb, (unsigned long)sidtab);
     kp_probe_snapshot_domains();
@@ -1060,12 +1156,9 @@ out:
 }
 
 /* ---- policy layout / shape diagnostics ----
- *
- * The SELinux symbol tables are hash tables whose size is roundup_pow_of_two(nel)
- * and whose lookup cost is the bucket chain length.  The clean snapshot and the
- * live policy can have different type counts, so an invalid-context query can
- * take a different amount of time depending on which policy answered.  This
- * logs the shape of both so a timing probe can be correlated with it.
+ * Symbol tables are hash tables whose lookup cost is the bucket chain length.
+ * Log the shape of the clean and live tables so a timing probe can be
+ * correlated with it.
  */
 struct kp_policy_layout {
     bool ready;
@@ -1242,24 +1335,14 @@ static void kp_log_policy_shapes(void)
 
 /* ---- live-shape shadow symbol tables ----
  *
- * The clean snapshot is a separate policydb, so its hash tables have the clean
- * type/role/user counts while the live manager-patched policy has more entries.
- * hashtab_search() walks the bucket in ascending strcmp order and breaks on the
- * first key greater than the probe, so an invalid context costs a different
- * number of comparisons depending on which policy answered.  That is the A/B
- * timing channel.
+ * hashtab_search() walks a bucket in ascending strcmp order and stops at the
+ * first greater key, so a clean table with different contents costs a different
+ * number of comparisons than the live one -- the A/B timing channel.
  *
- * Rebuild each parsed symtab (types, roles, users) with the LIVE key set, the
- * LIVE bucket size and therefore the LIVE sorted order.  Keys the clean policy
- * knows keep their clean datum; keys the live policy added are inserted with a
- * NULL datum, so string_to_context_struct exits at the same "!datum" check as
- * a genuinely unknown name, while the comparisons (count and keys) are exactly
- * those of the live policy for every probe.  policydb_destroy's destroy_f[]
- * guard `if (datum)` and kfree() it, so a NULL datum is safe at unload.
- *
- * The snapshot is private until the hooks are installed, so no RCU
- * publication is needed; the build runs once at enable (post-fs-data "after"),
- * after the manager has reloaded the policy and before the query hooks go in.
+ * Rebuild each parsed symtab with the live key set, bucket size and order.
+ * Clean keys keep their datum; live-only keys get a NULL datum (safe at unload:
+ * destroy_f[] guards on datum).  The snapshot is private until the hooks are
+ * installed, so the build needs no RCU publication.
  */
 typedef int (*kp_hashtab_init_fn)(void *h, u32 nel_hint);
 typedef int (*kp_symtab_insert_fn)(void *s, char *name, void *datum);
@@ -1339,7 +1422,8 @@ static int kp_shadow_one_symtab(void *clean_base, void *live_base, const char *l
 {
     struct kp_symtab_view cv, lv;
     u64 tmp[4];
-    char *hidden_keys[KP_SHADOW_MAX_HIDDEN];
+    /* Built once at boot under policy_mutex; static keeps 2 KB off the stack. */
+    static char *hidden_keys[KP_SHADOW_MAX_HIDDEN];
     u32 i, tmp_size, tmp_nel, hidden = 0, kept = 0, hidden_cnt = 0;
     void **tmp_htable;
     void *node;
@@ -1384,9 +1468,13 @@ static int kp_shadow_one_symtab(void *clean_base, void *live_base, const char *l
                 }
                 key = kp_sh_kstrdup(live_key, KP_GFP_KERNEL);
                 if (!key) { rc = -ENOMEM; goto out; }
+                if (hidden_cnt == KP_SHADOW_MAX_HIDDEN) {
+                    kp_sh_kfree(key);
+                    rc = -ENOSPC;
+                    goto out;
+                }
+                hidden_keys[hidden_cnt++] = key;
                 datum = NULL; /* unknown at the parser's !datum check */
-                if (hidden_cnt < KP_SHADOW_MAX_HIDDEN)
-                    hidden_keys[hidden_cnt++] = key;
                 hidden++;
             }
             rc = kp_sh_symtab_insert(tmp, key, datum);
@@ -1542,15 +1630,9 @@ static bool kp_live_values_scan(void *clean_pdb, void *live_pdb)
 }
 
 /* ---- hot-path prefetch ----
- *
- * The shadow tables match live in shape, but they are cold: live's tables are
- * kept warm by the kernel's own SELinux checks.  A (valid user/role, invalid
- * type) walks into the type/role buckets; B (invalid user) exits early, so a
- * cold A costs more cycles and the A-B difference grows on a slow or
- * low-clock CPU.  Prefetch the buckets for both inputs (same cost) before
- * parsing; only A consumes the warm lines.
- *
- * Level: 0 off, 1 type only, 2 role+type, 3 user+role+type.
+ * Live's tables stay warm from normal checks; the shadow copies are cold, so a
+ * parsed payload pays more.  Prefetch the input's buckets before parsing.
+ * Level: 0 off, 1 type, 2 role+type, 3 user+role+type.
  */
 struct kp_shadow_hot {
     bool ready;
@@ -1584,9 +1666,10 @@ static void kp_prefetch_token(int sym, const char *s, u32 len)
     if (node) __builtin_prefetch(node, 0, 3);
 }
 
-static void kp_prefetch_context(const char *s)
+static void kp_prefetch_context(const char *s, u32 len)
 {
     const char *p = s;
+    const char *end = s + len;
     int field;
 
     if (!g_hot.ready || !s || g_prefetch_level <= 0) return;
@@ -1594,20 +1677,20 @@ static void kp_prefetch_context(const char *s)
         __builtin_prefetch(g_hot.pdb, 0, 3);
         __builtin_prefetch((char *)g_hot.pdb + g_pol_layout.policydb_symtab, 0, 3);
     }
-    for (field = 0; field < 3 && p && *p; field++) {
+    for (field = 0; field < 3 && p < end && *p; field++) {
         const char *start = p;
-        u32 len;
+        u32 n;
 
-        while (*p && *p != ':') p++;
-        len = (u32)(p - start);
+        while (p < end && *p && *p != ':') p++;
+        n = (u32)(p - start);
         if (field == 0) {
-            if (g_prefetch_level >= 3) kp_prefetch_token(4, start, len);
+            if (g_prefetch_level >= 3) kp_prefetch_token(4, start, n);
         } else if (field == 1) {
-            if (g_prefetch_level >= 2) kp_prefetch_token(2, start, len);
+            if (g_prefetch_level >= 2) kp_prefetch_token(2, start, n);
         } else {
-            kp_prefetch_token(3, start, len);
+            kp_prefetch_token(3, start, n);
         }
-        if (*p == ':') p++;
+        if (p < end && *p == ':') p++;
     }
 }
 
@@ -1690,7 +1773,7 @@ int selinux_sepolicy_snapshot(void)
     int rc;
 
     if (!selinux_sepolicy_supported()) return -EOPNOTSUPP;
-    if (g_backup_ready) return 0;
+    if (kp_backup_ready()) return 0;
     rc = kp_dup_sepolicy();
     if (!rc) kp_log_policy_shapes();
     return rc;
@@ -1719,21 +1802,25 @@ int selinux_sepolicy_shadow(void)
 
 bool selinux_sepolicy_backup_ready(void)
 {
-    return g_backup_ready;
+    return kp_backup_ready();
 }
 
 /* ---- query helpers against the deep copy ---- */
 
 static struct policydb *kp_backup_policydb(void)
 {
-    if (is_bad_address(g_backup_policy)) return NULL;
-    return (struct policydb *)((char *)g_backup_policy + KP_POLICY_POLICYDB_OFFSET);
+    void *pol = __atomic_load_n(&g_backup_policy, __ATOMIC_RELAXED);
+
+    if (is_bad_address(pol)) return NULL;
+    return (struct policydb *)((char *)pol + KP_POLICY_POLICYDB_OFFSET);
 }
 
 static void *kp_backup_sidtab(void)
 {
-    if (is_bad_address(g_backup_policy)) return NULL;
-    return *(void **)g_backup_policy;
+    void *pol = __atomic_load_n(&g_backup_policy, __ATOMIC_RELAXED);
+
+    if (is_bad_address(pol)) return NULL;
+    return *(void **)pol;
 }
 
 /* ---- query helpers against the backup policy ---- */
@@ -1830,30 +1917,22 @@ static void kp_compute_av_user_with_policy(u32 ssid, u32 tsid, u16 tclass, struc
 }
 
 /* ---- public query dispatch ----
- * All of them answer through the ss/ wrappers on top of the deep copy, so the
- * same code serves every supported kernel; a wrapper whose symbols did not
- * resolve reports -ENOSYS.  (The old fake selinux_state route is gone: a
- * zero-initialized fake state has no policy and would fault inside the kernel's
- * state-based helpers on every retrieval.) */
+ * All answer through the ss/ wrappers on top of the deep copy; a wrapper whose
+ * symbols did not resolve reports -ENOSYS.
+ */
 
 int selinux_sepolicy_context_to_sid(const char *scontext, u32 scontext_len, u32 *out_sid, gfp_t gfp)
 {
-    if (!g_backup_ready) return -ENOSYS;
+    if (!kp_backup_ready()) return -ENOSYS;
     return kp_context_to_sid_with_policy(scontext, scontext_len, out_sid, SECSID_NULL, gfp);
 }
 
 /* ---- fast accepted path ----
  *
- * The snapshot parse already produces a struct context.  Stock also registers
- * that context in the live sidtab (the ss/sidtab_hash_stats side effect).
- * Instead of re-parsing the string, insert the same context object into the
- * live sidtab under RCU; the canonical string and the access vector are derived
- * directly from the snapshot context.  The accepted path then does no more work
- * than stock: one parse, one live sidtab insert, one canonical allocation.
- *
- * Value alignment for users/roles/types/levels/cats is decided once at shadow
- * time (g_live_values_aligned).  If the manager renumbered a symbol, the live
- * insert is skipped (the snapshot answer is unaffected) and the shadow logs it.
+ * The snapshot parse already yields a struct context, so register that object
+ * in the live sidtab (stock's side effect) instead of re-parsing the string,
+ * then canonicalize and compute the AV from the snapshot.  If the manager
+ * renumbered a symbol (g_live_values_aligned == 0) the insert is skipped.
  */
 static void (*kp_rcu_lock_fn)(void);
 static void (*kp_rcu_unlock_fn)(void);
@@ -1870,7 +1949,7 @@ static bool kp_live_fast_init(void)
     kp_live_fast_init_done = true;
 
     kp_policy_layout_init();
-    if (kver < VERSION(6, 6, 0)) return false;
+    if (!selinux_hide_has_live_fast_path()) return false;
     if (g_pol_layout.policydb_sym_val_to_name < 0 ||
         g_pol_layout.selpolicy_sidtab < 0 ||
         !kp_sidtab_context_to_sid || !kp_string_to_context_struct)
@@ -1983,12 +2062,15 @@ int selinux_sepolicy_context_to_canonical(char *buf, u32 size, char **canon, u32
     struct context ctx;
     int rc;
 
-    if (!g_backup_ready || !buf || !size || !canon || !len) return -EINVAL;
+    if (!kp_backup_ready() || !buf || !size || !canon || !len) return -EINVAL;
     *canon = NULL;
     *len = 0;
     if (!pdb || !kp_context_struct_to_string) return -ENOSYS;
+    /* The caller hands us the zero-filled selinuxfs transaction page, so
+     * buf[size] is a valid NUL; the in-place parse below depends on it. */
+    if (buf[size] != 0) return -EINVAL;
 
-    if (g_prefetch_level > 0) kp_prefetch_context(buf);
+    if (g_prefetch_level > 0) kp_prefetch_context(buf, size);
 
     rc = kp_parse_clean(buf, &ctx);
     if (!rc) {
@@ -2008,7 +2090,7 @@ int selinux_sepolicy_access_av(char *scon, char *tcon, u16 tclass, struct av_dec
     struct context sctx, tctx;
     int rc;
 
-    if (!g_backup_ready || !scon || !tcon || !avd) return -EINVAL;
+    if (!kp_backup_ready() || !scon || !tcon || !avd) return -EINVAL;
     if (!pdb || !kp_context_struct_compute_av) return -ENOSYS;
 
     avd->allowed = 0;
@@ -2018,8 +2100,8 @@ int selinux_sepolicy_access_av(char *scon, char *tcon, u16 tclass, struct av_dec
     avd->flags = 0;
 
     if (g_prefetch_level > 0) {
-        kp_prefetch_context(scon);
-        kp_prefetch_context(tcon);
+        kp_prefetch_context(scon, lib_strlen(scon));
+        kp_prefetch_context(tcon, lib_strlen(tcon));
     }
 
     rc = kp_parse_clean(scon, &sctx);
@@ -2043,25 +2125,25 @@ int selinux_sepolicy_access_av(char *scon, char *tcon, u16 tclass, struct av_dec
 
 int selinux_sepolicy_sid_to_context(u32 sid, char **scontext, u32 *scontext_len)
 {
-    if (!g_backup_ready) return -ENOSYS;
+    if (!kp_backup_ready()) return -ENOSYS;
     return kp_sid_to_context_with_policy(sid, scontext, scontext_len);
 }
 
 int selinux_sepolicy_context_str_to_sid(const char *scontext, u32 *out_sid, gfp_t gfp)
 {
-    if (!g_backup_ready) return -ENOSYS;
+    if (!kp_backup_ready()) return -ENOSYS;
     return kp_context_to_sid_with_policy(scontext, lib_strlen(scontext), out_sid, SECSID_NULL, gfp);
 }
 
 void selinux_sepolicy_compute_av_user(u32 ssid, u32 tsid, u16 tclass, struct av_decision *avd)
 {
-    if (!g_backup_ready) return;
+    if (!kp_backup_ready()) return;
     kp_compute_av_user_with_policy(ssid, tsid, tclass, avd);
 }
 
 static bool kp_clean_status_modern(void)
 {
-    return kver >= VERSION(6, 7, 0);
+    return selinux_hide_has_status_counters();
 }
 
 u32 selinux_sepolicy_clean_seq(void)
@@ -2076,7 +2158,7 @@ u32 selinux_sepolicy_clean_policyload(void)
 
 int selinux_sepolicy_clean_deny_unknown(void)
 {
-    if (!g_backup_ready) return 1;
+    if (!kp_backup_ready()) return 1;
     return g_backup_allow_unknown ? 0 : 1;
 }
 
@@ -2117,8 +2199,9 @@ int selinux_sepolicy_init(void)
             log_boot("selinux_sepolicy: hooked context_struct_compute_av @ %llx\n", addr);
         }
     }
-    /* Also used by the >= 5.0 setprocattr fast path: the scope is entered only
-     * around the stock handler, so the callback is a no-op elsewhere. */
+    /* Also used by the >= KP_SELINUX_NEW_VERSION setprocattr fast path: the
+     * scope is entered only around the stock handler, so the callback is a
+     * no-op elsewhere. */
     addr = lookup_name_with_suffix("string_to_context_struct");
     if (addr) {
         hook_err_t herr = hook_wrap5((void *)addr, before_string_to_context_struct, NULL, NULL);
