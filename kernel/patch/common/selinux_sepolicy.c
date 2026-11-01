@@ -43,9 +43,11 @@
 #include <linux/err.h>
 #include <asm/current.h>
 #include <asm/cmpxchg.h>
+#include <kp_spinlock.h>
 #include <uapi/asm-generic/errno.h>
 #include <security/selinux/include/security.h>
 #include <security/selinux/include/avc.h>
+#include <kbtf.h>
 #include <selinux_hide.h>
 
 /* ---- constants ---- */
@@ -449,6 +451,16 @@ static void kp_payload_free(void *p, bool via_vmalloc)
     else if (kp_payload_kfree) kp_payload_kfree(p);
 }
 
+void *kp_kernel_alloc(size_t size, gfp_t gfp, bool *via_vmalloc)
+{
+    return kp_payload_alloc(size, gfp, via_vmalloc);
+}
+
+void kp_kernel_free(void *p, bool via_vmalloc)
+{
+    kp_payload_free(p, via_vmalloc);
+}
+
 void kp_kernel_str_free(void *p)
 {
     static bool warned;
@@ -500,8 +512,39 @@ static context_struct_compute_av_fn kp_context_struct_compute_av;
 /* ---- state ---- */
 
 static bool g_backup_ready;
+/* Set once the snapshot's symbol tables have been reshaped to the live policy;
+ * a later live reload makes that shape stale (logged once). */
+static bool g_shadow_built;
+static bool g_shadow_stale;
+/* The setprocattr fast path depends on string_to_context_struct being
+ * redirected inside the clean-eval scope; never take it if the hook failed. */
+static bool g_string_redirect_installed;
 static void *g_backup_policy; /* our own struct selinux_policy-equivalent (heap) */
 static bool g_backup_allow_unknown;
+
+/* The snapshot is published once, before the hooks are installed.  The
+ * acquire/release pair makes "ready implies policy is visible" a property of
+ * the code rather than of the boot ordering. */
+static inline bool kp_backup_ready(void)
+{
+    return __atomic_load_n(&g_backup_ready, __ATOMIC_ACQUIRE);
+}
+
+extern int selinux_hide_qlog_level;
+
+static void *g_clean_pdb; /* snapshot policydb, cached for the redirect hooks */
+
+static inline void *kp_clean_policydb(void)
+{
+    return __atomic_load_n(&g_clean_pdb, __ATOMIC_RELAXED);
+}
+
+static inline void kp_backup_publish(void *policy)
+{
+    __atomic_store_n(&g_clean_pdb, (char *)policy + KP_POLICY_POLICYDB_OFFSET, __ATOMIC_RELAXED);
+    __atomic_store_n(&g_backup_policy, policy, __ATOMIC_RELAXED);
+    __atomic_store_n(&g_backup_ready, true, __ATOMIC_RELEASE);
+}
 
 static bool selinux_sepolicy_supported(void)
 {
@@ -518,32 +561,119 @@ static void kp_compute_av_user_with_policy(u32 ssid, u32 tsid, u16 tclass, struc
 
 #define KP_CLEAN_EVAL_SLOTS 8
 
+/* One word carries the common case: the scope owner in the upper bits, the
+ * nesting depth in bits 0-1, and bit 2 while a fallback slot is in use.  The
+ * two redirect hooks run on every AVC miss / parse in the system, so the idle
+ * test must stay one load; for the owner the same load also proves the scope.
+ * A sequential enter/leave is one CAS on one cache line, where the slot array
+ * cost a claim plus a separate counter update on two lines.  Two tasks parsing
+ * at once fall back to the slot array, exactly as before. */
+#define KP_SCOPE_DEPTH_MASK 0x3UL
+#define KP_SCOPE_ARRAY_BIT  0x4UL
+#define KP_SCOPE_PTR_MASK   (~0x7UL)
+
+static unsigned long kp_scope_word __attribute__((aligned(64)));
+
+/* The array path serializes its bookkeeping with this short-lived lock.  A slot
+ * claim and the ARRAY_BIT that makes it visible to the hooks must be one
+ * critical section: otherwise a clearer can scan (empty), miss the claim, and
+ * clear the bit after the claimer set it, leaving a live scope invisible to the
+ * redirect hooks.  The owner word itself stays lock-free; its CAS handles the
+ * races against the owner path. */
+static spinlock_t kp_scope_array_lock;
+
 static struct {
     void *task;
     u32 depth;
 } clean_eval_slots[KP_CLEAN_EVAL_SLOTS];
 
-static bool kp_clean_eval_enter(void)
+static inline unsigned long kp_scope_owner(unsigned long w)
 {
+    return w & KP_SCOPE_PTR_MASK;
+}
+
+static bool kp_clean_eval_array_owned(void)
+{
+    int i;
+
+    for (i = 0; i < KP_CLEAN_EVAL_SLOTS; i++)
+        if (__atomic_load_n(&clean_eval_slots[i].task, __ATOMIC_ACQUIRE) == current)
+            return true;
+    return false;
+}
+
+/* True when the calling task is inside a clean-eval scope.  One load while no
+ * scope is open anywhere; the array walk only runs while a second task holds a
+ * fallback slot. */
+static inline bool kp_clean_eval_current(void)
+{
+    unsigned long w = __atomic_load_n(&kp_scope_word, __ATOMIC_ACQUIRE);
+
+    if (!w) return false;
+    if (kp_scope_owner(w) == (unsigned long)current)
+        return (w & KP_SCOPE_DEPTH_MASK) != 0;
+    if (!(w & KP_SCOPE_ARRAY_BIT)) return false;
+    return kp_clean_eval_array_owned();
+}
+
+/* Caller holds kp_scope_array_lock. */
+static void kp_scope_set_array_bit(void)
+{
+    unsigned long w;
+
+    for (;;) {
+        w = __atomic_load_n(&kp_scope_word, __ATOMIC_ACQUIRE);
+        if (w & KP_SCOPE_ARRAY_BIT) return;
+        if (cmpxchg(&kp_scope_word, w, w | KP_SCOPE_ARRAY_BIT) == w) return;
+    }
+}
+
+/* Caller holds kp_scope_array_lock: a stale bit only costs a walk, so the bit
+ * is cleared only after proving the array is empty, and the claim side cannot
+ * slip in between that proof and the clear. */
+static void kp_scope_clear_array_bit(void)
+{
+    unsigned long w;
+    int i;
+
+    for (i = 0; i < KP_CLEAN_EVAL_SLOTS; i++)
+        if (__atomic_load_n(&clean_eval_slots[i].task, __ATOMIC_ACQUIRE))
+            return;
+    for (;;) {
+        w = __atomic_load_n(&kp_scope_word, __ATOMIC_ACQUIRE);
+        if (!(w & KP_SCOPE_ARRAY_BIT)) return;
+        if (cmpxchg(&kp_scope_word, w, w & ~KP_SCOPE_ARRAY_BIT) == w) return;
+    }
+}
+
+static bool kp_clean_eval_enter_array(void)
+{
+    unsigned long flags = kp_private_spin_lock(&kp_scope_array_lock);
     int i;
 
     for (i = 0; i < KP_CLEAN_EVAL_SLOTS; i++) {
         if (__atomic_load_n(&clean_eval_slots[i].task, __ATOMIC_ACQUIRE) == current) {
             clean_eval_slots[i].depth++;
+            kp_scope_set_array_bit();
+            kp_private_spin_unlock(&kp_scope_array_lock, flags);
             return true;
         }
     }
     for (i = 0; i < KP_CLEAN_EVAL_SLOTS; i++) {
         if (cmpxchg(&clean_eval_slots[i].task, NULL, current) == NULL) {
             clean_eval_slots[i].depth = 1;
+            kp_scope_set_array_bit();
+            kp_private_spin_unlock(&kp_scope_array_lock, flags);
             return true;
         }
     }
+    kp_private_spin_unlock(&kp_scope_array_lock, flags);
     return false;
 }
 
-static void kp_clean_eval_leave(void)
+static void kp_clean_eval_leave_array(void)
 {
+    unsigned long flags = kp_private_spin_lock(&kp_scope_array_lock);
     int i;
 
     for (i = 0; i < KP_CLEAN_EVAL_SLOTS; i++) {
@@ -554,20 +684,57 @@ static void kp_clean_eval_leave(void)
             clean_eval_slots[i].depth = 0;
             __atomic_store_n(&clean_eval_slots[i].task, NULL, __ATOMIC_RELEASE);
         }
-        return;
+        break;
     }
+    kp_scope_clear_array_bit();
+    kp_private_spin_unlock(&kp_scope_array_lock, flags);
 }
 
-static bool kp_clean_eval_active(void)
+/* Callers enter once per handler; nesting is supported per task through the
+ * depth bits but is not used by the current call sites. */
+static bool kp_clean_eval_enter(void)
 {
-    int i;
+    unsigned long me = (unsigned long)current;
 
-    for (i = 0; i < KP_CLEAN_EVAL_SLOTS; i++) {
-        if (__atomic_load_n(&clean_eval_slots[i].task, __ATOMIC_ACQUIRE) == current &&
-            clean_eval_slots[i].depth)
-            return true;
+    if (!(me & 0x7UL)) {
+        for (;;) {
+            unsigned long w = __atomic_load_n(&kp_scope_word, __ATOMIC_ACQUIRE);
+            unsigned long nw;
+
+            if (!w) {
+                nw = me | 1;
+            } else if (kp_scope_owner(w) == me) {
+                if ((w & KP_SCOPE_DEPTH_MASK) >= KP_SCOPE_DEPTH_MASK)
+                    return kp_clean_eval_enter_array();
+                nw = w + 1;
+            } else {
+                return kp_clean_eval_enter_array();
+            }
+            if (cmpxchg(&kp_scope_word, w, nw) == w) return true;
+        }
     }
-    return false;
+    return kp_clean_eval_enter_array();
+}
+
+static void kp_clean_eval_leave(void)
+{
+    unsigned long me = (unsigned long)current;
+
+    for (;;) {
+        unsigned long w = __atomic_load_n(&kp_scope_word, __ATOMIC_ACQUIRE);
+        unsigned long nw;
+
+        if (!w || kp_scope_owner(w) != me) break;
+        nw = (w & KP_SCOPE_DEPTH_MASK) > 1 ? w - 1 : (w & KP_SCOPE_ARRAY_BIT);
+        if (cmpxchg(&kp_scope_word, w, nw) == w) {
+            /* The array bit can only belong to another task, but a task that
+             * entered through the array while the word was taken could hold
+             * both; releasing the word then frees that slot too. */
+            if (nw & KP_SCOPE_ARRAY_BIT) kp_clean_eval_leave_array();
+            return;
+        }
+    }
+    kp_clean_eval_leave_array();
 }
 
 int selinux_sepolicy_clean_eval_enter(void)
@@ -580,51 +747,42 @@ void selinux_sepolicy_clean_eval_leave(void)
     kp_clean_eval_leave();
 }
 
+/* The redirect target is cached at publish time; the scope check is one load
+ * of the scope word for the owning task and a walk only for anyone else. */
 static void before_context_struct_compute_av(hook_fargs6_t *a, void *u)
 {
-    if (!kp_clean_eval_active() || !g_backup_ready) return;
-    void *clean = kp_backup_policydb();
-    if (!is_bad_address(clean)) {
-        if (selinux_hide_query_log_level() >= 2)
-            logkfi("query redirect compute_av: policydb %llx -> %llx\n", a->arg0, (unsigned long)clean);
-        a->arg0 = (uint64_t)clean;
-    }
+    void *clean;
+
+    if (!kp_backup_ready() || !kp_clean_eval_current()) return;
+    clean = kp_clean_policydb();
+    if (!clean) return;
+    if (selinux_hide_qlog_level >= 2)
+        logkfi("query redirect compute_av: policydb %llx -> %llx\n", a->arg0, (unsigned long)clean);
+    a->arg0 = (uint64_t)clean;
 }
 
 /* string_to_context_struct(policydb, sidtab, scontext, ctx, def_sid): same
  * redirect so contextExists probes resolve against the clean snapshot. */
 static void before_string_to_context_struct(hook_fargs5_t *a, void *u)
 {
-    if (kp_clean_eval_active() && g_backup_ready) {
-        void *clean = kp_backup_policydb();
-        if (!is_bad_address(clean)) {
-            if (selinux_hide_query_log_level() >= 2)
-                logkfi("query redirect string_to_context_struct: policydb %llx -> %llx\n", a->arg0,
-                       (unsigned long)clean);
-            a->arg0 = (uint64_t)clean;
-        }
-    }
+    void *clean;
+
+    if (!kp_backup_ready() || !kp_clean_eval_current()) return;
+    clean = kp_clean_policydb();
+    if (!clean) return;
+    if (selinux_hide_qlog_level >= 2)
+        logkfi("query redirect string_to_context_struct: policydb %llx -> %llx\n", a->arg0,
+               (unsigned long)clean);
+    a->arg0 = (uint64_t)clean;
 }
 
 /* ---- KernelSU-style deep copy of the clean policy ----
- * Mirror of KernelSU's ksu_dup_sepolicy(): the copy is fully independent, so
- * every pointer it holds belongs to it (that is what makes it a deep copy --
- * a struct copy would share the live policy's tables).  Steps:
- *   1. security_read_policy() serializes the (still stock) live policy; the
- *      policydb_write() hook in patch/android/sepolicy_flags.c has already
- *      fixed the AOSP android_netlink_route/getneigh config bits in the blob
- *      (KernelSU patches the same word by hand at offset 20).
- *   2. policydb_read() rebuilds a standalone policydb from the blob into a
- *      zeroed heap block laid out as
- *      struct selinux_policy { struct sidtab *sidtab; struct policydb; ... }.
- *   3. the serialized length is restored (KernelSU forces policydb.len too:
- *      the reparse can compute a different value).
- *   4. policydb_load_isids() populates our own sidtab with the initial SIDs, so
- *      sid <-> context queries answer from the copy (KernelSU gives
- *      backup_sepolicy a fresh sidtab the same way).
- *
- * Unlike security_load_policy() this starts no sidtab-conversion workqueue and
- * never touches the live policy, so it cannot wedge a workqueue pool.
+ * security_read_policy() serializes the still-stock policy (the policydb_write
+ * hook already fixed the AOSP config bits), policydb_read() rebuilds a
+ * standalone policydb in a zeroed heap block laid out as
+ * struct selinux_policy { sidtab*, policydb }, and policydb_load_isids() fills
+ * our own sidtab.  The copy shares nothing with the live policy and, unlike
+ * security_load_policy(), starts no conversion workqueue.
  */
 
 /* Snapshot cleanliness probe: the serialized policy is scanned for
@@ -725,17 +883,10 @@ static int kp_sepolicy_read(void **data, size_t *len)
 
 /* ---- policy-load capture ----
  *
- * Android loads the policy more than once: first-stage init loads the platform
- * policy, second-stage init the full one (vendor/odm included), and only then
- * do the root managers reload it with their patches.  Snapshotting at
- * post-fs-data can therefore copy an EARLIER epoch (e.g. the platform-only
- * policy, which lacks vendor types such as msd_daemon) -- an "oracle" detector
- * asks the policy about contexts the device must know, gets "unknown" and
- * concludes the policy was swapped.
- *
- * So instead of guessing a time, keep the last blob whose scan is clean and
- * stop replacing it once a marker-carrying load shows up: at boot that yields
- * the full platform policy, and the manager's later reload cannot overwrite it.
+ * Android loads the policy in several epochs (platform, then the full one, then
+ * the manager's patched reload).  Keep the last blob whose scan is clean and
+ * stop replacing it once a marker-carrying load appears: at boot that is the
+ * full platform policy, and the manager's reload cannot overwrite it.
  */
 static void *g_clean_blob;      /* last marker-free policy blob (as loaded) */
 static size_t g_clean_blob_len;
@@ -778,6 +929,11 @@ static void kp_capture_policy_load(uint64_t ret)
     int rc;
 
     if ((int)ret != 0 || g_clean_locked) return;
+
+    if (g_shadow_built && !g_shadow_stale) {
+        g_shadow_stale = true;
+        logkfw("selinux_sepolicy: live policy reloaded after the shadow, timing hardening is stale\n");
+    }
 
     /* Never read the hooked function's arguments: security_load_policy's ABI
      * differs across versions and LTO can fold it (on 6.12-android16 arg0 is
@@ -889,7 +1045,7 @@ static void kp_probe_snapshot_domains(void)
 {
     int hits = 0;
 
-    if (!g_backup_ready) return;
+    if (!kp_backup_ready()) return;
     kp_probe_one("u:r:su:s0", &hits);
     kp_probe_one("u:r:ksu:s0", &hits);
     kp_probe_one("u:r:magisk:s0", &hits);
@@ -984,8 +1140,7 @@ static int kp_dup_sepolicy(void)
     }
 
     *(void **)pol = sidtab; /* policy->sidtab @0 */
-    g_backup_policy = pol;
-    g_backup_ready = true;
+    kp_backup_publish(pol);
     log_boot("selinux_sepolicy: deep copy ready (blob len %zu, allow_unknown %d, pdb %llx, sidtab %llx)\n",
              len, g_backup_allow_unknown, (unsigned long)pdb, (unsigned long)sidtab);
     kp_probe_snapshot_domains();
@@ -1000,30 +1155,672 @@ out:
     return rc;
 }
 
+/* ---- policy layout / shape diagnostics ----
+ * Symbol tables are hash tables whose lookup cost is the bucket chain length.
+ * Log the shape of the clean and live tables so a timing probe can be
+ * correlated with it.
+ */
+struct kp_policy_layout {
+    bool ready;
+    long policydb_symtab;
+    long policydb_sym_val_to_name;
+    long symtab_size;
+    long symtab_table; /* offset of the embedded struct hashtab */
+    long symtab_nprim;
+    long hashtab_htable;
+    long hashtab_size;
+    long hashtab_nel;
+    long node_key;
+    long node_datum;
+    long node_next;
+    long state_policy;
+    long state_policy_mutex;
+    long selpolicy_policydb;
+    long selpolicy_sidtab;
+};
+
+static struct kp_policy_layout g_pol_layout;
+
+static void kp_policy_layout_init(void)
+{
+    long v;
+
+    if (g_pol_layout.ready) return;
+    g_pol_layout.ready = true;
+
+    g_pol_layout.policydb_symtab = -1;
+    g_pol_layout.policydb_sym_val_to_name = -1;
+    g_pol_layout.symtab_size = -1;
+    g_pol_layout.symtab_table = -1;
+    g_pol_layout.symtab_nprim = -1;
+    g_pol_layout.hashtab_htable = -1;
+    g_pol_layout.hashtab_size = -1;
+    g_pol_layout.hashtab_nel = -1;
+    g_pol_layout.node_key = -1;
+    g_pol_layout.node_datum = -1;
+    g_pol_layout.node_next = -1;
+    g_pol_layout.state_policy = -1;
+    g_pol_layout.state_policy_mutex = -1;
+    g_pol_layout.selpolicy_policydb = -1;
+    g_pol_layout.selpolicy_sidtab = -1;
+
+    /* BTF is required: struct selinux_state/selinux_policy/policydb are
+     * __randomize_layout and their leading fields depend on config.  GKI
+     * kernels ship BTF; without it the shadow is simply disabled. */
+    if (!kp_btf_available()) {
+        log_boot("selinux_sepolicy: layout: BTF unavailable, shadow disabled\n");
+        return;
+    }
+
+    /* The embedded struct symtab + policydb.symtab[] layout arrived in 5.8 and
+     * symtab_insert/symtab_search in 5.9; kp_shadow_resolve() requires those
+     * symbols, so older kernels skip the shadow even if the layout probes. */
+    if ((v = kp_btf_member_offset("policydb", "symtab")) >= 0) g_pol_layout.policydb_symtab = v;
+    if ((v = kp_btf_member_offset("policydb", "sym_val_to_name")) >= 0)
+        g_pol_layout.policydb_sym_val_to_name = v;
+    if ((v = kp_btf_type_size("symtab")) > 0) g_pol_layout.symtab_size = v;
+    if ((v = kp_btf_member_offset("symtab", "table")) >= 0) g_pol_layout.symtab_table = v;
+    if ((v = kp_btf_member_offset("symtab", "nprim")) >= 0) g_pol_layout.symtab_nprim = v;
+    if ((v = kp_btf_member_offset("hashtab", "htable")) >= 0) g_pol_layout.hashtab_htable = v;
+    if ((v = kp_btf_member_offset("hashtab", "size")) >= 0) g_pol_layout.hashtab_size = v;
+    if ((v = kp_btf_member_offset("hashtab", "nel")) >= 0) g_pol_layout.hashtab_nel = v;
+    if ((v = kp_btf_member_offset("hashtab_node", "key")) >= 0) g_pol_layout.node_key = v;
+    if ((v = kp_btf_member_offset("hashtab_node", "datum")) >= 0) g_pol_layout.node_datum = v;
+    if ((v = kp_btf_member_offset("hashtab_node", "next")) >= 0) g_pol_layout.node_next = v;
+    if ((v = kp_btf_member_offset("selinux_state", "policy")) >= 0) g_pol_layout.state_policy = v;
+    if ((v = kp_btf_member_offset("selinux_state", "policy_mutex")) >= 0) g_pol_layout.state_policy_mutex = v;
+    if ((v = kp_btf_member_offset("selinux_policy", "policydb")) >= 0) g_pol_layout.selpolicy_policydb = v;
+    if ((v = kp_btf_member_offset("selinux_policy", "sidtab")) >= 0) g_pol_layout.selpolicy_sidtab = v;
+
+    /* Bounds: the code stores a struct symtab in u64[4] and a struct hashtab
+     * in u64[2], and walks hashtab_node fields.  Reject anything that would
+     * not fit instead of trusting a future layout blindly. */
+    if (g_pol_layout.policydb_symtab < 0 ||
+        g_pol_layout.symtab_size <= 0 || g_pol_layout.symtab_size > 32 ||
+        g_pol_layout.symtab_table < 0 ||
+        g_pol_layout.symtab_nprim < 0 || g_pol_layout.symtab_nprim + 4 > g_pol_layout.symtab_size ||
+        g_pol_layout.hashtab_htable < 0 || g_pol_layout.hashtab_htable + 8 > g_pol_layout.symtab_size ||
+        g_pol_layout.hashtab_size < 0 || g_pol_layout.hashtab_size + 4 > g_pol_layout.symtab_size ||
+        g_pol_layout.hashtab_nel < 0 || g_pol_layout.hashtab_nel + 4 > g_pol_layout.symtab_size ||
+        g_pol_layout.node_key < 0 || g_pol_layout.node_datum < 0 ||
+        g_pol_layout.node_next < 0 || g_pol_layout.node_next + 8 > 64 ||
+        g_pol_layout.state_policy < 0 || g_pol_layout.state_policy_mutex < 0 ||
+        g_pol_layout.selpolicy_policydb < 0) {
+        logkfw("selinux_sepolicy: layout: incomplete/out-of-range BTF, shadow disabled\n");
+        g_pol_layout.policydb_symtab = -1;
+    }
+}
+
+static u32 kp_symhash(const char *key)
+{
+    u32 val = 0;
+    const char *p = key;
+
+    for (; *p; p++)
+        val = ((val << 4) | (val >> 28)) ^ (u8)*p;
+    return val;
+}
+
+#define KP_PROBE_A "u:r:selinux_hide_probe_invalid:s0"
+#define KP_PROBE_B "\n:r:selinux_hide_probe_invalid:s0"
+
+/* sym: 0 commons, 1 classes, 2 roles, 3 types, 4 users, 5 bools, 6 levels, 7 cats */
+static void kp_log_symtab_shape(const char *tag, void *pdb, int sym, const char *label, const char *probe)
+{
+    char *base, *ht;
+    u32 nprim, size, nel, bucket = 0, chain = 0;
+    void **htable;
+
+    if (!pdb || g_pol_layout.policydb_symtab < 0 || g_pol_layout.symtab_table < 0) return;
+
+    base = (char *)pdb + g_pol_layout.policydb_symtab + (long)sym * g_pol_layout.symtab_size;
+    nprim = *(u32 *)(base + g_pol_layout.symtab_nprim);
+    ht = base + g_pol_layout.symtab_table;
+    size = *(u32 *)(ht + g_pol_layout.hashtab_size);
+    nel = *(u32 *)(ht + g_pol_layout.hashtab_nel);
+    htable = *(void ***)(ht + g_pol_layout.hashtab_htable);
+    if (htable && size) {
+        void *node;
+        bucket = kp_symhash(probe) & (size - 1);
+        for (node = htable[bucket]; node; node = *(void **)((char *)node + g_pol_layout.node_next))
+            chain++;
+    }
+    log_boot("selinux_sepolicy: %s %s nprim=%u size=%u nel=%u bucket=%u chain=%u\n",
+             tag, label, nprim, size, nel, bucket, chain);
+}
+
+typedef void (*kp_mutex_fn)(void *);
+
+static void kp_log_live_policy_shapes(void)
+{
+    unsigned long state = lookup_name_with_suffix("selinux_state");
+    kp_mutex_fn lock = (kp_mutex_fn)(uintptr_t)lookup_name_with_suffix("mutex_lock");
+    kp_mutex_fn unlock = (kp_mutex_fn)(uintptr_t)lookup_name_with_suffix("mutex_unlock");
+    void *policy, *pdb = NULL;
+
+    if (!state || g_pol_layout.policydb_symtab < 0) {
+        log_boot("selinux_sepolicy: live shape: layout unavailable\n");
+        return;
+    }
+    if (!lock || !unlock) {
+        log_boot("selinux_sepolicy: live shape: mutex symbols unavailable\n");
+        return;
+    }
+    lock((void *)(state + g_pol_layout.state_policy_mutex));
+    policy = *(void **)(state + g_pol_layout.state_policy);
+    if (policy && !is_bad_address(policy))
+        pdb = (char *)policy + g_pol_layout.selpolicy_policydb;
+    kp_log_symtab_shape("live", pdb, 4, "users", KP_PROBE_B);
+    kp_log_symtab_shape("live", pdb, 2, "roles", KP_PROBE_A);
+    kp_log_symtab_shape("live", pdb, 3, "types", KP_PROBE_A);
+    unlock((void *)(state + g_pol_layout.state_policy_mutex));
+}
+
+static void kp_log_policy_shapes(void)
+{
+    void *clean;
+
+    kp_policy_layout_init();
+    if (g_pol_layout.policydb_symtab < 0) {
+        log_boot("selinux_sepolicy: shape diagnostics skipped (layout unavailable)\n");
+        return;
+    }
+    clean = kp_backup_policydb();
+    kp_log_symtab_shape("clean", clean, 4, "users", KP_PROBE_B);
+    kp_log_symtab_shape("clean", clean, 2, "roles", KP_PROBE_A);
+    kp_log_symtab_shape("clean", clean, 3, "types", KP_PROBE_A);
+    /* The live shape is logged at enable time: at "before" the manager may not
+     * have reloaded the policy yet, so it would just repeat the clean shape. */
+}
+
+/* ---- live-shape shadow symbol tables ----
+ *
+ * hashtab_search() walks a bucket in ascending strcmp order and stops at the
+ * first greater key, so a clean table with different contents costs a different
+ * number of comparisons than the live one -- the A/B timing channel.
+ *
+ * Rebuild each parsed symtab with the live key set, bucket size and order.
+ * Clean keys keep their datum; live-only keys get a NULL datum (safe at unload:
+ * destroy_f[] guards on datum).  The snapshot is private until the hooks are
+ * installed, so the build needs no RCU publication.
+ */
+typedef int (*kp_hashtab_init_fn)(void *h, u32 nel_hint);
+typedef int (*kp_symtab_insert_fn)(void *s, char *name, void *datum);
+typedef void *(*kp_symtab_search_fn)(void *s, const char *name);
+typedef void (*kp_hashtab_destroy_fn)(void *h);
+typedef char *(*kp_kstrdup_fn)(const char *s, gfp_t gfp);
+typedef void (*kp_kfree_fn)(const void *p);
+
+static kp_hashtab_init_fn kp_sh_hashtab_init;
+static kp_symtab_insert_fn kp_sh_symtab_insert;
+static kp_symtab_search_fn kp_sh_symtab_search;
+static kp_hashtab_destroy_fn kp_sh_hashtab_destroy;
+static kp_kstrdup_fn kp_sh_kstrdup;
+static kp_kfree_fn kp_sh_kfree;
+static bool kp_shadow_resolved;
+
+static bool kp_shadow_resolve(void)
+{
+    if (kp_shadow_resolved) return true;
+    kp_shadow_resolved = true;
+    kp_sh_hashtab_init = (kp_hashtab_init_fn)(uintptr_t)lookup_name_with_suffix("hashtab_init");
+    kp_sh_symtab_insert = (kp_symtab_insert_fn)(uintptr_t)lookup_name_with_suffix("symtab_insert");
+    kp_sh_symtab_search = (kp_symtab_search_fn)(uintptr_t)lookup_name_with_suffix("symtab_search");
+    kp_sh_hashtab_destroy = (kp_hashtab_destroy_fn)(uintptr_t)lookup_name_with_suffix("hashtab_destroy");
+    kp_sh_kstrdup = (kp_kstrdup_fn)(uintptr_t)lookup_name_with_suffix("kstrdup");
+    kp_sh_kfree = (kp_kfree_fn)(uintptr_t)lookup_name_with_suffix("kfree");
+    if (!kp_sh_hashtab_init || !kp_sh_symtab_insert || !kp_sh_symtab_search ||
+        !kp_sh_hashtab_destroy || !kp_sh_kstrdup || !kp_sh_kfree) {
+        logkfw("selinux_sepolicy: shadow: symbols missing (init=%d insert=%d search=%d destroy=%d strdup=%d free=%d)\n",
+               !!kp_sh_hashtab_init, !!kp_sh_symtab_insert, !!kp_sh_symtab_search,
+               !!kp_sh_hashtab_destroy, !!kp_sh_kstrdup, !!kp_sh_kfree);
+        return false;
+    }
+    return true;
+}
+
+struct kp_symtab_view {
+    u32 size;
+    u32 nel;
+    u32 nprim;
+    void **htable;
+};
+
+static void kp_symtab_view(void *base, struct kp_symtab_view *v)
+{
+    lib_memset(v, 0, sizeof(*v));
+    if (!base) return;
+    v->size = *(u32 *)((char *)base + g_pol_layout.hashtab_size);
+    v->nel = *(u32 *)((char *)base + g_pol_layout.hashtab_nel);
+    v->nprim = *(u32 *)((char *)base + g_pol_layout.symtab_nprim);
+    v->htable = *(void ***)((char *)base + g_pol_layout.hashtab_htable);
+}
+
+static void *kp_clean_find(struct kp_symtab_view *cv, const char *key, char **key_out, void **datum_out)
+{
+    u32 bucket;
+    void *node;
+
+    if (!cv->htable || !cv->size) return NULL;
+    bucket = kp_symhash(key) & (cv->size - 1);
+    for (node = cv->htable[bucket]; node; node = *(void **)((char *)node + g_pol_layout.node_next)) {
+        char *k = *(char **)((char *)node + g_pol_layout.node_key);
+        if (k && !lib_strcmp(k, key)) {
+            if (key_out) *key_out = k;
+            if (datum_out) *datum_out = *(void **)((char *)node + g_pol_layout.node_datum);
+            return node;
+        }
+    }
+    return NULL;
+}
+
+/* Returns 0 on success, negative on failure.  Keys live-added with a NULL
+ * datum are tracked so a failed build can release them. */
+#define KP_SHADOW_MAX_HIDDEN 256
+
+static int kp_shadow_one_symtab(void *clean_base, void *live_base, const char *label)
+{
+    struct kp_symtab_view cv, lv;
+    u64 tmp[4];
+    /* Built once at boot under policy_mutex; static keeps 2 KB off the stack. */
+    static char *hidden_keys[KP_SHADOW_MAX_HIDDEN];
+    u32 i, tmp_size, tmp_nel, hidden = 0, kept = 0, hidden_cnt = 0;
+    void **tmp_htable;
+    void *node;
+    int rc;
+
+    kp_symtab_view(clean_base, &cv);
+    kp_symtab_view(live_base, &lv);
+    if (!lv.htable || !lv.size) return 0;
+
+    lib_memset(tmp, 0, sizeof(tmp));
+    rc = kp_sh_hashtab_init(tmp, lv.size); /* size is already a power of two */
+    if (rc) return rc;
+    *(u32 *)((char *)tmp + g_pol_layout.symtab_nprim) = cv.nprim;
+
+    for (i = 0; i < lv.size; i++) {
+        for (node = lv.htable[i]; node; node = *(void **)((char *)node + g_pol_layout.node_next)) {
+            char *live_key = *(char **)((char *)node + g_pol_layout.node_key);
+            char *clean_key = NULL;
+            void *clean_datum = NULL;
+            char *key;
+            void *datum;
+
+            if (!live_key) continue;
+            /* Membership with the kernel's own hash; kp_clean_find only fetches
+             * the reusable clean key pointer.  If they disagree, the local
+             * symhash is not the kernel's: abort instead of turning every
+             * clean name into a NULL-datum hidden key. */
+            if (kp_sh_symtab_search(clean_base, live_key)) {
+                if (!kp_clean_find(&cv, live_key, &clean_key, &clean_datum)) {
+                    logkfw("selinux_sepolicy: shadow %s: symhash mismatch on %s\n", label, live_key);
+                    rc = -EINVAL;
+                    goto out;
+                }
+                key = clean_key;
+                datum = clean_datum;
+            } else {
+                if (kp_clean_find(&cv, live_key, &clean_key, &clean_datum)) {
+                    logkfw("selinux_sepolicy: shadow %s: symhash mismatch (find hit, search miss) on %s\n",
+                           label, live_key);
+                    rc = -EINVAL;
+                    goto out;
+                }
+                key = kp_sh_kstrdup(live_key, KP_GFP_KERNEL);
+                if (!key) { rc = -ENOMEM; goto out; }
+                if (hidden_cnt == KP_SHADOW_MAX_HIDDEN) {
+                    kp_sh_kfree(key);
+                    rc = -ENOSPC;
+                    goto out;
+                }
+                hidden_keys[hidden_cnt++] = key;
+                datum = NULL; /* unknown at the parser's !datum check */
+                hidden++;
+            }
+            rc = kp_sh_symtab_insert(tmp, key, datum);
+            if (rc == -EEXIST) { rc = 0; continue; }
+            if (rc) goto out;
+        }
+    }
+
+    /* A clean name the live policy no longer has: keep it for correctness.
+     * NULL-datum entries are keys a previous shadow injected, not clean names. */
+    for (i = 0; i < cv.size; i++) {
+        for (node = cv.htable[i]; node; node = *(void **)((char *)node + g_pol_layout.node_next)) {
+            char *clean_key = *(char **)((char *)node + g_pol_layout.node_key);
+            void *clean_datum = *(void **)((char *)node + g_pol_layout.node_datum);
+
+            if (!clean_key || !clean_datum) continue;
+            if (!kp_sh_symtab_search(tmp, clean_key)) {
+                rc = kp_sh_symtab_insert(tmp, clean_key, clean_datum);
+                if (rc == -EEXIST) { rc = 0; continue; }
+                if (rc) goto out;
+                kept++;
+            }
+        }
+    }
+
+    tmp_size = *(u32 *)((char *)tmp + g_pol_layout.hashtab_size);
+    tmp_nel = *(u32 *)((char *)tmp + g_pol_layout.hashtab_nel);
+    tmp_htable = *(void ***)((char *)tmp + g_pol_layout.hashtab_htable);
+    if (!tmp_htable || tmp_size != lv.size) { rc = -EINVAL; goto out; }
+
+    /* Publish into the private snapshot and retire the old clean nodes.  The
+     * old table's keys/datums are now referenced by the new nodes, so only the
+     * nodes and the htable array may be freed (hashtab_destroy does exactly
+     * that). */
+    {
+        u64 old[2];
+        lib_memset(old, 0, sizeof(old));
+        *(void ***)((char *)old + g_pol_layout.hashtab_htable) = cv.htable;
+        *(u32 *)((char *)old + g_pol_layout.hashtab_size) = cv.size;
+        *(u32 *)((char *)old + g_pol_layout.hashtab_nel) = cv.nel;
+        *(void ***)((char *)clean_base + g_pol_layout.hashtab_htable) = tmp_htable;
+        *(u32 *)((char *)clean_base + g_pol_layout.hashtab_size) = tmp_size;
+        *(u32 *)((char *)clean_base + g_pol_layout.hashtab_nel) = tmp_nel;
+        kp_sh_hashtab_destroy(old);
+    }
+    log_boot("selinux_sepolicy: shadow %s: size %u->%u nel %u->%u, hidden=%u kept=%u\n",
+             label, cv.size, tmp_size, cv.nel, tmp_nel, hidden, kept);
+    return 0;
+
+out:
+    if (hidden_cnt && kp_sh_kfree) {
+        for (i = 0; i < hidden_cnt; i++) kp_sh_kfree(hidden_keys[i]);
+    }
+    tmp_htable = *(void ***)((char *)tmp + g_pol_layout.hashtab_htable);
+    if (tmp_htable) kp_sh_hashtab_destroy(tmp);
+    return rc;
+}
+
+static int kp_shadow_verify_one(void *clean_base, void *live_base, const char *label)
+{
+    struct kp_symtab_view cv, lv;
+    u32 i, matched = 0, extras = 0, mism = 0;
+
+    kp_symtab_view(clean_base, &cv);
+    kp_symtab_view(live_base, &lv);
+    if (cv.size != lv.size) {
+        logkfw("selinux_sepolicy: shadow verify %s: size %u vs %u\n", label, cv.size, lv.size);
+        return -EINVAL;
+    }
+    if (!lv.htable) return cv.htable ? -EINVAL : 0;
+    if (!cv.htable) return -EINVAL;
+
+    /* Prove the live-key projection: in every bucket, the shadow's keys that
+     * exist in live must appear in exactly live's order.  Clean-only extras
+     * (a name live removed) are counted, not treated as a mismatch. */
+    for (i = 0; i < lv.size; i++) {
+        void *cn = cv.htable[i];
+        void *ln = lv.htable[i];
+
+        while (ln) {
+            char *lk = *(char **)((char *)ln + g_pol_layout.node_key);
+            char *ck;
+
+            while (cn) {
+                char *k = *(char **)((char *)cn + g_pol_layout.node_key);
+                if (k && !kp_sh_symtab_search(live_base, k)) {
+                    extras++;
+                    cn = *(void **)((char *)cn + g_pol_layout.node_next);
+                    continue;
+                }
+                break;
+            }
+            if (!cn) { mism++; break; }
+            ck = *(char **)((char *)cn + g_pol_layout.node_key);
+            if (!ck || !lk || lib_strcmp(ck, lk)) { mism++; break; }
+            matched++;
+            cn = *(void **)((char *)cn + g_pol_layout.node_next);
+            ln = *(void **)((char *)ln + g_pol_layout.node_next);
+        }
+        while (cn) {
+            char *k = *(char **)((char *)cn + g_pol_layout.node_key);
+            if (k && !kp_sh_symtab_search(live_base, k)) extras++;
+            cn = *(void **)((char *)cn + g_pol_layout.node_next);
+        }
+    }
+    log_boot("selinux_sepolicy: shadow verify %s: size=%u matched=%u extras=%u mismatches=%u\n",
+             label, cv.size, matched, extras, mism);
+    return mism ? -EINVAL : 0;
+}
+
+static int kp_shadow_sym(void *clean_pdb, void *live_pdb, int sym, const char *label)
+{
+    void *cb = (char *)clean_pdb + g_pol_layout.policydb_symtab + (long)sym * g_pol_layout.symtab_size;
+    void *lb = (char *)live_pdb + g_pol_layout.policydb_symtab + (long)sym * g_pol_layout.symtab_size;
+    int rc;
+
+    rc = kp_shadow_one_symtab(cb, lb, label);
+    if (!rc) rc = kp_shadow_verify_one(cb, lb, label);
+    return rc;
+}
+
+static const char *kp_val_name(void *pdb, int sym, u32 value);
+static u32 kp_sym_nprim(void *pdb, int sym);
+static bool g_live_values_aligned;
+
+/* Decide once (under policy_mutex) whether every clean symbol value maps to the
+ * same live name.  The fast accepted path uses this instead of per-query
+ * strcmps; if a manager renumbers a symbol, the live sidtab insert is skipped. */
+static bool kp_live_values_scan(void *clean_pdb, void *live_pdb)
+{
+    static const int syms[] = { 2 /*roles*/, 3 /*types*/, 4 /*users*/, 6 /*levels*/, 7 /*cats*/ };
+    int i;
+    u32 v;
+
+    if (!clean_pdb || !live_pdb) return false;
+    for (i = 0; i < (int)(sizeof(syms) / sizeof(syms[0])); i++) {
+        int sym = syms[i];
+        u32 cn = kp_sym_nprim(clean_pdb, sym);
+        u32 ln = kp_sym_nprim(live_pdb, sym);
+
+        if (sym == 3) { /* live may append types; the clean value range must match */
+            if (ln < cn) return false;
+        } else if (cn != ln) {
+            return false;
+        }
+        for (v = 1; v <= cn; v++) {
+            const char *a = kp_val_name(clean_pdb, sym, v);
+            const char *b = kp_val_name(live_pdb, sym, v);
+            if (!a || !b || lib_strcmp(a, b)) return false;
+        }
+    }
+    return true;
+}
+
+/* ---- hot-path prefetch ----
+ * Live's tables stay warm from normal checks; the shadow copies are cold, so a
+ * parsed payload pays more.  Prefetch the input's buckets before parsing.
+ * Level: 0 off, 1 type, 2 role+type, 3 user+role+type.
+ */
+struct kp_shadow_hot {
+    bool ready;
+    void *pdb;
+    void **htable[8];
+    u32 size[8];
+};
+
+static struct kp_shadow_hot g_hot;
+static volatile int g_prefetch_level;
+
+static u32 kp_symhash_n(const char *key, u32 len)
+{
+    u32 val = 0;
+    u32 i;
+
+    for (i = 0; i < len; i++)
+        val = ((val << 4) | (val >> 28)) ^ (u8)key[i];
+    return val;
+}
+
+static void kp_prefetch_token(int sym, const char *s, u32 len)
+{
+    u32 bucket;
+    void *node;
+
+    if (!g_hot.ready || !g_hot.htable[sym] || !g_hot.size[sym] || !len) return;
+    bucket = kp_symhash_n(s, len) & (g_hot.size[sym] - 1);
+    __builtin_prefetch(&g_hot.htable[sym][bucket], 0, 3);
+    node = g_hot.htable[sym][bucket];
+    if (node) __builtin_prefetch(node, 0, 3);
+}
+
+static void kp_prefetch_context(const char *s, u32 len)
+{
+    const char *p = s;
+    const char *end = s + len;
+    int field;
+
+    if (!g_hot.ready || !s || g_prefetch_level <= 0) return;
+    if (g_hot.pdb) {
+        __builtin_prefetch(g_hot.pdb, 0, 3);
+        __builtin_prefetch((char *)g_hot.pdb + g_pol_layout.policydb_symtab, 0, 3);
+    }
+    for (field = 0; field < 3 && p < end && *p; field++) {
+        const char *start = p;
+        u32 n;
+
+        while (p < end && *p && *p != ':') p++;
+        n = (u32)(p - start);
+        if (field == 0) {
+            if (g_prefetch_level >= 3) kp_prefetch_token(4, start, n);
+        } else if (field == 1) {
+            if (g_prefetch_level >= 2) kp_prefetch_token(2, start, n);
+        } else {
+            kp_prefetch_token(3, start, n);
+        }
+        if (p < end && *p == ':') p++;
+    }
+}
+
+void selinux_sepolicy_set_prefetch(int level)
+{
+    if (level < 0) level = 0;
+    if (level > 3) level = 3;
+    g_prefetch_level = level;
+}
+
+static int kp_symtab_shadow(void)
+{
+    unsigned long state;
+    kp_mutex_fn lock, unlock;
+    void *policy, *live_pdb, *clean_pdb;
+    int rc;
+
+    kp_policy_layout_init();
+    if (g_pol_layout.policydb_symtab < 0) return -EOPNOTSUPP;
+    if (!kp_shadow_resolve()) return -EOPNOTSUPP;
+
+    clean_pdb = kp_backup_policydb();
+    if (!clean_pdb || is_bad_address(clean_pdb)) return -EINVAL;
+
+    state = lookup_name_with_suffix("selinux_state");
+    lock = (kp_mutex_fn)(uintptr_t)lookup_name_with_suffix("mutex_lock");
+    unlock = (kp_mutex_fn)(uintptr_t)lookup_name_with_suffix("mutex_unlock");
+    if (!state || !lock || !unlock) return -ENOENT;
+
+    lock((void *)(state + g_pol_layout.state_policy_mutex));
+    policy = *(void **)(state + g_pol_layout.state_policy);
+    live_pdb = (policy && !is_bad_address(policy)) ? (char *)policy + g_pol_layout.selpolicy_policydb : NULL;
+    if (!live_pdb) {
+        unlock((void *)(state + g_pol_layout.state_policy_mutex));
+        return -EINVAL;
+    }
+    /* String literals are passed straight from each call site: kpimg is moved
+     * without applying relocations, so a static array of pointers would keep
+     * its link-time values.  Run every symtab even if one fails: a verify
+     * mismatch on roles must not leave types/users/levels/cats unshadowed. */
+    {
+        int one;
+
+        rc = 0;
+        one = kp_shadow_sym(clean_pdb, live_pdb, 2, "roles");
+        if (one && !rc) rc = one;
+        one = kp_shadow_sym(clean_pdb, live_pdb, 3, "types");
+        if (one && !rc) rc = one;
+        one = kp_shadow_sym(clean_pdb, live_pdb, 4, "users");
+        if (one && !rc) rc = one;
+        one = kp_shadow_sym(clean_pdb, live_pdb, 6, "levels");
+        if (one && !rc) rc = one;
+        one = kp_shadow_sym(clean_pdb, live_pdb, 7, "cats");
+        if (one && !rc) rc = one;
+    }
+    if (!rc) {
+        static const int hot_syms[] = { 2, 3, 4, 6, 7 };
+        int hi;
+
+        g_live_values_aligned = kp_live_values_scan(clean_pdb, live_pdb);
+        log_boot("selinux_sepolicy: live value alignment=%d\n", g_live_values_aligned);
+        g_hot.pdb = clean_pdb;
+        for (hi = 0; hi < (int)(sizeof(hot_syms) / sizeof(hot_syms[0])); hi++) {
+            int sym = hot_syms[hi];
+            struct kp_symtab_view v;
+
+            kp_symtab_view((char *)clean_pdb + g_pol_layout.policydb_symtab +
+                           (long)sym * g_pol_layout.symtab_size, &v);
+            g_hot.htable[sym] = v.htable;
+            g_hot.size[sym] = v.size;
+        }
+        g_hot.ready = true;
+    }
+    unlock((void *)(state + g_pol_layout.state_policy_mutex));
+    return rc;
+}
+
 int selinux_sepolicy_snapshot(void)
 {
+    int rc;
+
     if (!selinux_sepolicy_supported()) return -EOPNOTSUPP;
-    if (g_backup_ready) return 0;
-    return kp_dup_sepolicy();
+    if (kp_backup_ready()) return 0;
+    rc = kp_dup_sepolicy();
+    if (!rc) kp_log_policy_shapes();
+    return rc;
+}
+
+int selinux_sepolicy_shadow(void)
+{
+    int rc;
+
+    kp_policy_layout_init();
+    if (g_pol_layout.policydb_symtab < 0) {
+        log_boot("selinux_sepolicy: shadow skipped (layout unavailable)\n");
+        return -EOPNOTSUPP;
+    }
+    /* The snapshot is rebuilt once.  Rebuilding on a later enable would need a
+     * safe publish/grace period (the table is being read by query hooks); a
+     * later live reload is logged as stale instead. */
+    if (g_shadow_built) return 0;
+    kp_log_live_policy_shapes();
+    rc = kp_symtab_shadow();
+    log_boot("selinux_sepolicy: shadow rc=%d\n", rc);
+    kp_log_symtab_shape("shadow", kp_backup_policydb(), 3, "types", KP_PROBE_A);
+    if (!rc) g_shadow_built = true;
+    return rc;
 }
 
 bool selinux_sepolicy_backup_ready(void)
 {
-    return g_backup_ready;
+    return kp_backup_ready();
 }
 
 /* ---- query helpers against the deep copy ---- */
 
 static struct policydb *kp_backup_policydb(void)
 {
-    if (is_bad_address(g_backup_policy)) return NULL;
-    return (struct policydb *)((char *)g_backup_policy + KP_POLICY_POLICYDB_OFFSET);
+    void *pol = __atomic_load_n(&g_backup_policy, __ATOMIC_RELAXED);
+
+    if (is_bad_address(pol)) return NULL;
+    return (struct policydb *)((char *)pol + KP_POLICY_POLICYDB_OFFSET);
 }
 
 static void *kp_backup_sidtab(void)
 {
-    if (is_bad_address(g_backup_policy)) return NULL;
-    return *(void **)g_backup_policy;
+    void *pol = __atomic_load_n(&g_backup_policy, __ATOMIC_RELAXED);
+
+    if (is_bad_address(pol)) return NULL;
+    return *(void **)pol;
 }
 
 /* ---- query helpers against the backup policy ---- */
@@ -1120,44 +1917,248 @@ static void kp_compute_av_user_with_policy(u32 ssid, u32 tsid, u16 tclass, struc
 }
 
 /* ---- public query dispatch ----
- * All of them answer through the ss/ wrappers on top of the deep copy, so the
- * same code serves every supported kernel; a wrapper whose symbols did not
- * resolve reports -ENOSYS.  (The old fake selinux_state route is gone: a
- * zero-initialized fake state has no policy and would fault inside the kernel's
- * state-based helpers on every retrieval.) */
+ * All answer through the ss/ wrappers on top of the deep copy; a wrapper whose
+ * symbols did not resolve reports -ENOSYS.
+ */
 
 int selinux_sepolicy_context_to_sid(const char *scontext, u32 scontext_len, u32 *out_sid, gfp_t gfp)
 {
-    if (!g_backup_ready) return -ENOSYS;
+    if (!kp_backup_ready()) return -ENOSYS;
     return kp_context_to_sid_with_policy(scontext, scontext_len, out_sid, SECSID_NULL, gfp);
+}
+
+/* ---- fast accepted path ----
+ *
+ * The snapshot parse already yields a struct context, so register that object
+ * in the live sidtab (stock's side effect) instead of re-parsing the string,
+ * then canonicalize and compute the AV from the snapshot.  If the manager
+ * renumbered a symbol (g_live_values_aligned == 0) the insert is skipped.
+ */
+static void (*kp_rcu_lock_fn)(void);
+static void (*kp_rcu_unlock_fn)(void);
+static bool kp_live_fast_init_done;
+static bool kp_live_fast_ready;
+static unsigned long kp_live_state_addr;
+static kp_mutex_fn kp_live_lock_fn;
+static kp_mutex_fn kp_live_unlock_fn;
+static void (*kp_live_context_destroy)(struct context *);
+
+static bool kp_live_fast_init(void)
+{
+    if (kp_live_fast_init_done) return kp_live_fast_ready;
+    kp_live_fast_init_done = true;
+
+    kp_policy_layout_init();
+    if (!selinux_hide_has_live_fast_path()) return false;
+    if (g_pol_layout.policydb_sym_val_to_name < 0 ||
+        g_pol_layout.selpolicy_sidtab < 0 ||
+        !kp_sidtab_context_to_sid || !kp_string_to_context_struct)
+        return false;
+
+    kp_live_state_addr = lookup_name_with_suffix("selinux_state");
+    kp_rcu_lock_fn = (void (*)(void))(uintptr_t)lookup_name_with_suffix("__rcu_read_lock");
+    kp_rcu_unlock_fn = (void (*)(void))(uintptr_t)lookup_name_with_suffix("__rcu_read_unlock");
+    kp_live_lock_fn = (kp_mutex_fn)(uintptr_t)lookup_name_with_suffix("mutex_lock");
+    kp_live_unlock_fn = (kp_mutex_fn)(uintptr_t)lookup_name_with_suffix("mutex_unlock");
+    if (!kp_live_state_addr) return false;
+    if (!kp_rcu_lock_fn || !kp_rcu_unlock_fn) {
+        if (!kp_live_lock_fn || !kp_live_unlock_fn) return false;
+    }
+    kp_live_context_destroy = (void (*)(struct context *))(uintptr_t)lookup_name_with_suffix("context_destroy");
+
+    kp_live_fast_ready = true;
+    return true;
+}
+
+static const char *kp_val_name(void *pdb, int sym, u32 value)
+{
+    char ***base;
+    char **arr;
+    const char *name;
+
+    if (!pdb || sym < 0 || sym >= 8 || !value ||
+        g_pol_layout.policydb_sym_val_to_name < 0) return NULL;
+    base = (char ***)((char *)pdb + g_pol_layout.policydb_sym_val_to_name);
+    if (is_bad_address(base)) return NULL;
+    arr = base[sym];
+    if (!arr || is_bad_address(arr)) return NULL;
+    name = arr[value - 1];
+    if (!name || is_bad_address((void *)(uintptr_t)name)) return NULL;
+    return name;
+}
+
+static u32 kp_sym_nprim(void *pdb, int sym)
+{
+    if (!pdb || g_pol_layout.policydb_symtab < 0) return 0;
+    return *(u32 *)((char *)pdb + g_pol_layout.policydb_symtab +
+                    (long)sym * g_pol_layout.symtab_size + g_pol_layout.symtab_nprim);
+}
+
+static bool kp_fast_logged;
+
+static int kp_live_sync(struct context *ctx)
+{
+    unsigned long state = kp_live_state_addr;
+    void *policy, *live_sidtab;
+    u32 live_sid = SECSID_NULL;
+    int rc = -EOPNOTSUPP;
+    int retry;
+
+    if (!kp_live_fast_init() || !state) return -EOPNOTSUPP;
+    if (!g_live_values_aligned) return -EOPNOTSUPP;
+
+    for (retry = 0; retry < 2; retry++) {
+        if (kp_rcu_lock_fn) {
+            kp_rcu_lock_fn();
+            policy = *(void **)(state + g_pol_layout.state_policy);
+            live_sidtab = (policy && !is_bad_address(policy)) ?
+                          *(void **)((char *)policy + g_pol_layout.selpolicy_sidtab) : NULL;
+            if (!live_sidtab || is_bad_address(live_sidtab)) rc = -EINVAL;
+            else rc = kp_sidtab_context_to_sid(live_sidtab, ctx, &live_sid);
+            kp_rcu_unlock_fn();
+        } else {
+            kp_live_lock_fn((void *)(state + g_pol_layout.state_policy_mutex));
+            policy = *(void **)(state + g_pol_layout.state_policy);
+            live_sidtab = (policy && !is_bad_address(policy)) ?
+                          *(void **)((char *)policy + g_pol_layout.selpolicy_sidtab) : NULL;
+            if (!live_sidtab || is_bad_address(live_sidtab)) rc = -EINVAL;
+            else rc = kp_sidtab_context_to_sid(live_sidtab, ctx, &live_sid);
+            kp_live_unlock_fn((void *)(state + g_pol_layout.state_policy_mutex));
+        }
+        if (rc != -ESTALE) break;
+    }
+    if (!rc && !kp_fast_logged) {
+        kp_fast_logged = true;
+        logkfi("selinux_sepolicy: direct live sidtab insert active (no second string parse)\n");
+    }
+    return rc;
+}
+
+static int kp_parse_clean(char *scontext, struct context *ctx)
+{
+    struct policydb *pdb = kp_backup_policydb();
+    void *sidtab = kp_backup_sidtab();
+
+    if (!pdb || !sidtab || !scontext || !kp_string_to_context_struct) return -ENOSYS;
+    lib_memset(ctx, 0, sizeof(*ctx));
+    return kp_string_to_context_struct(pdb, sidtab, scontext, ctx, SECSID_NULL);
+}
+
+static void kp_context_release(struct context *ctx)
+{
+    if (!kp_live_context_destroy)
+        kp_live_context_destroy = (void (*)(struct context *))(uintptr_t)lookup_name_with_suffix("context_destroy");
+    if (kp_live_context_destroy) kp_live_context_destroy(ctx);
+}
+
+int selinux_sepolicy_live_aligned(void)
+{
+    return (g_live_values_aligned && g_string_redirect_installed) ? 1 : 0;
+}
+
+int selinux_sepolicy_context_to_canonical(char *buf, u32 size, char **canon, u32 *len)
+{
+    struct policydb *pdb = kp_backup_policydb();
+    struct context ctx;
+    int rc;
+
+    if (!kp_backup_ready() || !buf || !size || !canon || !len) return -EINVAL;
+    *canon = NULL;
+    *len = 0;
+    if (!pdb || !kp_context_struct_to_string) return -ENOSYS;
+    /* The caller hands us the zero-filled selinuxfs transaction page, so
+     * buf[size] is a valid NUL; the in-place parse below depends on it. */
+    if (buf[size] != 0) return -EINVAL;
+
+    if (g_prefetch_level > 0) kp_prefetch_context(buf, size);
+
+    rc = kp_parse_clean(buf, &ctx);
+    if (!rc) {
+        (void)kp_live_sync(&ctx);
+        rc = kp_context_struct_to_string(pdb, &ctx, canon, len);
+        /* The parser destroys the context on failure, so only release after a
+         * successful parse (avoids a redundant context_destroy on the A/B
+         * failure path). */
+        kp_context_release(&ctx);
+    }
+    return rc;
+}
+
+int selinux_sepolicy_access_av(char *scon, char *tcon, u16 tclass, struct av_decision *avd)
+{
+    struct policydb *pdb = kp_backup_policydb();
+    struct context sctx, tctx;
+    int rc;
+
+    if (!kp_backup_ready() || !scon || !tcon || !avd) return -EINVAL;
+    if (!pdb || !kp_context_struct_compute_av) return -ENOSYS;
+
+    avd->allowed = 0;
+    avd->auditallow = 0;
+    avd->auditdeny = 0xffffffff;
+    avd->seqno = KP_AVD_CLEAN_SEQNO;
+    avd->flags = 0;
+
+    if (g_prefetch_level > 0) {
+        kp_prefetch_context(scon, lib_strlen(scon));
+        kp_prefetch_context(tcon, lib_strlen(tcon));
+    }
+
+    rc = kp_parse_clean(scon, &sctx);
+    if (rc) return rc;
+    rc = kp_parse_clean(tcon, &tctx);
+    if (rc) {
+        kp_context_release(&sctx);
+        return rc;
+    }
+    (void)kp_live_sync(&sctx);
+    (void)kp_live_sync(&tctx);
+    if (unlikely(!tclass)) {
+        if (g_backup_allow_unknown) avd->allowed = 0xffffffff;
+    } else {
+        kp_context_struct_compute_av(pdb, &sctx, &tctx, tclass, avd, NULL);
+    }
+    kp_context_release(&sctx);
+    kp_context_release(&tctx);
+    return 0;
 }
 
 int selinux_sepolicy_sid_to_context(u32 sid, char **scontext, u32 *scontext_len)
 {
-    if (!g_backup_ready) return -ENOSYS;
+    if (!kp_backup_ready()) return -ENOSYS;
     return kp_sid_to_context_with_policy(sid, scontext, scontext_len);
 }
 
 int selinux_sepolicy_context_str_to_sid(const char *scontext, u32 *out_sid, gfp_t gfp)
 {
-    if (!g_backup_ready) return -ENOSYS;
+    if (!kp_backup_ready()) return -ENOSYS;
     return kp_context_to_sid_with_policy(scontext, lib_strlen(scontext), out_sid, SECSID_NULL, gfp);
 }
 
 void selinux_sepolicy_compute_av_user(u32 ssid, u32 tsid, u16 tclass, struct av_decision *avd)
 {
-    if (!g_backup_ready) return;
+    if (!kp_backup_ready()) return;
     kp_compute_av_user_with_policy(ssid, tsid, tclass, avd);
+}
+
+static bool kp_clean_status_modern(void)
+{
+    return selinux_hide_has_status_counters();
 }
 
 u32 selinux_sepolicy_clean_seq(void)
 {
-    return 0;
+    return kp_clean_status_modern() ? KP_CLEAN_STATUS_SEQUENCE : 0;
+}
+
+u32 selinux_sepolicy_clean_policyload(void)
+{
+    return kp_clean_status_modern() ? KP_CLEAN_STATUS_POLICYLOAD : 0;
 }
 
 int selinux_sepolicy_clean_deny_unknown(void)
 {
-    if (!g_backup_ready) return 1;
+    if (!kp_backup_ready()) return 1;
     return g_backup_allow_unknown ? 0 : 1;
 }
 
@@ -1197,10 +2198,18 @@ int selinux_sepolicy_init(void)
             hook_wrap6((void *)addr, before_context_struct_compute_av, NULL, NULL);
             log_boot("selinux_sepolicy: hooked context_struct_compute_av @ %llx\n", addr);
         }
-        addr = lookup_name_with_suffix("string_to_context_struct");
-        if (addr) {
-            hook_wrap5((void *)addr, before_string_to_context_struct, NULL, NULL);
+    }
+    /* Also used by the >= KP_SELINUX_NEW_VERSION setprocattr fast path: the
+     * scope is entered only around the stock handler, so the callback is a
+     * no-op elsewhere. */
+    addr = lookup_name_with_suffix("string_to_context_struct");
+    if (addr) {
+        hook_err_t herr = hook_wrap5((void *)addr, before_string_to_context_struct, NULL, NULL);
+        if (herr == HOOK_NO_ERR) {
+            g_string_redirect_installed = true;
             log_boot("selinux_sepolicy: hooked string_to_context_struct @ %llx\n", addr);
+        } else {
+            logkfw("selinux_sepolicy: hook string_to_context_struct failed: %d\n", (int)herr);
         }
     }
 

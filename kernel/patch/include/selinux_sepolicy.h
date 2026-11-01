@@ -37,11 +37,20 @@ void kp_vfree(const void *addr);
 
 void kp_kernel_str_free(void *p);
 
+/* kmalloc/kfree with the vmalloc fallback, for callers outside this file
+ * (selinux_hide.c parses transaction payloads with stock-sized buffers). */
+void *kp_kernel_alloc(size_t size, gfp_t gfp, bool *via_vmalloc);
+void kp_kernel_free(void *p, bool via_vmalloc);
+
 /* Install anything needed once at boot. */
 int selinux_sepolicy_init(void);
 
 /* KernelSU-style deep copy of the current clean policy (post-fs-data before). */
 int selinux_sepolicy_snapshot(void);
+
+/* Re-shape the snapshot's symbol hash tables to the live policy (call at
+ * post-fs-data "after", before the query hooks are installed). */
+int selinux_sepolicy_shadow(void);
 
 bool selinux_sepolicy_backup_ready(void);
 
@@ -52,12 +61,30 @@ void selinux_sepolicy_clean_eval_leave(void);
 
 /* Query helpers that answer against the deep copy. */
 int selinux_sepolicy_context_to_sid(const char *scontext, u32 scontext_len, u32 *out_sid, gfp_t gfp);
+
+/* Parse against the deep copy, register the context in the live sidtab (RCU,
+ * no second string parse when the value alignment is known) and return the
+ * clean canonical string / access vector. */
+int selinux_sepolicy_context_to_canonical(char *buf, u32 size, char **canon, u32 *len);
+int selinux_sepolicy_access_av(char *scon, char *tcon, u16 tclass, struct av_decision *avd);
+/* 1 when every clean symbol value maps to the same live name (set at enable). */
+int selinux_sepolicy_live_aligned(void);
+/* Shadow-table query prefetch level: 0 off, 1 type, 2 role+type,
+ * 3 user+role+type.  Default 0; set from the optional boot file. */
+void selinux_sepolicy_set_prefetch(int level);
 int selinux_sepolicy_sid_to_context(u32 sid, char **scontext, u32 *scontext_len);
 int selinux_sepolicy_context_str_to_sid(const char *scontext, u32 *out_sid, gfp_t gfp);
 void selinux_sepolicy_compute_av_user(u32 ssid, u32 tsid, u16 tclass, struct av_decision *avd);
 
+/* Stock counters: sequence is the even seqlock progress (4 once booted),
+ * policyload is policy->latest_granting (1 for the boot load) and avd.seqno
+ * follows policyload; pre-6.7 kernels leave the page at 0. */
+#define KP_CLEAN_STATUS_SEQUENCE 4
+#define KP_CLEAN_STATUS_POLICYLOAD 1
+#define KP_AVD_CLEAN_SEQNO KP_CLEAN_STATUS_POLICYLOAD
+
 u32 selinux_sepolicy_clean_seq(void);
-#define KP_AVD_CLEAN_SEQNO 1
+u32 selinux_sepolicy_clean_policyload(void);
 
 int selinux_sepolicy_clean_deny_unknown(void);
 

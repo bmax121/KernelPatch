@@ -41,6 +41,7 @@
 #include <linux/cred.h>
 #include <linux/string.h>
 #include <asm/current.h>
+#include <asm/cmpxchg.h>
 #include <uapi/asm-generic/errno.h>
 #include <security/selinux/include/security.h>
 #include <security/selinux/include/avc.h>
@@ -53,6 +54,7 @@ extern int android_is_safe_mode;
 
 #define KP_SELINUX_HIDE_FILE "/data/adb/ap/selinux_hide"
 #define KP_SELINUX_HIDE_STRICT_FILE "/data/adb/ap/selinux_hide_strict"
+#define KP_SELINUX_HIDE_PREFETCH_FILE "/data/adb/ap/selinux_hide_prefetch"
 
 #define KP_O_RDONLY 0
 #define KP_PAGE_SIZE 4096
@@ -101,6 +103,13 @@ static unsigned long sel_write_access_addr;
 static unsigned long sel_read_handle_status_addr;
 static unsigned long sel_mmap_handle_status_addr;
 static unsigned long selinux_setprocattr_addr;
+static unsigned long selinux_kernel_status_page_addr;
+static unsigned long sel_write_enforce_addr;
+
+/* selinux_kernel_status_page() is the factory sel_open_handle_status() calls;
+ * returning our page there lets the stock read/mmap handlers run unchanged.
+ * Resolved lazily: GKI 6.12 renamed the vmalloc helpers to *_noprof. */
+static void *(*kp_vmalloc_to_page)(const void *addr);
 
 static sel_write_op_fn orig_context_write;
 static sel_write_op_fn orig_access_write;
@@ -110,6 +119,7 @@ static sel_mmap_status_fn orig_sel_mmap_handle_status;
 
 static unsigned char fake_status_bytes[KP_SELINUX_STATUS_SIZE];
 static void *fake_status_vaddr; /* vmalloc'd page mapped for uid >= 10000 */
+static void *fake_status_page;  /* struct page * of fake_status_vaddr, cached */
 
 static unsigned long g_hooked[8];
 static int g_hooked_cnt;
@@ -118,6 +128,8 @@ static bool g_hooked_context;
 static bool g_hooked_access;
 static bool g_hooked_status_read;
 static bool g_hooked_status_mmap;
+static bool g_hooked_status_factory;
+static bool g_hooked_enforce;
 
 static bool g_eval_busy_warned;
 static bool g_setprocattr_busy_warned;
@@ -128,7 +140,8 @@ static bool g_setprocattr_busy_warned;
 #define KP_QLOG_ON 1
 #define KP_QLOG_VERBOSE 2
 
-static int selinux_hide_query_log = KP_QLOG_OFF;
+/* Read directly by the hot redirect hooks; keep it a plain int. */
+int selinux_hide_qlog_level = KP_QLOG_OFF;
 
 /* Printable, bounded, NUL-terminated copy of a query string. */
 static void kp_qlog_str(char *dst, const void *src, size_t len, size_t max)
@@ -147,21 +160,21 @@ static void kp_qlog(const char *what, uid_t uid, const void *detail, size_t dlen
 {
     char s[96];
 
-    if (selinux_hide_query_log == KP_QLOG_OFF) return;
+    if (selinux_hide_qlog_level == KP_QLOG_OFF) return;
     kp_qlog_str(s, detail, dlen, sizeof(s) - 1);
     logkfi("query %s uid=%u: %s\n", what, (unsigned int)uid, s);
 }
 
 static void kp_qlog_plain(const char *what, uid_t uid)
 {
-    if (selinux_hide_query_log == KP_QLOG_OFF) return;
+    if (selinux_hide_qlog_level == KP_QLOG_OFF) return;
     logkfi("query %s uid=%u\n", what, (unsigned int)uid);
 }
 
 /* Read by selinux_sepolicy.c for its level-2 (internal redirect) logging. */
 int selinux_hide_query_log_level(void)
 {
-    return selinux_hide_query_log;
+    return selinux_hide_qlog_level;
 }
 
 static unsigned long kp_selinux_state_addr;
@@ -188,14 +201,27 @@ static void put_u32_le(unsigned char *dst, u32 value)
 static void fill_fake_status_bytes(void)
 {
     u32 seq = selinux_sepolicy_clean_seq();
-    u32 pload = 0;
+    u32 pload = selinux_sepolicy_clean_policyload();
+    u32 deny_unknown = (u32)selinux_sepolicy_clean_deny_unknown();
 
     lib_memset(fake_status_bytes, 0, sizeof(fake_status_bytes));
     put_u32_le(fake_status_bytes + 0, KP_SELINUX_KERNEL_STATUS_VERSION);
     put_u32_le(fake_status_bytes + 4, seq);
     put_u32_le(fake_status_bytes + 8, kp_live_enforcing());
     put_u32_le(fake_status_bytes + 12, pload);
-    put_u32_le(fake_status_bytes + 16, (u32)selinux_sepolicy_clean_deny_unknown());
+    put_u32_le(fake_status_bytes + 16, deny_unknown);
+
+    logkfi("selinux_hide: fake status seq=%u policyload=%u deny_unknown=%u (kver %x)\n",
+           seq, pload, deny_unknown, kver);
+}
+
+/* Keep the synthesised page's enforcing byte in step with the live state; the
+ * rest of the struct is fixed at boot (see selinux_sepolicy_clean_seq()). */
+static void refresh_fake_status(void)
+{
+    put_u32_le(fake_status_bytes + 8, kp_live_enforcing());
+    if (fake_status_vaddr)
+        lib_memcpy(fake_status_vaddr, fake_status_bytes, sizeof(fake_status_bytes));
 }
 
 static void init_fake_status(void)
@@ -213,6 +239,8 @@ static void init_fake_status(void)
         logkfi("selinux_hide: fake status page ready (%lu bytes)\n", size);
     }
     lib_memcpy(fake_status_vaddr, fake_status_bytes, sizeof(fake_status_bytes));
+    if (!fake_status_page && kp_vmalloc_to_page)
+        fake_status_page = kp_vmalloc_to_page(fake_status_vaddr);
 }
 
 #define KP_VMA_VM_START_OFF 0
@@ -265,7 +293,7 @@ static void kp_resolve_vma_offsets(void)
                  "(vm_page_prot %ld, vm_flags %ld, vm_pgoff %ld, vm_file %ld)\n",
                  prot, flags, pgoff, file);
     }
-    if (kver >= VERSION(6, 1, 0)) {
+    if (selinux_hide_has_vma_layout()) {
         g_vma_page_prot_off = 24;
         g_vma_vm_flags_off = 32;
     } else {
@@ -279,13 +307,13 @@ static void kp_resolve_vma_offsets(void)
 static unsigned long kp_vma_page_prot_off(void)
 {
     if (g_vma_page_prot_off > 0) return (unsigned long)g_vma_page_prot_off;
-    return kver >= VERSION(6, 1, 0) ? 24 : 72;
+    return selinux_hide_has_vma_layout() ? 24 : 72;
 }
 
 static unsigned long kp_vma_vm_flags_off(void)
 {
     if (g_vma_vm_flags_off > 0) return (unsigned long)g_vma_vm_flags_off;
-    return kver >= VERSION(6, 1, 0) ? 32 : 80;
+    return selinux_hide_has_vma_layout() ? 32 : 80;
 }
 
 static bool kp_pgprot_plausible(unsigned long prot)
@@ -310,9 +338,8 @@ static u32 kp_current_sid(void)
 
 /* avc_has_perm(current_sid, tsid, tclass, requested).  0 = granted (or the
  * check is unavailable, which matches stock behaviour for untrusted_app). */
-static int kp_avc_check(u32 tsid, u16 tclass, u32 requested)
+static int kp_avc_check_sid(u32 mysid, u32 tsid, u16 tclass, u32 requested)
 {
-    u32 mysid = kp_current_sid();
     if (!mysid) return 0;
     if (selinux_hide_is_without_sepolicy_state_version()) {
         if (!kfunc(avc_has_perm)) return 0;
@@ -324,44 +351,18 @@ static int kp_avc_check(u32 tsid, u16 tclass, u32 requested)
     return kp_avc_has_perm_compat((void *)kp_selinux_state_addr, mysid, tsid, tclass, requested, NULL);
 }
 
+static int kp_avc_check(u32 tsid, u16 tclass, u32 requested)
+{
+    return kp_avc_check_sid(kp_current_sid(), tsid, tclass, requested);
+}
+
 int security_context_to_sid_fn(const char *context, int len, u32 *sid, gfp_t gfp);
 
-/*
- * Resolve an app-supplied context: the clean snapshot decides whether it is
- * known, and the live policy is consulted only for a context the snapshot
- * accepted.
- *
- * The live lookup reproduces a stock query's registration side effect: selinuxfs
- * resolves a context in the live policy, which inserts it into the live SID
- * table.  That is what keeps a SID handed out by the snapshot resolvable
- * through the live policy -- KernelSU a810677b, "fix sidtab detection" -- and
- * the table's size is readable by anyone through
- * /sys/fs/selinux/ss/sidtab_hash_stats, so the registration is observable.
- *
- * It must NOT run for a context the snapshot rejects: the live policy is where
- * a root manager's extra domains live, so resolving a hidden name
- * (u:r:su:s0, u:r:ksu:s0, ...) there would register it while the answer says
- * "unknown".  An app watching that counter would see the live table grow on a
- * rejected query, which no clean device does, and could enumerate the hidden
- * policy with a wordlist.  Confining the lookup to the accepted path also keeps
- * a rejected name exactly as expensive as the snapshot's own failed parse,
- * whether or not the live policy knows it, so the rejected inputs cannot be
- * told apart by cost either.
- *
- * Returns the snapshot's verdict: 0 = the context is answered from the snapshot
- * and *sid is its SID.
- */
-static int kp_context_to_sid_clean(const char *scontext, u32 scontext_len, u32 *sid)
-{
-    u32 live_sid = SECSID_NULL;
-    int rc;
-
-    *sid = SECSID_NULL;
-    rc = selinux_sepolicy_context_to_sid(scontext, scontext_len, sid, KP_GFP_KERNEL);
-    if (!rc)
-        (void)security_context_to_sid_fn(scontext, scontext_len, &live_sid, KP_GFP_KERNEL);
-    return rc;
-}
+/* The accepted-query path now lives in selinux_sepolicy.c:
+ * selinux_sepolicy_context_to_canonical() parses the transaction buffer against
+ * the snapshot, registers the context in the live sidtab (stock side effect)
+ * and canonicalizes from the snapshot; selinux_sepolicy_access_av() does the
+ * same for the two /access contexts and computes the AV directly. */
 
 static ssize_t kp_patch_response_seqno(char *buf, ssize_t ret, u32 new_seqno)
 {
@@ -398,6 +399,8 @@ static ssize_t kp_patch_response_seqno(char *buf, ssize_t ret, u32 new_seqno)
     }
 
     diff = (ssize_t)ns_len - (ssize_t)(p - tok_start);
+    /* The reply lives in the transaction page; never grow it past the limit. */
+    if (diff > 0 && ret + diff > (ssize_t)kp_transaction_limit()) return ret;
     if (diff != 0) {
         char *dst = tok_start + ns_len, *src = p;
         size_t move = (size_t)(end - src);
@@ -416,41 +419,27 @@ static ssize_t kp_patch_response_seqno(char *buf, ssize_t ret, u32 new_seqno)
 
 /* ---- app-facing selinuxfs query surface ----
  *
- * selinuxfs exposes the context-resolving transaction nodes context/access/
- * create/relabel/user/member (world-readable and world-writable at the VFS
- * level: S_IRUGO|S_IWUGO) and validatetrans (world-writable).  Which of them an
- * app-side caller can actually use is decided by the permission each handler
- * checks *before* it parses the payload:
- *
- *   context  (check_context)   -- hooked below, answered from the snapshot
- *   access   (compute_av)      -- hooked below, answered from the snapshot
- *   create   (compute_create)  -- no hook needed: AOSP grants none of these to
- *   relabel  (compute_relabel)    an app-side domain.  app_zygote is the only
- *   user     (compute_user)       app-uid domain with SELinux query rights and
- *   member   (compute_member)     selinux_check_access() gives it exactly
- *   validatetrans (validate_trans) compute_av + check_context, while plain app
- *                                 domains are denied both outright
- *                                 (private/app.te: "SELinux is not an API for
- *                                 apps to use").  The kernel checks the
- *                                 permission before parsing, so every app-side
- *                                 call to those five is rejected with EACCES
- *                                 before any policy lookup -- there is nothing
- *                                 to intercept there.
- *
- * setprocattr ("current") and the status page are hooked further down. */
+ * context (check_context) and access (compute_av) are hooked below and
+ * answered from the snapshot.  create/relabel/user/member/validatetrans need no
+ * hook: no app-side domain is granted those permissions, and the kernel checks
+ * the permission before parsing, so those calls are rejected with EACCES before
+ * any policy lookup.  setprocattr and the status page are hooked further down.
+ */
 
 static ssize_t my_write_context_new(struct file *file, char *buf, size_t size)
 {
 
     uid_t uid = current_uid();
     char *canon = NULL;
-    u32 sid, len;
+    u32 len = 0;
     ssize_t length;
 
     /* Before the permission check on purpose: the log is what makes detector
      * probes visible, and its cost depends only on the payload length, so two
      * equal-length writes cannot be told apart through it. */
     kp_qlog("context_write", uid, buf, size);
+
+    if (size >= kp_transaction_limit()) return -ERANGE;
 
     if (likely(uid < 10000)) {
         length = orig_context_write(file, buf, size);
@@ -459,19 +448,14 @@ static ssize_t my_write_context_new(struct file *file, char *buf, size_t size)
         return length;
     }
 
-    /* KernelSU my_write_context: answer entirely from the clean snapshot.
-     * The stock handler is never run for apps, so the live (patched) sidtab
-     * can never leak into the canonical answer -- no symbol-redirect scope,
-     * no silent fallback to the live policy. */
+    /* Stock checks this before parsing the payload; never parse ahead of it. */
     length = kp_avc_check(KP_SECINITSID_SECURITY, KP_SECCLASS_SECURITY, KP_SECURITY__CHECK_CONTEXT);
     if (length) return length;
 
-    length = kp_context_to_sid_clean(buf, size, &sid);
-    if (length) {
-        return length;
-    }
-
-    length = selinux_sepolicy_sid_to_context(sid, &canon, &len);
+    /* Parse the transaction buffer in place against the snapshot, register the
+     * context in the live sidtab (stock side effect) and canonicalize from the
+     * snapshot -- one parse, no payload copy, no second string parse. */
+    length = selinux_sepolicy_context_to_canonical(buf, (u32)size, &canon, &len);
     if (length) return length;
 
     if ((size_t)len > kp_transaction_limit()) {
@@ -533,9 +517,9 @@ static ssize_t kp_sel_reply(char *buf, const char *text)
 static ssize_t my_write_access_new(struct file *file, char *buf, size_t size)
 {
     uid_t uid = current_uid();
-    char scon[256], tcon[256];
+    char *scon = NULL, *tcon = NULL;
+    bool scon_vm = false, tcon_vm = false;
     struct av_decision avd;
-    u32 ssid, tsid, sconlen, tconlen;
     u16 tclass = 0;
     ssize_t length;
 
@@ -551,34 +535,38 @@ static ssize_t my_write_access_new(struct file *file, char *buf, size_t size)
     length = kp_avc_check(KP_SECINITSID_SECURITY, KP_SECCLASS_SECURITY, KP_SECURITY__COMPUTE_AV);
     if (length) return length;
 
-    if (sscanf(buf, "%255s %255s %hu", scon, tcon, &tclass) != 3) return -EINVAL;
+    /* Same parsing as stock sel_write_access: size+1 heap buffers and an
+     * unbounded %s, so a token longer than 255 bytes is not silently
+     * truncated into a different context. */
+    scon = kp_kernel_alloc(size + 1, KP_GFP_KERNEL, &scon_vm);
+    if (!scon) return -ENOMEM;
+    tcon = kp_kernel_alloc(size + 1, KP_GFP_KERNEL, &tcon_vm);
+    if (!tcon) {
+        length = -ENOMEM;
+        goto out;
+    }
 
-    sconlen = lib_strlen(scon);
-    tconlen = lib_strlen(tcon);
+    length = -EINVAL;
+    if (sscanf(buf, "%s %s %hu", scon, tcon, &tclass) != 3) goto out;
 
-    /* Both contexts must be in the snapshot: a context only the live policy has
-     * (the manager's su domain) is not part of the answer a clean device would
-     * give.  Each accepted context is registered in the live policy as well,
-     * exactly like the stock handler's own conversions do; a rejected one is
-     * not, see kp_context_to_sid_clean. */
-    length = kp_context_to_sid_clean(scon, sconlen, &ssid);
-    if (length) return length;
-
-    length = kp_context_to_sid_clean(tcon, tconlen, &tsid);
-    if (length) return length;
-
-    lib_memset(&avd, 0, sizeof(avd));
-    avd.auditdeny = 0xffffffff;
-    selinux_sepolicy_compute_av_user(ssid, tsid, tclass, &avd);
-    avd.seqno = KP_AVD_CLEAN_SEQNO;
+    /* Both contexts must be known to the snapshot; each accepted one is also
+     * registered in the live sidtab (stock side effect), skipped only if the
+     * manager renumbered a symbol.  The AV itself is computed from the clean
+     * contexts, no snapshot SID round-trip. */
+    length = selinux_sepolicy_access_av(scon, tcon, tclass, &avd);
+    if (length) goto out;
 
     {
         char out[96];
         snprintf(out, sizeof(out), "%x %x %x %x %u %x",
                  avd.allowed, 0xffffffff, avd.auditallow, avd.auditdeny,
                  avd.seqno, avd.flags);
-        return kp_sel_reply(buf, out);
+        length = kp_sel_reply(buf, out);
     }
+out:
+    kp_kernel_free(tcon, tcon_vm);
+    kp_kernel_free(scon, scon_vm);
+    return length;
 }
 static ssize_t my_write_access(struct file *file, char *buf, size_t size)
 {
@@ -628,21 +616,35 @@ static int my_setprocattr_new(const char *name, void *value, size_t size)
     char vbuf[96];
     int error;
 
-    /* KernelSU my_setprocattr: apps may only transition to contexts that the
-     * CLEAN policy knows; a root-manager context is rejected here, before the
-     * stock handler ever consults the patched live policy. */
+    /* Apps only; non-"current" attributes go straight to the stock handler. */
     if (uid < 10000 || lib_strcmp(name, "current")) goto call_orig;
 
-    /* Stock sequence: the self permission check runs before the context is
-     * parsed, and nothing may touch the payload before it.  A denied write has
-     * to cost exactly what it costs on stock whether the payload is a valid
-     * context or a same-length string that is not; parsing first made a valid
-     * context measurably slower than an invalid one (one extra parse ahead of
-     * the same denial), which KernelSU a85dcbcf had to fix. */
-    mysid = kp_current_sid();
-    error = kp_avc_check(mysid, KP_SECCLASS_PROCESS, KP_PROCESS__SETCURRENT);
+    /* Fast path.  Stock checks SETCURRENT before it parses, inside the same
+     * call; let it run that check in the snapshot's scope instead of duplicating
+     * it here.  A rejected write then costs the one avc_has_perm stock costs
+     * (and the detector's lookup counter stays at one per write), while every
+     * value -- parsed or not -- pays the same enter/leave, so a paired A/B probe
+     * differs only by the parse itself. */
+    if (selinux_sepolicy_live_aligned()) {
+        if (selinux_sepolicy_clean_eval_enter() == 0) {
+            int rc = orig_setprocattr(name, value, size);
+            selinux_sepolicy_clean_eval_leave();
+            return rc;
+        }
+        if (!g_setprocattr_busy_warned) {
+            g_setprocattr_busy_warned = true;
+            logkfw("selinux_hide: setprocattr: clean-eval slots busy, refusing the transition with -EAGAIN\n");
+        }
+        return -EAGAIN;
+    }
 
-    if (selinux_hide_query_log != KP_QLOG_OFF) {
+    /* Slow path (misaligned clean/live values): keep the explicit permission
+     * check and parse the payload against the snapshot before the stock
+     * handler, which would otherwise resolve it in the patched live policy. */
+    mysid = kp_current_sid();
+    error = kp_avc_check_sid(mysid, mysid, KP_SECCLASS_PROCESS, KP_PROCESS__SETCURRENT);
+
+    if (selinux_hide_qlog_level != KP_QLOG_OFF) {
         /* After the permission decision, so nothing input-dependent precedes
          * it, and denied writes stay visible: a detector's attr/current probe
          * shows up here as a denied write of a full application context. */
@@ -657,15 +659,10 @@ static int my_setprocattr_new(const char *name, void *value, size_t size)
             str[size - 1] = 0;
             size--;
         }
-        /* The snapshot has to know the context -- that is what rejects a
-         * manager context, and here it is the whole decision.  The SID is not
-         * used because the stock handler performs the transition: it resolves
-         * the context in the live policy itself (registering it there once, as
-         * any stock query would) and applies the bounded-transition /
-         * DYNTRANSITION / ptrace checks with its own audit trail.  Leaving the
-         * live policy out of this path also keeps it free of side effects a
-         * clean device would not have: for a denied app the stock handler stops
-         * at its own permission check before resolving anything. */
+        /* The snapshot must know the context: that is the whole decision.  The
+         * transition itself is left to the stock handler, which resolves it in
+         * the live policy and applies bounded-transition / DYNTRANSITION /
+         * ptrace with its own audit trail. */
         error = selinux_sepolicy_context_to_sid(value, size, &sid, KP_GFP_KERNEL);
         if (error == -ENOSYS || error == -EOPNOTSUPP) {
             if (!g_setprocattr_infra_warned) {
@@ -689,14 +686,22 @@ static int my_setprocattr(const char *name, void *value, size_t size)
     uid_t uid = current_uid();
     char vbuf[96];
 
-    if (selinux_hide_query_log != KP_QLOG_OFF) {
+    if (selinux_hide_qlog_level != KP_QLOG_OFF) {
         kp_qlog_str(vbuf, value, size, sizeof(vbuf) - 1);
         logkfi("query setprocattr uid=%u name=%s value=%s\n", (unsigned int)uid,
                name ? name : "(null)", vbuf);
     }
     if (likely(uid < 10000)) goto call_orig;
     if (lib_strcmp(name, "current")) goto call_orig;
-    if (!kfunc(avc_has_perm) || !selinux_has_selinux_state()) goto call_orig;
+    /* Fail closed: falling back to the stock handler here would let the live
+     * (manager-patched) policy resolve a hidden context. */
+    if (!kfunc(avc_has_perm) || !selinux_has_selinux_state()) {
+        if (!g_setprocattr_infra_warned) {
+            g_setprocattr_infra_warned = true;
+            logkfw("selinux_hide: setprocattr: redirect infrastructure missing, refusing the transition\n");
+        }
+        return -EAGAIN;
+    }
     if (selinux_sepolicy_clean_eval_enter() == 0) {
         int rc = orig_setprocattr(name, value, size);
         selinux_sepolicy_clean_eval_leave();
@@ -704,20 +709,53 @@ static int my_setprocattr(const char *name, void *value, size_t size)
     }
     if (!g_setprocattr_busy_warned) {
         g_setprocattr_busy_warned = true;
-        logkfw("selinux_hide: setprocattr: redirect slots busy, using the stock path\n");
+        logkfw("selinux_hide: setprocattr: redirect slots busy, refusing the transition with -EAGAIN\n");
     }
-    return orig_setprocattr(name, value, size);
+    return -EAGAIN;
 
 call_orig:
     return orig_setprocattr(name, value, size);
 }
 /* ---- /sys/fs/selinux/status (read + mmap) ---- */
 
+/* Preferred status path: hook the page factory so sel_open_handle_status()
+ * stores our page and the stock read/mmap handlers run unchanged.  Only
+ * uid >= 10000 sees it; the read/mmap hooks below are the fallback. */
+static void before_selinux_kernel_status_page(hook_fargs1_t *a, void *u)
+{
+    void *page;
+
+    if (!selinux_hide_enabled || current_uid() < 10000) return;
+    if (!fake_status_vaddr) return;
+
+    /* The struct page * is constant once the vmalloc page exists; caching it
+     * removes one vmalloc_to_page call per status open. */
+    if (!fake_status_page && kp_vmalloc_to_page)
+        fake_status_page = kp_vmalloc_to_page(fake_status_vaddr);
+    if (!fake_status_page) return;
+
+    refresh_fake_status();
+
+    page = fake_status_page;
+
+    a->ret = (uint64_t)page;
+    a->skip_origin = 1;
+}
+
+/* sel_write_enforce() is the setenforce path.  A page an observer mapped before
+ * the write cannot be refreshed from open/read, so update the shared fake page
+ * here and let the existing mapping see the new enforcing byte. */
+static void after_sel_write_enforce(hook_fargs4_t *a, void *u)
+{
+    if (selinux_hide_enabled && (long)a->ret > 0)
+        refresh_fake_status();
+}
+
 static ssize_t my_sel_read_handle_status(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
 {
     uid_t uid = current_uid();
 
-    if (selinux_hide_query_log != KP_QLOG_OFF) {
+    if (selinux_hide_qlog_level != KP_QLOG_OFF) {
         logkfi("query status_read uid=%u count=%u pos=%u\n", (unsigned int)uid,
                (unsigned int)count, (unsigned int)(ppos ? *ppos : 0));
     }
@@ -730,6 +768,7 @@ static ssize_t my_sel_read_handle_status(struct file *filp, char __user *buffer,
             logkfw("selinux_hide: status read: fake page missing, refusing the read\n");
             return -ENODEV;
         }
+        refresh_fake_status();
         if (pos < 0) return -EINVAL;
         if (!count || pos >= (loff_t)sizeof(fake_status_bytes)) return 0;
 
@@ -933,8 +972,8 @@ static long kp_fops_find_handler(unsigned long ops, unsigned long handler)
 
 static unsigned long kp_fops_shift(void)
 {
-    if (kver >= VERSION(5, 12, 0)) return 10;
-    if (kver >= VERSION(5, 1, 0)) return 11;
+    if (kver >= KP_SELINUX_FOPS_SHIFT_512_VERSION) return 10;
+    if (kver >= KP_SELINUX_FOPS_SHIFT_51_VERSION) return 11;
     return 10;
 }
 
@@ -962,6 +1001,17 @@ static void kp_uninstall_hooks(void)
     }
     g_fp_cnt = 0;
 
+    if (g_hooked_status_factory && selinux_kernel_status_page_addr) {
+        hook_unwrap((void *)selinux_kernel_status_page_addr,
+                    before_selinux_kernel_status_page, NULL);
+    }
+    g_hooked_status_factory = false;
+
+    if (g_hooked_enforce && sel_write_enforce_addr) {
+        hook_unwrap((void *)sel_write_enforce_addr, NULL, after_sel_write_enforce);
+    }
+    g_hooked_enforce = false;
+
     g_hooked_context = false;
     g_hooked_access = false;
     g_hooked_status_read = false;
@@ -984,6 +1034,39 @@ static int selinux_hide_install_hooks(void)
 
     fill_fake_status_bytes();
     init_fake_status();
+
+    /* Try the page-factory hook first: one hook instead of the read/mmap pair,
+     * and the stock handlers keep their own semantics. */
+    if (selinux_kernel_status_page_addr && kp_vmalloc_to_page && fake_status_vaddr) {
+        hook_err_t ferr = hook_wrap((void *)selinux_kernel_status_page_addr, 1,
+                                    before_selinux_kernel_status_page, NULL, NULL);
+        if (ferr == HOOK_NO_ERR) {
+            g_hooked_status_factory = true;
+            log_boot("selinux_hide: hooked selinux_kernel_status_page @ %llx (factory path)\n",
+                     selinux_kernel_status_page_addr);
+        } else {
+            logkfw("selinux_hide: hook selinux_kernel_status_page failed: %d, falling back to read/mmap\n",
+                   (int)ferr);
+        }
+    } else {
+        log_boot("selinux_hide: status factory unavailable (fn=%llx vmalloc_to_page=%llx page=%d), "
+                 "using read/mmap hooks\n",
+                 selinux_kernel_status_page_addr, (unsigned long)kp_vmalloc_to_page,
+                 fake_status_vaddr != NULL);
+    }
+
+    /* Keep the fake page's enforcing byte live even for a mapping taken before
+     * the observer's setenforce write. */
+    if (sel_write_enforce_addr) {
+        hook_err_t eerr = hook_wrap((void *)sel_write_enforce_addr, 4,
+                                    NULL, after_sel_write_enforce, NULL);
+        if (eerr == HOOK_NO_ERR) {
+            g_hooked_enforce = true;
+            log_boot("selinux_hide: hooked sel_write_enforce @ %llx\n", sel_write_enforce_addr);
+        } else {
+            logkfw("selinux_hide: hook sel_write_enforce failed: %d\n", (int)eerr);
+        }
+    }
 
     write_op = lookup_name_with_suffix("write_op");
     status_ops = lookup_name_with_suffix("sel_handle_status_ops");
@@ -1041,8 +1124,9 @@ static int selinux_hide_install_hooks(void)
         if (rc) goto err;
     }
 
-    /* status read/mmap: data-pointer hooks in the status file_operations. */
-
+    /* status read/mmap: data-pointer hooks in the status file_operations.
+     * Only used when the page-factory hook above could not be installed. */
+    if (!g_hooked_status_factory) {
     // https://android.googlesource.com/kernel/common/%2B/d2f7eca60b29006285d57c7035539e33300e89e5/include/linux/fs.h
     // struct file_operations {
 
@@ -1090,21 +1174,25 @@ static int selinux_hide_install_hooks(void)
             log_boot("selinux_hide: failed to find fops slot for sel_mmap_handle_status\n");
         }
     }
+    }
     if (!g_hooked_context || !g_hooked_access) {
         logkfw("selinux_hide: transaction hooks unavailable (context=%d access=%d), not enabling\n",
                g_hooked_context, g_hooked_access);
         rc = -ENOENT;
         goto err;
     }
-    if (!fake_status_vaddr || !g_hooked_status_read || !g_hooked_status_mmap) {
-        logkfw("selinux_hide: status surface incomplete (page=%d read=%d mmap=%d), not enabling\n",
-               fake_status_vaddr != NULL, g_hooked_status_read, g_hooked_status_mmap);
+    if (!fake_status_vaddr ||
+        !(g_hooked_status_factory || (g_hooked_status_read && g_hooked_status_mmap))) {
+        logkfw("selinux_hide: status surface incomplete (page=%d factory=%d read=%d mmap=%d), not enabling\n",
+               fake_status_vaddr != NULL, g_hooked_status_factory,
+               g_hooked_status_read, g_hooked_status_mmap);
         rc = -ENOENT;
         goto err;
     }
-    logkfi("selinux_hide: hooks ready (context=%d access=%d status_read=%d status_mmap=%d setprocattr=%d)\n",
-           g_hooked_context, g_hooked_access, g_hooked_status_read, g_hooked_status_mmap,
-           selinux_setprocattr_addr != 0);
+    logkfi("selinux_hide: hooks ready (context=%d access=%d status_factory=%d status_read=%d "
+           "status_mmap=%d setprocattr=%d)\n",
+           g_hooked_context, g_hooked_access, g_hooked_status_factory,
+           g_hooked_status_read, g_hooked_status_mmap, selinux_setprocattr_addr != 0);
     return 0;
 err:
     kp_uninstall_hooks();
@@ -1113,7 +1201,12 @@ err:
 
 /* ---- feature API ---- */
 
-int selinux_hide_enable(void)
+/* Serialize enable/disable: both are reachable from userspace control calls,
+ * and two concurrent enables would both rebuild/publish the snapshot tables
+ * and double-free the old ones. */
+static u8 g_enable_busy;
+
+static int selinux_hide_enable_locked(void)
 {
     int rc;
     #ifdef ANDROID
@@ -1130,6 +1223,14 @@ int selinux_hide_enable(void)
         return -EAGAIN;
     }
 
+    /* The manager has reloaded the policy by now: re-shape the snapshot's
+     * symbol tables to the live policy before any query can arrive.  A failure
+     * only loses the timing hardening, not the hiding itself. */
+    {
+        int src = selinux_sepolicy_shadow();
+        log_boot("selinux_hide: shadow rc=%d\n", src);
+    }
+
     rc = selinux_hide_install_hooks();
     if (rc) return rc;
 
@@ -1138,7 +1239,17 @@ int selinux_hide_enable(void)
     return 0;
 }
 
-int selinux_hide_disable(void)
+int selinux_hide_enable(void)
+{
+    int rc;
+
+    if (cmpxchg(&g_enable_busy, 0, 1)) return -EAGAIN;
+    rc = selinux_hide_enable_locked();
+    g_enable_busy = 0;
+    return rc;
+}
+
+static int selinux_hide_disable_locked(void)
 {
     if (!selinux_hide_enabled) return 0;
 
@@ -1146,6 +1257,16 @@ int selinux_hide_disable(void)
     selinux_hide_enabled = false;
     logkfi("selinux_hide: disabled\n");
     return 0;
+}
+
+int selinux_hide_disable(void)
+{
+    int rc;
+
+    if (cmpxchg(&g_enable_busy, 0, 1)) return -EAGAIN;
+    rc = selinux_hide_disable_locked();
+    g_enable_busy = 0;
+    return rc;
 }
 
 int selinux_hide_is_enabled(void)
@@ -1162,17 +1283,17 @@ long selinux_hide_control(int state)
      * the feature state. */
     switch (state) {
     case -2:
-        return selinux_hide_query_log;
+        return selinux_hide_qlog_level;
     case 2:
-        selinux_hide_query_log = KP_QLOG_OFF;
+        selinux_hide_qlog_level = KP_QLOG_OFF;
         logkfi("query log: off\n");
         return 0;
     case 3:
-        selinux_hide_query_log = KP_QLOG_ON;
+        selinux_hide_qlog_level = KP_QLOG_ON;
         logkfi("query log: on (intercepted queries)\n");
         return 0;
     case 4:
-        selinux_hide_query_log = KP_QLOG_VERBOSE;
+        selinux_hide_qlog_level = KP_QLOG_VERBOSE;
         logkfi("query log: verbose (intercepted queries + ss/ redirects)\n");
         return 0;
     default:
@@ -1197,6 +1318,26 @@ int selinux_hide_post_fs_data(const char *args)
         if (!IS_ERR(filp)) {
             filp_close(filp, 0);
             log_boot("selinux_hide: %s exists\n", KP_SELINUX_HIDE_FILE);
+
+            /* Optional tuning: a digit 0-3 in the prefetch file selects the
+             * shadow-table query prefetch level (0 off, the default). */
+            {
+                struct file *pf = filp_open(KP_SELINUX_HIDE_PREFETCH_FILE, KP_O_RDONLY, 0);
+
+                if (!IS_ERR(pf)) {
+                    char c[8] = { 0 };
+                    loff_t pos = 0;
+                    ssize_t n = kernel_read(pf, c, sizeof(c) - 1, &pos);
+                    int lvl;
+
+                    filp_close(pf, 0);
+                    lvl = (n > 0) ? (c[0] - '0') : 0;
+                    if (lvl >= 0 && lvl <= 3) {
+                        selinux_sepolicy_set_prefetch(lvl);
+                        log_boot("selinux_hide: prefetch level %d\n", lvl);
+                    }
+                }
+            }
 
             /* Resolve ss/ symbols FIRST: the snapshot below needs the resolved
              * kp_policydb_read/kp_policydb_load_isids. */
@@ -1295,10 +1436,18 @@ int selinux_hide_init(void)
     sel_read_handle_status_addr = lookup_name_with_suffix("sel_read_handle_status");
     sel_mmap_handle_status_addr = lookup_name_with_suffix("sel_mmap_handle_status");
     selinux_setprocattr_addr = lookup_name_with_suffix("selinux_setprocattr");
+    selinux_kernel_status_page_addr = lookup_name_with_suffix("selinux_kernel_status_page");
+    sel_write_enforce_addr = lookup_name_with_suffix("sel_write_enforce");
+    kp_vmalloc_to_page = (void *(*)(const void *))lookup_name_with_suffix("vmalloc_to_page");
+    if (!kp_vmalloc_to_page)
+        kp_vmalloc_to_page = (void *(*)(const void *))lookup_name_with_suffix("vmalloc_to_page_noprof");
 
     log_boot("selinux_hide: sel_write_context: %llx, sel_write_access: %llx, selinux_setprocattr: %llx\n",
              sel_write_context_addr, sel_write_access_addr, selinux_setprocattr_addr);
     log_boot("selinux_hide: sel_read_handle_status: %llx, sel_mmap_handle_status: %llx, cred_getsecid: %llx\n",
              sel_read_handle_status_addr, sel_mmap_handle_status_addr, (unsigned long)kp_security_cred_getsecid);
+    log_boot("selinux_hide: selinux_kernel_status_page: %llx, vmalloc_to_page: %llx\n",
+             selinux_kernel_status_page_addr, (unsigned long)kp_vmalloc_to_page);
+    log_boot("selinux_hide: sel_write_enforce: %llx\n", sel_write_enforce_addr);
     return 0;
 }
