@@ -537,11 +537,51 @@ static int find_num_syms(kallsym_t *info, char *img, int32_t imglen)
 
     int32_t approx_num_syms = info->_approx_addresses_or_offsets_num;
 
+    /*
+     * Some images keep a short run of zero entries at the head of
+     * kallsyms_addresses[]: absolute/stub symbols whose relocation was dropped.
+     * The monotonic scan above then starts past them and every later index is
+     * shifted by that count, so linux_banner cannot be resolved. Recover the
+     * real table start from the table end plus the candidate num_syms, and
+     * remember how many bytes of zero prefix have to be back-filled.
+     */
+    int32_t prefix_bytes = 0;
+
     for (int32_t cand = approx_end; cand > approx_end - 4096; cand -= num_syms_elem_size) {
         int nsyms = (int)int_unpack(img + cand, num_syms_elem_size, info->is_be);
         if (!nsyms) continue;
-        if (approx_num_syms > nsyms && approx_num_syms - nsyms > NSYMS_MAX_GAP) continue;
-        if (nsyms > approx_num_syms && nsyms - approx_num_syms > NSYMS_MAX_GAP) continue;
+        int32_t diff = approx_num_syms > nsyms ? approx_num_syms - nsyms : nsyms - approx_num_syms;
+        if (diff > NSYMS_MAX_GAP) {
+            int32_t elem_size2 =
+                info->has_relative_base ? get_offsets_elem_size(info) : get_addresses_elem_size(info);
+            int32_t implied = info->_approx_addresses_or_offsets_end - nsyms * elem_size2;
+            int32_t delta = implied - info->_approx_addresses_or_offsets_offset;
+            if (nsyms > 0x100 && delta <= 0 && delta >= -0x1000) {
+                /*
+                 * Only back-fill when the recovered prefix really is a run of
+                 * zero entries. Some kernels instead stop the scan early on a
+                 * zero tail (e.g. ZTE 4.14: 495 zero entries after the last
+                 * symbol, followed by .rodata strings); there the scanned head
+                 * is already correct and rewriting the bytes in front of it
+                 * would corrupt the image.
+                 */
+                int all_zero = 1;
+                for (int32_t off = 0; off < -delta; off += elem_size2) {
+                    if (uint_unpack(img + implied + off, elem_size2, info->is_be)) {
+                        all_zero = 0;
+                        break;
+                    }
+                }
+                if (all_zero) {
+                    info->kallsyms_num_syms = nsyms;
+                    info->kallsyms_num_syms_offset = cand;
+                    prefix_bytes = -delta;
+                    tools_logi("kallsyms table head is 0x%x bytes before the scanned start\n", prefix_bytes);
+                    break;
+                }
+            }
+            continue;
+        }
         // find
         info->kallsyms_num_syms = nsyms;
         info->kallsyms_num_syms_offset = cand;
@@ -554,6 +594,27 @@ static int find_num_syms(kallsym_t *info, char *img, int32_t imglen)
     } else {
         tools_logi("kallsyms_num_syms offset: 0x%08x, value: 0x%08x\n", info->kallsyms_num_syms_offset,
                    info->kallsyms_num_syms);
+    }
+
+    /*
+     * Back-fill the recovered zero prefix with the first real address, so the
+     * table start doubles as the base used by the later "address - base" index
+     * resolution (linux_banner / pid_vnr lookup).
+     */
+    if (prefix_bytes > 0) {
+        int32_t elem_size2 = info->has_relative_base ? get_offsets_elem_size(info) : get_addresses_elem_size(info);
+        int32_t new_start = info->_approx_addresses_or_offsets_end - info->kallsyms_num_syms * elem_size2;
+        if (new_start >= 0 && new_start + prefix_bytes <= imglen) {
+            uint64_t first = uint_unpack(img + new_start + prefix_bytes, elem_size2, info->is_be);
+            if (elem_size2 == 8 && first) {
+                for (int32_t off = 0; off < prefix_bytes; off += elem_size2)
+                    *(uint64_t *)(img + new_start + off) = first;
+            }
+            info->_approx_addresses_or_offsets_offset = new_start;
+            info->_approx_addresses_or_offsets_num = info->kallsyms_num_syms;
+            tools_logi("zero prefix back-filled from 0x%llx, table start 0x%08x\n", (unsigned long long)first,
+                       new_start);
+        }
     }
 
     if (info->arch == X86_64 && info->has_relative_base) {
