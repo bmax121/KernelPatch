@@ -15,6 +15,11 @@
 #include <linux/errno.h>
 #include <linux/pid.h>
 #include <linux/sched.h>
+#include <linux/sched/signal.h>
+#include <linux/seccomp.h>
+#include <linux/spinlock.h>
+#include <linux/thread_info.h>
+#include <linux/version.h>
 #include <linux/sched/task.h>
 #include <linux/slab.h>
 #include <linux/string.h>
@@ -46,6 +51,37 @@ struct kp_task_sec {
 	u32 osid;
 	u32 sid;
 };
+
+/*
+ * Disable seccomp enforcement for the current task without manually releasing
+ * its filter. The filter reference remains owned by current and is released
+ * through the normal task-exit path.
+ *
+ * This deliberately avoids calling seccomp_filter_release(): its internal
+ * teardown contract differs across kernel versions and Android GKI backports,
+ * and cannot be classified reliably from a generic version check.
+ */
+static bool kp_disable_current_seccomp(void)
+{
+	struct sighand_struct *sighand = current->sighand;
+
+	if (!sighand) {
+		logkw("seccomp disable skipped: current has no sighand\n");
+		return false;
+	}
+
+	spin_lock_irq(&sighand->siglock);
+#if defined(CONFIG_GENERIC_ENTRY) && LINUX_VERSION_CODE >= KERNEL_VERSION(5, 11, 0)
+	clear_syscall_work(SECCOMP);
+#else
+	clear_thread_flag(TIF_SECCOMP);
+#endif
+	current->seccomp.mode = SECCOMP_MODE_DISABLED;
+	spin_unlock_irq(&sighand->siglock);
+
+	logkw("seccomp mode disabled; filter retained until task exit\n");
+	return true;
+}
 
 int kp_accctl_init(void)
 {
@@ -139,9 +175,6 @@ int kp_commit_su(uid_t to_uid, const char *sctx)
 {
 	int rc;
 
-	/* Disable seccomp on the caller, matching KP's commit_common_su. */
-	current_thread_info()->flags &= ~_TIF_SECCOMP;
-
 	/* Empty sctx: default to the magisk domain (KP initializes all_allow_sctx
 	 * to ALL_ALLOW_SCONTEXT_MAGISK). The u:r:kernel:s0 domain cannot connect
 	 * sockets or run ART (seen: libsu RootServer ClassNotFoundException after
@@ -152,6 +185,7 @@ int kp_commit_su(uid_t to_uid, const char *sctx)
 		if (kp_selinux_blob_sizes) {
 			rc = commit_common_su(to_uid, ALL_ALLOW_SCONTEXT_MAGISK);
 			if (!rc) {
+				kp_disable_current_seccomp();
 				logki("commit_su: to_uid=%u magisk domain\n", to_uid);
 				return 0;
 			}
@@ -161,6 +195,7 @@ int kp_commit_su(uid_t to_uid, const char *sctx)
 		if (!new)
 			return -ENOMEM;
 		commit_creds(new);
+		kp_disable_current_seccomp();
 		logki("commit_su: to_uid=%u kernel cred (u:r:kernel:s0)\n", to_uid);
 		return 0;
 	}
@@ -174,8 +209,10 @@ int kp_commit_su(uid_t to_uid, const char *sctx)
 		if (!new)
 			return -ENOMEM;
 		commit_creds(new);
+		kp_disable_current_seccomp();
 		return 0;
 	}
+	kp_disable_current_seccomp();
 	return 0;
 }
 
