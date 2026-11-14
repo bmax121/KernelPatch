@@ -21,6 +21,7 @@
 #include <linux/thread_info.h>
 #include <linux/version.h>
 #include <linux/sched/task.h>
+#include <linux/task_work.h>
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <scdefs.h>
@@ -44,6 +45,11 @@ struct kp_lsm_blob_sizes {
 };
 
 static struct kp_lsm_blob_sizes *kp_selinux_blob_sizes;
+
+typedef int (*kp_task_work_add_t)(struct task_struct *task, struct callback_head *work,
+				  enum task_work_notify_mode mode);
+
+static kp_task_work_add_t kp_task_work_add;
 
 /* task_security_struct { osid, sid, ... } — RANDSTRUCT is off, so sid is the
  * second u32 (offset 4). */
@@ -85,6 +91,10 @@ static bool kp_disable_current_seccomp(void)
 
 int kp_accctl_init(void)
 {
+	kp_task_work_add = (kp_task_work_add_t)kp_resolve_symbol_variant("task_work_add");
+	if (!kp_task_work_add)
+		logke("failed to resolve task_work_add; task_su disabled\n");
+
 	kp_selinux_blob_sizes = (struct kp_lsm_blob_sizes *)kp_resolve_symbol("selinux_blob_sizes");
 	if (!kp_selinux_blob_sizes) {
 		logke("failed to resolve selinux_blob_sizes; selinux translabel disabled\n");
@@ -100,7 +110,7 @@ int kp_accctl_init(void)
 static int kp_selinux_set_cred_context(struct cred *new, const char *sctx)
 {
 	struct kp_task_sec *tsec;
-	u32 sid;
+	u32 sid = 0;
 	int rc;
 
 	if (!kp_selinux_blob_sizes || !sctx || !sctx[0])
@@ -216,11 +226,48 @@ int kp_commit_su(uid_t to_uid, const char *sctx)
 	return 0;
 }
 
+struct kp_task_su_work {
+	struct callback_head work;
+	uid_t to_uid;
+	char *sctx;
+};
+
+/* Run credential changes in the target task's own context. */
+__attribute__((no_sanitize("cfi")))
+static void kp_task_su_workfn(struct callback_head *head)
+{
+	struct kp_task_su_work *work = container_of(head, struct kp_task_su_work, work);
+	struct cred *new;
+	int rc;
+
+	if (current->flags & PF_EXITING)
+		goto out;
+
+	rc = commit_common_su(work->to_uid, work->sctx);
+	if (rc) {
+		logkw("task_su: credential setup failed (%d), kernel cred fallback\n", rc);
+		new = prepare_kernel_cred(NULL);
+		if (new)
+			commit_creds(new);
+		else
+			logke("task_su: kernel cred fallback failed\n");
+	}
+
+	logki("task_su: pid %d -> uid %u\n", task_pid_nr(current), work->to_uid);
+out:
+	kfree(work->sctx);
+	kfree(work);
+}
+
+__attribute__((no_sanitize("cfi")))
 int kp_task_su(pid_t pid, uid_t to_uid, const char *sctx)
 {
 	struct task_struct *task;
-	const struct cred *old;
-	struct cred *new;
+	struct kp_task_su_work *work;
+	int rc;
+
+	if (!kp_task_work_add)
+		return -ENOSYS;
 
 	task = find_get_task_by_vpid(pid);
 	if (!task) {
@@ -228,22 +275,32 @@ int kp_task_su(pid_t pid, uid_t to_uid, const char *sctx)
 		return -ESRCH;
 	}
 
-	new = prepare_creds();
-	if (!new) {
+	work = kzalloc(sizeof(*work), GFP_KERNEL);
+	if (!work) {
 		put_task_struct(task);
 		return -ENOMEM;
 	}
-	su_cred(new, to_uid);
-	(void)sctx;
+	work->to_uid = to_uid;
+	if (sctx && sctx[0]) {
+		work->sctx = kstrdup(sctx, GFP_KERNEL);
+		if (!work->sctx) {
+			kfree(work);
+			put_task_struct(task);
+			return -ENOMEM;
+		}
+	}
+	init_task_work(&work->work, kp_task_su_workfn);
 
-	rcu_read_lock();
-	old = task->cred;
-	rcu_assign_pointer(task->cred, new);
-	rcu_assign_pointer(task->real_cred, new);
-	rcu_read_unlock();
-	put_cred(old);
-
+	/* TWA_SIGNAL requests prompt execution when the target is in the kernel. */
+	rc = kp_task_work_add(task, &work->work, TWA_SIGNAL);
 	put_task_struct(task);
-	logki("task_su: pid %d -> uid %u\n", pid, to_uid);
+	if (rc) {
+		kfree(work->sctx);
+		kfree(work);
+		logkw("task_su: failed to queue work for pid %d: %d\n", pid, rc);
+		return rc;
+	}
+
+	logki("task_su: credential update queued for pid %d -> uid %u\n", pid, to_uid);
 	return 0;
 }
