@@ -11,6 +11,7 @@ struct kmem_cache;
 struct list_lru;
 
 extern void *kfunc_def(__kmalloc)(size_t size, gfp_t flags);
+extern void *kfunc_def(__kmalloc_noprof)(size_t size, gfp_t flags);
 extern void *kfunc_def(kmalloc)(size_t size, gfp_t flags);
 extern void kfunc_def(kfree)(const void *);
 extern void kfunc_def(kvfree)(const void *addr);
@@ -37,7 +38,10 @@ void *kmalloc_large_node(size_t size, gfp_t flags, int node);
 static inline void *kmalloc(size_t size, gfp_t flags)
 {
     kfunc_call(kmalloc, size, flags);
-    kfunc_direct_call(__kmalloc, size, flags);
+    kfunc_call(__kmalloc, size, flags);
+    kfunc_call(__kmalloc_noprof, size, flags);
+    kfunc_not_found();
+    return 0;
 }
 
 static inline void kfree(const void *objp)
