@@ -39,6 +39,7 @@
 #include <kpsecret.h>
 
 #define MAX_KEY_LEN 128
+#define KP_GFP_KERNEL 0xcc0u /* __GFP_RECLAIM | __GFP_IO | __GFP_FS */
 
 #include <linux/umh.h>
 
@@ -62,10 +63,15 @@ static long call_panic()
 
 static long call_klog(const char __user *arg1)
 {
-    char buf[1024];
-    long len = compat_strncpy_from_user(buf, arg1, sizeof(buf));
-    if (len <= 0) return -EINVAL;
-    if (len > 0) logki("user log: %s", buf);
+    char *buf = kmalloc(1024, KP_GFP_KERNEL);
+    if (!buf) return -ENOMEM;
+    long len = compat_strncpy_from_user(buf, arg1, 1024);
+    if (len <= 0) {
+        kfree(buf);
+        return -EINVAL;
+    }
+    logki("user log: %s", buf);
+    kfree(buf);
     return 0;
 }
 
@@ -80,11 +86,24 @@ static long call_buildtime(char __user *out_buildtime, int u_len)
 
 static long call_kpm_load(const char __user *arg1, const char *__user arg2, void *__user reserved)
 {
-    char path[1024], args[KPM_ARGS_LEN];
-    long pathlen = compat_strncpy_from_user(path, arg1, sizeof(path));
-    if (pathlen <= 0) return -EINVAL;
-    long arglen = compat_strncpy_from_user(args, arg2, sizeof(args));
-    return load_module_path(path, arglen <= 0 ? 0 : args, reserved);
+    char *path = kmalloc(1024, KP_GFP_KERNEL);
+    char *args = kmalloc(KPM_ARGS_LEN, KP_GFP_KERNEL);
+    if (!path || !args) {
+        kfree(path);
+        kfree(args);
+        return -ENOMEM;
+    }
+    long pathlen = compat_strncpy_from_user(path, arg1, 1024);
+    if (pathlen <= 0) {
+        kfree(path);
+        kfree(args);
+        return -EINVAL;
+    }
+    long arglen = compat_strncpy_from_user(args, arg2, KPM_ARGS_LEN);
+    long rc = load_module_path(path, arglen <= 0 ? 0 : args, reserved);
+    kfree(path);
+    kfree(args);
+    return rc;
 }
 
 static long call_kpm_control(const char __user *arg1, const char *__user arg2, void *__user out_msg, int outlen)
@@ -112,12 +131,20 @@ static long call_kpm_nums()
 static long call_kpm_list(char *__user names, int len)
 {
     if (len <= 0) return -EINVAL;
-    char buf[4096] = { 0 };
-    int sz = list_modules(buf, sizeof(buf));
-    if (sz < 0) return sz;
-    if (sz > len) return -ENOBUFS;
+    char *buf = kmalloc(4096, KP_GFP_KERNEL);
+    if (!buf) return -ENOMEM;
+    int sz = list_modules(buf, 4096);
+    if (sz < 0) {
+        kfree(buf);
+        return sz;
+    }
+    if (sz > len) {
+        kfree(buf);
+        return -ENOBUFS;
+    }
     int copy_len = sz > 0 ? sz : 1;
     int rc = compat_copy_to_user(names, buf, copy_len);
+    kfree(buf);
     return rc == copy_len ? sz : -EFAULT;
 }
 
@@ -125,13 +152,24 @@ static long call_kpm_info(const char *__user uname, char *__user out_info, int o
 {
     if (out_len <= 0) return -EINVAL;
     char name[64];
-    char buf[2048];
+    char *buf = kmalloc(2048, KP_GFP_KERNEL);
+    if (!buf) return -ENOMEM;
     int len = compat_strncpy_from_user(name, uname, sizeof(name));
-    if (len <= 0) return -EINVAL;
-    int sz = get_module_info(name, buf, sizeof(buf));
-    if (sz < 0) return sz;
-    if (sz > out_len) return -ENOBUFS;
+    if (len <= 0) {
+        kfree(buf);
+        return -EINVAL;
+    }
+    int sz = get_module_info(name, buf, 2048);
+    if (sz < 0) {
+        kfree(buf);
+        return sz;
+    }
+    if (sz > out_len) {
+        kfree(buf);
+        return -ENOBUFS;
+    }
     sz = compat_copy_to_user(out_info, buf, sz);
+    kfree(buf);
     return sz;
 }
 
