@@ -305,6 +305,7 @@ unsigned long kfunc_def(vm_memory_committed)(void) = 0;
 int kfunc_def(get_cmdline)(struct task_struct *task, char *buffer, int buflen) = 0; // not exported
 
 void *kfunc_def(__kmalloc)(size_t size, gfp_t flags) = 0;
+void *kfunc_def(__kmalloc_noprof)(size_t size, gfp_t flags) = 0;
 void *kfunc_def(kmalloc)(size_t size, gfp_t flags) = 0;
 void kfunc_def(kfree)(const void *) = 0;
 
@@ -330,7 +331,8 @@ static void _linux_mm_utils_sym_match(const char *name, unsigned long addr)
     // kfunc_match(__page_mapcount, name, addr);
     // kfunc_match(vm_memory_committed, name, addr);
     // kfunc_match(get_cmdline, name, addr);
-    // kfunc_match(__kmalloc, name, addr);
+    kfunc_match(__kmalloc, name, addr);
+    kfunc_match(__kmalloc_noprof, name, addr);
     // kfunc_match(kmalloc, name, addr);
     kfunc_match(kfree, name, addr);
 }
