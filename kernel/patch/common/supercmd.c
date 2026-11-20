@@ -18,9 +18,62 @@
 #include <user_event.h>
 #include <log.h>
 #include <kpsecret.h>
+#include <ksyms.h>
 #ifdef ANDROID
 #include <userd.h>
 #endif
+
+/*
+ * Size of the heap-allocated supercmd buffers. These used to be 4 KiB
+ * automatic arrays, which put ~9 KiB of stack frame under the execve
+ * pre-hook chain (handle_supercmd 5056 B + supercmd_echo 4288 B). See
+ * https://github.com/bmax121/KernelPatch/issues/323
+ */
+#define SUPERCMD_BUF_LEN 4096
+
+/*
+ * Small on-stack buffer used when the heap allocator cannot be resolved.
+ * Keeps the stack footprint low even on the fallback path.
+ */
+#define SUPERCMD_STACK_BUF_LEN 512
+
+/* GFP_KERNEL: __GFP_RECLAIM | __GFP_IO | __GFP_FS */
+#define SUPERCMD_GFP_KERNEL 0xcc0u
+
+/*
+ * kmalloc()/kfree() cannot be reached through the kfunc_def() pointers of
+ * linux/slab.h: kf_kmalloc and kf___kmalloc are never matched (ksyms/misc.c
+ * keeps their kfunc_match() calls commented out) and kernels built with
+ * alloc-tag profiling only export __kmalloc_noprof. Resolve the real symbols
+ * lazily and fall back to the stack buffer when either lookup fails.
+ */
+static void *(*supercmd_kmalloc_fn)(size_t, gfp_t);
+static void (*supercmd_kfree_fn)(const void *);
+static bool supercmd_alloc_ready;
+
+static void supercmd_alloc_init(void)
+{
+    if (supercmd_alloc_ready) return;
+    supercmd_kmalloc_fn = (void *(*)(size_t, gfp_t))kallsyms_lookup_name_by_suffix("__kmalloc_noprof");
+    if (!supercmd_kmalloc_fn)
+        supercmd_kmalloc_fn = (void *(*)(size_t, gfp_t))kallsyms_lookup_name_by_suffix("__kmalloc");
+    supercmd_kfree_fn = (void (*)(const void *))kallsyms_lookup_name_by_suffix("kfree");
+    supercmd_alloc_ready = true;
+}
+
+static char *supercmd_alloc(char *stack_buf, size_t *buflen)
+{
+    supercmd_alloc_init();
+    if (supercmd_kmalloc_fn && supercmd_kfree_fn) {
+        char *heap = supercmd_kmalloc_fn(SUPERCMD_BUF_LEN, SUPERCMD_GFP_KERNEL);
+        if (heap) {
+            *buflen = SUPERCMD_BUF_LEN;
+            return heap;
+        }
+    }
+    *buflen = SUPERCMD_STACK_BUF_LEN;
+    return stack_buf;
+}
 
 static char *__user supercmd_str_to_user_sp(const char *data, uintptr_t *sp)
 {
@@ -45,14 +98,24 @@ static void supercmd_echo(char **__user u_filename_p, char **__user uargv, uintp
 {
     supercmd_exec(u_filename_p, ECHO_PATH, sp);
 
-    char buffer[4096];
+    /*
+     * Heap-allocate the format buffer: this runs inside the execve pre-hook,
+     * where the page fault below (set_user_arg_ptr -> copy_to_user -> COW)
+     * already needs a large part of the 16 KiB kernel stack.
+     */
+    char stack_buf[SUPERCMD_STACK_BUF_LEN];
+    size_t buflen = 0;
+    char *buffer = supercmd_alloc(stack_buf, &buflen);
+
     va_list va;
     va_start(va, fmt);
-    vsnprintf(buffer, sizeof(buffer), fmt, va);
+    vsnprintf(buffer, buflen, fmt, va);
     va_end(va);
 
     const char *__user cmd = supercmd_str_to_user_sp(ECHO_PATH, sp);
     const char *__user argv1 = supercmd_str_to_user_sp(buffer, sp);
+    /* The string has been copied to the user stack above. */
+    if (buffer != stack_buf && supercmd_kfree_fn) supercmd_kfree_fn(buffer);
 
     set_user_arg_ptr(0, *uargv, 0, (uintptr_t)cmd);
     set_user_arg_ptr(0, *uargv, 1, (uintptr_t)argv1);
@@ -337,6 +400,8 @@ static void handle_cmd_key_auth(char **__user u_filename_p, const char *cmd, con
 
 void handle_supercmd(char **__user u_filename_p, char **__user uargv)
 {
+    /* Declared here so every early return and the shared free path stay safe. */
+    char *buffer = NULL;
     int is_key_auth = 0;
     int is_trusted_manager = 0;
     is_trusted_manager = is_trusted_manager_uid(current_uid());
@@ -438,7 +503,9 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
 
     struct cmd_res cmd_res = { 0 };
 
-    char buffer[4096];
+    char stack_buf[SUPERCMD_STACK_BUF_LEN];
+    size_t buflen = 0;
+    buffer = supercmd_alloc(stack_buf, &buflen);
     buffer[0] = '\0';
 
     // command
@@ -494,7 +561,7 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
         goto echo;
     #endif
     } else if (!strcmp("sumgr", cmd)) {
-        handle_cmd_sumgr(u_filename_p, carr, buffer, sizeof(buffer), &cmd_res);
+        handle_cmd_sumgr(u_filename_p, carr, buffer, (int)buflen, &cmd_res);
     } else if (!strcmp("event", cmd)) {
         if (carr[1]) {
             cmd_res.rc = report_user_event(carr[1], carr[2]);
@@ -510,7 +577,7 @@ void handle_supercmd(char **__user u_filename_p, char **__user uargv)
         cmd_res.msg = "test done...";
     } else {
         if (is_key_auth) {
-            handle_cmd_key_auth(u_filename_p, cmd, carr, buffer, sizeof(buffer), &cmd_res);
+            handle_cmd_key_auth(u_filename_p, cmd, carr, buffer, (int)buflen, &cmd_res);
         } else {
             cmd_res.err_msg = "invalid command or a superkey is required";
         }
@@ -522,6 +589,7 @@ echo:
     if (cmd_res.err_msg) supercmd_echo(u_filename_p, uargv, &sp, "supercmd error message: %s", cmd_res.err_msg);
 
 free:
+    if (buffer && buffer != stack_buf && supercmd_kfree_fn) supercmd_kfree_fn(buffer);
     // free args
     for (int i = 2; i < sizeof(parr) / sizeof(parr[0]); i++) {
         const char *a = parr[i];
