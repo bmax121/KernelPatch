@@ -7,7 +7,6 @@
 #include <common.h>
 #include <log.h>
 #include <sha256.h>
-#include <kpsecret.h>
 #include <symbol.h>
 #include <kconfig.h>
 #include <kbtf.h>
@@ -43,7 +42,6 @@ static bool root_superkey_is_set = false;
 
 int auth_superkey(const char *key)
 {
-    if (!superkey || !key) return 1;
     size_t configured_len = lib_strnlen(superkey, SUPER_KEY_LEN);
     size_t key_len = lib_strnlen(key, SUPER_KEY_LEN + 1);
 
@@ -66,9 +64,7 @@ int auth_superkey(const char *key)
     sha256_update(&ctx, (const BYTE *)key, key_len);
     sha256_final(&ctx, hash);
     int len = SHA256_BLOCK_SIZE > ROOT_SUPER_KEY_HASH_LEN ? ROOT_SUPER_KEY_HASH_LEN : SHA256_BLOCK_SIZE;
-    rc = !kp_secret_equal(root_superkey, hash, len);
-    kp_secret_wipe(hash, sizeof(hash));
-    kp_secret_wipe(&ctx, sizeof(ctx));
+    rc = lib_memcmp(root_superkey, hash, len);
 
     static bool first_time = true;
     if (!rc && first_time) {
@@ -83,13 +79,7 @@ out:
 
 void reset_superkey(const char *key)
 {
-    size_t len = kp_secret_length(key, SUPER_KEY_LEN);
-    if (!superkey || !key || !len || len >= SUPER_KEY_LEN) return;
-    if (key != superkey) {
-        kp_secret_wipe(superkey, SUPER_KEY_LEN);
-        lib_memcpy(superkey, key, len);
-    }
-    superkey[len] = '\0';
+    lib_strlcpy(superkey, key, SUPER_KEY_LEN);
 #ifdef CONFIG_X86_64
     barrier();
 #else
