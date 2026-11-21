@@ -1,6 +1,7 @@
 name: Build KernelPatch LKMs (matrix)
 
 on:
+  workflow_call:
   workflow_dispatch:
   push:
     paths:
@@ -12,6 +13,7 @@ on:
 jobs:
   build-lkm:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - kmi: android12-5.10
