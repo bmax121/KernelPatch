@@ -13,6 +13,7 @@
 #include "relo.h"
 #include "symbols.h"
 
+#include <linux/atomic.h>
 #include <linux/err.h>
 #include <linux/errno.h>
 #include <linux/fs.h>
@@ -63,7 +64,6 @@ static void (*kp_execmem_free)(void *ptr);
 static void (*kp_flush_icache_all_fn)(void);
 static int (*kp_set_memory_x)(unsigned long addr, int numpages);
 static int (*kp_set_memory_nx)(unsigned long addr, int numpages);
-
 /* init_mm (resolved at runtime, not exported on GKI). */
 static struct mm_struct *kp_kpm_init_mm;
 
@@ -116,30 +116,112 @@ static void kp_clear_bti_gp(unsigned long base, unsigned long size)
 	}
 }
 
+/* Tracks which allocator produced the most recent kp_malloc_exec region so
+ * kp_free_exec pairs it correctly. Allocations and frees happen under
+ * module_lock (or at init), so a single slot is sufficient. */
+enum kp_exec_src {
+	KP_EXEC_MODULE_ALLOC,
+	KP_EXEC_VMALLOC,
+	KP_EXEC_EXECMEM,
+};
+static atomic_t kp_exec_src = ATOMIC_INIT(KP_EXEC_VMALLOC);
+
+static int kp_do_set_memory_x(unsigned long addr, int npages);
+
+/* Write probe: execmem on 6.12+ may hand out read-only-X memory
+ * (EXECMEM_ROX, overlay-based) and set_memory_x() is refused for plain
+ * vmalloc areas, so every candidate is probed before being handed out. */
+__attribute__((no_sanitize("cfi")))
+static int kp_probe_write(void *p)
+{
+	static const int zero;
+
+	return copy_to_kernel_nofault(p, &zero, sizeof(zero));
+}
+
+__attribute__((no_sanitize("cfi")))
+static void *kp_alloc_exec_try(unsigned long size, int src)
+{
+	void *p = NULL;
+
+	switch (src) {
+	case KP_EXEC_MODULE_ALLOC:
+		if (kp_module_alloc)
+			p = kp_module_alloc(size);
+		break;
+	case KP_EXEC_VMALLOC:
+		p = vmalloc(size);
+		break;
+	case KP_EXEC_EXECMEM:
+		if (kp_execmem_alloc)
+			p = kp_execmem_alloc(0 /* EXECMEM_MODULE_TEXT */, size);
+		break;
+	}
+	return p;
+}
+
+__attribute__((no_sanitize("cfi")))
+static void kp_free_exec_src(void *region, int src)
+{
+	switch (src) {
+	case KP_EXEC_MODULE_ALLOC:
+		if (kp_module_memfree)
+			kp_module_memfree(region);
+		else if (kp_execmem_free)
+			kp_execmem_free(region);
+		else
+			vfree(region);
+		break;
+	case KP_EXEC_VMALLOC:
+		vfree(region);
+		break;
+	case KP_EXEC_EXECMEM:
+		if (kp_execmem_free)
+			kp_execmem_free(region);
+		else if (kp_module_memfree)
+			kp_module_memfree(region);
+		else
+			vfree(region);
+		break;
+	}
+}
+
 /* Runtime-resolved kernel functions and raw KPM callbacks cannot participate
  * in this LKM's CFI jump table. Keep CFI enabled everywhere else and exempt
  * only these indirect-call boundaries. noinline: if inlined into a
  * CFI-instrumented caller, the kCFI type-hash load of [fnptr - 4] dereferences
- * NULL when the allocator is absent (6.10+ has no module_alloc). */
+ * NULL when the allocator is absent (6.10+ has no module_alloc).
+ *
+ * Allocation order: module_alloc (up to ~6.8) -> plain vmalloc -> execmem_alloc.
+ * The memory MUST be populated by plain writes BEFORE the caller applies
+ * set_memory_x(): on 6.12+ kernels with FEAT_POE, set_memory_x converts the
+ * mapping to read-only-X through a permission overlay, so pre-executable
+ * mappings (execmem EXECMEM_ROX, PAGE_KERNEL_EXEC vmallocs) cannot be written
+ * at all. Every candidate is probed for writability before being returned. */
 __attribute__((no_sanitize("cfi"), __noinline__))
 static void *kp_malloc_exec(unsigned long size)
 {
-	if (kp_module_alloc)
-		return kp_module_alloc(size);
-	if (kp_execmem_alloc)
-		return kp_execmem_alloc(0 /* EXECMEM_MODULE_TEXT */, size);
-	return vmalloc(size);
+	static const int order[] = { KP_EXEC_MODULE_ALLOC, KP_EXEC_VMALLOC, KP_EXEC_EXECMEM };
+
+	for (int i = 0; i < ARRAY_SIZE(order); i++) {
+		void *p = kp_alloc_exec_try(size, order[i]);
+
+		if (!p)
+			continue;
+		if (!kp_probe_write(p)) {
+			atomic_set(&kp_exec_src, order[i]);
+			return p;
+		}
+		/* read-only-X memory: unusable for population, try the next */
+		kp_free_exec_src(p, order[i]);
+	}
+	return NULL;
 }
 
 __attribute__((no_sanitize("cfi"), __noinline__))
 static void kp_free_exec(void *region)
 {
-	if (kp_module_memfree)
-		kp_module_memfree(region);
-	else if (kp_execmem_free)
-		kp_execmem_free(region);
-	else
-		vfree(region);
+	kp_free_exec_src(region, atomic_read(&kp_exec_src));
 }
 
 __attribute__((no_sanitize("cfi")))
@@ -1128,6 +1210,10 @@ int kp_kpm_init(void)
 	kp_callback_tramp = kp_malloc_exec(PAGE_SIZE);
 	if (kp_callback_tramp) {
 		kp_callback_tramp_size = PAGE_SIZE;
+		/* Populate BEFORE making it executable: on 6.12+ kernels with
+		 * FEAT_POE, set_memory_x() flips the mapping to read-only-X
+		 * through a permission overlay and later writes would fault. */
+		memset(kp_callback_tramp, 0, PAGE_SIZE);
 		if (kp_set_memory_x) {
 			int xret = kp_do_set_memory_x((unsigned long)kp_callback_tramp, 1);
 			if (xret)
@@ -1136,7 +1222,6 @@ int kp_kpm_init(void)
 		}
 		/* module_alloc may return PXN/NX; clear PXN/UXN/GP like KPM images */
 		kp_clear_bti_gp((unsigned long)kp_callback_tramp, PAGE_SIZE);
-		memset(kp_callback_tramp, 0, PAGE_SIZE);
 	} else {
 		logkw("callback trampoline alloc failed; KPM kallsyms iteration unshielded\n");
 	}

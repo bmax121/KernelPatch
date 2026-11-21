@@ -13,15 +13,24 @@ jobs:
   build-lkm:
     strategy:
       matrix:
-        kmi:
-          - android12-5.10
-          - android13-5.10
-          - android13-5.15
-          - android14-5.15
-          - android14-6.1
-          - android15-6.6
-          - android16-6.12
+        include:
+          - kmi: android12-5.10
+            ddk_release: '20260313'
+          - kmi: android13-5.10
+            ddk_release: '20260313'
+          - kmi: android13-5.15
+            ddk_release: '20260313'
+          - kmi: android14-5.15
+            ddk_release: '20260313'
+          - kmi: android14-6.1
+            ddk_release: '20260313'
+          - kmi: android15-6.6
+            ddk_release: '20260313'
+          - kmi: android16-6.12
+            ddk_release: '20260313'
+          - kmi: android17-6.18
+            ddk_release: '20260828'
     uses: ./.github/workflows/build-ddk.yml
     with:
       kmi: ${{ matrix.kmi }}
-      ddk_release: '20260313'
+      ddk_release: ${{ matrix.ddk_release }}

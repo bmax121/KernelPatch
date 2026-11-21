@@ -68,14 +68,6 @@ $(info -- KP version: $(KP_LKM_MAJOR).$(KP_LKM_MINOR).$(KP_LKM_PATCH) from $(KP_
 # can't find the su binary.
 ccflags-y += -DANDROID
 
-# Detect the arm64 dcache flush API. android13-5.10 backported
-# dcache_clean_inval_poc; android12-5.10 still has __flush_dcache_area.
-ifeq ($(CONFIG_ARM64),y)
-KP_NEW_DCACHE_FLUSH := $(shell grep -q __flush_dcache_area $(srctree)/arch/arm64/include/asm/cacheflush.h; echo $$?)
-ccflags-y += -DKP_NEW_DCACHE_FLUSH=$(KP_NEW_DCACHE_FLUSH)
-$(info -- KP_NEW_DCACHE_FLUSH: $(KP_NEW_DCACHE_FLUSH))
-endif
-
 ccflags-y += -Wno-declaration-after-statement -Wno-unused-function -Wno-unused-variable
 ccflags-y += -Wno-int-conversion -Wno-gcc-compat -Wno-missing-prototypes
 
