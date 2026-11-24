@@ -14,6 +14,7 @@
 #include <linux/types.h>
 
 #include "../include/kp_lkm.h"
+#include "../hook/hook_runtime.h"
 #include "../kpm/module.h"
 #include <hook.h>
 
@@ -53,6 +54,10 @@ static bool kp_target_in_module(unsigned long target)
 static bool kp_should_cfi_pass(unsigned long target)
 {
 	if (kp_target_in_module(target))
+		return true;
+
+	/* Hook trampolines allocated by hook_runtime (module_alloc/execmem). */
+	if (kp_hook_cfi_allowed_addr(target))
 		return true;
 
 	/* Loaded / loading KPM images and the callback-trampoline page. KPM code

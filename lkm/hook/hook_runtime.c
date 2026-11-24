@@ -7,9 +7,11 @@
 #include <linux/string.h>
 #include <linux/types.h>
 #include <linux/vmalloc.h>
+#include <asm/barrier.h>
 #include <asm/cacheflush.h>
 
 #include "../include/kp_lkm.h"
+#include "hook_runtime.h"
 #include <hook.h>
 #include "../infra/patch_memory.h"
 #include "../infra/symbol_resolver.h"
@@ -19,12 +21,72 @@ struct kp_hook_mem {
 	uintptr_t origin;
 	enum hook_type type;
 	void *region;
+	size_t region_size;
 	union {
 		hook_t hook;
 		hook_chain_t chain;
 		fp_hook_chain_t fp_chain;
 	} *payload;
 };
+
+/* Lockless range table for CFI-bypass queries (report_cfi_failure /
+ * __cfi_slowpath may run in atomic/exception context where mutex_lock is
+ * illegal). Writers are serialized by kp_hook_lock. */
+#define KP_HOOK_CFI_MAX_RANGES 64
+
+struct kp_hook_cfi_range {
+	unsigned long start;
+	unsigned long end;
+};
+
+static struct kp_hook_cfi_range kp_hook_cfi_ranges[KP_HOOK_CFI_MAX_RANGES];
+
+static void kp_hook_cfi_register_locked(unsigned long start, size_t size)
+{
+	int i;
+
+	for (i = 0; i < KP_HOOK_CFI_MAX_RANGES; i++) {
+		if (!kp_hook_cfi_ranges[i].start) {
+			WRITE_ONCE(kp_hook_cfi_ranges[i].end, start + size);
+			smp_wmb();
+			WRITE_ONCE(kp_hook_cfi_ranges[i].start, start);
+			return;
+		}
+	}
+}
+
+static void kp_hook_cfi_unregister_locked(unsigned long start)
+{
+	int i;
+
+	for (i = 0; i < KP_HOOK_CFI_MAX_RANGES; i++) {
+		if (kp_hook_cfi_ranges[i].start == start) {
+			WRITE_ONCE(kp_hook_cfi_ranges[i].start, 0);
+			smp_wmb();
+			WRITE_ONCE(kp_hook_cfi_ranges[i].end, 0);
+			return;
+		}
+	}
+}
+
+__attribute__((no_sanitize("cfi")))
+bool kp_hook_cfi_allowed_addr(unsigned long addr)
+{
+	int i;
+
+	for (i = 0; i < KP_HOOK_CFI_MAX_RANGES; i++) {
+		unsigned long start = READ_ONCE(kp_hook_cfi_ranges[i].start);
+		unsigned long end;
+
+		if (!start)
+			continue;
+		smp_rmb();
+		end = READ_ONCE(kp_hook_cfi_ranges[i].end);
+		if (addr >= start && addr < end)
+			return true;
+	}
+	return false;
+}
 
 static LIST_HEAD(kp_hook_mems);
 static DEFINE_MUTEX(kp_hook_lock);
@@ -109,7 +171,7 @@ int kp_hook_runtime_init(void)
 void *hook_mem_zalloc(uintptr_t origin, enum hook_type type)
 {
 	struct kp_hook_mem *mem;
-	size_t size;
+	size_t size, alloc_size;
 
 	switch (type) {
 	case INLINE:
@@ -128,16 +190,19 @@ void *hook_mem_zalloc(uintptr_t origin, enum hook_type type)
 	mem = kzalloc(sizeof(*mem), GFP_KERNEL);
 	if (!mem)
 		return NULL;
-	mem->region = kp_hook_exec_alloc(PAGE_ALIGN(size));
+	alloc_size = PAGE_ALIGN(size);
+	mem->region = kp_hook_exec_alloc(alloc_size);
 	if (!mem->region) {
 		kfree(mem);
 		return NULL;
 	}
-	memset(mem->region, 0, PAGE_ALIGN(size));
+	memset(mem->region, 0, alloc_size);
+	mem->region_size = alloc_size;
 	mem->payload = mem->region;
 	mem->origin = origin;
 	mem->type = type;
 	mutex_lock(&kp_hook_lock);
+	kp_hook_cfi_register_locked((unsigned long)mem->region, alloc_size);
 	list_add_tail(&mem->list, &kp_hook_mems);
 	mutex_unlock(&kp_hook_lock);
 	return mem->payload;
@@ -166,6 +231,7 @@ void hook_mem_free(void *payload)
 	mutex_lock(&kp_hook_lock);
 	list_for_each_entry_safe(mem, tmp, &kp_hook_mems, list) {
 		if (mem->payload == payload) {
+			kp_hook_cfi_unregister_locked((unsigned long)mem->region);
 			list_del(&mem->list);
 			mutex_unlock(&kp_hook_lock);
 			kp_hook_exec_free(mem->region);
