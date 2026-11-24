@@ -395,6 +395,8 @@ int is_trusted_manager_uid(uid_t uid)
 static void before(hook_fargs6_t *args, void *udata)
 {
     int uid = current_uid();
+    /* Match su_syscall_gate(): other uids must not reach the key copy. */
+    if (uid != 0 && !is_su_allow_uid(uid) && !is_trusted_manager_uid(uid)) return;
     if (get_ap_mod_exclude(uid)) return;
 
     int is_trusted_caller = 0;
@@ -442,7 +444,7 @@ int supercall_install()
      * routes it through the global dispatcher when that is hooked at
      * invoke_syscall, so syscall 45 uses the same single trampoline as every
      * other syscall; it falls back to the per-syscall hook otherwise. */
-    hook_err_t err = hook_syscalln_override(__NR_supercall, 6, before, 0, 0);
+    hook_err_t err = hook_syscalln_override_gated(__NR_supercall, 6, before, 0, 0);
     if (err) {
         log_boot("install supercall hook error: %d\n", err);
         rc = err;
