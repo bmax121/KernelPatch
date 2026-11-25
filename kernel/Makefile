@@ -45,6 +45,13 @@ ifdef ANDROID
 	X86_CFLAGS += -DANDROID
 endif
 
+# KPM_ONLY: build only the KPM host (supercall KPM cmds, module loader, event
+# dispatch). Drops the SELinux policy/hide code and the Android user daemon.
+ifdef KPM_ONLY
+	CFLAGS += -DKPM_ONLY
+	X86_CFLAGS += -DKPM_ONLY
+endif
+
 INCLUDE := -I. -Iinclude -Ipatch/include -Ilinux -Ilinux/include -Ilinux/arch/arm64/include -Ilinux/tools/arch/arm64/include
 
 X86_INCLUDE := -I. -Iinclude -Ipatch/include -Ilinux/include -Ilinux/include/uapi/asm-generic -Ilinux/tools/arch/arm64/include
@@ -74,6 +81,13 @@ BASE_SRCS += $(wildcard patch/ksyms/*.c)
 
 ifdef ANDROID
 	BASE_SRCS += $(wildcard patch/android/*.c)
+endif
+
+# KPM_ONLY: SELinux policy snapshot + hide and the Android user daemon (su /
+# trusted manager / AP package config / boot-stage events) are not part of the
+# KPM host, so keep them out of the link.
+ifdef KPM_ONLY
+	BASE_SRCS := $(filter-out patch/common/accctl.c patch/common/selinux_sepolicy.c patch/common/selinux_hide.c patch/common/sucompat.c patch/common/supercmd.c patch/common/user_event.c patch/android/sepolicy_flags.c patch/android/userd.c,$(BASE_SRCS))
 endif
 
 SRCS += $(BASE_SRCS)

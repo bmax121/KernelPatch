@@ -132,6 +132,7 @@ static long call_kpm_info(const char *__user uname, char *__user out_info, int o
     return sz;
 }
 
+#ifndef KPM_ONLY
 static long call_su(struct su_profile *__user uprofile)
 {
     struct su_profile *profile = memdup_user(uprofile, sizeof(struct su_profile));
@@ -151,6 +152,7 @@ static long call_su_task(pid_t pid, struct su_profile *__user uprofile)
     kvfree(profile);
     return rc;
 }
+#endif
 
 static long call_skey_get(char *__user out_key, int out_len)
 {
@@ -176,6 +178,7 @@ static long call_skey_root_enable(int enable)
     return 0;
 }
 
+#ifndef KPM_ONLY
 static long call_grant_uid(struct su_profile *__user uprofile)
 {
     struct su_profile *profile = memdup_user(uprofile, sizeof(struct su_profile));
@@ -194,8 +197,9 @@ static long call_su_allow_uid_nums()
 {
     return su_allow_uid_nums();
 }
+#endif
 
-#ifdef ANDROID
+#if defined(ANDROID) && !defined(KPM_ONLY)
 extern int android_is_safe_mode;
 static long call_su_get_safemode()
 {
@@ -213,6 +217,7 @@ static long call_ap_load_package_config()
 }
 #endif
 
+#ifndef KPM_ONLY
 static long call_su_list_allow_uid(uid_t *__user uids, int num)
 {
     return su_allow_uids(1, uids, num);
@@ -251,6 +256,7 @@ static long call_su_set_allow_sctx(char *__user usctx)
     if (len >= SUPERCALL_SCONTEXT_LEN && buf[SUPERCALL_SCONTEXT_LEN - 1]) return -E2BIG;
     return set_all_allow_sctx(buf);
 }
+#endif
 
 static long call_kstorage_read(int gid, long did, void *out_data, int offset, int dlen)
 {
@@ -286,13 +292,14 @@ static long supercall(int is_authed, long cmd, long arg1, long arg2, long arg3, 
         return kver;
     case SUPERCALL_BUILD_TIME:
         return call_buildtime((char *__user)arg1, (int)arg2);
-    #ifdef ANDROID
+    #if defined(ANDROID) && !defined(KPM_ONLY)
     case SUPERCALL_AP_LOAD_PACKAGE_CONFIG:
         return call_ap_load_package_config();
     #endif
     }
 
     switch (cmd) {
+#ifndef KPM_ONLY
     case SUPERCALL_SU:
         return call_su((struct su_profile * __user) arg1);
     case SUPERCALL_SU_TASK:
@@ -316,6 +323,7 @@ static long supercall(int is_authed, long cmd, long arg1, long arg2, long arg3, 
         return call_su_get_allow_sctx((char *__user)arg1, (int)arg2);
     case SUPERCALL_SU_SET_ALLOW_SCTX:
         return call_su_set_allow_sctx((char *__user)arg1);
+#endif
 
     case SUPERCALL_KSTORAGE_READ:
         return call_kstorage_read((int)arg1, (long)arg2, (void *)arg3, (int)((long)arg4 >> 32), (long)arg4 << 32 >> 32);
@@ -327,10 +335,12 @@ static long supercall(int is_authed, long cmd, long arg1, long arg2, long arg3, 
     case SUPERCALL_KSTORAGE_REMOVE:
         return call_kstorage_remove((int)arg1, (long)arg2);
 
+#ifndef KPM_ONLY
     case SUPERCALL_CONTROL_FEATURE:
         return kp_control_feature_sc((const char __user *)arg1, (int)(long)arg2);
+#endif
 
-#ifdef ANDROID
+#if defined(ANDROID) && !defined(KPM_ONLY)
     case SUPERCALL_SU_GET_SAFEMODE:
         return call_su_get_safemode();
 #endif
@@ -386,7 +396,7 @@ static long supercall(int is_authed, long cmd, long arg1, long arg2, long arg3, 
 
 int is_trusted_manager_uid(uid_t uid)
 {
-    #ifdef ANDROID
+    #if defined(ANDROID) && !defined(KPM_ONLY)
     return is_trusted_manager_uid_android(uid);
     #endif
     return 0;
@@ -395,7 +405,11 @@ int is_trusted_manager_uid(uid_t uid)
 static void before(hook_fargs6_t *args, void *udata)
 {
     int uid = current_uid();
+#ifndef KPM_ONLY
     if (get_ap_mod_exclude(uid)) return;
+#else
+    if (uid != 0) return; // todo: some better way?
+#endif
 
     int is_trusted_caller = 0;
     int is_authed = 0;
@@ -408,12 +422,14 @@ static void before(hook_fargs6_t *args, void *udata)
         is_authed = !auth_superkey(key);
         is_trusted_caller = is_authed;
     }
+#ifndef KPM_ONLY
     if (is_trusted_manager_uid(uid)) {
         is_trusted_caller = 1;
         is_authed = 1;
     } else if (is_su_allow_uid(uid)) {
         is_trusted_caller = 1;
     }
+#endif
 
     if (!is_trusted_caller) return;
 

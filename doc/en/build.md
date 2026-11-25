@@ -12,6 +12,22 @@ export ANDROID=1 # Android version, including support for the 'su' command
 make
 ```
 
+### KPM-only build
+
+`KPM_ONLY=1` keeps only the KPM host: the `SUPERCALL_KPM_*` commands, the
+module loader and the event dispatch. It leaves out the SELinux policy snapshot
+/ hide code and `patch/android/userd.c`, so the su and trusted-manager
+machinery, `/data/adb/ap/kpm` loading and the boot-stage events
+(`pre-exec-init`, `init first/second stage`) are not built.
+
+```shell
+export TARGET_COMPILE=aarch64-none-elf-
+cd kernel
+export ANDROID=1
+export KPM_ONLY=1
+make
+```
+
 ## Build kptools
 
 kptools can run anywhere, just compile it.  

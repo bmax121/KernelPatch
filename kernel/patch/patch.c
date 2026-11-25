@@ -47,20 +47,26 @@ int resolve_struct();
 int task_observer();
 int hotpatch_init();
 int bypass_kcfi();
+#ifndef KPM_ONLY
 int bypass_selinux();
+#endif
 int resolve_pt_regs();
 int supercall_install();
 void module_init();
+#ifndef KPM_ONLY
 /* Capture SELinux policy loads from the boot path: the platform policy is
  * loaded by init long before post-fs-data, so the hook must be in place now. */
 int selinux_sepolicy_boot_init();
+#endif
 void syscall_init();
 void syscall_dispatch_init();
 int kstorage_init();
+#ifndef KPM_ONLY
 int su_compat_init();
 // int selinux_hide_init();
+#endif
 
-#ifdef ANDROID
+#if defined(ANDROID) && !defined(KPM_ONLY)
 int android_user_init();
 int android_sepolicy_flags_fix();
 #endif
@@ -84,8 +90,10 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
     if ((rc = resolve_struct())) goto out;
     log_boot("resolve_struct done: %d\n", rc);
 
+#ifndef KPM_ONLY
     if ((rc = bypass_selinux())) goto out;
     log_boot("bypass_selinux done: %d\n", rc);
+#endif
 
     if ((rc = task_observer())) goto out;
     log_boot("task_observer done: %d\n", rc);
@@ -96,15 +104,17 @@ static void before_rest_init(hook_fargs4_t *args, void *udata)
     rc = kstorage_init();
     log_boot("kstorage_init done: %d\n", rc);
 
+#ifndef KPM_ONLY
     rc = su_compat_init();
     log_boot("su_compat_init done: %d\n", rc);
 
     log_boot("selinux_sepolicy_boot_init: %d\n", selinux_sepolicy_boot_init());
+#endif
 
     rc = resolve_pt_regs();
     log_boot("resolve_pt_regs done: %d\n", rc);
 
-#ifdef ANDROID
+#if defined(ANDROID) && !defined(KPM_ONLY)
     rc = android_sepolicy_flags_fix();
     log_boot("android_sepolicy_flags_fix done: %d\n", rc);
 
