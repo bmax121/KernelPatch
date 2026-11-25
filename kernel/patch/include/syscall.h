@@ -202,4 +202,9 @@ hook_err_t hook_syscalln_legacy(int nr, int narg, void *before, void *after, voi
  */
 hook_err_t hook_syscalln_override(int nr, int narg, void *before, void *after, void *udata);
 
+/**
+ * @brief hook_syscalln_override() with bypass_gate = 0.
+ */
+hook_err_t hook_syscalln_override_gated(int nr, int narg, void *before, void *after, void *udata);
+
 #endif

@@ -698,6 +698,16 @@ hook_err_t hook_syscalln_override(int nr, int narg, void *before, void *after, v
 }
 KP_EXPORT_SYMBOL(hook_syscalln_override);
 
+/* hook_syscalln_override() with bypass_gate = 0. */
+hook_err_t hook_syscalln_override_gated(int nr, int narg, void *before, void *after, void *udata)
+{
+    if (syscall_hook_global && syscall_hook_handler_granular)
+        return syscall_hook_add(nr, 0, before, after, udata, 1, 0);
+    if (sys_call_table) return fp_wrap_syscalln(nr, narg, 0, before, after, udata);
+    return inline_wrap_syscalln(nr, narg, 0, before, after, udata);
+}
+KP_EXPORT_SYMBOL(hook_syscalln_override_gated);
+
 void unhook_compat_syscalln(int nr, void *before, void *after)
 {
     if (syscall_hook_global) return syscall_hook_remove(nr, 1, before, after);
