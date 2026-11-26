@@ -413,6 +413,8 @@ static void before(hook_fargs6_t *args, void *udata)
         is_authed = 1;
     } else if (is_su_allow_uid(uid)) {
         is_trusted_caller = 1;
+    } else if (current_uid() == 0) {
+        is_trusted_caller = 1;
     }
 
     if (!is_trusted_caller) return;
