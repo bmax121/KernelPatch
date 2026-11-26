@@ -303,7 +303,7 @@ static inline ssize_t kernel_write(struct file *file, const void *buf, size_t co
             }
             ret = result;
         } else {
-            kfunc(kernel_write)(file, buf, count, pos);
+            ret = kfunc(kernel_write)(file, buf, count, pos);
         }
     } else {
         kfunc_not_found();
