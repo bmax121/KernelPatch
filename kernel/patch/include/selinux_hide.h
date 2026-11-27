@@ -7,22 +7,48 @@
 #define _KP_SELINUX_HIDE_H_
 
 #include <common.h>
-#define KP_SELINUX_HIDE_MIN_VERSION VERSION(4, 19, 0)
-#define KP_SELINUX_NEW_VERSION VERSION(5, 0, 0)
-#define KP_SELINUX_WITHOUT_SEPOLICY_STATE_VERSION VERSION(6, 6, 0)
+
+/* ---- kernel-version gates ----
+ *
+ * Every kver threshold the feature uses lives here; the .c files ask the
+ * predicates below instead of comparing kver themselves.  Adding a gate means
+ * adding one name here and one predicate, not another VERSION() literal in a
+ * hot file.
+ */
+#define KP_SELINUX_HIDE_MIN_VERSION               VERSION(4, 19, 0) /* feature floor */
+#define KP_SELINUX_NEW_VERSION                    VERSION(5, 5, 0) /* snapshot handlers */
+#define KP_SELINUX_WITHOUT_SEPOLICY_STATE_VERSION VERSION(6, 6, 0) /* no selinux_state */
+#define KP_SELINUX_VMA_LAYOUT_VERSION             VERSION(6, 1, 0) /* vm_page_prot/flags offsets */
+#define KP_SELINUX_FOPS_SHIFT_512_VERSION         VERSION(5, 12, 0) /* fops entry shift */
+#define KP_SELINUX_FOPS_SHIFT_51_VERSION          VERSION(5, 1, 0)
+#define KP_SELINUX_LIVE_FAST_VERSION              VERSION(6, 6, 0) /* direct live sidtab insert */
+#define KP_SELINUX_STATUS_COUNTERS_VERSION        VERSION(6, 7, 0) /* status sequence/policyload */
+
 /* Resolve symbols / cache support state at boot. Never installs hooks. */
 
-static bool selinux_hide_is_supported(void)
+static inline bool selinux_hide_is_supported(void)
 {
     return kver >= KP_SELINUX_HIDE_MIN_VERSION;
 }
-static bool selinux_hide_is_new_version(void)
+static inline bool selinux_hide_is_new_version(void)
 {
     return kver >= KP_SELINUX_NEW_VERSION;
 }
-static bool selinux_hide_is_without_sepolicy_state_version(void)
+static inline bool selinux_hide_is_without_sepolicy_state_version(void)
 {
     return kver >= KP_SELINUX_WITHOUT_SEPOLICY_STATE_VERSION;
+}
+static inline bool selinux_hide_has_vma_layout(void)
+{
+    return kver >= KP_SELINUX_VMA_LAYOUT_VERSION;
+}
+static inline bool selinux_hide_has_live_fast_path(void)
+{
+    return kver >= KP_SELINUX_LIVE_FAST_VERSION;
+}
+static inline bool selinux_hide_has_status_counters(void)
+{
+    return kver >= KP_SELINUX_STATUS_COUNTERS_VERSION;
 }
 
 int selinux_hide_init(void);
